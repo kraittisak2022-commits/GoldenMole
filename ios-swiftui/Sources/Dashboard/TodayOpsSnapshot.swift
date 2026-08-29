@@ -195,7 +195,7 @@ extension DashboardAggregations {
     }
 
     static func isMacroUsageRow(_ t: Transaction) -> Bool {
-        t.category == "Vehicle" && CountRecordLogic.isMacroVehicleId(t.vehicleId)
+        MacroVehicleLogic.isMacroUsageRow(t)
     }
 
     /// Shared attendance headcounts for a single day (used by TodayOps + MobileOps).

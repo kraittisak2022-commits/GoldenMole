@@ -129,7 +129,7 @@ enum CountRecordLogic {
 
     /// Catalog ids look like `v_` + hex (web `makeVehicleId`).
     static func looksLikeCatalogVehicleId(_ raw: String?) -> Bool {
-        let s = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let s = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return s.hasPrefix("v_") && s.count >= 4
     }
 
@@ -145,18 +145,42 @@ enum CountRecordLogic {
         return "v_\(String(absHash, radix: 16))"
     }
 
-    /// Display label for trip cards — prefer `vehicleName`, then catalog / cars map for `v_…`.
+    /// Name hint from description prefixes like `"รถดรัมโอเว่น: 2 เที่ยว × 4 คิว"`.
+    static func vehicleNameFromDescription(_ raw: String?) -> String? {
+        let desc = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !desc.isEmpty else { return nil }
+        let head: String
+        if let r = desc.range(of: ":") {
+            head = String(desc[..<r.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            head = desc
+        }
+        guard !head.isEmpty, !looksLikeCatalogVehicleId(head) else { return nil }
+        return head
+    }
+
+    /// Display label for trip cards — prefer `vehicleName`, then catalog / cars / description.
     static func vehicleDisplayLabel(
         vehicleId: String?,
         vehicleName: String?,
         cars: [String] = [],
-        catalog: [VehicleCatalogRow] = []
+        catalog: [VehicleCatalogRow] = [],
+        description: String? = nil,
+        nameById: [String: String] = [:]
     ) -> String {
         let name = (vehicleName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if !name.isEmpty, !looksLikeCatalogVehicleId(name) { return name }
 
         let id = (vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if id.isEmpty { return name }
+        if id.isEmpty {
+            return vehicleNameFromDescription(description) ?? name
+        }
+
+        if let mapped = nameById[id]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !mapped.isEmpty,
+           !looksLikeCatalogVehicleId(mapped) {
+            return mapped
+        }
 
         if let hit = catalog.first(where: {
             $0.id == id || $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == id
@@ -166,17 +190,48 @@ enum CountRecordLogic {
         }
 
         if looksLikeCatalogVehicleId(id) {
+            let idLower = id.lowercased()
+            if let hit = catalog.first(where: { $0.id.lowercased() == idLower }) {
+                let hitName = hit.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !hitName.isEmpty { return hitName }
+            }
             for car in cars {
                 let trimmed = car.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
-                if makeVehicleId(from: trimmed) == id { return trimmed }
+                if makeVehicleId(from: trimmed) == id || makeVehicleId(from: trimmed).lowercased() == idLower {
+                    return trimmed
+                }
+            }
+            if let fromDesc = vehicleNameFromDescription(description) {
+                return fromDesc
             }
         } else if !isMacroVehicleId(id) {
             return id
         }
 
+        if let fromDesc = vehicleNameFromDescription(description) {
+            return fromDesc
+        }
         if !name.isEmpty { return name }
         return id
+    }
+
+    /// Collect vehicle_id → display name from rows that already carry `vehicle_name`.
+    static func vehicleNameIndex(from transactions: [Transaction]) -> [String: String] {
+        var map: [String: String] = [:]
+        for t in transactions {
+            let id = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty else { continue }
+            let name = (t.vehicleName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty, !looksLikeCatalogVehicleId(name) {
+                map[id] = name
+                continue
+            }
+            if map[id] == nil, let fromDesc = vehicleNameFromDescription(t.description) {
+                map[id] = fromDesc
+            }
+        }
+        return map
     }
 
     static func getLapTimes(_ t: Transaction) -> [String] {
@@ -275,18 +330,20 @@ enum CountRecordLogic {
         catalog: [VehicleCatalogRow] = []
     ) -> [CountRecordTripUnit] {
         let key = dayKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nameById = vehicleNameIndex(from: transactions)
         var units: [CountRecordTripUnit] = []
         for t in transactions {
             guard String(t.date.prefix(10)) == key else { continue }
             guard isCountRecordVehicleRow(t) else { continue }
-            let rawId = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let label = vehicleDisplayLabel(
                 vehicleId: t.vehicleId,
                 vehicleName: t.vehicleName,
                 cars: cars,
-                catalog: catalog
+                catalog: catalog,
+                description: t.description,
+                nameById: nameById
             )
-            guard !label.isEmpty, !isMacroVehicleId(label), !isMacroVehicleId(rawId) else { continue }
+            guard !label.isEmpty, !isMacroVehicleId(label) else { continue }
             let periods = vehicleTripPeriodSplit(t)
             units.append(
                 CountRecordTripUnit(

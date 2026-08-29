@@ -610,6 +610,27 @@ struct VehicleCatalogRow: Codable, Sendable, Equatable, Identifiable {
         case defaultDriverId = "default_driver_id"
         case sortOrder = "sort_order"
     }
+
+    init(id: String, name: String, defaultDriverId: String?, sortOrder: Int) {
+        self.id = id
+        self.name = name
+        self.defaultDriverId = defaultDriverId
+        self.sortOrder = sortOrder
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = (try c.decodeIfPresent(String.self, forKey: .name)) ?? ""
+        defaultDriverId = try c.decodeIfPresent(String.self, forKey: .defaultDriverId)
+        if let i = try c.decodeIfPresent(Int.self, forKey: .sortOrder) {
+            sortOrder = i
+        } else if let d = try c.decodeIfPresent(Double.self, forKey: .sortOrder) {
+            sortOrder = Int(d)
+        } else {
+            sortOrder = 0
+        }
+    }
 }
 
 /// Nested JSON in `app_settings.app_defaults`.

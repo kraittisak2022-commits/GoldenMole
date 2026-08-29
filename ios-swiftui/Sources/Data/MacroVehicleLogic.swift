@@ -36,7 +36,13 @@ enum MacroVehicleLogic {
     }
 
     static func isMacroUsageRow(_ t: Transaction) -> Bool {
-        t.category == "Vehicle" && CountRecordLogic.isMacroVehicleId(t.vehicleId)
+        guard t.category == "Vehicle" else { return false }
+        if CountRecordLogic.isMacroVehicleId(t.vehicleId) { return true }
+        if CountRecordLogic.isMacroVehicleId(t.vehicleName) { return true }
+        if CountRecordLogic.isMacroVehicleId(CountRecordLogic.vehicleNameFromDescription(t.description)) {
+            return true
+        }
+        return false
     }
 
     static func macroCars(from settings: AppSettings) -> [String] {

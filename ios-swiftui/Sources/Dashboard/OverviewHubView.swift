@@ -185,6 +185,7 @@ struct OverviewHubView: View {
         .onChange(of: allTransactions.count) { _, _ in scheduleRebuild() }
         .onChange(of: employees.count) { _, _ in scheduleRebuild() }
         .onChange(of: settings.cars) { _, _ in scheduleRebuild() }
+        .onChange(of: settings.vehicleCatalog) { _, _ in scheduleRebuild() }
     }
 
     private var focusDayKey: String {
@@ -762,14 +763,25 @@ struct OverviewHubView: View {
     /// Drum vehicles from count-record trip menu (`buildTripUnits`), same source as Realtime «จำนวนเที่ยวรถ».
     private var todayDrumTripRows: [DrumTripRow] {
         let dayKey = focusDayKey
+        let catalog = settings.vehicleCatalog
         let units = CountRecordLogic.buildTripUnits(
             dayKey: dayKey,
             transactions: allTransactions,
             employees: employees,
             cars: settings.cars,
-            catalog: settings.vehicleCatalog
+            catalog: catalog
         )
-        .filter { CountRecordLogic.isDrumTripVehicleId($0.vehicleId) }
+        .filter { unit in
+            if CountRecordLogic.isDrumTripVehicleId(unit.vehicleId) { return true }
+            // Unresolved catalog id: still show if settings list this id as a drum car by name.
+            if CountRecordLogic.looksLikeCatalogVehicleId(unit.vehicleId) {
+                return catalog.contains {
+                    $0.id == unit.vehicleId && CountRecordLogic.isDrumTripVehicleId($0.name)
+                }
+            }
+            // Named non-macro trip vehicles that aren't "แม็คโคร" — treat as fleet drum/dump list.
+            return !CountRecordLogic.isMacroVehicleId(unit.vehicleId)
+        }
 
         var byVehicle: [String: DrumTripRow] = [:]
         for unit in units {
@@ -879,22 +891,30 @@ struct OverviewHubView: View {
     }
 
     private var todayMacroVehicleRows: [MacroVehicleRow] {
-        let dayKey = todayOps.dayKey.isEmpty ? DashboardAggregations.todayYMD() : todayOps.dayKey
+        let dayKey = focusDayKey
+        let nameById = CountRecordLogic.vehicleNameIndex(from: allTransactions)
         let byVehicle = MacroVehicleLogic.dayRowsByVehicle(
             dayKey: dayKey,
             transactions: allTransactions
         )
         return byVehicle.values
             .map { tx in
-                let vid = (tx.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let label = CountRecordLogic.vehicleDisplayLabel(
+                    vehicleId: tx.vehicleId,
+                    vehicleName: tx.vehicleName,
+                    cars: settings.cars,
+                    catalog: settings.vehicleCatalog,
+                    description: tx.description,
+                    nameById: nameById
+                )
                 let details = MacroVehicleLogic.stripRecorderSuffix(tx.workDetails ?? "")
                 let tags = MacroVehicleLogic.parseWorkTags(details)
                 let workLabels = tags.isEmpty
                     ? (details.isEmpty ? [] : [details])
                     : tags
                 return MacroVehicleRow(
-                    id: vid.isEmpty ? tx.id : vid,
-                    vehicleName: vid.isEmpty ? "แม็คโคร" : vid,
+                    id: label.isEmpty ? tx.id : label,
+                    vehicleName: label.isEmpty ? "แม็คโคร" : label,
                     driverLabel: CountRecordLogic.driverDisplayName(tx.driverId ?? "", employees: employees),
                     dayLabel: MacroVehicleLogic.WorkType.from(raw: tx.workType).label,
                     workLabels: workLabels

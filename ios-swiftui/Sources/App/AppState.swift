@@ -351,10 +351,11 @@ final class AppState {
             lastFetchEmployeeCount = employees.count
         }
 
-        // --- Settings ---
+        // --- Settings (re-fetch when vehicle catalog missing so v_ ids can resolve) ---
         let settingsFresh = !forceFull
             && LocalDataCache.isWithinTTL(cacheMeta?.settingsSavedAt, ttl: LocalDataCache.rosterTTL)
             && settings != .fallback
+            && !settings.vehicleCatalog.isEmpty
         if !settingsFresh {
             do {
                 let s = try await dataService.fetchSettings()

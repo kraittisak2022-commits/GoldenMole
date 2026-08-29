@@ -24,7 +24,13 @@ struct WorkLogView: View {
     private var expense: Double { dayTransactions.filter { $0.type == .expense }.reduce(0) { $0 + $1.amount } }
 
     private var tripUnits: [CountRecordTripUnit] {
-        CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: transactions, employees: employees)
+        CountRecordLogic.buildTripUnits(
+            dayKey: dayKey,
+            transactions: transactions,
+            employees: employees,
+            cars: settings.cars,
+            catalog: settings.vehicleCatalog
+        )
     }
     private var sandUnit: CountRecordSandUnit? {
         CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: transactions)

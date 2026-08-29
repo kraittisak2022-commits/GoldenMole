@@ -240,13 +240,14 @@ final class SupabaseService: ObservableObject {
         let rows = try await settingsTask
         let catalog: [VehicleCatalogRow]
         do {
-            let rows: [VehicleCatalogRow] = try await client.from("vehicles")
+            let data = try await client.from("vehicles")
                 .select("id, name, default_driver_id, sort_order")
                 .order("sort_order", ascending: true)
                 .order("name", ascending: true)
                 .execute()
-                .value
-            catalog = rows.filter {
+                .data
+            let items = (try? JSONDecoder().decode([FailableDecodable<VehicleCatalogRow>].self, from: data)) ?? []
+            catalog = items.compactMap(\.value).filter {
                 !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
