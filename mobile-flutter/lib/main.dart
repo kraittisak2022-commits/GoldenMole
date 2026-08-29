@@ -334,7 +334,7 @@ Future<void> main() async {
     debugPrint('Error during initialization: $e');
     runApp(
       MaterialApp(
-        title: 'GoldenMole for Users',
+        title: 'GoldenMole for User',
         home: Scaffold(
           body: Center(
             child: Padding(
@@ -458,7 +458,7 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
 
     return MaterialApp(
       navigatorKey: widget.navigatorKey,
-      title: 'GoldenMole for Users',
+      title: 'GoldenMole for User',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.light,
       scrollBehavior: DevicePerf.isConstrainedDevice

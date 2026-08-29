@@ -1,4 +1,4 @@
-package com.example.mobile_flutter
+package com.goldenmole.app
 
 import io.flutter.embedding.android.FlutterActivity
 

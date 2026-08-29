@@ -133,8 +133,8 @@
       "Supabase",
       "Material Design"
     ],
-    "package_id": "com.example.mobile_flutter",
-    "app_label": "GoldenMole for Users",
+    "package_id": "com.goldenmole.app",
+    "app_label": "GoldenMole for User",
     "screens": [
       {
         "name": "LoginScreen",
