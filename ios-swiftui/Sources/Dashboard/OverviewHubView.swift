@@ -159,7 +159,13 @@ struct OverviewHubView: View {
     @State private var snapshot = OverviewSnapshot.empty(filter: DateFilter(start: "", end: ""))
     @State private var todayOps = TodayOpsSnapshot.empty
     @State private var rebuildTask: Task<Void, Never>?
+    @State private var showAllWorkingStaff = false
 
+    private var leaveNamesToday: [String] {
+        todayOps.staffRows
+            .filter { $0.status == .leave }
+            .map(\.name)
+    }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
@@ -180,7 +186,10 @@ struct OverviewHubView: View {
             rebuildTask?.cancel()
             rebuildTask = nil
         }
-        .onChange(of: dateFilter) { _, _ in scheduleRebuild() }
+        .onChange(of: dateFilter) { _, _ in
+            showAllWorkingStaff = false
+            scheduleRebuild()
+        }
         .onChange(of: transactions) { _, _ in scheduleRebuild() }
         .onChange(of: allTransactions.count) { _, _ in scheduleRebuild() }
         .onChange(of: employees.count) { _, _ in scheduleRebuild() }
@@ -358,12 +367,17 @@ struct OverviewHubView: View {
                         NavigationLink {
                             AttendanceHubView()
                         } label: {
-                            HStack(spacing: 8) {
+                            HStack(alignment: .top, spacing: 8) {
                                 if todayOps.presentCount > 0 {
                                     attendanceStat(count: todayOps.presentCount, title: "มาทำงาน", color: AppTheme.income)
                                 }
                                 if todayOps.leaveCount > 0 {
-                                    attendanceStat(count: todayOps.leaveCount, title: "ลา", color: AppTheme.warning)
+                                    attendanceStat(
+                                        count: todayOps.leaveCount,
+                                        title: "ลา",
+                                        color: AppTheme.warning,
+                                        names: leaveNamesToday
+                                    )
                                 }
                                 if todayOps.absentCount > 0 {
                                     attendanceStat(count: todayOps.absentCount, title: "ขาด", color: AppTheme.expense)
@@ -497,7 +511,12 @@ struct OverviewHubView: View {
         }
     }
 
-    private func attendanceStat(count: Int, title: String, color: Color) -> some View {
+    private func attendanceStat(
+        count: Int,
+        title: String,
+        color: Color,
+        names: [String] = []
+    ) -> some View {
         VStack(spacing: 4) {
             Text("\(count)")
                 .font(.title3.weight(.bold))
@@ -505,9 +524,18 @@ struct OverviewHubView: View {
             Text(title)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(AppTheme.inkMuted)
+            if !names.isEmpty {
+                Text(names.joined(separator: " · "))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(AppTheme.inkSecondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
+        .padding(.horizontal, 6)
         .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
@@ -677,7 +705,9 @@ struct OverviewHubView: View {
                                     title: "ลางาน",
                                     value: "\(m.leaveCount)",
                                     unit: "คน",
-                                    detail: isFocusToday ? "วันนี้" : summaryDayTitle,
+                                    detail: leaveNamesToday.isEmpty
+                                        ? (isFocusToday ? "วันนี้" : summaryDayTitle)
+                                        : leaveNamesToday.joined(separator: " · "),
                                     accent: AppTheme.warning,
                                     systemImage: "calendar.badge.minus"
                                 )
@@ -900,18 +930,31 @@ struct OverviewHubView: View {
 
     private var todayMacroVehicleRows: [MacroVehicleRow] {
         let dayKey = focusDayKey
+        let cars = MacroVehicleLogic.macroCars(from: settings)
+        let catalog = settings.vehicleCatalog
         let nameById = CountRecordLogic.vehicleNameIndex(from: allTransactions)
         let byVehicle = MacroVehicleLogic.dayRowsByVehicle(
             dayKey: dayKey,
-            transactions: allTransactions
+            transactions: allTransactions,
+            cars: cars,
+            catalog: catalog
         )
-        return byVehicle.values
+        // Prefer display-name keys (Android) over raw catalog ids when both exist.
+        var seenIds = Set<String>()
+        var uniqueRows: [Transaction] = []
+        for tx in byVehicle.values {
+            let key = (tx.id).trimmingCharacters(in: .whitespacesAndNewlines)
+            if seenIds.insert(key).inserted {
+                uniqueRows.append(tx)
+            }
+        }
+        return uniqueRows
             .map { tx in
                 let label = CountRecordLogic.vehicleDisplayLabel(
                     vehicleId: tx.vehicleId,
                     vehicleName: tx.vehicleName,
-                    cars: settings.cars,
-                    catalog: settings.vehicleCatalog,
+                    cars: cars,
+                    catalog: catalog,
                     description: tx.description,
                     nameById: nameById
                 )
@@ -936,94 +979,125 @@ struct OverviewHubView: View {
     private var macroVehiclesCard: some View {
         let rows = todayMacroVehicleRows
         let accent = Color(hex: "#0F766E")
-        return NavigationLink {
-            TodayOpsDetailScreen(kind: .macro)
-        } label: {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Label(
-                        rows.isEmpty ? "รถแม็คโครวันนี้" : "รถแม็คโคร · \(rows.count) คัน",
-                        systemImage: "hammer.fill"
-                    )
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.inkMuted)
-                }
+        return Group {
+            if !rows.isEmpty {
+                NavigationLink {
+                    MacroVehicleHubView()
+                } label: {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Label(
+                                "รถแม็คโคร · \(rows.count) คัน",
+                                systemImage: "hammer.fill"
+                            )
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(AppTheme.ink)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(AppTheme.inkMuted)
+                        }
 
-                if rows.isEmpty {
-                    Text("วันนี้ยังไม่มีรถแม็คโคร")
-                        .font(.subheadline)
-                        .foregroundStyle(AppTheme.inkMuted)
-                        .padding(.vertical, 8)
-                } else {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                        if index > 0 { Divider() }
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(row.vehicleName)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(AppTheme.ink)
-                                        .lineLimit(2)
-                                    Text(row.driverLabel)
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                            if index > 0 { Divider() }
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(row.vehicleName)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(AppTheme.ink)
+                                            .lineLimit(2)
+                                        Text(row.driverLabel)
+                                            .font(.caption)
+                                            .foregroundStyle(AppTheme.inkMuted)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer(minLength: 8)
+                                    Text(row.dayLabel)
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(accent)
+                                }
+                                if row.workLabels.isEmpty {
+                                    Text("ยังไม่ระบุงาน")
                                         .font(.caption)
                                         .foregroundStyle(AppTheme.inkMuted)
-                                        .lineLimit(1)
+                                } else {
+                                    Text(row.workLabels.joined(separator: " · "))
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(AppTheme.inkSecondary)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
-                                Spacer(minLength: 8)
-                                Text(row.dayLabel)
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(accent)
                             }
-                            if row.workLabels.isEmpty {
-                                Text("ยังไม่ระบุงาน")
-                                    .font(.caption)
-                                    .foregroundStyle(AppTheme.inkMuted)
-                            } else {
-                                Text(row.workLabels.joined(separator: " · "))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(AppTheme.inkSecondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+                            .padding(.vertical, 4)
                         }
-                        .padding(.vertical, 4)
                     }
+                    .padding(18)
+                    .background(summaryCardBackground)
                 }
+                .buttonStyle(.plain)
+                .accessibilityHint("แตะเพื่อเปิดเมนูการใช้รถแม็คโคร")
             }
-            .padding(18)
-            .background(summaryCardBackground)
         }
-        .buttonStyle(.plain)
-        .accessibilityHint("แตะเพื่อดูรายละเอียดรถแม็คโคร")
     }
 
     // MARK: - Period range
 
     private var periodRangeCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("รวมช่วงที่เลือก")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-                Text(periodLabel)
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.inkMuted)
-            }
+        let r = snapshot.mobileRange
+        let showTrips = r.tripRounds > 0 || r.tripVehicles > 0
+        let showSand = r.sandRounds > 0 || r.sandWashedCubic > 0
+        let showAttendance = r.attendanceDays > 0 || r.presentCount > 0
+        let showMacro = r.macroUsageCount > 0 || r.macroVehicles > 0
+        let showFuel = r.fuelInLiters > 0 || r.fuelOutLiters > 0
+        let hasAny = showTrips || showSand || showAttendance || showMacro || showFuel
 
-            periodRow("เที่ยวรถ", "\(snapshot.mobileRange.tripRounds) เที่ยว · \(snapshot.mobileRange.tripVehicles) คัน")
-            periodRow("ร่อนทราย", "\(snapshot.mobileRange.sandRounds) รอบ · ล้าง \(DashboardAggregations.formatNumber(snapshot.mobileRange.sandWashedCubic)) คิว")
-            periodRow("เช็คชื่อ", "เฉลี่ย \(snapshot.mobileRange.presentCount) คน/วัน · \(snapshot.mobileRange.attendanceDays) วัน")
-            periodRow("แม็คโคร", "\(snapshot.mobileRange.macroUsageCount) ครั้ง · \(snapshot.mobileRange.macroVehicles) คัน")
-            periodRow(
-                "น้ำมัน",
-                "เข้า \(DashboardAggregations.formatNumber(snapshot.mobileRange.fuelInLiters)) L · ออก \(DashboardAggregations.formatNumber(snapshot.mobileRange.fuelOutLiters)) L"
-            )
+        return Group {
+            if hasAny {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("รวมช่วงที่เลือก")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(AppTheme.ink)
+                        Text(periodLabel)
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.inkMuted)
+                    }
+
+                    if showTrips {
+                        periodRow(
+                            "เที่ยวรถ",
+                            "\(r.tripRounds) เที่ยว · \(r.tripVehicles) คัน"
+                        )
+                    }
+                    if showSand {
+                        periodRow(
+                            "ร่อนทราย",
+                            "\(r.sandRounds) รอบ · ล้าง \(DashboardAggregations.formatNumber(r.sandWashedCubic)) คิว"
+                        )
+                    }
+                    if showAttendance {
+                        periodRow(
+                            "เช็คชื่อ",
+                            "เฉลี่ย \(r.presentCount) คน/วัน · \(r.attendanceDays) วัน"
+                        )
+                    }
+                    if showMacro {
+                        periodRow(
+                            "แม็คโคร",
+                            "\(r.macroUsageCount) ครั้ง · \(r.macroVehicles) คัน"
+                        )
+                    }
+                    if showFuel {
+                        periodRow(
+                            "น้ำมัน",
+                            "เข้า \(DashboardAggregations.formatNumber(r.fuelInLiters)) L · ออก \(DashboardAggregations.formatNumber(r.fuelOutLiters)) L"
+                        )
+                    }
+                }
+                .padding(18)
+                .background(summaryCardBackground)
+            }
         }
-        .padding(18)
-        .background(summaryCardBackground)
     }
 
     private func periodRow(_ title: String, _ detail: String) -> some View {
@@ -1047,10 +1121,10 @@ struct OverviewHubView: View {
     // MARK: - Staff
 
     private var staffCard: some View {
-        NavigationLink {
-            AttendanceHubView()
-        } label: {
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+            NavigationLink {
+                AttendanceHubView()
+            } label: {
                 HStack {
                     Label("พนักงานวันนี้", systemImage: "person.crop.rectangle.stack.fill")
                         .font(.headline.weight(.bold))
@@ -1060,50 +1134,77 @@ struct OverviewHubView: View {
                         .font(.caption.weight(.bold))
                         .foregroundStyle(AppTheme.inkMuted)
                 }
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("แตะเพื่อดูรายละเอียดเช็คชื่อ")
 
-                if todayOps.staffRows.isEmpty {
-                    EmptyStateView(
-                        title: "ยังไม่มีพนักงานท่าทราย / แม็คโคร",
-                        message: "นับเฉพาะพนักงานท่าทรายและคนขับรถแม็คโครจากเมนูพนักงาน",
-                        systemImage: "person.slash"
-                    )
-                } else {
-                    let working = todayOps.staffRows.filter { $0.status == .work }
-                    let onLeave = todayOps.staffRows.filter { $0.status == .leave }
-                    let absent = todayOps.staffRows.filter { $0.status == .absent }
+            if todayOps.staffRows.isEmpty {
+                EmptyStateView(
+                    title: "ยังไม่มีพนักงานท่าทราย / แม็คโคร",
+                    message: "นับเฉพาะพนักงานท่าทรายและคนขับรถแม็คโครจากเมนูพนักงาน",
+                    systemImage: "person.slash"
+                )
+            } else {
+                let working = todayOps.staffRows.filter { $0.status == .work }
+                let onLeave = todayOps.staffRows.filter { $0.status == .leave }
+                let absent = todayOps.staffRows.filter { $0.status == .absent }
+                let visibleWorking = showAllWorkingStaff ? working : Array(working.prefix(2))
 
-                    if !working.isEmpty {
-                        staffGroupHeader("มาทำงาน · ทำอะไรบ้าง", count: working.count, color: AppTheme.income)
-                        ForEach(working) { row in
-                            staffRowView(row)
-                        }
+                if !working.isEmpty {
+                    staffGroupHeader("มาทำงาน · ทำอะไรบ้าง", count: working.count, color: AppTheme.income)
+                    ForEach(visibleWorking) { row in
+                        staffRowView(row)
                     }
-                    if !onLeave.isEmpty {
-                        if !working.isEmpty { Divider().padding(.vertical, 4) }
-                        staffGroupHeader("ลางาน", count: onLeave.count, color: AppTheme.warning)
-                        ForEach(onLeave) { row in
-                            staffRowView(row)
+                    if working.count > 2 {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showAllWorkingStaff.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text(
+                                    showAllWorkingStaff
+                                        ? "ย่อ"
+                                        : "ดูทั้งหมด (\(working.count) คน)"
+                                )
+                                .font(.caption.weight(.bold))
+                                Image(systemName: showAllWorkingStaff ? "chevron.up" : "chevron.down")
+                                    .font(.caption2.weight(.bold))
+                            }
+                            .foregroundStyle(AppTheme.brand)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                AppTheme.brand.opacity(0.08),
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            )
                         }
+                        .buttonStyle(.plain)
                     }
-                    if !absent.isEmpty {
-                        if !working.isEmpty || !onLeave.isEmpty { Divider().padding(.vertical, 4) }
-                        staffGroupHeader("ขาดงาน", count: absent.count, color: AppTheme.expense)
-                        ForEach(absent.prefix(12)) { row in
-                            staffRowView(row)
-                        }
-                        if absent.count > 12 {
-                            Text("และอีก \(absent.count - 12) คน")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.inkMuted)
-                        }
+                }
+                if !onLeave.isEmpty {
+                    if !working.isEmpty { Divider().padding(.vertical, 4) }
+                    staffGroupHeader("ลางาน", count: onLeave.count, color: AppTheme.warning)
+                    ForEach(onLeave) { row in
+                        staffRowView(row)
+                    }
+                }
+                if !absent.isEmpty {
+                    if !working.isEmpty || !onLeave.isEmpty { Divider().padding(.vertical, 4) }
+                    staffGroupHeader("ขาดงาน", count: absent.count, color: AppTheme.expense)
+                    ForEach(absent.prefix(12)) { row in
+                        staffRowView(row)
+                    }
+                    if absent.count > 12 {
+                        Text("และอีก \(absent.count - 12) คน")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.inkMuted)
                     }
                 }
             }
-            .padding(18)
-            .background(summaryCardBackground)
         }
-        .buttonStyle(.plain)
-        .accessibilityHint("แตะเพื่อดูรายละเอียดเช็คชื่อ")
+        .padding(18)
+        .background(summaryCardBackground)
     }
 
     private func staffGroupHeader(_ title: String, count: Int, color: Color) -> some View {
@@ -1221,7 +1322,7 @@ private struct SummaryMetricCard: View {
             Text(detail)
                 .font(.caption2)
                 .foregroundStyle(AppTheme.inkMuted)
-                .lineLimit(2)
+                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)

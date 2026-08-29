@@ -123,7 +123,9 @@ final class MacroVehicleSession {
         let cars = MacroVehicleLogic.macroCars(from: appState.settings)
         let byVehicle = MacroVehicleLogic.dayRowsByVehicle(
             dayKey: dayKey,
-            transactions: appState.transactions
+            transactions: appState.transactions,
+            cars: cars,
+            catalog: appState.settings.vehicleCatalog
         )
         let drivers = MacroVehicleLogic.macroDrivers(from: appState.employees)
         let driverIds = Set(drivers.map(\.id))
@@ -136,7 +138,9 @@ final class MacroVehicleSession {
             row.vehicleId = car
             let typed = row.hasDriver || row.hasDetails
             if force || !typed {
-                if let tx = byVehicle[car] {
+                if let tx = byVehicle[car]
+                    ?? byVehicle[CountRecordLogic.makeVehicleId(from: car)]
+                {
                     row = MacroVehicleDraft.fromTransaction(tx, vehicleId: car)
                 } else if force {
                     row.txId = nil
@@ -144,7 +148,10 @@ final class MacroVehicleSession {
                     row.workType = .fullDay
                     row.workDetails = ""
                 }
-            } else if let tx = byVehicle[car], row.txId == nil {
+            } else if let tx = byVehicle[car]
+                ?? byVehicle[CountRecordLogic.makeVehicleId(from: car)],
+                row.txId == nil
+            {
                 row = MacroVehicleDraft.fromTransaction(tx, vehicleId: car)
             }
 
