@@ -300,7 +300,7 @@ final class CountRecordSession {
         guard let idx = tripUnits.firstIndex(where: { $0.id == unitId }) else { return }
         tripUnits[idx].driverId = driverId
         tripUnits[idx].dirty = true
-        await persistTrip(at: idx, adminName: adminName, clearDirty: true)
+        await persistTrip(at: idx, appState: appState, adminName: adminName, clearDirty: true)
     }
 
     func toggleWorkKind(unitId: String, appState: AppState, adminName: String) async {
@@ -309,7 +309,7 @@ final class CountRecordSession {
         let next: CountRecordWorkKind = current == .support ? .sandTransport : .support
         tripUnits[idx].workDetails = CountRecordWorkKind.appendTag(to: tripUnits[idx].workDetails, kind: next)
         tripUnits[idx].dirty = true
-        await persistTrip(at: idx, adminName: adminName, clearDirty: true)
+        await persistTrip(at: idx, appState: appState, adminName: adminName, clearDirty: true)
         flash(next == .support ? "เปลี่ยนเป็นชัพพอตแล้ว" : "เปลี่ยนเป็นขนทรายแล้ว")
     }
 
@@ -320,7 +320,7 @@ final class CountRecordSession {
         let prev = tripUnits[idx].workDetails
         tripUnits[idx].workDetails = prev.isEmpty ? tag : "\(prev), \(tag)"
         tripUnits[idx].dirty = true
-        await persistTrip(at: idx, adminName: adminName, clearDirty: true)
+        await persistTrip(at: idx, appState: appState, adminName: adminName, clearDirty: true)
         let driverLabel = CountRecordLogic.driverDisplayName(tripUnits[idx].driverId, employees: employees)
         let event = CountRecordWriter.vehicleStatusEventPayload(
             dateYmd: dayKey,
@@ -341,7 +341,7 @@ final class CountRecordSession {
         let prev = tripUnits[idx].workDetails
         tripUnits[idx].workDetails = prev.isEmpty ? tag : "\(prev), \(tag)"
         tripUnits[idx].dirty = true
-        await persistTrip(at: idx, adminName: adminName, clearDirty: true)
+        await persistTrip(at: idx, appState: appState, adminName: adminName, clearDirty: true)
         let driverLabel = CountRecordLogic.driverDisplayName(tripUnits[idx].driverId, employees: employees)
         let event = CountRecordWriter.vehicleStatusEventPayload(
             dateYmd: dayKey,
@@ -588,7 +588,7 @@ final class CountRecordSession {
     func resyncCubic(appState: AppState, adminName: String) async {
         for idx in tripUnits.indices where !tripUnits[idx].isSupport && tripUnits[idx].persisted {
             tripUnits[idx].dirty = true
-            await persistTrip(at: idx, adminName: adminName, clearDirty: true)
+            await persistTrip(at: idx, appState: appState, adminName: adminName, clearDirty: true)
         }
         flash("อัปเดตคิว/เที่ยวแล้ว")
     }
@@ -787,7 +787,7 @@ final class CountRecordSession {
         _ = await FuelWriter.persist(payload: payload, wasPersisted: wasPersisted)
     }
 
-    private func persistTrip(at idx: Int, adminName: String, clearDirty: Bool) async {
+    private func persistTrip(at idx: Int, appState: AppState, adminName: String, clearDirty: Bool) async {
         guard tripUnits.indices.contains(idx) else { return }
         var unit = tripUnits[idx]
         unit.busy = true

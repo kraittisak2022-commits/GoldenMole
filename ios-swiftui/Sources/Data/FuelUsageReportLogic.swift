@@ -307,7 +307,7 @@ enum FuelUsageReportLogic {
             guard date >= start, date <= end else { continue }
 
             let rawVehicleId = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            var vehicleId = normalizeVehicleId(
+            let vehicleId = normalizeVehicleId(
                 rawVehicleId.isEmpty
                     ? (kind == .sandSieve ? FuelLogic.sandSieveVehicleId
                         : (kind == .vehicle || kind == .otherOut ? unnamedVehicle : ""))

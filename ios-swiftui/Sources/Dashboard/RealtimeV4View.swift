@@ -357,7 +357,7 @@ struct RealtimeV4View: View {
             let (built, ms) = await Task.detached(priority: .userInitiated) {
                 RealtimeBuildSupervisor.measureBuild {
                     let focusTx = byDay[dayKey] ?? []
-                    RealtimeV4Snapshot.build(
+                    return RealtimeV4Snapshot.build(
                         dayKey: dayKey,
                         // Light builds only need the focus day; full builds keep the list for prior-day scans.
                         transactions: light ? focusTx : txs,
