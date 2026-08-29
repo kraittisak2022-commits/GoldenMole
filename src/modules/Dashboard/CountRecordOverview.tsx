@@ -15,8 +15,10 @@ import {
     addDaysToYmd,
     computeSandWorkDurationSummary,
     computeTripFleetWorkSpan,
+    computeTripTargetEta,
     computeWorkSpan,
     findPriorDayWithModeData,
+    formatActiveHours,
     formatComparisonDayLabel,
     formatWorkSpanLabel,
 } from './countRecordAnalytics';
@@ -40,7 +42,7 @@ interface CountRecordOverviewProps {
 
 const SAND_RECENT_LAPS = 5;
 const QUEUE_PER_TRIP = 4;
-const TRIP_TARGET_TRIPS = 266;
+const TRIP_TARGET_TRIPS = 250;
 
 function TargetProgressBar({
     current,
@@ -56,9 +58,9 @@ function TargetProgressBar({
     return (
         <div className="mt-2 space-y-1">
             <div className="flex items-center justify-between text-[10px] font-semibold">
-                <span className="text-slate-500 dark:text-slate-400">{t('targetLabel')}</span>
+                <span className="text-slate-500 dark:text-slate-400">{t('sandTargetLabel')}</span>
                 <span className="tabular-nums text-slate-700 dark:text-slate-200">
-                    {t('targetProgress', { current: formatDashboardMetric(current), target: formatDashboardMetric(target) })}
+                    {t('sandTargetProgress', { current: formatDashboardMetric(current), target: formatDashboardMetric(target) })}
                     {' · '}
                     {Math.round(pct)}%
                 </span>
@@ -119,11 +121,15 @@ function EfficiencyVsYesterdayBadge({
 
 function TripSummaryHero({
     tripTotal,
+    tripUnits,
+    dayKey,
     tripFleetWorkSpan,
     vehicleEfficiency,
     showEfficiency,
 }: {
     tripTotal: number;
+    tripUnits: ReturnType<typeof buildCountRecordTripUnits>;
+    dayKey: string;
     tripFleetWorkSpan: string | null;
     vehicleEfficiency: {
         perVehToday: number;
@@ -137,6 +143,12 @@ function TripSummaryHero({
     const { t } = useShareLocale();
     const targetPct = TRIP_TARGET_TRIPS > 0 ? Math.min((tripTotal / TRIP_TARGET_TRIPS) * 100, 100) : 0;
     const atOrOverTarget = tripTotal >= TRIP_TARGET_TRIPS;
+    const eta = computeTripTargetEta(tripUnits, dayKey, TRIP_TARGET_TRIPS);
+    const etaLine = eta.reached
+        ? t('targetReached')
+        : eta.etaClock
+          ? t('etaReachTarget', { time: eta.etaClock })
+          : t('needTwoRounds');
 
     return (
         <div className="press-pop relative w-full overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-blue-600 to-indigo-700 px-4 py-4 shadow-lg shadow-blue-900/20">
@@ -158,10 +170,10 @@ function TripSummaryHero({
                     <div className="flex items-center justify-between gap-2 text-[10px] font-semibold text-white/80">
                         <span className="inline-flex items-center gap-1">
                             <Target size={10} />
-                            {t('targetLabel')}
+                            {t('tripTargetLabel')}
                         </span>
                         <span className="tabular-nums">
-                            {t('targetProgress', {
+                            {t('tripTargetProgress', {
                                 current: formatDashboardMetric(tripTotal),
                                 target: formatDashboardMetric(TRIP_TARGET_TRIPS),
                             })}
@@ -175,6 +187,16 @@ function TripSummaryHero({
                             style={{ width: `${targetPct}%` }}
                         />
                     </div>
+                    <p
+                        className={`pt-0.5 text-[11px] font-semibold ${
+                            eta.reached ? 'text-emerald-200' : 'text-sky-100'
+                        }`}
+                    >
+                        {etaLine}
+                        {!eta.reached && eta.hoursLeft != null
+                            ? ` · ${formatActiveHours(eta.hoursLeft)}`
+                            : ''}
+                    </p>
                 </div>
 
                 <div
@@ -609,6 +631,8 @@ const CountRecordOverview = ({
                             {tripTotal > 0 && (
                                 <TripSummaryHero
                                     tripTotal={tripTotal}
+                                    tripUnits={tripUnits}
+                                    dayKey={dayKey}
                                     tripFleetWorkSpan={tripFleetWorkSpan}
                                     vehicleEfficiency={vehicleEfficiency}
                                     showEfficiency={tripUnits.length > 0}

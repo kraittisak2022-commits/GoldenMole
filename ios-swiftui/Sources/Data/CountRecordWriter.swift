@@ -191,11 +191,24 @@ enum CountRecordWriter {
         omitCreatedAt: Bool,
         workDetails: String? = nil,
         cubicPerTrip: Double = CountRecordPrefs.cubicPerTrip,
-        isSupport: Bool = false
+        isSupport: Bool = false,
+        vehicleName: String? = nil,
+        cars: [String] = [],
+        catalog: [VehicleCatalogRow] = []
     ) -> TransactionWritePayload {
         let assignments: [String: [String]]? = lapTimes.isEmpty ? nil : ["lapTimes": lapTimes]
         let driver = (driverId?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-        let displayName = CountRecordLogic.looksLikeCatalogVehicleId(vehicleId) ? nil : vehicleId
+        let fields = CountRecordLogic.persistVehicleFields(
+            rawIdOrName: vehicleId,
+            cars: cars,
+            catalog: catalog,
+            nameById: {
+                guard let n = vehicleName?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty else { return [:] }
+                return [vehicleId: n]
+            }()
+        )
+        let persistId = fields.id
+        let displayName = fields.name
 
         if isSupport {
             return TransactionWritePayload(
@@ -204,10 +217,10 @@ enum CountRecordWriter {
                 type: TransactionType.expense.rawValue,
                 category: "DailyLog",
                 subCategory: "VehicleTrip",
-                description: "\(vehicleId): ชัพพอต",
+                description: "\(displayName): ชัพพอต",
                 amount: 0,
                 note: "นับเที่ยวโดย \(adminName)",
-                vehicleId: vehicleId,
+                vehicleId: persistId,
                 vehicleName: displayName,
                 driverId: driver,
                 workDetails: workDetails,
@@ -235,10 +248,10 @@ enum CountRecordWriter {
             type: TransactionType.expense.rawValue,
             category: "DailyLog",
             subCategory: "VehicleTrip",
-            description: "\(vehicleId): \(rounds) เที่ยว × \(cubicLabel) คิว",
+            description: "\(displayName): \(rounds) เที่ยว × \(cubicLabel) คิว",
             amount: 0,
             note: "นับเที่ยวโดย \(adminName)",
-            vehicleId: vehicleId,
+            vehicleId: persistId,
             vehicleName: displayName,
             driverId: driver,
             workDetails: workDetails,
@@ -347,7 +360,9 @@ enum CountRecordWriter {
         adminName: String,
         wasPersisted: Bool,
         workDetails: String?,
-        isSupport: Bool
+        isSupport: Bool,
+        cars: [String] = [],
+        catalog: [VehicleCatalogRow] = []
     ) async -> (queued: Bool, deleted: Bool) {
         if rounds <= 0 && lapTimes.isEmpty && !isSupport {
             if wasPersisted {
@@ -366,7 +381,9 @@ enum CountRecordWriter {
             adminName: adminName,
             omitCreatedAt: wasPersisted,
             workDetails: workDetails,
-            isSupport: isSupport
+            isSupport: isSupport,
+            cars: cars,
+            catalog: catalog
         )
         let queued = await CountRecordOfflineSync.shared.persist(payload: payload, wasPersisted: wasPersisted)
         return (queued, false)

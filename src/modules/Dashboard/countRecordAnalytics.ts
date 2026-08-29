@@ -882,6 +882,39 @@ export function computeSandTargetEta(
     };
 }
 
+/** Fleet trip ETA toward daily trip target — merges lap stamps across vehicles. */
+export function computeTripTargetEta(
+    tripUnits: { rounds: number; lapTimes: string[] }[],
+    dayKey: string,
+    target: number,
+): SandTargetEta {
+    const totalRounds = tripUnits.reduce((s, u) => s + (u.rounds || 0), 0);
+    const allLaps = tripUnits.flatMap((u) => u.lapTimes || []);
+    const remaining = Math.max(0, target - totalRounds);
+    const progressPct = target > 0 ? Math.min((totalRounds / target) * 100, 100) : 0;
+    if (remaining === 0) {
+        return {
+            rounds: totalRounds,
+            target,
+            remaining: 0,
+            reached: true,
+            progressPct,
+            etaClock: null,
+            hoursLeft: 0,
+        };
+    }
+    const base = computeSandTargetEta(allLaps, dayKey, allLaps.length + remaining);
+    return {
+        rounds: totalRounds,
+        target,
+        remaining,
+        reached: false,
+        progressPct,
+        etaClock: base.etaClock,
+        hoursLeft: base.hoursLeft,
+    };
+}
+
 export interface PaceConsistency {
     pctInBand: number;
     medianSec: number;

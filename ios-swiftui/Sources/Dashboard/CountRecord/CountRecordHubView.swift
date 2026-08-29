@@ -309,6 +309,7 @@ struct CountRecordHubView: View {
         CountRecordTripPanel(
             session: session,
             employees: appState.employees,
+            settings: appState.settings,
             onRecord: { unit in
                 Task { await session.recordTrip(unitId: unit.id, appState: appState, adminName: adminName) }
             },

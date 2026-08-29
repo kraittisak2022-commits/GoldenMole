@@ -197,9 +197,22 @@ final class CountRecordSession {
 
     func availableCars(settings: AppSettings) -> [String] {
         let added = Set(tripUnits.map(\.vehicleId))
-        return settings.cars
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty && CountRecordLogic.isDrumTripVehicleId($0) && !added.contains($0) }
+        let addedIds = Set(added.map { CountRecordLogic.makeVehicleId(from: $0) }.map { $0.lowercased() })
+        var seen = Set<String>()
+        var out: [String] = []
+
+        func appendIfDrum(_ raw: String) {
+            let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, CountRecordLogic.isDrumTripVehicleId(name) else { return }
+            let key = name.lowercased()
+            let made = CountRecordLogic.makeVehicleId(from: name).lowercased()
+            guard !added.contains(name), !addedIds.contains(made), seen.insert(key).inserted else { return }
+            out.append(name)
+        }
+
+        for car in settings.cars { appendIfDrum(car) }
+        for row in settings.vehicleCatalog { appendIfDrum(row.name) }
+        return out
     }
 
     func drivers(from employees: [Employee]) -> [Employee] {
@@ -257,7 +270,9 @@ final class CountRecordSession {
                     adminName: adminName,
                     wasPersisted: false,
                     workDetails: unit.workDetails,
-                    isSupport: true
+                    isSupport: true,
+                    cars: appState.settings.cars,
+                    catalog: appState.settings.vehicleCatalog
                 )
                 if let i = tripUnits.firstIndex(where: { $0.vehicleId == vid }) {
                     tripUnits[i].persisted = true
@@ -379,7 +394,9 @@ final class CountRecordSession {
             adminName: adminName,
             wasPersisted: unit.persisted,
             workDetails: unit.workDetails,
-            isSupport: false
+            isSupport: false,
+            cars: appState.settings.cars,
+            catalog: appState.settings.vehicleCatalog
         )
 
         if let i = tripUnits.firstIndex(where: { $0.vehicleId == unit.vehicleId }) {
@@ -388,13 +405,20 @@ final class CountRecordSession {
             tripUnits[i].dirty = false
             tripUnits[i].busy = false
             let goal = CountRecordPrefs.tripGoal
+            let label = CountRecordLogic.resolveVehicleLabel(
+                unit.vehicleId,
+                cars: appState.settings.cars,
+                catalog: appState.settings.vehicleCatalog
+            )
             if goal > 0 && tripUnits[i].rounds == goal {
-                flash("\(unit.vehicleId) ครบเป้า \(goal) เที่ยวแล้ว!")
+                flash("\(label) ครบเป้า \(goal) เที่ยวแล้ว!")
+            } else if tripUnits[i].rounds >= CountRecordLogic.tripTarget {
+                flash("ถึงเป้า \(CountRecordLogic.tripTarget) เที่ยว/วันแล้ว! · \(label)")
             } else {
                 let combo = tripUnits[i].comboCount
                 let base = result.queued
-                    ? "+\(unit.vehicleId) · \(stamp) (รอซิงค์)"
-                    : "+\(unit.vehicleId) · \(stamp)"
+                    ? "+1 เที่ยว · \(label) · รวม \(tripUnits[i].rounds) (รอซิงค์)"
+                    : "+1 เที่ยว · \(label) · รวม \(tripUnits[i].rounds)/\(CountRecordLogic.tripTarget)"
                 flash(combo > 1 ? "\(base) · ×\(combo)" : base)
             }
             pendingUndo = CountRecordUndoAction(
@@ -447,7 +471,9 @@ final class CountRecordSession {
             adminName: adminName,
             wasPersisted: unit.persisted,
             workDetails: unit.workDetails,
-            isSupport: unit.isSupport
+            isSupport: unit.isSupport,
+            cars: appState.settings.cars,
+            catalog: appState.settings.vehicleCatalog
         )
         if let i = tripUnits.firstIndex(where: { $0.vehicleId == unit.vehicleId }) {
             if result.deleted {
@@ -597,7 +623,9 @@ final class CountRecordSession {
             adminName: adminName,
             wasPersisted: unit.persisted,
             workDetails: unit.workDetails,
-            isSupport: unit.isSupport
+            isSupport: unit.isSupport,
+            cars: appState.settings.cars,
+            catalog: appState.settings.vehicleCatalog
         )
         if let i = tripUnits.firstIndex(where: { $0.vehicleId == unit.vehicleId }) {
             tripUnits[i].persisted = !result.deleted || unit.isSupport
@@ -644,7 +672,9 @@ final class CountRecordSession {
             adminName: adminName,
             wasPersisted: unit.persisted,
             workDetails: unit.workDetails,
-            isSupport: unit.isSupport
+            isSupport: unit.isSupport,
+            cars: appState.settings.cars,
+            catalog: appState.settings.vehicleCatalog
         )
         if let i = tripUnits.firstIndex(where: { $0.vehicleId == unit.vehicleId }) {
             tripUnits[i].persisted = true
@@ -773,7 +803,9 @@ final class CountRecordSession {
             adminName: adminName,
             wasPersisted: unit.persisted,
             workDetails: unit.workDetails,
-            isSupport: unit.isSupport
+            isSupport: unit.isSupport,
+            cars: appState.settings.cars,
+            catalog: appState.settings.vehicleCatalog
         )
         if let i = tripUnits.firstIndex(where: { $0.vehicleId == unit.vehicleId }) {
             tripUnits[i].persisted = !result.deleted || unit.isSupport

@@ -2,7 +2,7 @@ import Foundation
 
 /// Port of web `countRecordUtils.ts` + essential analytics helpers for Real-time V.4.
 enum CountRecordLogic {
-    static let tripTarget = 266
+    static let tripTarget = 250
     /// Daily sand wash target (คิว/วัน) — machine lap counts toward this goal.
     static let sandTarget = 1000
     static let queuePerTrip = 4
@@ -146,18 +146,101 @@ enum CountRecordLogic {
         return "v_\(String(absHash, radix: 16))"
     }
 
-    /// Name hint from description prefixes like `"รถดรัมโอเว่น: 2 เที่ยว × 4 คิว"`.
+    /// Name hint from description prefixes like `"รถดรัมโอเว่น: 2 เที่ยว × 4 คิว"` or `"รถ: ชื่อรถ (...)"`.
     static func vehicleNameFromDescription(_ raw: String?) -> String? {
         let desc = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !desc.isEmpty else { return nil }
+
+        // Writer / Android often use `รถ: <id-or-name> (...)`.
+        if desc.hasPrefix("รถ:") || desc.hasPrefix("รถ：") {
+            let after = desc
+                .drop(while: { $0 != ":" && $0 != "：" })
+                .dropFirst()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let token = String(after.prefix(while: { $0 != "(" && $0 != "[" && $0 != " " && $0 != "·" }))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !token.isEmpty { return token }
+        }
+
         let head: String
         if let r = desc.range(of: ":") {
+            head = String(desc[..<r.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if let r = desc.range(of: "：") {
             head = String(desc[..<r.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
         } else {
             head = desc
         }
-        guard !head.isEmpty, !looksLikeCatalogVehicleId(head) else { return nil }
+        guard !head.isEmpty, head != "รถ", !looksLikeCatalogVehicleId(head) else { return nil }
         return head
+    }
+
+    /// Resolve a raw vehicle id / token to a human label using catalog + cars list.
+    static func resolveVehicleLabel(
+        _ raw: String,
+        cars: [String] = [],
+        catalog: [VehicleCatalogRow] = [],
+        nameById: [String: String] = [:]
+    ) -> String {
+        let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { return token }
+        if !looksLikeCatalogVehicleId(token) { return token }
+
+        let lower = token.lowercased()
+        if let mapped = nameById[token] ?? nameById.first(where: { $0.key.lowercased() == lower })?.value,
+           !mapped.isEmpty,
+           !looksLikeCatalogVehicleId(mapped)
+        {
+            return mapped
+        }
+        if let hit = catalog.first(where: { $0.id == token || $0.id.lowercased() == lower }) {
+            let n = hit.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !n.isEmpty { return n }
+        }
+        // Catalog names → reverse-hash match (ids may be makeVehicleId hashes).
+        for row in catalog {
+            let trimmed = row.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let made = makeVehicleId(from: trimmed)
+            if made == token || made.lowercased() == lower { return trimmed }
+        }
+        for car in cars {
+            let trimmed = car.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let made = makeVehicleId(from: trimmed)
+            if made == token || made.lowercased() == lower { return trimmed }
+        }
+        return token
+    }
+
+    /// Persist fields: keep stable catalog id when known, always store a human `vehicleName`.
+    static func persistVehicleFields(
+        rawIdOrName: String,
+        cars: [String] = [],
+        catalog: [VehicleCatalogRow] = [],
+        nameById: [String: String] = [:]
+    ) -> (id: String, name: String) {
+        let token = rawIdOrName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let display = vehicleDisplayLabel(
+            vehicleId: token,
+            vehicleName: looksLikeCatalogVehicleId(token) ? nil : token,
+            cars: cars,
+            catalog: catalog,
+            nameById: nameById
+        )
+        let lower = token.lowercased()
+        if let hit = catalog.first(where: {
+            $0.id == token
+                || $0.id.lowercased() == lower
+                || $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == display
+                || $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == display.lowercased()
+        }) {
+            let name = hit.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (hit.id, name.isEmpty ? display : name)
+        }
+        if looksLikeCatalogVehicleId(token) {
+            return (token, looksLikeCatalogVehicleId(display) ? display : display)
+        }
+        return (makeVehicleId(from: display), display)
     }
 
     /// Display label for trip cards — prefer `vehicleName`, then catalog / cars / description.
@@ -174,47 +257,22 @@ enum CountRecordLogic {
 
         let id = (vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if id.isEmpty {
-            return vehicleNameFromDescription(description) ?? name
-        }
-
-        if let mapped = nameById[id]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !mapped.isEmpty,
-           !looksLikeCatalogVehicleId(mapped) {
-            return mapped
-        }
-
-        if let hit = catalog.first(where: {
-            $0.id == id || $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == id
-        }) {
-            let hitName = hit.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !hitName.isEmpty { return hitName }
-        }
-
-        if looksLikeCatalogVehicleId(id) {
-            let idLower = id.lowercased()
-            if let hit = catalog.first(where: { $0.id.lowercased() == idLower }) {
-                let hitName = hit.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !hitName.isEmpty { return hitName }
-            }
-            for car in cars {
-                let trimmed = car.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { continue }
-                if makeVehicleId(from: trimmed) == id || makeVehicleId(from: trimmed).lowercased() == idLower {
-                    return trimmed
-                }
-            }
             if let fromDesc = vehicleNameFromDescription(description) {
-                return fromDesc
+                return resolveVehicleLabel(fromDesc, cars: cars, catalog: catalog, nameById: nameById)
             }
-        } else if !isMacroVehicleId(id) {
-            return id
+            return name
         }
+
+        let resolvedId = resolveVehicleLabel(id, cars: cars, catalog: catalog, nameById: nameById)
+        if !looksLikeCatalogVehicleId(resolvedId) { return resolvedId }
 
         if let fromDesc = vehicleNameFromDescription(description) {
-            return fromDesc
+            let resolvedDesc = resolveVehicleLabel(fromDesc, cars: cars, catalog: catalog, nameById: nameById)
+            if !looksLikeCatalogVehicleId(resolvedDesc) { return resolvedDesc }
         }
-        if !name.isEmpty { return name }
-        return id
+
+        if !name.isEmpty { return resolveVehicleLabel(name, cars: cars, catalog: catalog, nameById: nameById) }
+        return resolvedId
     }
 
     /// Collect vehicle_id → display name from rows that already carry `vehicle_name`.

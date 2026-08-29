@@ -725,7 +725,7 @@ struct RealtimeV4View: View {
                     .foregroundStyle(.white)
                     .contentTransition(.numericText())
                     .animation(.spring(response: 0.35, dampingFraction: 0.8), value: tripTotal)
-                    .modifier(ScoreFloatOverlay(value: tripTotal, dayKey: focusDateStr))
+                    .modifier(ScoreFloatOverlay(value: tripTotal, dayKey: focusDateStr, unitLabel: "เที่ยว"))
 
                 Text("เที่ยว")
                     .font(.system(size: 11, weight: .bold))
@@ -765,14 +765,19 @@ struct RealtimeV4View: View {
     }
 
     private var tripKPI: some View {
+        let target = CountRecordLogic.tripTarget
         let queueTotal = tripTotal * CountRecordLogic.queuePerTrip
-        let queueTarget = CountRecordLogic.tripTarget * CountRecordLogic.queuePerTrip
         let hours = snapshot.tripHours
         let tripsPerHour = hours.flatMap { $0 > 0 ? Double(tripTotal) / $0 : nil }
         let tripsPerMin = hours.flatMap { $0 > 0 ? Double(tripTotal) / ($0 * 60) : nil }
-        let pct = queueTarget > 0
-            ? min(Double(queueTotal) / Double(queueTarget) * 100, 100)
+        let pct = target > 0
+            ? min(Double(tripTotal) / Double(target) * 100, 100)
             : 0
+        let eta = CountRecordAnalytics.computeTripTargetEta(
+            tripUnits: tripUnits,
+            dayKey: focusDateStr,
+            target: target
+        )
         let tripBlue = Color(hex: "#2563EB")
         let tripBlueSoft = Color(hex: "#DBEAFE")
         let tripBlueLabel = Color(light: Color(hex: "#1D4ED8"), dark: Color(hex: "#93C5FD"))
@@ -806,13 +811,13 @@ struct RealtimeV4View: View {
                 afternoon: snapshot.tripAfternoonHours
             )
 
-            VStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("เป้าหมาย (คิว)")
+                    Text("เป้าหมาย \(CountRecordLogic.formatMetric(target)) เที่ยว/วัน")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(RealtimeV4Palette.inkSecondary)
                     Spacer()
-                    Text("\(CountRecordLogic.formatMetric(queueTotal)) / \(CountRecordLogic.formatMetric(queueTarget)) · \(Int(pct.rounded()))%")
+                    Text("\(CountRecordLogic.formatMetric(tripTotal)) / \(CountRecordLogic.formatMetric(target)) · \(Int(pct.rounded()))%")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(RealtimeV4Palette.ink)
                 }
@@ -820,12 +825,44 @@ struct RealtimeV4View: View {
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color(light: tripBlueSoft, dark: tripBlue.opacity(0.2)))
                         Capsule()
-                            .fill(tripBlue)
+                            .fill(
+                                LinearGradient(
+                                    colors: eta.reached
+                                        ? [Color(hex: "#10B981"), Color(hex: "#059669")]
+                                        : [tripBlue, Color(hex: "#4338CA")],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
                             .frame(width: geo.size.width * CGFloat(pct / 100))
                     }
                 }
                 .frame(height: 8)
-                Text("\(CountRecordLogic.queuePerTrip) คิว / 1 เที่ยว")
+
+                if eta.reached {
+                    Label("ถึงเป้าแล้ว", systemImage: "checkmark.seal.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(hex: "#059669"))
+                } else if let clock = eta.etaClock {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.badge.checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("คาดการณ์ถึงเป้าประมาณ \(clock)")
+                            .font(.system(size: 11, weight: .semibold))
+                        if let hoursLeft = eta.hoursLeft {
+                            Text("· ~\(CountRecordAnalytics.formatDurationHours(hoursLeft))")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(RealtimeV4Palette.inkMuted)
+                        }
+                    }
+                    .foregroundStyle(tripBlueLabel)
+                } else {
+                    Text("นับอย่างน้อย 2 เที่ยว เพื่อคาดการณ์เวลาถึงเป้า")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(RealtimeV4Palette.inkFaint)
+                }
+
+                Text("\(CountRecordLogic.formatMetric(queueTotal)) คิว · \(CountRecordLogic.queuePerTrip) คิว / 1 เที่ยว")
                     .font(.system(size: 9))
                     .foregroundStyle(RealtimeV4Palette.inkMuted)
             }
@@ -1189,9 +1226,20 @@ private struct ScoreFloatOverlay: ViewModifier {
                 if let delta = popupDelta, delta != 0 {
                     let positive = delta > 0
                     VStack(spacing: 4) {
-                        Text(positive ? "+\(delta)" : "\(delta)")
-                            .font(.system(size: 28, weight: .black, design: .rounded))
-                            .foregroundStyle(.white)
+                        HStack(spacing: 6) {
+                            if unitLabel == "เที่ยว" {
+                                Image(systemName: "truck.box.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.95))
+                            } else if unitLabel == "คิว" {
+                                Image(systemName: "drop.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.95))
+                            }
+                            Text(positive ? "+\(delta)" : "\(delta)")
+                                .font(.system(size: 30, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                        }
                         if !unitLabel.isEmpty {
                             Text(unitLabel)
                                 .font(.system(size: 11, weight: .bold))
@@ -1206,21 +1254,29 @@ private struct ScoreFloatOverlay: ViewModifier {
                             .fill(
                                 LinearGradient(
                                     colors: positive
-                                        ? [Color(hex: "#059669"), Color(hex: "#10B981")]
+                                        ? (unitLabel == "เที่ยว"
+                                            ? [Color(hex: "#1D4ED8"), Color(hex: "#2563EB"), Color(hex: "#0EA5E9")]
+                                            : [Color(hex: "#059669"), Color(hex: "#10B981")])
                                         : [Color(hex: "#E11D48"), Color(hex: "#FB7185")],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
-                            .shadow(color: (positive ? Color(hex: "#059669") : Color(hex: "#E11D48")).opacity(0.45), radius: 18, y: 8)
+                            .shadow(
+                                color: (positive
+                                    ? (unitLabel == "เที่ยว" ? Color(hex: "#2563EB") : Color(hex: "#059669"))
+                                    : Color(hex: "#E11D48")).opacity(0.5),
+                                radius: 20,
+                                y: 8
+                            )
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .strokeBorder(Color.white.opacity(0.28), lineWidth: 1)
                     )
-                    .scaleEffect(floatAway ? 1.08 : 0.72)
+                    .scaleEffect(floatAway ? 1.1 : 0.68)
                     .opacity(floatAway ? 0 : 1)
-                    .offset(y: floatAway ? -56 : 0)
+                    .offset(y: floatAway ? -64 : 0)
                     .allowsHitTesting(false)
                     .id(popupID)
                     .accessibilityHidden(true)
@@ -1317,7 +1373,8 @@ private struct TripVehicleCard: View {
                         .font(.system(size: 40, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
-                        .animation(.easeOut(duration: 0.2), value: unit.rounds)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: unit.rounds)
+                        .modifier(ScoreFloatOverlay(value: unit.rounds, dayKey: unit.id, unitLabel: "เที่ยว"))
                     Text("เที่ยว")
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(1.6)
@@ -1333,7 +1390,8 @@ private struct TripVehicleCard: View {
                 VStack(spacing: 3) {
                     Text(unit.vehicleId)
                         .font(.caption.weight(.bold))
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
                     Label(unit.driverLabel, systemImage: "person.fill")
                         .font(.system(size: 10, weight: .medium))
                         .lineLimit(1)
@@ -1497,7 +1555,7 @@ private struct FleetTripDetailSheet: View {
 
                     DetailStatRow(items: [
                         ("คิว", CountRecordLogic.formatMetric(queueTotal)),
-                        ("เป้าหมาย", CountRecordLogic.formatMetric(CountRecordLogic.tripTarget)),
+                        ("เป้าหมาย", "\(CountRecordLogic.formatMetric(CountRecordLogic.tripTarget)) เที่ยว"),
                         ("คืบหน้า", "\(Int(targetPct.rounded()))%")
                     ])
 

@@ -324,6 +324,65 @@ enum CountRecordAnalytics {
         )
     }
 
+    /// Fleet trip ETA toward daily trip target — merges lap stamps across vehicles.
+    static func computeTripTargetEta(
+        tripUnits: [CountRecordTripUnit],
+        dayKey: String,
+        target: Int = CountRecordLogic.tripTarget
+    ) -> SandTargetEta {
+        let totalRounds = tripUnits.reduce(0) { $0 + $1.rounds }
+        let allLaps = tripUnits.flatMap(\.lapTimes)
+        let remaining = max(0, target - totalRounds)
+        let progressPct = target > 0 ? min(Double(totalRounds) / Double(target) * 100, 100) : 0
+        if remaining == 0 {
+            return SandTargetEta(
+                rounds: totalRounds,
+                target: target,
+                remaining: 0,
+                reached: true,
+                progressPct: progressPct,
+                etaClock: nil,
+                hoursLeft: 0
+            )
+        }
+        let intervals = computeLapIntervals(lapTimes: allLaps, dayKey: dayKey)
+        let stats = computeIntervalStats(intervals)
+        guard let avg = stats.avg, avg > 0 else {
+            return SandTargetEta(
+                rounds: totalRounds,
+                target: target,
+                remaining: remaining,
+                reached: false,
+                progressPct: progressPct,
+                etaClock: nil,
+                hoursLeft: nil
+            )
+        }
+        let resolved = parseAndSortLaps(allLaps, dayKey: dayKey)
+        guard let lastMs = resolved.last?.ms else {
+            return SandTargetEta(
+                rounds: totalRounds,
+                target: target,
+                remaining: remaining,
+                reached: false,
+                progressPct: progressPct,
+                etaClock: nil,
+                hoursLeft: nil
+            )
+        }
+        let hoursLeft = (Double(remaining) * avg) / 3600
+        let etaMs = lastMs + Double(remaining) * avg
+        return SandTargetEta(
+            rounds: totalRounds,
+            target: target,
+            remaining: remaining,
+            reached: false,
+            progressPct: progressPct,
+            etaClock: String(format: "%02d:%02d", bangkokHour(etaMs), bangkokMinute(etaMs)),
+            hoursLeft: hoursLeft
+        )
+    }
+
     static func computePaceConsistency(_ intervals: [Double]) -> PaceConsistency? {
         guard intervals.count >= 3 else { return nil }
         let stats = computeIntervalStats(intervals)

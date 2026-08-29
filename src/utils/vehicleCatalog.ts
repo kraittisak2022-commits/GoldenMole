@@ -6,7 +6,7 @@ export interface VehicleCatalogRow {
 }
 
 export function looksLikeCatalogVehicleId(raw?: string | null): boolean {
-    const s = (raw ?? '').trim();
+    const s = (raw ?? '').trim().toLowerCase();
     return s.startsWith('v_') && s.length >= 4;
 }
 
@@ -16,9 +16,18 @@ export function findVehicleCatalogRow(
 ): VehicleCatalogRow | undefined {
     const key = raw.trim();
     if (!key || catalog.length === 0) return undefined;
-    const exact = catalog.find((row) => row.id === key || row.name === key);
+    const lower = key.toLowerCase();
+    const exact = catalog.find(
+        (row) =>
+            row.id === key ||
+            row.name === key ||
+            row.id.toLowerCase() === lower ||
+            row.name.toLowerCase() === lower,
+    );
     if (exact) return exact;
-    return undefined;
+    return catalog.find(
+        (row) => makeVehicleId(row.name) === key || makeVehicleId(row.name).toLowerCase() === lower,
+    );
 }
 
 /**
