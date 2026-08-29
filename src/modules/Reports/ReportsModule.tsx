@@ -187,7 +187,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
     const liters = (n: number) => `${formatDisplayNumber(n)} ลิตร`;
     const rangeLabel = `${formatDateBE(range.start)} – ${formatDateBE(range.end)}`;
 
-    const overviewSections = useMemo(() => fuelPrintOverviewSections(report, 'zh'), [report]);
+    const overviewSections = useMemo(() => fuelPrintOverviewSections(report), [report]);
 
     const applyBounds = (bounds: { start: string; end: string }) => {
         setStart(bounds.start);

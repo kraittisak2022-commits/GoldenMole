@@ -126,22 +126,19 @@ export function fuelPrintGroupTitleZh(group: FuelPrintGroup): string {
 }
 
 export function fuelPrintGroupTitle(group: FuelPrintGroup, locale: FuelPrintLocale = 'th'): string {
-    const th = (() => {
-        switch (group) {
-            case 'macro': return 'รายงานใช้น้ำมันรถแม็คโคร';
-            case 'sieve_generator': return 'รายงานการใช้น้ำมันเครื่องจักรร่อนทราย เครื่องปั่นไฟ';
-            case 'stock_in': return 'รายงานรับน้ำมันเข้า';
-            case 'overview': return 'สรุปภาพรวมรายงานการใช้น้ำมัน';
-            default: return 'รายงานเติมน้ำมันอื่นๆทั้งหมด';
-        }
-    })();
-    if (locale === 'zh') return `${th}(${fuelPrintGroupTitleZh(group)})`;
-    return th;
+    if (locale === 'zh') return fuelPrintGroupTitleZh(group);
+    switch (group) {
+        case 'macro': return 'รายงานใช้น้ำมันรถแม็คโคร';
+        case 'sieve_generator': return 'รายงานการใช้น้ำมันเครื่องจักรร่อนทราย เครื่องปั่นไฟ';
+        case 'stock_in': return 'รายงานรับน้ำมันเข้า';
+        case 'overview': return 'สรุปภาพรวมรายงานการใช้น้ำมัน';
+        default: return 'รายงานเติมน้ำมันอื่นๆทั้งหมด';
+    }
 }
 
 export function fuelPrintSectionTitle(id: FuelPrintOverviewSectionId, locale: FuelPrintLocale = 'th'): string {
-    if (id === 'receive') return locale === 'zh' ? 'รับน้ำมัน(收油)' : 'รับน้ำมัน';
-    return locale === 'zh' ? 'ใช้น้ำมัน(用油)' : 'ใช้น้ำมัน';
+    if (id === 'receive') return locale === 'zh' ? '收油' : 'รับน้ำมัน';
+    return locale === 'zh' ? '用油' : 'ใช้น้ำมัน';
 }
 
 export interface FuelPrintOverviewItem {
@@ -594,7 +591,7 @@ export function fuelUsageToPrintHtml(opts: {
     formatDate?: (ymd: string) => string;
     /** ใช้กับ group=overview — สรุปทุกรายงานจาก report เต็ม */
     fullReport?: FuelUsageReport;
-    /** th = ไทยอย่างเดียว, zh = ไทย(中文) + ป้ายกำกับจีน */
+    /** th = ไทยอย่างเดียว, zh = จีนอย่างเดียว */
     locale?: FuelPrintLocale;
 }): string {
     const locale: FuelPrintLocale = opts.locale === 'zh' ? 'zh' : 'th';

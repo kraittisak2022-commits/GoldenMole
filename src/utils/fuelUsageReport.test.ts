@@ -523,11 +523,9 @@ describe('fuelPrintGroupOf', () => {
         expect(sections[1]).toMatchObject({ id: 'usage', title: 'ใช้น้ำมัน', liters: 40, count: 1 });
 
         const zhSections = fuelPrintOverviewSections(report, 'zh');
-        expect(zhSections[0]?.title).toBe('รับน้ำมัน(收油)');
-        expect(zhSections[0]?.items[0]?.title).toBe('รายงานรับน้ำมันเข้า(收油报表)');
-        expect(zhSections[1]?.items.find((i) => i.group === 'macro')?.title).toBe(
-            'รายงานใช้น้ำมันรถแม็คโคร(挖掘机用油报表)',
-        );
+        expect(zhSections[0]?.title).toBe('收油');
+        expect(zhSections[0]?.items[0]?.title).toBe('收油报表');
+        expect(zhSections[1]?.items.find((i) => i.group === 'macro')?.title).toBe('挖掘机用油报表');
     });
 
     it('resolves catalog vehicle ids for macro rows', () => {
@@ -663,11 +661,13 @@ describe('fuelUsageToPrintHtml', () => {
             fullReport: report,
             locale: 'zh',
         });
-        expect(overviewZh).toContain('สรุปภาพรวมรายงานการใช้น้ำมัน(燃油报表总览)');
-        expect(overviewZh).toContain('รายงานรับน้ำมันเข้า(收油报表)');
+        expect(overviewZh).toContain('燃油报表总览');
+        expect(overviewZh).toContain('收油报表');
         expect(overviewZh).toContain('收油');
         expect(overviewZh).toContain('用油');
         expect(overviewZh).toContain('升');
         expect(overviewZh).toContain('笔');
+        expect(overviewZh).not.toContain('สรุปภาพรวมรายงานการใช้น้ำมัน');
+        expect(overviewZh).not.toContain('รายงานรับน้ำมันเข้า');
     });
 });
