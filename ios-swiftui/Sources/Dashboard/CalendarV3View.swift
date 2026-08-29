@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// ปฏิทินการทำงาน (V.3) — month grid + summary dashboard + day-detail sheet.
+/// ปฏิทินการทำงาน (V.3) — month grid + day-detail sheet.
 ///
 /// Read-only: adding/deleting calendar entries requires the Supabase write layer.
 struct CalendarV3View: View {
@@ -18,6 +18,9 @@ struct CalendarV3View: View {
         return cal.date(from: comps) ?? Date()
     }()
     @State private var selectedDay: String?
+    @State private var days: [CalendarDayModel] = []
+    @State private var isBuildingDays = false
+    @State private var buildTask: Task<Void, Never>?
 
     private let weekdayLabels = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"]
     private let weekdayLabelsFull = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัส", "ศุกร์", "เสาร์"]
@@ -25,34 +28,26 @@ struct CalendarV3View: View {
     private static let tripOpsColor = Color(hex: "#2563EB")
     private static let sandOpsColor = Color(hex: "#DB2777")
 
-    private var days: [CalendarDayModel] {
-        CalendarV3Logic.buildDays(visibleMonth: visibleMonth, transactions: transactions, employees: employees)
-    }
-
-    private var monthIncome: Double { days.reduce(0) { $0 + $1.income } }
-    private var monthExpense: Double { days.reduce(0) { $0 + $1.expense } }
-    private var monthNet: Double { monthIncome - monthExpense }
-    private var daysWithFinance: Int { days.filter(\.hasFinance).count }
-    private var holidayDays: Int { days.filter(\.hasHoliday).count }
-    private var attendanceDays: Int { days.filter { $0.presentCount > 0 || $0.leaveCount > 0 }.count }
-    private var tripOpsDays: Int { days.filter(\.hasTripOps).count }
-    private var sandOpsDays: Int { days.filter(\.hasSandOps).count }
-
-    private var monthCategorySlices: [LedgerCategoryBucket] {
-        let monthKeys = Set(days.map(\.date))
-        let monthTx = transactions.filter {
-            monthKeys.contains(String($0.date.prefix(10))) && !CalendarV3Logic.isCalendarTx($0)
-        }
-        return LedgerCategoryBucket.group(monthTx)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.spaceXL) {
             heroCard
             calendarCard
-            monthSummaryDashboard
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: visibleMonth)
+        .onAppear { scheduleDaysRebuild(showSkeleton: days.isEmpty) }
+        .onDisappear {
+            buildTask?.cancel()
+            buildTask = nil
+        }
+        .onChange(of: visibleMonth) { _, _ in
+            scheduleDaysRebuild(showSkeleton: true)
+        }
+        .onChange(of: transactions.count) { _, _ in
+            scheduleDaysRebuild(showSkeleton: false)
+        }
+        .onChange(of: employees.count) { _, _ in
+            scheduleDaysRebuild(showSkeleton: false)
+        }
         .sheet(item: selectedDayBinding) { day in
             DayDetailSheet(
                 day: day,
@@ -60,6 +55,31 @@ struct CalendarV3View: View {
                 transactions: transactions,
                 onClose: { selectedDay = nil }
             )
+        }
+    }
+
+    private func scheduleDaysRebuild(showSkeleton: Bool) {
+        buildTask?.cancel()
+        let month = visibleMonth
+        let txs = transactions
+        let emps = employees
+        if showSkeleton {
+            days = CalendarV3Logic.skeletonDays(visibleMonth: month)
+        }
+        isBuildingDays = true
+        buildTask = Task {
+            let built = await Task.detached(priority: .userInitiated) {
+                CalendarV3Logic.buildDays(
+                    visibleMonth: month,
+                    transactions: txs,
+                    employees: emps
+                )
+            }.value
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                days = built
+                isBuildingDays = false
+            }
         }
     }
 
@@ -150,9 +170,22 @@ struct CalendarV3View: View {
 
     private var calendarCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("ตารางเดือน")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(AppTheme.ink)
+            HStack {
+                Text("ตารางเดือน")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer(minLength: 0)
+                if isBuildingDays {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("กำลังโหลด…")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(AppTheme.inkMuted)
+                    }
+                    .accessibilityLabel("กำลังโหลดข้อมูลปฏิทิน")
+                }
+            }
 
             legendStrip
             calendarGrid
@@ -245,6 +278,7 @@ struct CalendarV3View: View {
         let style = DayCellStyle(day: day)
 
         return Button {
+            guard !isBuildingDays else { return }
             withAnimation(.snappy(duration: 0.2)) { selectedDay = day.date }
             onDaySelected?(day.date)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -290,6 +324,7 @@ struct CalendarV3View: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(isBuildingDays)
         .accessibilityLabel(accessibilityLabel(day))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -348,171 +383,6 @@ struct CalendarV3View: View {
         case .both: parts.append("มีเที่ยวรถและร่อนทราย")
         }
         return parts.joined(separator: ", ")
-    }
-
-    // MARK: - Month summary (below calendar)
-
-    private var monthSummaryDashboard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("สรุปเดือน")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(AppTheme.ink)
-                    Text(monthTitle)
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.inkMuted)
-                }
-                Spacer(minLength: 0)
-                Text(monthNet >= 0 ? "กำไรสุทธิ" : "ขาดทุนสุทธิ")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(monthNet >= 0 ? AppTheme.income : AppTheme.expense)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule().fill((monthNet >= 0 ? AppTheme.income : AppTheme.expense).opacity(0.12))
-                    )
-            }
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                summaryKPI(
-                    title: "รายรับ",
-                    value: DashboardAggregations.formatCurrency(monthIncome),
-                    tint: AppTheme.income,
-                    icon: "arrow.down.circle.fill"
-                )
-                summaryKPI(
-                    title: "รายจ่าย",
-                    value: DashboardAggregations.formatCurrency(monthExpense),
-                    tint: AppTheme.expense,
-                    icon: "arrow.up.circle.fill"
-                )
-                summaryKPI(
-                    title: "สุทธิ",
-                    value: (monthNet >= 0 ? "+" : "") + DashboardAggregations.formatCurrency(monthNet),
-                    tint: monthNet >= 0 ? AppTheme.brand : AppTheme.warning,
-                    icon: "equal.circle.fill"
-                )
-                summaryKPI(
-                    title: "วันที่มีธุรกรรม",
-                    value: "\(daysWithFinance) วัน",
-                    tint: AppTheme.info,
-                    icon: "calendar"
-                )
-            }
-
-            HStack(spacing: 8) {
-                miniStat(title: "วันหยุด", value: "\(holidayDays)")
-                miniStat(title: "วันเช็คชื่อ", value: "\(attendanceDays)")
-                miniStat(title: "วันในเดือน", value: "\(days.count)")
-            }
-
-            HStack(spacing: 8) {
-                miniStat(title: "วันมีเที่ยวรถ", value: "\(tripOpsDays)", accent: Self.tripOpsColor)
-                miniStat(title: "วันมีร่อนทราย", value: "\(sandOpsDays)", accent: Self.sandOpsColor)
-            }
-
-            if !monthCategorySlices.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("แยกตามหมวด")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(AppTheme.ink)
-                    ForEach(monthCategorySlices) { bucket in
-                        categoryProgressRow(bucket, grandTotal: max(monthExpense + monthIncome, 1))
-                    }
-                }
-                .padding(.top, 4)
-            }
-        }
-        .padding(AppTheme.spaceLG)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                .fill(AppTheme.surface)
-                .shadow(color: AppTheme.cardShadow, radius: 16, y: 6)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                .strokeBorder(AppTheme.hairline, lineWidth: 1)
-        )
-    }
-
-    private func summaryKPI(title: String, value: String, tint: Color, icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(tint)
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.inkMuted)
-                Spacer(minLength: 0)
-            }
-            Text(value)
-                .font(.title3.weight(.bold))
-                .foregroundStyle(AppTheme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(tint.opacity(0.1))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(tint.opacity(0.22), lineWidth: 1)
-        )
-    }
-
-    private func miniStat(title: String, value: String, accent: Color? = nil) -> some View {
-        VStack(spacing: 3) {
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(accent ?? AppTheme.ink)
-            Text(title)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(AppTheme.inkMuted)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(accent?.opacity(0.1) ?? AppTheme.surfaceSoft)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder((accent ?? Color.clear).opacity(0.25), lineWidth: accent == nil ? 0 : 1)
-        )
-    }
-
-    private func categoryProgressRow(_ bucket: LedgerCategoryBucket, grandTotal: Double) -> some View {
-        let amount = abs(bucket.signedTotal)
-        let ratio = min(1, amount / grandTotal)
-        return VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Image(systemName: bucket.systemImage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(bucket.accent)
-                Text(bucket.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-                Spacer(minLength: 0)
-                Text(bucket.displayTotal)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(bucket.accent)
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(AppTheme.surfaceSoft)
-                    Capsule()
-                        .fill(bucket.accent.opacity(0.85))
-                        .frame(width: max(4, geo.size.width * ratio))
-                }
-            }
-            .frame(height: 6)
-        }
-        .padding(.vertical, 2)
     }
 
     // MARK: - Helpers
@@ -679,11 +549,33 @@ private struct DayDetailSheet: View {
     private static let sandOpsColor = Color(hex: "#DB2777")
 
     private var ledgerBuckets: [LedgerCategoryBucket] {
-        LedgerCategoryBucket.group(day.financeTransactions)
+        LedgerCategoryBucket.group(financeTransactions)
     }
 
     private var dayTransactions: [Transaction] {
         transactions.filter { String($0.date.prefix(10)) == day.date }
+    }
+
+    private var financeTransactions: [Transaction] {
+        if !day.financeTransactions.isEmpty { return day.financeTransactions }
+        return dayTransactions.filter { !CalendarV3Logic.isCalendarTx($0) }
+    }
+
+    private var machineLogs: [Transaction] {
+        if !day.machineLogs.isEmpty { return day.machineLogs }
+        return financeTransactions.filter {
+            $0.category == "DailyLog" && ($0.subCategory == "MachineWork" || $0.subCategory == "VehicleTrip")
+        }
+    }
+
+    private var sandLogs: [Transaction] {
+        if !day.sandLogs.isEmpty { return day.sandLogs }
+        return financeTransactions.filter { $0.category == "DailyLog" && $0.subCategory == "Sand" }
+    }
+
+    private var eventLogs: [Transaction] {
+        if !day.eventLogs.isEmpty { return day.eventLogs }
+        return financeTransactions.filter { $0.category == "DailyLog" && $0.subCategory == "Event" }
     }
 
     private var tripUnits: [CountRecordTripUnit] {
@@ -727,7 +619,7 @@ private struct DayDetailSheet: View {
     }
 
     private var hasOpsActivity: Bool {
-        !day.machineLogs.isEmpty || !day.sandLogs.isEmpty || !day.eventLogs.isEmpty
+        !machineLogs.isEmpty || !sandLogs.isEmpty || !eventLogs.isEmpty
     }
 
     // MARK: Header
@@ -744,7 +636,7 @@ private struct DayDetailSheet: View {
                 Text(longThaiDate(day.date))
                     .font(.title3.weight(.bold))
                     .foregroundStyle(.white)
-                Text("\(day.financeTransactions.count) รายการเดินบัญชี · \(ledgerBuckets.count) หมวด")
+                Text("\(financeTransactions.count) รายการเดินบัญชี · \(ledgerBuckets.count) หมวด")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.white.opacity(0.72))
             }
@@ -977,13 +869,13 @@ private struct DayDetailSheet: View {
     private var opsActivitySection: some View {
         SectionCard("บันทึกปฏิบัติการ", systemImage: "gearshape.2.fill") {
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(day.machineLogs) { t in
+                ForEach(machineLogs) { t in
                     activityRow(systemImage: "gearshape.2.fill", tint: AppTheme.vehicle, text: machineText(t))
                 }
-                ForEach(day.sandLogs) { t in
+                ForEach(sandLogs) { t in
                     activityRow(systemImage: "drop.fill", tint: AppTheme.dailyLog, text: sandText(t))
                 }
-                ForEach(day.eventLogs) { t in
+                ForEach(eventLogs) { t in
                     activityRow(systemImage: "pin.fill", tint: AppTheme.warning, text: t.description)
                 }
             }

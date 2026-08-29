@@ -127,6 +127,8 @@ enum CalendarV3Logic {
 
     /// Builds the per-day models for a whole month. `visibleMonth` is any date
     /// inside the target month.
+    ///
+    /// Indexes transactions once (O(n)) instead of re-scanning the full list per day.
     static func buildDays(
         visibleMonth: Date,
         transactions: [Transaction],
@@ -142,48 +144,79 @@ enum CalendarV3Logic {
         guard let first = cal.date(from: comps),
               let range = cal.range(of: .day, in: .month, for: first) else { return [] }
 
+        let monthPrefix = String(format: "%04d-%02d-", year, month)
         let holidayMap = publicHolidayMap(year: year)
         let roster = employees.filter(\.isHomeAttendancePool)
         let rosterIds = Set(roster.map(\.id))
         let totalEmployees = roster.count
-        let opsMarks = CountRecordLogic.dayOpsMarks(
-            inMonth: first,
-            transactions: transactions,
-            employees: employees
-        )
+        let rosterById = Dictionary(uniqueKeysWithValues: roster.map { ($0.id, $0) })
+
+        var byDay: [String: [Transaction]] = [:]
+        byDay.reserveCapacity(min(transactions.count, 64))
+        var leaveCandidates: [Transaction] = []
+        for t in transactions {
+            let key = String(t.date.prefix(10))
+            if key.hasPrefix(monthPrefix) {
+                byDay[key, default: []].append(t)
+            }
+            if isLaborLeaveRecord(t) {
+                leaveCandidates.append(t)
+            }
+        }
 
         return range.map { d in
             let dateStr = String(format: "%04d-%02d-%02d", year, month, d)
-            let dayTrans = transactions.filter { String($0.date.prefix(10)) == dateStr }
+            let dayTrans = byDay[dateStr] ?? []
             let financeTrans = dayTrans.filter { !isCalendarTx($0) }
 
-            let inc = financeTrans.filter { $0.type == .income }.reduce(0.0) { $0 + $1.amount }
-            let exp = financeTrans.filter { $0.type == .expense }.reduce(0.0) { $0 + $1.amount }
-
+            var inc = 0.0
+            var exp = 0.0
             var workingIds = Set<String>()
-            for t in financeTrans where t.category == "Labor" && (t.laborStatus == "Work" || t.laborStatus == "OT") {
-                for id in (t.employeeIds ?? []) where rosterIds.contains(id) { workingIds.insert(id) }
+            var machineLogs: [Transaction] = []
+            var sandLogs: [Transaction] = []
+            var eventLogs: [Transaction] = []
+            var hasTrip = false
+            var hasSand = false
+
+            for t in financeTrans {
+                if t.type == .income { inc += t.amount }
+                else if t.type == .expense { exp += t.amount }
+
+                if t.category == "Labor", t.laborStatus == "Work" || t.laborStatus == "OT" {
+                    for id in (t.employeeIds ?? []) where rosterIds.contains(id) {
+                        workingIds.insert(id)
+                    }
+                }
+
+                if t.category == "DailyLog" {
+                    switch t.subCategory {
+                    case "MachineWork", "VehicleTrip":
+                        machineLogs.append(t)
+                    case "Sand":
+                        sandLogs.append(t)
+                        hasSand = true
+                    case "Event":
+                        eventLogs.append(t)
+                    default:
+                        break
+                    }
+                }
+
+                if !hasTrip,
+                   CountRecordLogic.isCountRecordVehicleRow(t),
+                   CountRecordLogic.tripRounds(from: t) > 0 {
+                    hasTrip = true
+                }
             }
 
-            let leaveTrans = transactions.filter { !isCalendarTx($0) && leaveRecordCoversDay($0, day: dateStr) }
             var leaveIds = Set<String>()
-            for t in leaveTrans {
-                for id in (t.employeeIds ?? []) where rosterIds.contains(id) { leaveIds.insert(id) }
+            for t in leaveCandidates where leaveRecordCoversDay(t, day: dateStr) {
+                for id in (t.employeeIds ?? []) where rosterIds.contains(id) {
+                    leaveIds.insert(id)
+                }
             }
-            workingIds = workingIds.subtracting(leaveIds)
-            let leaveNames = leaveIds.sorted().map { id -> String in
-                roster.first(where: { $0.id == id })?.displayName ?? "Unknown"
-            }
-
-            let presentCount = workingIds.count
-            let leaveCount = leaveIds.count
-            let missingCount = max(0, totalEmployees - presentCount - leaveCount)
-
-            let machineLogs = financeTrans.filter {
-                $0.category == "DailyLog" && ($0.subCategory == "MachineWork" || $0.subCategory == "VehicleTrip")
-            }
-            let sandLogs = financeTrans.filter { $0.category == "DailyLog" && $0.subCategory == "Sand" }
-            let eventLogs = financeTrans.filter { $0.category == "DailyLog" && $0.subCategory == "Event" }
+            workingIds.subtract(leaveIds)
+            let leaveNames = leaveIds.sorted().map { rosterById[$0]?.displayName ?? "Unknown" }
 
             let calendarRows: [CalendarEntry] = dayTrans.filter(isCalendarTx).map { t in
                 CalendarEntry(
@@ -208,22 +241,78 @@ enum CalendarV3Logic {
                 allRows = [auto] + calendarRows
             }
 
+            let opsMark: CountRecordLogic.DayOpsMark
+            switch (hasTrip, hasSand) {
+            case (true, true): opsMark = .both
+            case (true, false): opsMark = .tripOnly
+            case (false, true): opsMark = .sandOnly
+            case (false, false): opsMark = .none
+            }
+
             return CalendarDayModel(
                 id: dateStr,
                 day: d,
                 date: dateStr,
                 income: inc,
                 expense: exp,
-                presentCount: presentCount,
-                leaveCount: leaveCount,
-                missingCount: missingCount,
+                presentCount: workingIds.count,
+                leaveCount: leaveIds.count,
+                missingCount: max(0, totalEmployees - workingIds.count - leaveIds.count),
                 leaveNames: leaveNames,
                 calendarRows: allRows,
                 financeTransactions: financeTrans,
                 machineLogs: machineLogs,
                 sandLogs: sandLogs,
                 eventLogs: eventLogs,
-                opsMark: opsMarks[dateStr] ?? .none
+                opsMark: opsMark
+            )
+        }
+    }
+
+    /// Day-number placeholders so the grid can paint before full aggregation finishes.
+    static func skeletonDays(visibleMonth: Date) -> [CalendarDayModel] {
+        let cal = DashboardAggregations.gregorian
+        let year = cal.component(.year, from: visibleMonth)
+        let month = cal.component(.month, from: visibleMonth)
+        var comps = DateComponents()
+        comps.year = year
+        comps.month = month
+        comps.day = 1
+        guard let first = cal.date(from: comps),
+              let range = cal.range(of: .day, in: .month, for: first) else { return [] }
+        let holidayMap = publicHolidayMap(year: year)
+
+        return range.map { d in
+            let dateStr = String(format: "%04d-%02d-%02d", year, month, d)
+            var rows: [CalendarEntry] = []
+            if let h = holidayMap[dateStr] {
+                rows = [
+                    CalendarEntry(
+                        id: "\(h.id)_auto",
+                        subCategory: "Holiday",
+                        title: h.name,
+                        eventTime: nil,
+                        note: "วันหยุดนักขัตฤกษ์ (ระบบ)",
+                        isAuto: true
+                    )
+                ]
+            }
+            return CalendarDayModel(
+                id: dateStr,
+                day: d,
+                date: dateStr,
+                income: 0,
+                expense: 0,
+                presentCount: 0,
+                leaveCount: 0,
+                missingCount: 0,
+                leaveNames: [],
+                calendarRows: rows,
+                financeTransactions: [],
+                machineLogs: [],
+                sandLogs: [],
+                eventLogs: [],
+                opsMark: .none
             )
         }
     }
