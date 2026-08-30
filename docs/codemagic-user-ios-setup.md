@@ -52,12 +52,36 @@
 
 > อย่าใส่ Apple ID ของ Dashboard ลงตัวแปรนี้
 
-## ขั้นที่ 4 — Start build
+## ขั้นที่ 4 — TestFlight Test Information (ครั้งเดียว ก่อนส่ง external / beta review)
 
-1. Push branch ที่มี `codemagic.yaml` อัปเดตแล้ว
-2. Codemagic → แอป **GoldenMole** (ตัวเดิม) → **Start new build**
+เปิด: [TestFlight → Test Information](https://appstoreconnect.apple.com/apps/6806747374/testflight/test-info)
+
+กรอกให้ครบ:
+
+| ช่อง | ตัวอย่าง |
+|------|----------|
+| **Feedback Email** | อีเมลรับฟีดแบ็กจากเทสเตอร์ |
+| **First Name** | ชื่อผู้ติดต่อ Beta Review |
+| **Last Name** | นามสกุล |
+| **Phone Number** | เบอร์ติดต่อ (มีรหัสประเทศ) |
+| **Email** | อีเมลผู้ติดต่อ |
+
+หลังกรอกแล้ว ถ้าต้องการให้ Codemagic ส่งเข้า beta review อัตโนมัติ ให้ตั้งใน `codemagic.yaml`:
+
+```yaml
+submit_to_testflight: true
+```
+
+ตอนนี้ค่าเริ่มต้นเป็น `false` = **อัปโหลด IPA สำเร็จแล้วจบ** (ใช้ Internal Testing ได้โดยไม่ต้อง beta review)
+
+## ขั้นที่ 5 — Start build
+
+1. Push / ใช้ `main` ล่าสุด
+2. Codemagic → แอป **GoldenMole** → **Start new build**
 3. เลือก workflow **GoldenMole for User iOS**
-4. รอ IPA + TestFlight (~15–30 นาที)
+4. หลัง build สำเร็จ → App Store Connect → **TestFlight** → Internal Testing → เพิ่มเทสเตอร์
+
+Apple ID แอป User: **`6806747374`** · Bundle: `com.goldenmole.app`
 
 ---
 
@@ -65,9 +89,11 @@
 
 | Error | แก้ |
 |-------|-----|
-| unknown variable group `goldenmole_user` | อัปเดต yaml ให้ใช้ `goldenmole_dashboard` แล้ว (pull main ล่าสุด) |
-| Bundle ID not found | สร้าง App ID `com.goldenmole.app` บน Apple Developer |
-| 409 Distribution certificate | ใช้ PEM เดิมใน `goldenmole_dashboard` — อย่า genrsa ใหม่ |
+| Complete test information / Feedback Email | กรอกขั้นที่ 4 แล้วค่อย `submit_to_testflight: true` หรือใช้ Internal Testing |
+| Cannot determine Apple ID from Bundle ID | สร้างแอป ASC ด้วย Bundle `com.goldenmole.app` |
+| Bundle ID เป็น AltStore / อื่น | แก้หรือสร้างแอปใหม่ให้เป็น `com.goldenmole.app` |
+| unknown variable group `goldenmole_user` | ใช้ group `goldenmole_dashboard` แล้ว |
+| 409 Distribution certificate | ใช้ PEM เดิมใน `goldenmole_dashboard` |
 | Missing SUPABASE_* | ตรวจ group `goldenmole_dashboard` |
 
 ---

@@ -287,8 +287,10 @@ workflows:
           failure: true
       app_store_connect:
         auth: integration
-        # Needs App Store Connect app for com.goldenmole.app + USER_APP_STORE_APPLE_ID in group
-        submit_to_testflight: true
+        # Upload IPA only. Set true after filling TestFlight Test Information once:
+        # https://appstoreconnect.apple.com/apps/6806747374/testflight/test-info
+        # (Feedback Email + Beta App Review contact). External testing needs that form.
+        submit_to_testflight: false
         expire_build_submitted_for_review: true
 
   goldenmole-user-ios-preview:
