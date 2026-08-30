@@ -9671,6 +9671,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     const teal = Color(0xFF00897B);
     const green = Color(0xFF2E7D32);
 
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
+    final sectionGap = phonePortrait ? 12.0 : 18.0;
+    final fieldGap = phonePortrait ? 8.0 : 10.0;
+    final fieldSize = phonePortrait ? 14.5 : 16.0;
+    final sectionTitleSize = phonePortrait ? 15.0 : 17.0;
+    final saveBtnH = phonePortrait ? 46.0 : 52.0;
+    final saveFont = phonePortrait ? 14.0 : 15.0;
+    final fieldStyle = GoogleFonts.kanit(
+      fontSize: fieldSize,
+      fontWeight: FontWeight.w600,
+      color: const Color(0xFF1D2A3A),
+    );
+
     final expenseOpts = List<String>.from(_appExpenseTypes);
     final incomeOpts = _incomeTypeDropdownOptions();
 
@@ -9691,33 +9706,45 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     Widget dateRow() {
+      final radius = phonePortrait ? 12.0 : 14.0;
       return Material(
         color: const Color(0xFFF3F4FB),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(radius),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(radius),
           onTap: _pickDate,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: phonePortrait ? 12 : 14,
+              vertical: phonePortrait ? 10 : 12,
+            ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.calendar_today_rounded,
-                  size: 20,
+                  size: phonePortrait ? 18 : 20,
                   color: indigo,
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: phonePortrait ? 8 : 10),
                 Expanded(
                   child: Text(
-                    'วันที่ ${_formatDate(_selectedDate)} · แตะเพื่อเปลี่ยนวัน',
+                    phonePortrait
+                        ? 'วันที่ ${_formatDate(_selectedDate)}'
+                        : 'วันที่ ${_formatDate(_selectedDate)} · แตะเพื่อเปลี่ยนวัน',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.kanit(
-                      fontSize: 14.5,
+                      fontSize: phonePortrait ? 13.5 : 14.5,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFF1D2736),
                     ),
                   ),
                 ),
-                Icon(Icons.chevron_right_rounded, color: Colors.grey.shade600),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: phonePortrait ? 20 : 24,
+                  color: Colors.grey.shade600,
+                ),
               ],
             ),
           ),
@@ -9726,17 +9753,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     InputDecoration deco(String label, IconData icon) {
+      final radius = phonePortrait ? 10.0 : 12.0;
       return InputDecoration(
         labelText: label,
-        labelStyle: GoogleFonts.kanit(color: Colors.black54),
-        prefixIcon: Icon(icon, color: indigo.withValues(alpha: 0.85)),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        isDense: phonePortrait,
+        contentPadding: phonePortrait
+            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
+            : null,
+        labelStyle: GoogleFonts.kanit(
+          color: Colors.black54,
+          fontSize: phonePortrait ? 13 : null,
+        ),
+        prefixIcon: Icon(
+          icon,
+          size: phonePortrait ? 20 : 24,
+          color: indigo.withValues(alpha: 0.85),
+        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(radius)),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(radius),
           borderSide: const BorderSide(color: Color(0xFFD7E3F0)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(radius),
           borderSide: const BorderSide(color: indigo, width: 1.2),
         ),
       );
@@ -9750,34 +9789,42 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       required Color accent,
     }) {
       final sel = _iuEntryKind == kind;
+      final radius = phonePortrait ? 12.0 : 14.0;
       return Material(
         color: sel ? accent.withValues(alpha: 0.12) : const Color(0xFFF5F7FB),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(radius),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(radius),
           onTap: () => setState(() => _iuEntryKind = kind),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: phonePortrait ? 10 : 12,
+              vertical: phonePortrait ? 10 : 12,
+            ),
             child: Row(
               children: [
-                Icon(icon, color: accent, size: 26),
-                const SizedBox(width: 10),
+                Icon(icon, color: accent, size: phonePortrait ? 22 : 26),
+                SizedBox(width: phonePortrait ? 8 : 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.kanit(
-                          fontSize: 15.5,
+                          fontSize: phonePortrait ? 14 : 15.5,
                           fontWeight: FontWeight.w800,
                           color: const Color(0xFF1D2736),
                         ),
                       ),
                       Text(
                         subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.kanit(
-                          fontSize: 12,
+                          fontSize: phonePortrait ? 11 : 12,
                           color: Colors.black54,
                           fontWeight: FontWeight.w500,
                         ),
@@ -9786,7 +9833,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                 ),
                 if (sel)
-                  Icon(Icons.check_circle_rounded, color: accent, size: 22),
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: accent,
+                    size: phonePortrait ? 18 : 22,
+                  ),
               ],
             ),
           ),
@@ -9815,12 +9866,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (list.isEmpty) {
         return [
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
+            padding: EdgeInsets.symmetric(vertical: phonePortrait ? 8 : 10),
             child: Text(
-              'ยังไม่มีรายการในวันนี้ (บันทึกได้หลายรายการ)',
+              phonePortrait
+                  ? 'ยังไม่มีรายการในวันนี้'
+                  : 'ยังไม่มีรายการในวันนี้ (บันทึกได้หลายรายการ)',
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(
-                fontSize: 13.5,
+                fontSize: phonePortrait ? 12.5 : 13.5,
                 color: Colors.black45,
                 fontWeight: FontWeight.w600,
               ),
@@ -9839,7 +9892,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             child: Text(
               '… และอีก ${list.length - 14} รายการ',
               style: GoogleFonts.kanit(
-                fontSize: 12.5,
+                fontSize: phonePortrait ? 11.5 : 12.5,
                 color: Colors.black45,
                 fontWeight: FontWeight.w600,
               ),
@@ -9852,28 +9905,30 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'บันทึกรายรับ-รายจ่าย',
+          phonePortrait ? 'รายรับ-รายจ่าย' : 'บันทึกรายรับ-รายจ่าย',
           textAlign: TextAlign.center,
           style: GoogleFonts.kanit(
-            fontSize: 20,
+            fontSize: phonePortrait ? 17 : 20,
             fontWeight: FontWeight.w800,
             color: const Color(0xFF1A237E),
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: phonePortrait ? 4 : 8),
         Text(
-          'เลือกรายจ่ายหรือรายรับก่อน แล้วกรอกฟอร์ม · ประเภทดึงจากตั้งค่าเว็บ (สาธารณูปโภค / รายรับ) และช่วยกรอกจากประวัติ',
+          phonePortrait
+              ? 'เลือกรายจ่ายหรือรายรับก่อน แล้วกรอกฟอร์ม'
+              : 'เลือกรายจ่ายหรือรายรับก่อน แล้วกรอกฟอร์ม · ประเภทดึงจากตั้งค่าเว็บ (สาธารณูปโภค / รายรับ) และช่วยกรอกจากประวัติ',
           textAlign: TextAlign.center,
           style: GoogleFonts.kanit(
-            fontSize: 12.5,
+            fontSize: phonePortrait ? 11.5 : 12.5,
             height: 1.35,
             color: Colors.black54,
             fontWeight: FontWeight.w500,
           ),
         ),
-        const SizedBox(height: 14),
+        SizedBox(height: phonePortrait ? 10 : 14),
         dateRow(),
-        const SizedBox(height: 14),
+        SizedBox(height: phonePortrait ? 10 : 14),
         Row(
           children: [
             Expanded(
@@ -9885,12 +9940,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 accent: teal,
               ),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: phonePortrait ? 8 : 10),
             Expanded(
               child: kindTile(
                 kind: _IuEntryKind.income,
                 title: 'รายรับ',
-                subtitle: 'รายรับประจำวัน',
+                subtitle: phonePortrait ? 'ประจำวัน' : 'รายรับประจำวัน',
                 icon: Icons.north_east_rounded,
                 accent: green,
               ),
@@ -9898,47 +9953,57 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ],
         ),
         if (_iuEntryKind == null) ...[
-          const SizedBox(height: 18),
+          SizedBox(height: sectionGap),
           Text(
-            'แตะเลือก «รายจ่าย» หรือ «รายรับ» เพื่อแสดงฟอร์มกรอก',
+            phonePortrait
+                ? 'แตะเลือก «รายจ่าย» หรือ «รายรับ»'
+                : 'แตะเลือก «รายจ่าย» หรือ «รายรับ» เพื่อแสดงฟอร์มกรอก',
             textAlign: TextAlign.center,
             style: GoogleFonts.kanit(
-              fontSize: 14,
+              fontSize: phonePortrait ? 13 : 14,
               color: const Color(0xFF546E7A),
               fontWeight: FontWeight.w600,
             ),
           ),
         ],
         if (_iuEntryKind == _IuEntryKind.expense) ...[
-          const SizedBox(height: 18),
+          SizedBox(height: sectionGap),
           Text(
             'สาธารณูปโภค',
             style: GoogleFonts.kanit(
-              fontSize: 17,
+              fontSize: sectionTitleSize,
               fontWeight: FontWeight.w800,
               color: const Color(0xFF1A237E),
             ),
           ),
           if (expenseOpts.isEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 6),
+              padding: EdgeInsets.only(
+                top: phonePortrait ? 4 : 6,
+                bottom: phonePortrait ? 4 : 6,
+              ),
               child: Text(
-                'ยังไม่มีรายการประเภทในเว็บ (ตั้งค่า → สาธารณูปโภค → ประเภทค่าใช้จ่าย) — ใช้ «อื่นๆ» ด้านล่าง',
+                phonePortrait
+                    ? 'ยังไม่มีประเภทในเว็บ — ใช้ «อื่นๆ» ด้านล่าง'
+                    : 'ยังไม่มีรายการประเภทในเว็บ (ตั้งค่า → สาธารณูปโภค → ประเภทค่าใช้จ่าย) — ใช้ «อื่นๆ» ด้านล่าง',
                 style: GoogleFonts.kanit(
-                  fontSize: 12.5,
+                  fontSize: phonePortrait ? 11.5 : 12.5,
                   color: const Color(0xFFB45309),
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-          const SizedBox(height: 8),
+          SizedBox(height: phonePortrait ? 6 : 8),
           DropdownButtonFormField<String>(
             // ignore: deprecated_member_use — ต้องสะท้อน state หลังบันทึก/โหลด
             value: expenseDropdownValue().isEmpty
                 ? null
                 : expenseDropdownValue(),
             isExpanded: true,
-            decoration: deco('ประเภทค่าใช้จ่าย', Icons.category_outlined),
+            decoration: deco(
+              phonePortrait ? 'ประเภท' : 'ประเภทค่าใช้จ่าย',
+              Icons.category_outlined,
+            ),
             hint: Text('— เลือกประเภท —', style: GoogleFonts.kanit()),
             items: [
               ...expenseOpts.map(
@@ -9953,44 +10018,42 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
               DropdownMenuItem(
                 value: _iuOtherSentinel,
-                child: Text('อื่นๆ (พิมพ์เอง)', style: GoogleFonts.kanit()),
+                child: Text(
+                  phonePortrait ? 'อื่นๆ' : 'อื่นๆ (พิมพ์เอง)',
+                  style: GoogleFonts.kanit(),
+                ),
               ),
             ],
             onChanged: (v) => setState(() => _iuExpenseChoice = v),
           ),
           if (_iuExpenseChoice == _iuOtherSentinel) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: fieldGap),
             TextField(
               controller: _utilitiesTypeController,
               decoration: deco('ระบุประเภท', Icons.edit_outlined),
-              style: GoogleFonts.kanit(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF1D2A3A),
-              ),
+              style: fieldStyle,
               onChanged: (_) => setState(() {}),
             ),
           ],
-          const SizedBox(height: 10),
-          ..._iuPartyFieldWidgets(deco),
-          const SizedBox(height: 10),
+          SizedBox(height: fieldGap),
+          ..._iuPartyFieldWidgets(deco, compact: phonePortrait),
+          SizedBox(height: fieldGap),
           TextField(
             controller: _utilitiesAmountController,
-            decoration: deco('จำนวนเงิน (บาท)', Icons.attach_money_outlined),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: GoogleFonts.kanit(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF1D2A3A),
+            decoration: deco(
+              phonePortrait ? 'จำนวนเงิน' : 'จำนวนเงิน (บาท)',
+              Icons.attach_money_outlined,
             ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: fieldStyle,
             onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: phonePortrait ? 10 : 12),
           _SmoothPressable(
             enabled: !_saving,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
                 gradient: LinearGradient(
                   colors: [
                     teal.withValues(alpha: 0.92),
@@ -10000,7 +10063,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 boxShadow: [
                   BoxShadow(
                     color: teal.withValues(alpha: 0.35),
-                    blurRadius: 16,
+                    blurRadius: phonePortrait ? 12 : 16,
                     offset: const Offset(0, 5),
                   ),
                 ],
@@ -10008,32 +10071,38 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               child: FilledButton.icon(
                 onPressed: _saving ? null : _saveUtilitiesExpense,
                 icon: _saving
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
+                    ? SizedBox(
+                        width: phonePortrait ? 18 : 22,
+                        height: phonePortrait ? 18 : 22,
+                        child: const CircularProgressIndicator(
                           strokeWidth: 2.4,
                           color: Colors.white,
                         ),
                       )
-                    : const Icon(Icons.save_alt_rounded, color: Colors.white),
+                    : Icon(
+                        Icons.save_alt_rounded,
+                        color: Colors.white,
+                        size: phonePortrait ? 20 : 24,
+                      ),
                 label: Text(
                   _saving
                       ? 'กำลังบันทึก...'
-                      : 'บันทึกรายจ่าย (เพิ่มรายการได้หลายครั้ง)',
+                      : phonePortrait
+                          ? 'บันทึกรายจ่าย'
+                          : 'บันทึกรายจ่าย (เพิ่มรายการได้หลายครั้ง)',
                   style: GoogleFonts.kanit(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
-                    fontSize: 15,
+                    fontSize: saveFont,
                   ),
                 ),
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,
-                  minimumSize: const Size.fromHeight(52),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 14,
+                  minimumSize: Size.fromHeight(saveBtnH),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: phonePortrait ? 14 : 18,
+                    vertical: phonePortrait ? 10 : 14,
                   ),
                 ),
               ),
@@ -10041,35 +10110,40 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
         ],
         if (_iuEntryKind == _IuEntryKind.income) ...[
-          const SizedBox(height: 18),
+          SizedBox(height: sectionGap),
           Text(
-            'รายรับประจำวัน',
+            phonePortrait ? 'รายรับ' : 'รายรับประจำวัน',
             style: GoogleFonts.kanit(
-              fontSize: 17,
+              fontSize: sectionTitleSize,
               fontWeight: FontWeight.w800,
               color: const Color(0xFF1A237E),
             ),
           ),
           if (_appIncomeTypes.isEmpty && incomeOpts.isEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 6),
+              padding: EdgeInsets.only(
+                top: phonePortrait ? 4 : 6,
+                bottom: phonePortrait ? 4 : 6,
+              ),
               child: Text(
-                'ยังไม่มีประเภทรายรับในเว็บ — เลือก «อื่นๆ» แล้วพิมพ์ประเภท',
+                phonePortrait
+                    ? 'ยังไม่มีประเภทในเว็บ — เลือก «อื่นๆ»'
+                    : 'ยังไม่มีประเภทรายรับในเว็บ — เลือก «อื่นๆ» แล้วพิมพ์ประเภท',
                 style: GoogleFonts.kanit(
-                  fontSize: 12.5,
+                  fontSize: phonePortrait ? 11.5 : 12.5,
                   color: const Color(0xFFB45309),
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-          const SizedBox(height: 8),
+          SizedBox(height: phonePortrait ? 6 : 8),
           DropdownButtonFormField<String>(
             // ignore: deprecated_member_use — ต้องสะท้อน state หลังบันทึก/โหลด
             value: incomeDropdownValue().isEmpty ? null : incomeDropdownValue(),
             isExpanded: true,
             decoration: deco('ประเภทรายรับ', Icons.label_outline_rounded),
             hint: Text(
-              '— เลือกหรือใช้จากประวัติ —',
+              phonePortrait ? '— เลือกประเภท —' : '— เลือกหรือใช้จากประวัติ —',
               style: GoogleFonts.kanit(),
             ),
             items: [
@@ -10085,49 +10159,57 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
               DropdownMenuItem(
                 value: _iuOtherSentinel,
-                child: Text('อื่นๆ (พิมพ์เอง)', style: GoogleFonts.kanit()),
+                child: Text(
+                  phonePortrait ? 'อื่นๆ' : 'อื่นๆ (พิมพ์เอง)',
+                  style: GoogleFonts.kanit(),
+                ),
               ),
             ],
             onChanged: (v) => setState(() => _iuIncomeChoice = v),
           ),
           if (_iuIncomeChoice == _iuOtherSentinel) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: fieldGap),
             TextField(
               controller: _incomeTypeController,
-              decoration: deco('ระบุประเภทรายรับ', Icons.edit_outlined),
-              style: GoogleFonts.kanit(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF1D2A3A),
+              decoration: deco(
+                phonePortrait ? 'ระบุประเภท' : 'ระบุประเภทรายรับ',
+                Icons.edit_outlined,
               ),
+              style: fieldStyle,
               onChanged: (_) => setState(() {}),
             ),
           ],
-          const SizedBox(height: 10),
-          ..._iuPartyFieldWidgets(deco),
+          SizedBox(height: fieldGap),
+          ..._iuPartyFieldWidgets(deco, compact: phonePortrait),
           Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 2),
+            padding: EdgeInsets.only(
+              top: phonePortrait ? 2 : 4,
+              bottom: 2,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'สถานะรับเงิน',
                   style: GoogleFonts.kanit(
-                    fontSize: 13.5,
+                    fontSize: phonePortrait ? 12.5 : 13.5,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF37474F),
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: phonePortrait ? 6 : 8),
                 Row(
                   children: [
                     Expanded(
                       child: FilterChip(
+                        visualDensity: phonePortrait
+                            ? VisualDensity.compact
+                            : VisualDensity.standard,
                         label: Text(
-                          'ยังไม่ได้จ่ายเงิน',
+                          phonePortrait ? 'ยังไม่จ่าย' : 'ยังไม่ได้จ่ายเงิน',
                           textAlign: TextAlign.center,
                           style: GoogleFonts.kanit(
-                            fontSize: 12.5,
+                            fontSize: phonePortrait ? 11.5 : 12.5,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -10137,14 +10219,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: phonePortrait ? 6 : 8),
                     Expanded(
                       child: FilterChip(
+                        visualDensity: phonePortrait
+                            ? VisualDensity.compact
+                            : VisualDensity.standard,
                         label: Text(
-                          'จ่ายเงินแล้ว',
+                          phonePortrait ? 'จ่ายแล้ว' : 'จ่ายเงินแล้ว',
                           textAlign: TextAlign.center,
                           style: GoogleFonts.kanit(
-                            fontSize: 12.5,
+                            fontSize: phonePortrait ? 11.5 : 12.5,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -10158,63 +10243,76 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ],
             ),
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _incomeQtyController,
-                  decoration: deco('จำนวน (ไม่บังคับ)', Icons.numbers_outlined),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  style: GoogleFonts.kanit(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1D2A3A),
-                  ),
-                  onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
-                ),
+          SizedBox(height: fieldGap),
+          if (phonePortrait) ...[
+            TextField(
+              controller: _incomeQtyController,
+              decoration: deco('จำนวน', Icons.numbers_outlined),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: _incomeUnitPriceController,
-                  decoration: deco(
-                    'ราคาต่อหน่วย (ไม่บังคับ)',
-                    Icons.price_change_outlined,
-                  ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  style: GoogleFonts.kanit(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1D2A3A),
-                  ),
-                  onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
-                ),
+              style: fieldStyle,
+              onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
+            ),
+            SizedBox(height: fieldGap),
+            TextField(
+              controller: _incomeUnitPriceController,
+              decoration: deco('ราคา/หน่วย', Icons.price_change_outlined),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
               ),
-            ],
-          ),
-          const SizedBox(height: 10),
+              style: fieldStyle,
+              onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
+            ),
+          ] else
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _incomeQtyController,
+                    decoration:
+                        deco('จำนวน (ไม่บังคับ)', Icons.numbers_outlined),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    style: fieldStyle,
+                    onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _incomeUnitPriceController,
+                    decoration: deco(
+                      'ราคาต่อหน่วย (ไม่บังคับ)',
+                      Icons.price_change_outlined,
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    style: fieldStyle,
+                    onChanged: (_) => _syncIncomeTotalFromQtyPrice(),
+                  ),
+                ),
+              ],
+            ),
+          SizedBox(height: fieldGap),
           TextField(
             controller: _incomeTotalController,
-            decoration: deco('ยอดรวม (บาท)', Icons.payments_outlined),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: GoogleFonts.kanit(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF1D2A3A),
+            decoration: deco(
+              phonePortrait ? 'ยอดรวม' : 'ยอดรวม (บาท)',
+              Icons.payments_outlined,
             ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: fieldStyle,
             onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: phonePortrait ? 10 : 12),
           _SmoothPressable(
             enabled: !_saving,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
                 gradient: LinearGradient(
                   colors: [
                     green.withValues(alpha: 0.95),
@@ -10224,7 +10322,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 boxShadow: [
                   BoxShadow(
                     color: green.withValues(alpha: 0.32),
-                    blurRadius: 16,
+                    blurRadius: phonePortrait ? 12 : 16,
                     offset: const Offset(0, 5),
                   ),
                 ],
@@ -10232,48 +10330,54 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               child: FilledButton.icon(
                 onPressed: _saving ? null : _saveWizardIncomeEntry,
                 icon: _saving
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
+                    ? SizedBox(
+                        width: phonePortrait ? 18 : 22,
+                        height: phonePortrait ? 18 : 22,
+                        child: const CircularProgressIndicator(
                           strokeWidth: 2.4,
                           color: Colors.white,
                         ),
                       )
-                    : const Icon(Icons.savings_outlined, color: Colors.white),
+                    : Icon(
+                        Icons.savings_outlined,
+                        color: Colors.white,
+                        size: phonePortrait ? 20 : 24,
+                      ),
                 label: Text(
                   _saving
                       ? 'กำลังบันทึก...'
-                      : 'บันทึกรายรับ (เพิ่มรายการได้หลายครั้ง)',
+                      : phonePortrait
+                          ? 'บันทึกรายรับ'
+                          : 'บันทึกรายรับ (เพิ่มรายการได้หลายครั้ง)',
                   style: GoogleFonts.kanit(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
-                    fontSize: 15,
+                    fontSize: saveFont,
                   ),
                 ),
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,
-                  minimumSize: const Size.fromHeight(52),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 14,
+                  minimumSize: Size.fromHeight(saveBtnH),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: phonePortrait ? 14 : 18,
+                    vertical: phonePortrait ? 10 : 14,
                   ),
                 ),
               ),
             ),
           ),
         ],
-        const SizedBox(height: 20),
+        SizedBox(height: phonePortrait ? 14 : 20),
         Text(
           'รายการวันนี้',
           style: GoogleFonts.kanit(
-            fontSize: 16,
+            fontSize: phonePortrait ? 14.5 : 16,
             fontWeight: FontWeight.w800,
             color: const Color(0xFF1A237E),
           ),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: phonePortrait ? 4 : 6),
         ...todayRows(),
       ],
     );
