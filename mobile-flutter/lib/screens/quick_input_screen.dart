@@ -895,9 +895,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _loadAppCars();
     }
     _loadAppExpenseIncomeTypes();
-    _loadOtSuggestions();
-    _loadVehicleWorkSuggestions();
-    _refreshHomeSandStock();
+    // อย่าถอดรหัสแคชธุรกรรมเต็มชุด (~MB) ในเมนูที่ไม่ใช้ — ช้ามากตอนเปิดหน้า
+    if (_isOtMode) unawaited(_loadOtSuggestions());
+    if (_isVehicleTripMode) unawaited(_loadVehicleWorkSuggestions());
+    if (_isHomeSandMode || _isSandWashMode) {
+      unawaited(_refreshHomeSandStock());
+    }
     if (_isAttendanceMode) {
       _refreshAttendanceDaysWorked();
       unawaited(_loadAttWorkCardHeight());
@@ -1323,7 +1326,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _moduleHistoryVisible = false;
       });
       if (!isCurrentLoad()) return;
-      if (cat != 'รายจ่ายรายรับ') {
+      if (_isHomeSandMode || _isSandWashMode) {
         await _refreshHomeSandStock();
       }
       if (!mounted || !isCurrentLoad()) return;
@@ -6206,9 +6209,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _pickDate() async {
-    // ใช้แคชเต็มชุดเพื่อทำจุดทั้งเดือน — แถววันเดียวไม่พอ
-    final txs = await LocalDataCache.readTransactionsFullAny() ??
+    // จุดในปฏิทินต้องการแคชเต็มชุด — ใช้ RAM ก่อน แล้วค่อยรอไฟล์ถ้ายังไม่เคยโหลด
+    var txs = LocalDataCache.peekTransactionsFull() ??
         _moduleDayAllTransactions;
+    if (LocalDataCache.peekTransactionsFull() == null) {
+      txs = await LocalDataCache.readTransactionsFullAny() ?? txs;
+    }
     if (!mounted) return;
     final picked = await showDailyRecordDayPicker(
       context: context,
@@ -6220,9 +6226,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _selectedDate = DateTime(picked.year, picked.month, picked.day);
         _fuelMacroPromptDayKey = null;
       });
-      await _loadModuleTransactions(
-        forceRefresh: _isVehicleTripMode || _isMacroVehicleMode,
-      );
+      // แสดงแคชวันก่อน แล้วค่อยซิงก์เน็ตเงียบ ๆ — อย่า force ให้หน้าค้างโหลด
+      await _loadModuleTransactions(forceRefresh: false);
     }
   }
 

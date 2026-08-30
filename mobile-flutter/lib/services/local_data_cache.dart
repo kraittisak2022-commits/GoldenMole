@@ -58,6 +58,17 @@ class LocalDataCache {
 
   static File? _txFullFile;
   static bool _legacyTxPrefsCleared = false;
+  /// แคชใน RAM หลังถอดรหัสครั้งแรก — กัน decode ไฟล์ ~4MB ซ้ำตอนเปิดเมนู
+  static List<AppTransaction>? _txFullMemory;
+  static Future<List<AppTransaction>?>? _txFullInFlight;
+
+  static void _clearTxFullMemory() {
+    _txFullMemory = null;
+    _txFullInFlight = null;
+  }
+
+  /// อ่านแคชเต็มชุดจาก RAM ทันที (ไม่แตะดิสก์) — null ถ้ายังไม่เคยโหลด
+  static List<AppTransaction>? peekTransactionsFull() => _txFullMemory;
 
   static const Duration employeeTtl = Duration(minutes: 25);
   static const Duration dashboardSummaryTtl = Duration(minutes: 30);
@@ -292,8 +303,22 @@ class LocalDataCache {
 
   /// อ่านธุรกรรมทั้งหมดแม้ TTL หมด — ใช้ตอนออฟไลน์
   static Future<List<AppTransaction>?> readTransactionsFullAny() async {
-    final raw = await _readTransactionsFullBlob();
-    return _decodeTransactionsFullAsync(raw);
+    final mem = _txFullMemory;
+    if (mem != null) return mem;
+    final existing = _txFullInFlight;
+    if (existing != null) return existing;
+    final future = () async {
+      final raw = await _readTransactionsFullBlob();
+      final decoded = await _decodeTransactionsFullAsync(raw);
+      if (decoded != null) _txFullMemory = decoded;
+      return decoded;
+    }();
+    _txFullInFlight = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_txFullInFlight, future)) _txFullInFlight = null;
+    }
   }
 
   static Future<void> writeTransactionsFull(List<AppTransaction> list) async {
@@ -312,6 +337,7 @@ class LocalDataCache {
       await file.writeAsString(blob, flush: true);
       final p = await _p();
       await p.setInt(_kTxAllAt, DateTime.now().millisecondsSinceEpoch);
+      _txFullMemory = List<AppTransaction>.from(list);
     } catch (e, st) {
       debugPrint('LocalDataCache.writeTransactionsFull error: $e\n$st');
     }
@@ -338,6 +364,7 @@ class LocalDataCache {
   }
 
   static Future<void> invalidateTransactionsFull() async {
+    _clearTxFullMemory();
     await _clearLegacyTxPrefsOnce();
     final p = await _p();
     await p.remove(_kTxAllAt);
