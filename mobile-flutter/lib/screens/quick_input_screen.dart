@@ -7914,8 +7914,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _iuHistoryListRow(AppTransaction t) {
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
+    final titleSize = phonePortrait ? 13.0 : 14.0;
+    final metaSize = phonePortrait ? 11.0 : 12.0;
+    final btnMin = phonePortrait ? 36.0 : 40.0;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: EdgeInsets.symmetric(vertical: phonePortrait ? 3 : 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -7929,7 +7935,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w700,
-                    fontSize: 14,
+                    fontSize: titleSize,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -7937,9 +7943,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   transactionIsUtilitiesExpense(t)
                       ? 'รายจ่าย · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}'
                       : 'รายรับ · ${(t.incomePaymentStatus ?? '').trim() == 'Unpaid' ? 'ยังไม่ได้จ่าย' : 'จ่ายแล้ว'} · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}',
-                  style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+                  style: GoogleFonts.kanit(
+                    fontSize: metaSize,
+                    color: Colors.black54,
+                  ),
                 ),
-                ..._iuPartyMetaHistoryLines(t),
+                ..._iuPartyMetaHistoryLines(t, compact: phonePortrait),
               ],
             ),
           ),
@@ -7950,24 +7959,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 IconButton(
                   tooltip: 'แก้ไข (SuperAdmin)',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 40,
-                    minHeight: 40,
+                  constraints: BoxConstraints(
+                    minWidth: btnMin,
+                    minHeight: btnMin,
                   ),
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.edit_outlined,
-                    color: Color(0xFF1565C0),
+                    size: phonePortrait ? 20 : 24,
+                    color: const Color(0xFF1565C0),
                   ),
                   onPressed: () => _openSuperAdminHistoryEditor(t),
                 ),
                 IconButton(
                   tooltip: 'ลบจากฐานข้อมูล',
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 40,
-                    minHeight: 40,
+                  constraints: BoxConstraints(
+                    minWidth: btnMin,
+                    minHeight: btnMin,
                   ),
-                  icon: Icon(Icons.delete_outline, color: Colors.red.shade700),
+                  icon: Icon(
+                    Icons.delete_outline,
+                    size: phonePortrait ? 20 : 24,
+                    color: Colors.red.shade700,
+                  ),
                   onPressed: () => _confirmSuperAdminHardDelete(t),
                 ),
               ],
@@ -8230,13 +8244,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final duration = leaveDurationLabelTh(t);
     final reason = resolvedLeaveReason(t);
     final isEditingThis = _laborLeaveTxId == t.id;
+    final size = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
+    final radius = phonePortrait ? 14.0 : 16.0;
+    final iconBox = phonePortrait ? 36.0 : 44.0;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.only(bottom: phonePortrait ? 8 : 10),
       child: Material(
         color: isEditingThis ? const Color(0xFFE3F2FD) : const Color(0xFFF5FAFF),
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(radius),
           side: BorderSide(
             color: isEditingThis
                 ? const Color(0xFF1565C0)
@@ -8245,73 +8264,83 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(radius),
           onTap: _saving ? null : () => _loadLeaveForEdit(t),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            padding: EdgeInsets.fromLTRB(
+              phonePortrait ? 10 : 14,
+              phonePortrait ? 10 : 12,
+              phonePortrait ? 10 : 14,
+              phonePortrait ? 10 : 12,
+            ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
               Container(
-                width: 44,
-                height: 44,
+                width: iconBox,
+                height: iconBox,
                 decoration: BoxDecoration(
                   color: const Color(0xFFBBDEFB).withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.event_busy_rounded,
-                  color: Color(0xFF1565C0),
-                  size: 24,
+                  color: const Color(0xFF1565C0),
+                  size: phonePortrait ? 20 : 24,
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: phonePortrait ? 8 : 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       namesLine,
-                      maxLines: 4,
+                      maxLines: phonePortrait ? 2 : 4,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.kanit(
-                        fontSize: 15,
+                        fontSize: phonePortrait ? 14 : 15,
                         fontWeight: FontWeight.w800,
                         color: const Color(0xFF0D47A1),
                         height: 1.25,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: phonePortrait ? 4 : 6),
                     Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+                      spacing: phonePortrait ? 4 : 6,
+                      runSpacing: phonePortrait ? 4 : 6,
                       children: [
-                        _leaveMetaChip(kind, Icons.label_outline_rounded),
+                        _leaveMetaChip(
+                          kind,
+                          Icons.label_outline_rounded,
+                          compact: phonePortrait,
+                        ),
                         if (duration.isNotEmpty)
                           _leaveMetaChip(
                             duration,
                             Icons.schedule_rounded,
+                            compact: phonePortrait,
                           ),
                       ],
                     ),
                     if (reason.isNotEmpty) ...[
-                      const SizedBox(height: 6),
+                      SizedBox(height: phonePortrait ? 4 : 6),
                       Text(
                         reason,
-                        maxLines: 3,
+                        maxLines: phonePortrait ? 2 : 3,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.kanit(
-                          fontSize: 12.5,
+                          fontSize: phonePortrait ? 12 : 12.5,
                           color: const Color(0xFF455A64),
                           height: 1.3,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 6),
+                    SizedBox(height: phonePortrait ? 4 : 6),
                     Text(
                       formatTxnHistoryTime(t.createdAt),
                       style: GoogleFonts.kanit(
-                        fontSize: 11,
+                        fontSize: phonePortrait ? 10.5 : 11,
                         color: Colors.black45,
                       ),
                     ),
@@ -8325,26 +8354,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     IconButton(
                       tooltip: 'แก้ไข (SuperAdmin)',
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 40,
-                        minHeight: 40,
+                      constraints: BoxConstraints(
+                        minWidth: phonePortrait ? 36 : 40,
+                        minHeight: phonePortrait ? 36 : 40,
                       ),
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.edit_outlined,
-                        color: Color(0xFF1565C0),
+                        color: const Color(0xFF1565C0),
+                        size: phonePortrait ? 20 : 24,
                       ),
                       onPressed: () => _openSuperAdminHistoryEditor(t),
                     ),
                     IconButton(
                       tooltip: 'ลบจากฐานข้อมูล',
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 40,
-                        minHeight: 40,
+                      constraints: BoxConstraints(
+                        minWidth: phonePortrait ? 36 : 40,
+                        minHeight: phonePortrait ? 36 : 40,
                       ),
                       icon: Icon(
                         Icons.delete_outline,
                         color: Colors.red.shade700,
+                        size: phonePortrait ? 20 : 24,
                       ),
                       onPressed: () => _confirmSuperAdminHardDelete(t),
                     ),
@@ -8409,9 +8440,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  Widget _leaveMetaChip(String text, IconData icon) {
+  Widget _leaveMetaChip(
+    String text,
+    IconData icon, {
+    bool compact = false,
+  }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 6 : 8,
+        vertical: compact ? 3 : 4,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(999),
@@ -8420,12 +8458,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: const Color(0xFF1565C0)),
-          const SizedBox(width: 4),
+          Icon(icon, size: compact ? 12 : 14, color: const Color(0xFF1565C0)),
+          SizedBox(width: compact ? 3 : 4),
           Text(
             text,
             style: GoogleFonts.kanit(
-              fontSize: 11.5,
+              fontSize: compact ? 10.5 : 11.5,
               fontWeight: FontWeight.w700,
               color: const Color(0xFF37474F),
             ),
@@ -8621,8 +8659,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (n == 0) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
+    final size = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
+    final compactLeaveHistory = phonePortrait && _isLaborLeaveMode;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.only(bottom: compactLeaveHistory ? 8 : 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -8633,7 +8675,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   duration: const Duration(milliseconds: 220),
                   curve: Curves.easeOutCubic,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(
+                      compactLeaveHistory ? 12 : 14,
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color:
@@ -8663,12 +8707,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                     ))
                             : const Color(0xFFD9E4F1),
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: compactLeaveHistory ? 10 : 12,
+                        vertical: compactLeaveHistory ? 10 : 12,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(
+                          compactLeaveHistory ? 12 : 14,
+                        ),
                       ),
                     ),
                     onPressed: () {
@@ -8687,13 +8733,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             _moduleHistoryVisible
                                 ? Icons.expand_less_rounded
                                 : Icons.history_rounded,
-                            size: 22,
+                            size: compactLeaveHistory ? 20 : 22,
                             color: _isLaborAdvanceMode
                                 ? const Color(0xFFE65100)
                                 : theme.colorScheme.primary,
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        SizedBox(width: compactLeaveHistory ? 8 : 10),
                         Expanded(
                           child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 200),
@@ -8714,13 +8760,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   : _isLaborAdvanceMode
                                   ? 'ดูประวัติการเบิกวันนี้ ($n รายการ)'
                                   : _isLaborLeaveMode
-                                  ? 'ดูประวัติการลาวันนี้ ($n รายการ)'
+                                  ? (compactLeaveHistory
+                                      ? 'ประวัติลา ($n)'
+                                      : 'ดูประวัติการลาวันนี้ ($n รายการ)')
                                   : 'ดูประวัติในวันนี้ ($n รายการ)',
                               key: ValueKey(_moduleHistoryVisible),
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.kanit(
                                 fontWeight: FontWeight.w700,
-                                fontSize: 14.5,
+                                fontSize: compactLeaveHistory ? 13.5 : 14.5,
                               ),
                             ),
                           ),
@@ -8730,12 +8778,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
+              SizedBox(width: compactLeaveHistory ? 4 : 6),
               PopupMenuButton<String>(
                 tooltip: 'เมนูประวัติ',
                 padding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(
+                    compactLeaveHistory ? 12 : 14,
+                  ),
                 ),
                 onSelected: (value) {
                   if (value == 'show') {
@@ -8757,13 +8807,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 child: Material(
                   color: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(
+                      compactLeaveHistory ? 12 : 14,
+                    ),
                     side: const BorderSide(color: Color(0xFFD9E4F1)),
                   ),
-                  child: const SizedBox(
-                    width: 48,
-                    height: 48,
-                    child: Icon(Icons.more_vert_rounded, size: 22),
+                  child: SizedBox(
+                    width: compactLeaveHistory ? 44 : 48,
+                    height: compactLeaveHistory ? 44 : 48,
+                    child: Icon(
+                      Icons.more_vert_rounded,
+                      size: compactLeaveHistory ? 20 : 22,
+                    ),
                   ),
                 ),
               ),
@@ -8776,11 +8831,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             clipBehavior: Clip.hardEdge,
             child: _moduleHistoryVisible
                 ? Padding(
-                    padding: const EdgeInsets.only(top: 10),
+                    padding: EdgeInsets.only(top: compactLeaveHistory ? 8 : 10),
                     child: Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(
+                          compactLeaveHistory ? 16 : 20,
+                        ),
                         border: Border.all(
                           color: _isLaborAdvanceMode
                               ? const Color(0xFFFFE0B2)
@@ -8795,7 +8852,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         ],
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                        padding: EdgeInsets.fromLTRB(
+                          compactLeaveHistory ? 10 : 12,
+                          compactLeaveHistory ? 10 : 12,
+                          compactLeaveHistory ? 10 : 12,
+                          compactLeaveHistory ? 4 : 6,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -8803,15 +8865,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               _isLaborAdvanceMode
                                   ? 'แต่ละรายการ = คนละคำขอ — แสดงชื่อผู้เบิกและยอดที่ขอ'
                                   : _isLaborLeaveMode
-                                  ? 'แตะรายการเพื่อโหลดแก้ไข — หนึ่งแถวต่อหนึ่งรายการบันทึก'
+                                  ? (compactLeaveHistory
+                                      ? 'แตะรายการเพื่อโหลดแก้ไข'
+                                      : 'แตะรายการเพื่อโหลดแก้ไข — หนึ่งแถวต่อหนึ่งรายการบันทึก')
                                   : 'เวลาที่แสดงคือเวลาสร้างแถวในระบบ — แก้ไขแถวเดิมยังใช้รหัสแถวเดิม',
                               style: GoogleFonts.kanit(
-                                fontSize: 12,
+                                fontSize: compactLeaveHistory ? 11.5 : 12,
                                 color: Colors.black54,
                                 height: 1.25,
                               ),
                             ),
-                            const SizedBox(height: 6),
+                            SizedBox(height: compactLeaveHistory ? 4 : 6),
                             ..._moduleDayTransactions.map(
                               (t) => _isLaborAdvanceMode
                                   ? _advanceHistoryListTile(t)
@@ -9025,9 +9089,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
+    final compactPortraitChrome = phonePortrait &&
+        (_isMacroVehicleMode ||
+            _isFuelMode ||
+            _isMaintenanceMode ||
+            _isLaborAdvanceMode ||
+            _isLaborLeaveMode ||
+            _isIncomeUtilitiesEntryMode ||
+            _isDailyEventMode ||
+            _isOtMode);
     final heading = phonePortrait && _isMacroVehicleMode
         ? 'การใช้รถแม็คโคร'
-        : headingRaw;
+        : phonePortrait && _isFuelMode
+            ? 'น้ำมัน'
+            : phonePortrait && _isLaborAdvanceMode
+                ? 'เบิกเงิน'
+                : phonePortrait && _isIncomeUtilitiesEntryMode
+                    ? 'รายรับ-รายจ่าย'
+                    : phonePortrait && _isDailyEventMode
+                        ? 'เหตุการณ์'
+                        : phonePortrait && _isOtMode
+                            ? 'ล่วงเวลา (OT)'
+                            : headingRaw;
     final canPop = Navigator.of(context).canPop();
     // Use sizeOf / viewInsets in narrow scopes so keyboard animation does not
     // rebuild the entire form tree every frame (see ListView spacer + overlay Builder).
@@ -9084,9 +9167,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       children: [
                         Padding(
                           padding: EdgeInsets.fromLTRB(
-                            phonePortrait && _isMacroVehicleMode ? 10 : 16,
-                            phonePortrait && _isMacroVehicleMode ? 4 : 8,
-                            phonePortrait && _isMacroVehicleMode ? 10 : 16,
+                            compactPortraitChrome ? 10 : 16,
+                            compactPortraitChrome ? 4 : 8,
+                            compactPortraitChrome ? 10 : 16,
                             0,
                           ),
                           child: Row(
@@ -9096,22 +9179,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   _attendanceSection != null)
                                 IconButton(
                                   onPressed: _handleQuickInputBack,
-                                  iconSize: phonePortrait && _isMacroVehicleMode
-                                      ? 24
-                                      : 28,
+                                  iconSize: compactPortraitChrome ? 24 : 28,
                                   style: IconButton.styleFrom(
                                     minimumSize: Size(
-                                      phonePortrait && _isMacroVehicleMode
-                                          ? 44
-                                          : 52,
-                                      phonePortrait && _isMacroVehicleMode
-                                          ? 44
-                                          : 52,
+                                      compactPortraitChrome ? 44 : 52,
+                                      compactPortraitChrome ? 44 : 52,
                                     ),
                                     padding: EdgeInsets.all(
-                                      phonePortrait && _isMacroVehicleMode
-                                          ? 8
-                                          : 12,
+                                      compactPortraitChrome ? 8 : 12,
                                     ),
                                     tapTargetSize:
                                         MaterialTapTargetSize.padded,
@@ -9131,21 +9206,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: GoogleFonts.kanit(
-                                        fontSize: phonePortrait &&
-                                                _isMacroVehicleMode
-                                            ? 18
-                                            : 24,
+                                        fontSize:
+                                            compactPortraitChrome ? 18 : 24,
                                         fontWeight: FontWeight.w800,
                                         color: Colors.white,
                                       ),
                                     ),
                                     if (_isLaborAdvanceMode) ...[
-                                      const SizedBox(height: 6),
+                                      SizedBox(height: phonePortrait ? 2 : 6),
                                       Text(
-                                        'ลงลายเซ็นเพื่อยืนยัน · แจ้งผู้ดูแลผ่าน LINE อัตโนมัติ',
+                                        phonePortrait
+                                            ? 'ลงลายเซ็น · แจ้ง LINE อัตโนมัติ'
+                                            : 'ลงลายเซ็นเพื่อยืนยัน · แจ้งผู้ดูแลผ่าน LINE อัตโนมัติ',
                                         textAlign: TextAlign.center,
+                                        maxLines: phonePortrait ? 1 : 2,
+                                        overflow: TextOverflow.ellipsis,
                                         style: GoogleFonts.kanit(
-                                          fontSize: 13,
+                                          fontSize: phonePortrait ? 11.5 : 13,
                                           fontWeight: FontWeight.w500,
                                           color: Color(0xE6FFFFFF),
                                           height: 1.25,
@@ -9156,15 +9233,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 ),
                               ),
                               SizedBox(
-                                width: phonePortrait && _isMacroVehicleMode
-                                    ? 36
-                                    : 44,
+                                width: compactPortraitChrome ? 36 : 44,
                               ),
                             ],
                           ),
                         ),
                         SizedBox(
-                          height: phonePortrait && _isMacroVehicleMode ? 10 : 14,
+                          height: compactPortraitChrome ? 10 : 14,
                         ),
                         Expanded(
                           child: FadeTransition(
@@ -9269,13 +9344,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                                   : (isLargeTablet
                                                         ? 1200
                                                         : 700),
-                                              padding:
-                                                  const EdgeInsets.fromLTRB(
-                                                    14,
-                                                    0,
-                                                    14,
-                                                    28,
-                                                  ),
+                                              padding: EdgeInsets.fromLTRB(
+                                                phonePortrait &&
+                                                        _isMaintenanceMode
+                                                    ? 8
+                                                    : phonePortrait &&
+                                                          _isIncomeUtilitiesEntryMode
+                                                    ? 10
+                                                    : 14,
+                                                0,
+                                                phonePortrait &&
+                                                        _isMaintenanceMode
+                                                    ? 8
+                                                    : phonePortrait &&
+                                                          _isIncomeUtilitiesEntryMode
+                                                    ? 10
+                                                    : 14,
+                                                phonePortrait &&
+                                                        _isMaintenanceMode
+                                                    ? 20
+                                                    : 28,
+                                              ),
                                               physics: _blockingModuleBootstrap
                                                   ? const NeverScrollableScrollPhysics()
                                                   : const AlwaysScrollableScrollPhysics(),
@@ -9395,52 +9484,55 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   List<Widget> _iuPartyFieldWidgets(
-    InputDecoration Function(String label, IconData icon) deco,
-  ) {
+    InputDecoration Function(String label, IconData icon) deco, {
+    bool compact = false,
+  }) {
+    final fieldSize = compact ? 14.5 : 16.0;
+    final gap = compact ? 8.0 : 10.0;
+    final fieldStyle = GoogleFonts.kanit(
+      fontSize: fieldSize,
+      fontWeight: FontWeight.w600,
+      color: const Color(0xFF1D2A3A),
+    );
     return [
       TextField(
         controller: _iuPartyNameController,
         decoration: deco('ชื่อ', Icons.person_outline_rounded),
-        style: GoogleFonts.kanit(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: const Color(0xFF1D2A3A),
-        ),
+        style: fieldStyle,
         onChanged: (_) => setState(() {}),
       ),
-      const SizedBox(height: 10),
+      SizedBox(height: gap),
       TextField(
         controller: _iuPartyAddressController,
         decoration: deco('ที่อยู่', Icons.home_outlined),
         minLines: 1,
-        maxLines: 3,
-        style: GoogleFonts.kanit(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: const Color(0xFF1D2A3A),
-        ),
+        maxLines: compact ? 2 : 3,
+        style: fieldStyle,
         onChanged: (_) => setState(() {}),
       ),
-      const SizedBox(height: 10),
+      SizedBox(height: gap),
       TextField(
         controller: _iuPartyDetailController,
-        decoration: deco('รายละเอียด (ไม่บังคับ)', Icons.notes_outlined),
-        minLines: 1,
-        maxLines: 4,
-        style: GoogleFonts.kanit(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: const Color(0xFF1D2A3A),
+        decoration: deco(
+          compact ? 'รายละเอียด' : 'รายละเอียด (ไม่บังคับ)',
+          Icons.notes_outlined,
         ),
+        minLines: 1,
+        maxLines: compact ? 3 : 4,
+        style: fieldStyle,
         onChanged: (_) => setState(() {}),
       ),
     ];
   }
 
-  List<Widget> _iuPartyMetaHistoryLines(AppTransaction t) {
+  List<Widget> _iuPartyMetaHistoryLines(
+    AppTransaction t, {
+    bool compact = false,
+  }) {
     final name = (t.projectId ?? '').trim();
     final addr = (t.location ?? '').trim();
     final detail = (t.workDetails ?? '').trim();
+    final fontSize = compact ? 11.0 : 12.0;
     final lines = <Widget>[];
     if (name.isNotEmpty) {
       lines.add(
@@ -9448,7 +9540,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           'ชื่อ: $name',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+          style: GoogleFonts.kanit(fontSize: fontSize, color: Colors.black54),
         ),
       );
     }
@@ -9456,9 +9548,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       lines.add(
         Text(
           'ที่อยู่: $addr',
-          maxLines: 2,
+          maxLines: compact ? 1 : 2,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+          style: GoogleFonts.kanit(fontSize: fontSize, color: Colors.black54),
         ),
       );
     }
@@ -9466,9 +9558,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       lines.add(
         Text(
           detail,
-          maxLines: 2,
+          maxLines: compact ? 1 : 2,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+          style: GoogleFonts.kanit(fontSize: fontSize, color: Colors.black54),
         ),
       );
     }
@@ -11770,14 +11862,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final liters = double.tryParse(row.liters.trim()) ?? 0;
     final isFilled = liters > 0 && row.time.trim().isNotEmpty;
     final isSaved = row.txId != null && row.txId!.trim().isNotEmpty;
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
+      margin: EdgeInsets.only(bottom: phonePortrait ? 8 : 10),
+      padding: EdgeInsets.all(phonePortrait ? 12 : 14),
       decoration: BoxDecoration(
         color: isFilled || isSaved
             ? const Color(0xFFF3FAFF)
             : const Color(0xFFFAFCFE),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(phonePortrait ? 14 : 16),
         border: Border.all(
           color: isFilled || isSaved
               ? const Color(0xFF90CAF9)
@@ -11792,27 +11887,30 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: phonePortrait ? 38 : 44,
+                height: phonePortrait ? 38 : 44,
                 decoration: BoxDecoration(
                   color: const Color(0xFFE3F2FD),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.local_shipping_outlined,
-                  color: Color(0xFF1565C0),
+                  size: phonePortrait ? 20 : 24,
+                  color: const Color(0xFF1565C0),
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: phonePortrait ? 10 : 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (displayIndex != null)
                       Text(
-                        'รถแม็คโคร คันที่ $displayIndex',
+                        phonePortrait
+                            ? 'คันที่ $displayIndex'
+                            : 'รถแม็คโคร คันที่ $displayIndex',
                         style: GoogleFonts.kanit(
-                          fontSize: 13,
+                          fontSize: phonePortrait ? 12 : 13,
                           fontWeight: FontWeight.w700,
                           color: const Color(0xFF607D8B),
                         ),
@@ -11823,7 +11921,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.kanit(
-                        fontSize: 19,
+                        fontSize: phonePortrait ? 16 : 19,
                         fontWeight: FontWeight.w800,
                         color: const Color(0xFF0D47A1),
                         height: 1.2,
@@ -11834,10 +11932,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.person_outline_rounded,
-                            size: 15,
-                            color: Color(0xFF546E7A),
+                            size: phonePortrait ? 14 : 15,
+                            color: const Color(0xFF546E7A),
                           ),
                           const SizedBox(width: 4),
                           Flexible(
@@ -11846,7 +11944,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.kanit(
-                                fontSize: 14.5,
+                                fontSize: phonePortrait ? 13 : 14.5,
                                 fontWeight: FontWeight.w700,
                                 color: const Color(0xFF37474F),
                               ),
@@ -11855,10 +11953,35 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         ],
                       ),
                     ],
+                    if (phonePortrait && isSaved) ...[
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: const Color(0xFFA5D6A7)),
+                          ),
+                          child: Text(
+                            'บันทึกแล้ว',
+                            style: GoogleFonts.kanit(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF2E7D32),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              if (isSaved)
+              if (!phonePortrait && isSaved)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -11880,13 +12003,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: phonePortrait ? 8 : 10),
           Align(
             alignment: Alignment.centerLeft,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 5,
+              padding: EdgeInsets.symmetric(
+                horizontal: phonePortrait ? 8 : 10,
+                vertical: phonePortrait ? 4 : 5,
               ),
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF8E1),
@@ -11898,14 +12021,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 children: [
                   Icon(
                     Icons.local_gas_station_outlined,
-                    size: 16,
+                    size: phonePortrait ? 14 : 16,
                     color: Colors.amber.shade900,
                   ),
                   const SizedBox(width: 6),
                   Text(
                     'น้ำมันดีเซล',
                     style: GoogleFonts.kanit(
-                      fontSize: 13.5,
+                      fontSize: phonePortrait ? 12.5 : 13.5,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFF6D4C00),
                     ),
@@ -11914,11 +12037,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: phonePortrait ? 8 : 10),
           Text(
             'หักจากถัง',
             style: GoogleFonts.kanit(
-              fontSize: 13.5,
+              fontSize: phonePortrait ? 12.5 : 13.5,
               fontWeight: FontWeight.w700,
               color: const Color(0xFF546E7A),
             ),
@@ -11928,7 +12051,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             selected: row.fuelTank,
             onChanged: (tank) => setState(() => row.fuelTank = tank),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: phonePortrait ? 8 : 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -11949,16 +12072,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                   style: GoogleFonts.kanit(
                     color: const Color(0xFF1D2A3A),
-                    fontSize: 20,
+                    fontSize: phonePortrait ? 17 : 20,
                     fontWeight: FontWeight.w800,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'ใช้น้ำมัน (ลิตร)',
-                    prefixIcon: Icon(Icons.opacity_outlined),
+                  decoration: InputDecoration(
+                    labelText: phonePortrait ? 'ลิตร' : 'ใช้น้ำมัน (ลิตร)',
+                    prefixIcon: const Icon(Icons.opacity_outlined),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: phonePortrait ? 8 : 10),
               Expanded(
                 flex: 2,
                 child: TextFormField(
@@ -11967,12 +12090,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   onTap: () => _pickFuelTime(row),
                   style: GoogleFonts.kanit(
                     color: const Color(0xFF1D2A3A),
-                    fontSize: 20,
+                    fontSize: phonePortrait ? 17 : 20,
                     fontWeight: FontWeight.w800,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'เวลาที่เติม',
-                    prefixIcon: Icon(Icons.access_time_outlined),
+                  decoration: InputDecoration(
+                    labelText: phonePortrait ? 'เวลา' : 'เวลาที่เติม',
+                    prefixIcon: const Icon(Icons.access_time_outlined),
                   ),
                 ),
               ),
@@ -12232,6 +12355,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final negMain = mainPreview < 0;
     final negReserve = reservePreview < 0;
     final warn = overMain || overReserve || negMain || negReserve;
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
 
     Widget line(String title, double current, double capacity, double? pending) {
       final preview = current + (pending ?? 0);
@@ -12239,23 +12365,31 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '$title ${formatFuelLiters(current)} / '
-            '${formatFuelLiters(capacity)} ลิตร',
+            phonePortrait
+                ? '$title ${formatFuelLiters(current)} ล.'
+                : '$title ${formatFuelLiters(current)} / '
+                    '${formatFuelLiters(capacity)} ลิตร',
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.kanit(
               fontWeight: FontWeight.w800,
-              fontSize: 15.5,
+              fontSize: phonePortrait ? 13.5 : 15.5,
               color: const Color(0xFF0F5FAF),
             ),
           ),
           if (pending != null && pending != 0) ...[
             const SizedBox(height: 2),
             Text(
-              'หลังบันทึก: ${formatFuelLiters(preview)} ลิตร',
+              phonePortrait
+                  ? 'หลังบันทึก ${formatFuelLiters(preview)} ล.'
+                  : 'หลังบันทึก: ${formatFuelLiters(preview)} ลิตร',
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w700,
-                fontSize: 13,
+                fontSize: phonePortrait ? 12 : 13,
                 color: warn
                     ? const Color(0xFFD14343)
                     : const Color(0xFF37474F),
@@ -12266,8 +12400,45 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       );
     }
 
+    final lines = phonePortrait
+        ? Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: line(
+                  'หลัก',
+                  main,
+                  kFuelTankCapacityMainLiters,
+                  mainDelta,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: line(
+                  'สำรอง',
+                  reserve,
+                  kFuelTankCapacityReserveLiters,
+                  pendingReserveDelta,
+                ),
+              ),
+            ],
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              line('ถังหลัก', main, kFuelTankCapacityMainLiters, mainDelta),
+              const SizedBox(height: 8),
+              line(
+                'ถังสำรอง',
+                reserve,
+                kFuelTankCapacityReserveLiters,
+                pendingReserveDelta,
+              ),
+            ],
+          );
+
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(phonePortrait ? 10 : 12),
       decoration: BoxDecoration(
         color: warn ? const Color(0xFFFFF3F3) : const Color(0xFFF4F8FD),
         borderRadius: BorderRadius.circular(12),
@@ -12278,22 +12449,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          line('ถังหลัก', main, kFuelTankCapacityMainLiters, mainDelta),
-          const SizedBox(height: 8),
-          line(
-            'ถังสำรอง',
-            reserve,
-            kFuelTankCapacityReserveLiters,
-            pendingReserveDelta,
-          ),
+          lines,
           if (overMain || overReserve) ...[
-            const SizedBox(height: 4),
+            SizedBox(height: phonePortrait ? 4 : 4),
             Text(
               'เกินความจุถัง',
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w700,
-                fontSize: 13,
+                fontSize: phonePortrait ? 12 : 13,
                 color: const Color(0xFFD14343),
               ),
             ),
@@ -12301,11 +12465,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           if (negMain) ...[
             const SizedBox(height: 4),
             Text(
-              'เบิกมากกว่าน้ำมันที่มีในถังหลัก',
+              phonePortrait
+                  ? 'เบิกเกินถังหลัก'
+                  : 'เบิกมากกว่าน้ำมันที่มีในถังหลัก',
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w700,
-                fontSize: 13,
+                fontSize: phonePortrait ? 12 : 13,
                 color: const Color(0xFFD14343),
               ),
             ),
@@ -12313,13 +12479,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           if (negReserve) ...[
             const SizedBox(height: 4),
             Text(
-              'ถังสำรองติดลบ ${formatFuelLiters(reservePreview.abs())} ลิตร — '
-              'ขาดบันทึกเบิกเติมเครื่องจักร '
-              '~${formatFuelLiters(_fuelStock.reserveShortfallLiters > 0 ? _fuelStock.reserveShortfallLiters : reservePreview.abs())} ลิตร',
+              phonePortrait
+                  ? 'ถังสำรองติดลบ ${formatFuelLiters(reservePreview.abs())} ล.'
+                  : 'ถังสำรองติดลบ ${formatFuelLiters(reservePreview.abs())} ลิตร — '
+                      'ขาดบันทึกเบิกเติมเครื่องจักร '
+                      '~${formatFuelLiters(_fuelStock.reserveShortfallLiters > 0 ? _fuelStock.reserveShortfallLiters : reservePreview.abs())} ลิตร',
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w700,
-                fontSize: 13,
+                fontSize: phonePortrait ? 12 : 13,
                 height: 1.35,
                 color: const Color(0xFFD14343),
               ),
@@ -13838,19 +14006,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     bool laborFormIncludePool = true,
     bool laborFormIncludeCanvas = true,
   }) {
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
+    final compactShell =
+        phonePortrait &&
+        (_isMaintenanceMode || _isDailyEventMode || _isLaborLeaveMode);
+    final shellPad = compactShell ? 8.0 : 16.0;
     return [
       _buildModuleHistorySection(),
       RepaintBoundary(
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(shellPad),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(compactShell ? 18 : 24),
             border: Border.all(color: const Color(0xFFE7EDF5)),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 18,
+                blurRadius: compactShell ? 12 : 18,
                 offset: const Offset(0, 6),
               ),
             ],
@@ -14019,18 +14194,45 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final leaveRangeLabel = _leaveEndDate.isAfter(_leaveStartDate)
         ? '${_formatDate(_leaveStartDate)} - ${_formatDate(_leaveEndDate)}'
         : 'เริ่ม ${_formatDate(_leaveStartDate)}';
+    final size = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
+    final sectionGap = phonePortrait ? 8.0 : 12.0;
+    final labelSize = phonePortrait ? 12.5 : 13.0;
+    final segmentStyle = ButtonStyle(
+      visualDensity: phonePortrait ? VisualDensity.compact : VisualDensity.standard,
+      tapTargetSize: phonePortrait
+          ? MaterialTapTargetSize.shrinkWrap
+          : MaterialTapTargetSize.padded,
+      textStyle: WidgetStatePropertyAll(
+        GoogleFonts.kanit(
+          fontWeight: FontWeight.w700,
+          fontSize: phonePortrait ? 12.5 : 13,
+        ),
+      ),
+    );
+
+    Widget sectionLabel(String text) => Text(
+          text,
+          style: GoogleFonts.kanit(
+            fontWeight: FontWeight.w700,
+            fontSize: labelSize,
+            color: const Color(0xFF314C6D),
+          ),
+        );
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(phonePortrait ? 12 : 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(phonePortrait ? 16 : 18),
         border: Border.all(color: const Color(0xFFE3ECF7)),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF00897B).withValues(alpha: 0.07),
-            blurRadius: 12,
+            blurRadius: phonePortrait ? 8 : 12,
             offset: const Offset(0, 4),
           ),
         ],
@@ -14039,41 +14241,56 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'บันทึกลางาน',
+            phonePortrait ? 'ลางาน' : 'บันทึกลางาน',
             style: GoogleFonts.kanit(
-              fontSize: 22,
+              fontSize: phonePortrait ? 18 : 22,
               fontWeight: FontWeight.w700,
               color: const Color(0xFF00695C),
+              height: 1.15,
             ),
           ),
           if (_laborLeaveTxId != null) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: phonePortrait ? 6 : 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: phonePortrait ? 10 : 12,
+                vertical: phonePortrait ? 6 : 8,
+              ),
               decoration: BoxDecoration(
                 color: const Color(0xFFE3F2FD),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
                 border: Border.all(color: const Color(0xFF90CAF9)),
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.edit_note_rounded,
-                    size: 20,
-                    color: Color(0xFF1565C0),
+                    size: phonePortrait ? 18 : 20,
+                    color: const Color(0xFF1565C0),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: phonePortrait ? 6 : 8),
                   Expanded(
                     child: Text(
-                      'กำลังแก้ไขรายการเดิม — กดบันทึกการแก้ไขเมื่อเสร็จ',
+                      phonePortrait
+                          ? 'กำลังแก้ไข — กดบันทึกเมื่อเสร็จ'
+                          : 'กำลังแก้ไขรายการเดิม — กดบันทึกการแก้ไขเมื่อเสร็จ',
                       style: GoogleFonts.kanit(
-                        fontSize: 12.5,
+                        fontSize: phonePortrait ? 12 : 12.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF0D47A1),
+                        color: const Color(0xFF0D47A1),
+                        height: 1.25,
                       ),
                     ),
                   ),
                   TextButton(
+                    style: TextButton.styleFrom(
+                      visualDensity: phonePortrait
+                          ? VisualDensity.compact
+                          : VisualDensity.standard,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: phonePortrait ? 8 : 12,
+                      ),
+                    ),
                     onPressed: _saving
                         ? null
                         : () => setState(() {
@@ -14095,6 +14312,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       'ยกเลิก',
                       style: GoogleFonts.kanit(
                         fontWeight: FontWeight.w700,
+                        fontSize: phonePortrait ? 13 : 14,
                         color: const Color(0xFF1565C0),
                       ),
                     ),
@@ -14103,28 +14321,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
           ],
-          const SizedBox(height: 6),
-          Text(
-            'รูปแบบสอดคล้องเว็บแอพ: ค่าแรง/ลา → ลา',
-            style: GoogleFonts.kanit(
-              fontSize: 13,
-              color: const Color(0xFF5B6D83),
+          if (!phonePortrait) ...[
+            const SizedBox(height: 6),
+            Text(
+              'รูปแบบสอดคล้องเว็บแอพ: ค่าแรง/ลา → ลา',
+              style: GoogleFonts.kanit(
+                fontSize: 13,
+                color: const Color(0xFF5B6D83),
+              ),
             ),
-          ),
+          ],
           _employeeDataLoadProgressBanner(),
-          const SizedBox(height: 8),
-          Text(
-            'ประเภทการลา',
-            style: GoogleFonts.kanit(
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-              color: const Color(0xFF314C6D),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerLeft,
+          SizedBox(height: phonePortrait ? 6 : 8),
+          sectionLabel('ประเภทการลา'),
+          SizedBox(height: phonePortrait ? 4 : 6),
+          SizedBox(
+            width: double.infinity,
             child: SegmentedButton<String>(
+              showSelectedIcon: !phonePortrait,
               segments: const [
                 ButtonSegment<String>(value: 'Personal', label: Text('ลากิจ')),
                 ButtonSegment<String>(value: 'Sick', label: Text('ลาป่วย')),
@@ -14133,21 +14347,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               onSelectionChanged: (next) {
                 setState(() => _leaveTypeChoice = next.first);
               },
+              style: segmentStyle,
             ),
           ),
-          const SizedBox(height: 12),
-          Text(
-            'ระยะเวลาลา',
-            style: GoogleFonts.kanit(
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-              color: const Color(0xFF314C6D),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerLeft,
+          SizedBox(height: sectionGap),
+          sectionLabel('ระยะเวลาลา'),
+          SizedBox(height: phonePortrait ? 4 : 6),
+          SizedBox(
+            width: double.infinity,
             child: SegmentedButton<bool>(
+              showSelectedIcon: !phonePortrait,
               segments: const [
                 ButtonSegment<bool>(value: false, label: Text('เต็มวัน')),
                 ButtonSegment<bool>(value: true, label: Text('ครึ่งวัน')),
@@ -14165,27 +14374,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _syncLeaveDaysFromRange();
                 });
               },
-              style: ButtonStyle(
-                textStyle: WidgetStatePropertyAll(
-                  GoogleFonts.kanit(fontWeight: FontWeight.w700, fontSize: 13),
-                ),
-              ),
+              style: segmentStyle,
             ),
           ),
           if (_leaveIsHalfDay) ...[
-            const SizedBox(height: 10),
-            Text(
-              'ช่วงครึ่งวัน',
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: const Color(0xFF314C6D),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerLeft,
+            SizedBox(height: phonePortrait ? 8 : 10),
+            sectionLabel('ช่วงครึ่งวัน'),
+            SizedBox(height: phonePortrait ? 4 : 6),
+            SizedBox(
+              width: double.infinity,
               child: SegmentedButton<String>(
+                showSelectedIcon: !phonePortrait,
                 segments: const [
                   ButtonSegment<String>(
                     value: 'morning',
@@ -14201,66 +14400,69 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   if (next.isEmpty) return;
                   setState(() => _leaveHalfPart = next.first);
                 },
-                style: ButtonStyle(
-                  textStyle: WidgetStatePropertyAll(
-                    GoogleFonts.kanit(fontWeight: FontWeight.w700, fontSize: 13),
-                  ),
-                ),
+                style: segmentStyle,
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          Text(
-            'ช่วงวันลา',
-            style: GoogleFonts.kanit(
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-              color: const Color(0xFF314C6D),
-            ),
-          ),
-          const SizedBox(height: 6),
+          SizedBox(height: sectionGap),
+          sectionLabel('ช่วงวันลา'),
+          SizedBox(height: phonePortrait ? 4 : 6),
           OutlinedButton.icon(
             onPressed: _saving ? null : _pickLeaveDateRange,
-            icon: const Icon(Icons.calendar_month_outlined, size: 22),
+            icon: Icon(
+              Icons.calendar_month_outlined,
+              size: phonePortrait ? 18 : 22,
+            ),
             label: Text(
               _leaveEndDate.isAfter(_leaveStartDate)
                   ? '${_formatDate(_leaveStartDate)} → ${_formatDate(_leaveEndDate)}'
                   : _formatDate(_leaveStartDate),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w800,
-                fontSize: 16,
+                fontSize: phonePortrait ? 14.5 : 16,
               ),
             ),
             style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
+              minimumSize: Size.fromHeight(phonePortrait ? 44 : 52),
+              padding: EdgeInsets.symmetric(
+                horizontal: phonePortrait ? 12 : 16,
+              ),
               foregroundColor: const Color(0xFF00695C),
               side: const BorderSide(color: Color(0xFF80CBC4), width: 1.5),
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: phonePortrait ? 6 : 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: EdgeInsets.symmetric(
+              horizontal: phonePortrait ? 10 : 12,
+              vertical: phonePortrait ? 8 : 10,
+            ),
             decoration: BoxDecoration(
               color: const Color(0xFFE0F2F1),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
               border: Border.all(color: const Color(0xFF80CBC4)),
             ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.event_available_rounded,
-                  size: 20,
-                  color: Color(0xFF00695C),
+                  size: phonePortrait ? 18 : 20,
+                  color: const Color(0xFF00695C),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: phonePortrait ? 6 : 8),
                 Expanded(
                   child: Text(
                     _leaveIsHalfDay
-                        ? 'รวม 0.5 วัน (ครึ่งวัน — '
-                              '${_leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})'
+                        ? (phonePortrait
+                            ? 'รวม 0.5 วัน · '
+                                '${_leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'}'
+                            : 'รวม 0.5 วัน (ครึ่งวัน — '
+                                '${_leaveHalfPart == 'morning' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})')
                         : 'รวม $_leaveRangeDays วัน',
                     style: GoogleFonts.kanit(
-                      fontSize: 16,
+                      fontSize: phonePortrait ? 14.5 : 16,
                       fontWeight: FontWeight.w800,
                       color: const Color(0xFF00695C),
                     ),
@@ -14269,46 +14471,57 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: sectionGap),
+          sectionLabel('เลือกพนักงาน'),
+          SizedBox(height: phonePortrait ? 2 : 4),
           Text(
-            'เลือกพนักงาน',
+            phonePortrait
+                ? 'ท่าทราย / คนขับรถแม็คโคร'
+                : 'แสดงเฉพาะตำแหน่ง: พนักงานท่าทราย, คนขับรถแม็คโคร',
             style: GoogleFonts.kanit(
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-              color: const Color(0xFF314C6D),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'แสดงเฉพาะตำแหน่ง: พนักงานท่าทราย, คนขับรถแม็คโคร',
-            style: GoogleFonts.kanit(
-              fontSize: 12,
+              fontSize: phonePortrait ? 11.5 : 12,
               color: const Color(0xFF64748B),
               height: 1.3,
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: phonePortrait ? 4 : 6),
           employees.isEmpty
               ? Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: EdgeInsets.symmetric(
+                    vertical: phonePortrait ? 8 : 12,
+                  ),
                   child: Text(
-                    'ยังไม่พบพนักงานท่าทราย/คนขับรถแม็คโคร — '
-                    'ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
+                    phonePortrait
+                        ? 'ยังไม่พบพนักงานท่าทราย/คนขับรถแม็คโคร'
+                        : 'ยังไม่พบพนักงานท่าทราย/คนขับรถแม็คโคร — '
+                            'ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w600,
+                      fontSize: phonePortrait ? 13 : 14,
                       color: const Color(0xFF8A6A2C),
                     ),
                   ),
                 )
               : Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: phonePortrait ? 6 : 8,
+                  runSpacing: phonePortrait ? 6 : 8,
                   children: employees.map((e) {
                     final id = e.id;
                     final selected = _selectedLeaveEmpIds.contains(id);
                     final name = _employeeUiDisplayName(e);
                     return FilterChip(
-                      label: Text(name, style: GoogleFonts.kanit(fontSize: 13)),
+                      visualDensity: phonePortrait
+                          ? VisualDensity.compact
+                          : VisualDensity.standard,
+                      materialTapTargetSize: phonePortrait
+                          ? MaterialTapTargetSize.shrinkWrap
+                          : MaterialTapTargetSize.padded,
+                      label: Text(
+                        name,
+                        style: GoogleFonts.kanit(
+                          fontSize: phonePortrait ? 12.5 : 13,
+                        ),
+                      ),
                       selected: selected,
                       onSelected: (_) {
                         setState(() {
@@ -14322,13 +14535,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     );
                   }).toList(),
                 ),
-          const SizedBox(height: 10),
+          SizedBox(height: phonePortrait ? 8 : 10),
           _AnimatedInputField(
             controller: _leaveReasonController,
-            decoration: const InputDecoration(
-              labelText: 'เหตุผลการลา (ไม่บังคับ)',
-              prefixIcon: Icon(Icons.note_alt_outlined),
+            decoration: InputDecoration(
+              labelText: phonePortrait
+                  ? 'เหตุผล (ไม่บังคับ)'
+                  : 'เหตุผลการลา (ไม่บังคับ)',
+              prefixIcon: Icon(
+                Icons.note_alt_outlined,
+                size: phonePortrait ? 20 : 24,
+              ),
               hintText: 'ไม่ใส่ก็บันทึกได้',
+              isDense: phonePortrait,
             ),
             keyboardType: TextInputType.text,
             textInputAction: TextInputAction.done,
@@ -14344,38 +14563,56 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               days > 0 ||
               _selectedLeaveEmpIds.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 12),
+              padding: EdgeInsets.only(top: phonePortrait ? 8 : 12),
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF8EC),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
                   border: Border.all(color: const Color(0xFFF2D39D)),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(10),
+                  padding: EdgeInsets.all(phonePortrait ? 8 : 10),
                   child: Text(
-                    'สรุป: ${_selectedLeaveEmpIds.length} คน · '
-                    '$leaveRangeLabel · $summaryDuration',
+                    phonePortrait
+                        ? '${_selectedLeaveEmpIds.length} คน · '
+                            '$leaveRangeLabel · $summaryDuration'
+                        : 'สรุป: ${_selectedLeaveEmpIds.length} คน · '
+                            '$leaveRangeLabel · $summaryDuration',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w700,
+                      fontSize: phonePortrait ? 12.5 : 14,
                       color: const Color(0xFF7A6A4A),
+                      height: 1.3,
                     ),
                   ),
                 ),
               ),
             ),
-          const SizedBox(height: 12),
+          SizedBox(height: phonePortrait ? 10 : 12),
           _SmoothPressable(
             enabled: !_saving,
             child: FilledButton.icon(
               onPressed: _saving ? null : _saveQuickEntry,
-              icon: const Icon(Icons.save_outlined),
-              label: Text('บันทึกลางาน', style: GoogleFonts.kanit()),
+              icon: Icon(
+                Icons.save_outlined,
+                size: phonePortrait ? 20 : 24,
+              ),
+              label: Text(
+                _saving
+                    ? 'กำลังบันทึก...'
+                    : (_laborLeaveTxId != null
+                        ? (phonePortrait ? 'บันทึกการแก้ไข' : 'บันทึกลางาน')
+                        : 'บันทึกลางาน'),
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: phonePortrait ? 15 : 16,
+                ),
+              ),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF00897B),
                 foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(48),
+                minimumSize: Size.fromHeight(phonePortrait ? 46 : 48),
               ),
             ),
           ),
@@ -14444,6 +14681,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     const advPrimary = Color(0xFFE65100);
     const advDeep = Color(0xFFBF360C);
     const warmSurface = Color(0xFFFFF8F1);
+    final size = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
+    final cardRadius = phonePortrait ? 16.0 : 20.0;
+    final stepGap = phonePortrait ? 12.0 : 18.0;
     final employees = _employeesForAdvancePicker();
     final alreadyRequested = _advanceEmpIdsAlreadyRequestedOnSelectedDay();
     final alreadyNames = alreadyRequested.map((id) {
@@ -14459,10 +14701,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     Widget advancePanel({required Widget child}) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+        padding: EdgeInsets.all(phonePortrait ? 10 : 14),
         decoration: BoxDecoration(
           color: warmSurface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(phonePortrait ? 12 : 16),
           border: Border.all(color: const Color(0xFFFFE0B2)),
         ),
         child: child,
@@ -14470,27 +14712,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     Widget stepLabel(String n, String title, String hint) {
+      final badge = phonePortrait ? 24.0 : 28.0;
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 28,
-            height: 28,
+            width: badge,
+            height: badge,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: advPrimary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(phonePortrait ? 8 : 10),
             ),
             child: Text(
               n,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w900,
-                fontSize: 14,
+                fontSize: phonePortrait ? 12.5 : 14,
                 color: advDeep,
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: phonePortrait ? 8 : 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -14499,14 +14742,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   title,
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
-                    fontSize: 14.5,
+                    fontSize: phonePortrait ? 13.5 : 14.5,
                     color: const Color(0xFF37474F),
                   ),
                 ),
                 Text(
                   hint,
                   style: GoogleFonts.kanit(
-                    fontSize: 12,
+                    fontSize: phonePortrait ? 11 : 12,
                     fontWeight: FontWeight.w500,
                     color: Colors.black54,
                     height: 1.3,
@@ -14520,17 +14763,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     return Material(
-      elevation: 4,
+      elevation: phonePortrait ? 2 : 4,
       shadowColor: advPrimary.withValues(alpha: 0.35),
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(cardRadius),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(cardRadius),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+              padding: EdgeInsets.fromLTRB(
+                phonePortrait ? 12 : 18,
+                phonePortrait ? 10 : 16,
+                phonePortrait ? 12 : 18,
+                phonePortrait ? 10 : 16,
+              ),
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   colors: [Color(0xFFFFE0B2), Color(0xFFFFCC80)],
@@ -14542,44 +14790,47 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    width: 52,
-                    height: 52,
+                    width: phonePortrait ? 40 : 52,
+                    height: phonePortrait ? 40 : 52,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.95),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius:
+                          BorderRadius.circular(phonePortrait ? 12 : 16),
                       boxShadow: [
                         BoxShadow(
                           color: advPrimary.withValues(alpha: 0.18),
-                          blurRadius: 10,
+                          blurRadius: phonePortrait ? 6 : 10,
                           offset: const Offset(0, 3),
                         ),
                       ],
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.savings_rounded,
                       color: advPrimary,
-                      size: 30,
+                      size: phonePortrait ? 22 : 30,
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  SizedBox(width: phonePortrait ? 10 : 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'ส่งคำขอเบิกเงิน',
+                          phonePortrait ? 'คำขอเบิกเงิน' : 'ส่งคำขอเบิกเงิน',
                           style: GoogleFonts.kanit(
-                            fontSize: 20,
+                            fontSize: phonePortrait ? 17 : 20,
                             fontWeight: FontWeight.w900,
                             color: Color(0xFF4E342E),
                             height: 1.1,
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        SizedBox(height: phonePortrait ? 3 : 6),
                         Text(
-                          'กรอกครบแล้วกดส่งด้านล่าง — ระบบจะให้ลงลายเซ็นก่อนส่ง และแจ้งผู้ดูแลผ่าน LINE',
+                          phonePortrait
+                              ? 'กรอกครบ → ส่ง → ลงลายเซ็น · แจ้ง LINE'
+                              : 'กรอกครบแล้วกดส่งด้านล่าง — ระบบจะให้ลงลายเซ็นก่อนส่ง และแจ้งผู้ดูแลผ่าน LINE',
                           style: GoogleFonts.kanit(
-                            fontSize: 12.5,
+                            fontSize: phonePortrait ? 11.5 : 12.5,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFF6D4C41),
                             height: 1.35,
@@ -14593,59 +14844,79 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
             Container(
               color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+              padding: EdgeInsets.fromLTRB(
+                phonePortrait ? 12 : 16,
+                phonePortrait ? 12 : 16,
+                phonePortrait ? 12 : 16,
+                phonePortrait ? 14 : 18,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _employeeDataLoadProgressBanner(),
-                  const SizedBox(height: 4),
+                  SizedBox(height: phonePortrait ? 2 : 4),
                   if (alreadyNames.isNotEmpty) ...[
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      padding: EdgeInsets.fromLTRB(
+                        phonePortrait ? 10 : 12,
+                        phonePortrait ? 8 : 10,
+                        phonePortrait ? 10 : 12,
+                        phonePortrait ? 8 : 10,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFF3E0),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius:
+                            BorderRadius.circular(phonePortrait ? 10 : 12),
                         border: Border.all(color: const Color(0xFFFFCC80)),
                       ),
                       child: Text(
-                        'ส่งคำขอวันนี้แล้ว: ${alreadyNames.join(', ')} '
-                        '— ไม่สามารถส่งซ้ำสำหรับคนเหล่านี้',
+                        phonePortrait
+                            ? 'ขอแล้ววันนี้: ${alreadyNames.join(', ')}'
+                            : 'ส่งคำขอวันนี้แล้ว: ${alreadyNames.join(', ')} '
+                                '— ไม่สามารถส่งซ้ำสำหรับคนเหล่านี้',
                         style: GoogleFonts.kanit(
-                          fontSize: 13,
+                          fontSize: phonePortrait ? 12 : 13,
                           fontWeight: FontWeight.w600,
                           color: const Color(0xFFBF360C),
                           height: 1.35,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: phonePortrait ? 8 : 12),
                   ],
                   stepLabel(
                     '1',
                     'เลือกพนักงาน',
-                    'เลือกได้หลายคน — เฉพาะพนักงานท่าทรายและคนขับรถแม็คโคร',
+                    phonePortrait
+                        ? 'หลายคนได้ · ท่าทราย / คนขับแม็คโคร'
+                        : 'เลือกได้หลายคน — เฉพาะพนักงานท่าทรายและคนขับรถแม็คโคร',
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: phonePortrait ? 8 : 10),
                   advancePanel(
                     child: employees.isEmpty
                         ? Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            padding: EdgeInsets.symmetric(
+                              vertical: phonePortrait ? 6 : 10,
+                            ),
                             child: Row(
                               children: [
                                 Icon(
                                   Icons.groups_outlined,
                                   color: Colors.orange.shade700,
-                                  size: 28,
+                                  size: phonePortrait ? 22 : 28,
                                 ),
-                                const SizedBox(width: 12),
+                                SizedBox(width: phonePortrait ? 8 : 12),
                                 Expanded(
                                   child: Text(
-                                    'ยังไม่พบพนักงานท่าทราย/คนขับรถแม็คโคร — '
-                                    'ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
+                                    phonePortrait
+                                        ? 'ยังไม่พบพนักงานท่าทราย/แม็คโคร — '
+                                            'ตรวจที่ ตั้งค่า > พนักงาน'
+                                        : 'ยังไม่พบพนักงานท่าทราย/คนขับรถแม็คโคร — '
+                                            'ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
                                     style: GoogleFonts.kanit(
                                       fontWeight: FontWeight.w600,
-                                      fontSize: 14,
+                                      fontSize: phonePortrait ? 12.5 : 14,
                                       color: const Color(0xFF8A6A2C),
                                     ),
                                   ),
@@ -14654,8 +14925,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             ),
                           )
                         : Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
+                            spacing: phonePortrait ? 6 : 8,
+                            runSpacing: phonePortrait ? 6 : 8,
                             children: employees.map((e) {
                               final id = e.id;
                               final selected = _selectedAdvanceEmpIds.contains(
@@ -14665,21 +14936,32 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               final requested = alreadyRequested.contains(id);
                               return FilterChip(
                                 showCheckmark: false,
+                                visualDensity: phonePortrait
+                                    ? VisualDensity.compact
+                                    : VisualDensity.standard,
+                                materialTapTargetSize: phonePortrait
+                                    ? MaterialTapTargetSize.shrinkWrap
+                                    : MaterialTapTargetSize.padded,
+                                labelPadding: phonePortrait
+                                    ? const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      )
+                                    : null,
                                 label: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     if (selected) ...[
-                                      const Icon(
+                                      Icon(
                                         Icons.check_rounded,
-                                        size: 20,
-                                        color: Color(0xFF2E7D32),
+                                        size: phonePortrait ? 16 : 20,
+                                        color: const Color(0xFF2E7D32),
                                       ),
-                                      const SizedBox(width: 6),
+                                      SizedBox(width: phonePortrait ? 4 : 6),
                                     ],
                                     Text(
                                       requested ? '$name · ขอแล้ว' : name,
                                       style: GoogleFonts.kanit(
-                                        fontSize: 14,
+                                        fontSize: phonePortrait ? 12.5 : 14,
                                         fontWeight: FontWeight.w600,
                                         color: requested
                                             ? const Color(0xFF9E9E9E)
@@ -14715,21 +14997,38 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             }).toList(),
                           ),
                   ),
-                  const SizedBox(height: 18),
+                  SizedBox(height: stepGap),
                   stepLabel(
                     '2',
-                    'จำนวนเงินที่ขอ (บาทต่อคน)',
-                    'แตะช่องเพื่อเปิดตัวเลข — ทุกคนที่เลือกใช้ยอดเดียวกัน',
+                    phonePortrait
+                        ? 'จำนวนเงิน (บาทต่อคน)'
+                        : 'จำนวนเงินที่ขอ (บาทต่อคน)',
+                    phonePortrait
+                        ? 'แตะช่องเปิดตัวเลข · ยอดเดียวกันทุกคน'
+                        : 'แตะช่องเพื่อเปิดตัวเลข — ทุกคนที่เลือกใช้ยอดเดียวกัน',
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: phonePortrait ? 8 : 10),
                   _AnimatedInputField(
                     controller: _advanceAmountPerPersonController,
                     decoration: InputDecoration(
                       labelText: 'บาทต่อคน',
-                      labelStyle: GoogleFonts.kanit(),
-                      prefixIcon: const Icon(Icons.payments_outlined),
+                      labelStyle: GoogleFonts.kanit(
+                        fontSize: phonePortrait ? 14 : null,
+                      ),
+                      isDense: phonePortrait,
+                      contentPadding: phonePortrait
+                          ? const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 12,
+                            )
+                          : null,
+                      prefixIcon: Icon(
+                        Icons.payments_outlined,
+                        size: phonePortrait ? 20 : 24,
+                      ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius:
+                            BorderRadius.circular(phonePortrait ? 12 : 14),
                         borderSide: const BorderSide(
                           color: advPrimary,
                           width: 1.5,
@@ -14747,22 +15046,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       maxDecimalPlaces: 2,
                     ),
                     style: GoogleFonts.kanit(
-                      fontSize: 20,
+                      fontSize: phonePortrait ? 18 : 20,
                       fontWeight: FontWeight.w800,
                       color: const Color(0xFF1D2A3A),
                     ),
                   ),
                   if (totalHint != null) ...[
-                    const SizedBox(height: 10),
+                    SizedBox(height: phonePortrait ? 8 : 10),
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: phonePortrait ? 10 : 14,
+                        vertical: phonePortrait ? 8 : 12,
                       ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFE8F5E9).withValues(alpha: 0.65),
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius:
+                            BorderRadius.circular(phonePortrait ? 12 : 14),
                         border: Border.all(color: const Color(0xFFC8E6C9)),
                       ),
                       child: Row(
@@ -14770,14 +15070,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           Icon(
                             Icons.calculate_rounded,
                             color: Colors.green.shade800,
-                            size: 26,
+                            size: phonePortrait ? 20 : 26,
                           ),
-                          const SizedBox(width: 10),
+                          SizedBox(width: phonePortrait ? 8 : 10),
                           Expanded(
                             child: Text(
-                              'ประมาณการรวม $nSel คน × ฿${_strNum(per)} = ฿${_strNum(totalHint)}',
+                              phonePortrait
+                                  ? '$nSel คน × ฿${_strNum(per)} = ฿${_strNum(totalHint)}'
+                                  : 'ประมาณการรวม $nSel คน × ฿${_strNum(per)} = ฿${_strNum(totalHint)}',
                               style: GoogleFonts.kanit(
-                                fontSize: 13.5,
+                                fontSize: phonePortrait ? 12.5 : 13.5,
                                 fontWeight: FontWeight.w800,
                                 color: const Color(0xFF1B5E20),
                                 height: 1.25,
@@ -14788,13 +15090,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ),
                     ),
                   ],
-                  const SizedBox(height: 18),
+                  SizedBox(height: stepGap),
                   stepLabel(
                     '3',
-                    'รับเงินเมื่อไหร่ และรูปแบบใด',
-                    'เลือกช่วงเวลาและเงินสดหรือโอน — ถ้าโอนให้กรอกธนาคารและเลขบัญชี',
+                    phonePortrait
+                        ? 'ช่วงรับเงินและรูปแบบ'
+                        : 'รับเงินเมื่อไหร่ และรูปแบบใด',
+                    phonePortrait
+                        ? 'กลางวัน/เย็น · เงินสดหรือโอน'
+                        : 'เลือกช่วงเวลาและเงินสดหรือโอน — ถ้าโอนให้กรอกธนาคารและเลขบัญชี',
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: phonePortrait ? 8 : 10),
                   advancePanel(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -14803,11 +15109,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           'ช่วงรับเงิน',
                           style: GoogleFonts.kanit(
                             fontWeight: FontWeight.w800,
-                            fontSize: 13,
+                            fontSize: phonePortrait ? 12 : 13,
                             color: const Color(0xFF455A64),
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        SizedBox(height: phonePortrait ? 6 : 8),
                         Row(
                           children: [
                             Expanded(
@@ -14817,13 +15123,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 label: 'กลางวัน',
                                 icon: Icons.wb_sunny_rounded,
                                 primaryColor: advPrimary,
+                                compact: phonePortrait,
                                 onTap: () => setState(
                                   () =>
                                       _advancePayoutSlot = AdvanceGmMeta.midday,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 10),
+                            SizedBox(width: phonePortrait ? 6 : 10),
                             Expanded(
                               child: _AdvanceChoiceButton(
                                 selected:
@@ -14831,6 +15138,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 label: 'เย็น',
                                 icon: Icons.nightlight_round,
                                 primaryColor: advPrimary,
+                                compact: phonePortrait,
                                 onTap: () => setState(
                                   () => _advancePayoutSlot =
                                       AdvanceGmMeta.evening,
@@ -14839,16 +15147,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             ),
                           ],
                         ),
-                        const SizedBox(height: 14),
+                        SizedBox(height: phonePortrait ? 10 : 14),
                         Text(
                           'รูปแบบการรับ',
                           style: GoogleFonts.kanit(
                             fontWeight: FontWeight.w800,
-                            fontSize: 13,
+                            fontSize: phonePortrait ? 12 : 13,
                             color: const Color(0xFF455A64),
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        SizedBox(height: phonePortrait ? 6 : 8),
                         Row(
                           children: [
                             Expanded(
@@ -14858,13 +15166,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 label: 'เงินสด',
                                 icon: Icons.payments_rounded,
                                 primaryColor: advPrimary,
+                                compact: phonePortrait,
                                 onTap: () => setState(
                                   () => _advancePaymentMethod =
                                       AdvanceGmMeta.cash,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 10),
+                            SizedBox(width: phonePortrait ? 6 : 10),
                             Expanded(
                               child: _AdvanceChoiceButton(
                                 selected:
@@ -14873,6 +15182,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 label: 'เงินโอน',
                                 icon: Icons.account_balance_wallet_rounded,
                                 primaryColor: advPrimary,
+                                compact: phonePortrait,
                                 onTap: () => setState(
                                   () => _advancePaymentMethod =
                                       AdvanceGmMeta.transfer,
@@ -14890,20 +15200,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         ? Column(
                             key: const ValueKey('adv_transfer'),
                             children: [
-                              const SizedBox(height: 12),
+                              SizedBox(height: phonePortrait ? 8 : 12),
                               Container(
                                 width: double.infinity,
-                                padding: const EdgeInsets.fromLTRB(
-                                  14,
-                                  14,
-                                  14,
-                                  14,
+                                padding: EdgeInsets.all(
+                                  phonePortrait ? 10 : 14,
                                 ),
                                 decoration: BoxDecoration(
                                   color: const Color(
                                     0xFFE3F2FD,
                                   ).withValues(alpha: 0.55),
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(
+                                    phonePortrait ? 12 : 16,
+                                  ),
                                   border: Border.all(
                                     color: const Color(0xFF90CAF9),
                                   ),
@@ -14917,46 +15226,50 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                         Icon(
                                           Icons.account_balance_rounded,
                                           color: Colors.blue.shade800,
-                                          size: 22,
+                                          size: phonePortrait ? 18 : 22,
                                         ),
-                                        const SizedBox(width: 8),
+                                        SizedBox(width: phonePortrait ? 6 : 8),
                                         Text(
                                           'ข้อมูลบัญชีรับโอน',
                                           style: GoogleFonts.kanit(
                                             fontWeight: FontWeight.w800,
-                                            fontSize: 14,
+                                            fontSize: phonePortrait ? 13 : 14,
                                             color: const Color(0xFF0D47A1),
                                           ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 12),
+                                    SizedBox(height: phonePortrait ? 8 : 12),
                                     InputDecorator(
                                       decoration: InputDecoration(
                                         labelText: 'ธนาคาร',
-                                        labelStyle: GoogleFonts.kanit(),
+                                        labelStyle: GoogleFonts.kanit(
+                                          fontSize: phonePortrait ? 14 : null,
+                                        ),
+                                        isDense: phonePortrait,
                                         prefixIcon: _advanceBank.trim().isEmpty
-                                            ? const Icon(
+                                            ? Icon(
                                                 Icons.account_balance_outlined,
+                                                size: phonePortrait ? 20 : 24,
                                               )
                                             : Padding(
-                                                padding: const EdgeInsets.only(
-                                                  left: 10,
+                                                padding: EdgeInsets.only(
+                                                  left: phonePortrait ? 8 : 10,
                                                   right: 2,
                                                 ),
                                                 child: ThaiBankBrandIcon(
                                                   bankName: _advanceBank.trim(),
-                                                  size: 28,
+                                                  size: phonePortrait ? 24 : 28,
                                                 ),
                                               ),
                                         border: OutlineInputBorder(
                                           borderRadius: BorderRadius.circular(
-                                            14,
+                                            phonePortrait ? 12 : 14,
                                           ),
                                         ),
                                         enabledBorder: OutlineInputBorder(
                                           borderRadius: BorderRadius.circular(
-                                            14,
+                                            phonePortrait ? 12 : 14,
                                           ),
                                           borderSide: const BorderSide(
                                             color: Color(0xFFBBDEFB),
@@ -14964,7 +15277,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                         ),
                                         focusedBorder: OutlineInputBorder(
                                           borderRadius: BorderRadius.circular(
-                                            14,
+                                            phonePortrait ? 12 : 14,
                                           ),
                                           borderSide: const BorderSide(
                                             color: advPrimary,
@@ -14975,12 +15288,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                       child: DropdownButtonHideUnderline(
                                         child: DropdownButton<String>(
                                           isExpanded: true,
-                                          itemHeight: 52,
+                                          itemHeight:
+                                              phonePortrait ? 48 : 52,
                                           value: _advanceBankDropdownValue(),
                                           hint: Text(
                                             'เลือกธนาคาร',
                                             style: GoogleFonts.kanit(
-                                              fontSize: 16,
+                                              fontSize:
+                                                  phonePortrait ? 14.5 : 16,
                                               fontWeight: FontWeight.w600,
                                               color: const Color(0xFF8A9BA8),
                                             ),
@@ -14991,25 +15306,30 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                                 _advanceBank = (v ?? '').trim(),
                                           ),
                                           style: GoogleFonts.kanit(
-                                            fontSize: 16,
+                                            fontSize:
+                                                phonePortrait ? 14.5 : 16,
                                             fontWeight: FontWeight.w600,
                                             color: const Color(0xFF1D2A3A),
                                           ),
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(height: 10),
+                                    SizedBox(height: phonePortrait ? 8 : 10),
                                     TextField(
                                       controller: _advanceAccountController,
                                       decoration: InputDecoration(
                                         labelText: 'เลขบัญชี',
-                                        labelStyle: GoogleFonts.kanit(),
-                                        prefixIcon: const Icon(
+                                        labelStyle: GoogleFonts.kanit(
+                                          fontSize: phonePortrait ? 14 : null,
+                                        ),
+                                        isDense: phonePortrait,
+                                        prefixIcon: Icon(
                                           Icons.numbers_outlined,
+                                          size: phonePortrait ? 20 : 24,
                                         ),
                                         focusedBorder: OutlineInputBorder(
                                           borderRadius: BorderRadius.circular(
-                                            14,
+                                            phonePortrait ? 12 : 14,
                                           ),
                                           borderSide: const BorderSide(
                                             color: advPrimary,
@@ -15018,7 +15338,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                         ),
                                       ),
                                       style: GoogleFonts.kanit(
-                                        fontSize: 16,
+                                        fontSize: phonePortrait ? 14.5 : 16,
                                         fontWeight: FontWeight.w600,
                                       ),
                                       keyboardType: TextInputType.number,
@@ -15034,51 +15354,60 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             height: 0,
                           ),
                   ),
-                  const SizedBox(height: 20),
+                  SizedBox(height: phonePortrait ? 14 : 20),
                   _SmoothPressable(
                     enabled: !_saving,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius:
+                            BorderRadius.circular(phonePortrait ? 14 : 16),
                         gradient: const LinearGradient(
                           colors: [Color(0xFFFF9800), Color(0xFFE65100)],
                         ),
                         boxShadow: [
                           BoxShadow(
                             color: advPrimary.withValues(alpha: 0.45),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
+                            blurRadius: phonePortrait ? 10 : 14,
+                            offset: Offset(0, phonePortrait ? 4 : 6),
                           ),
                         ],
                       ),
                       child: FilledButton.icon(
                         onPressed: _saving ? null : _saveQuickEntry,
-                        icon: const Icon(Icons.draw_rounded),
+                        icon: Icon(
+                          Icons.draw_rounded,
+                          size: phonePortrait ? 20 : 24,
+                        ),
                         label: Text(
-                          'ส่งคำขอเบิกเงิน',
+                          phonePortrait ? 'ส่งคำขอ' : 'ส่งคำขอเบิกเงิน',
                           style: GoogleFonts.kanit(
                             fontWeight: FontWeight.w800,
-                            fontSize: 17,
+                            fontSize: phonePortrait ? 15.5 : 17,
                           ),
                         ),
                         style: FilledButton.styleFrom(
                           backgroundColor: Colors.transparent,
                           foregroundColor: Colors.white,
                           shadowColor: Colors.transparent,
-                          minimumSize: const Size.fromHeight(54),
+                          minimumSize:
+                              Size.fromHeight(phonePortrait ? 48 : 54),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(
+                              phonePortrait ? 14 : 16,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: phonePortrait ? 6 : 8),
                   Text(
-                    'กดแล้วจะเปิดหน้าลายเซ็น — ยกเลิกได้จนกว่าจะยืนยัน',
+                    phonePortrait
+                        ? 'จะเปิดหน้าลายเซ็น — ยกเลิกได้ก่อนยืนยัน'
+                        : 'กดแล้วจะเปิดหน้าลายเซ็น — ยกเลิกได้จนกว่าจะยืนยัน',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
-                      fontSize: 11.5,
+                      fontSize: phonePortrait ? 11 : 11.5,
                       fontWeight: FontWeight.w500,
                       color: Colors.black45,
                       height: 1.3,
@@ -16511,34 +16840,55 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildOtEmployeeChips(_OtGroupDraft group) {
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
     final list = _employeesForOtPicker();
     if (list.isEmpty) {
       return Container(
-        padding: const EdgeInsets.all(10),
+        padding: EdgeInsets.all(phonePortrait ? 8 : 10),
         decoration: BoxDecoration(
           color: const Color(0xFFFFF5E8),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(phonePortrait ? 8 : 10),
           border: Border.all(color: const Color(0xFFF3DEB8)),
         ),
         child: Text(
-          'ยังไม่มีพนักงานที่เลือกได้ (ยกเว้นคนขับรถ เฝ้ากลางคืน รับจ้างรายวัน)',
+          phonePortrait
+              ? 'ยังไม่มีพนักงานที่เลือกได้'
+              : 'ยังไม่มีพนักงานที่เลือกได้ (ยกเว้นคนขับรถ เฝ้ากลางคืน รับจ้างรายวัน)',
           style: GoogleFonts.kanit(
             fontWeight: FontWeight.w700,
+            fontSize: phonePortrait ? 12.5 : 14,
             color: const Color(0xFF8A6A2C),
           ),
         ),
       );
     }
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: phonePortrait ? 6 : 8,
+      runSpacing: phonePortrait ? 6 : 8,
       children: list.map((e) {
         final id = e.id;
         final selected = group.employeeIds.contains(id);
         final name = _employeeOtChipLabel(e);
         return FilterChip(
-          label: Text(name, style: GoogleFonts.kanit(fontSize: 13)),
+          label: Text(
+            name,
+            style: GoogleFonts.kanit(fontSize: phonePortrait ? 12 : 13),
+          ),
           selected: selected,
+          visualDensity:
+              phonePortrait ? VisualDensity.compact : VisualDensity.standard,
+          materialTapTargetSize: phonePortrait
+              ? MaterialTapTargetSize.shrinkWrap
+              : MaterialTapTargetSize.padded,
+          labelPadding: EdgeInsets.symmetric(
+            horizontal: phonePortrait ? 6 : 8,
+          ),
+          padding: EdgeInsets.symmetric(
+            horizontal: phonePortrait ? 2 : 4,
+            vertical: phonePortrait ? 0 : 2,
+          ),
           onSelected: (_) {
             setState(() {
               if (selected) {
@@ -16554,6 +16904,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildOtFormCard() {
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
     final g = _activeOtGroup;
     final hours = double.tryParse(g.hoursController.text.trim()) ?? 0;
     final empCount = g.employeeIds.length;
@@ -16564,10 +16917,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(phonePortrait ? 12 : 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(phonePortrait ? 16 : 18),
         border: Border.all(color: const Color(0xFFE3ECF7)),
         boxShadow: [
           BoxShadow(
@@ -16584,33 +16937,35 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             DecoratedBox(
               decoration: BoxDecoration(
                 color: const Color(0xFFE8F5E9),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(phonePortrait ? 8 : 10),
                 border: Border.all(color: const Color(0xFFA5D6A7)),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+                padding: EdgeInsets.symmetric(
+                  horizontal: phonePortrait ? 10 : 12,
+                  vertical: phonePortrait ? 6 : 8,
                 ),
                 child: Text(
-                  'บันทึกแล้ว $savedToday กลุ่มวันนี้ · กำลังกรอกกลุ่มที่ $nextGroupNum',
+                  phonePortrait
+                      ? 'บันทึกแล้ว $savedToday กลุ่ม · กรอกกลุ่มที่ $nextGroupNum'
+                      : 'บันทึกแล้ว $savedToday กลุ่มวันนี้ · กำลังกรอกกลุ่มที่ $nextGroupNum',
                   style: GoogleFonts.kanit(
-                    fontSize: 12.5,
+                    fontSize: phonePortrait ? 12 : 12.5,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF2E7D32),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: phonePortrait ? 6 : 8),
           ],
           _employeeDataLoadProgressBanner(),
-          const SizedBox(height: 10),
+          SizedBox(height: phonePortrait ? 8 : 10),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(phonePortrait ? 10 : 12),
             decoration: BoxDecoration(
               color: const Color(0xFFF9FCFF),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
               border: Border.all(color: const Color(0xFFDCE8F5)),
             ),
             child: Column(
@@ -16620,30 +16975,33 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   'กลุ่มที่ $nextGroupNum',
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
+                    fontSize: phonePortrait ? 15 : 16,
                     color: const Color(0xFF205A9A),
                   ),
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: phonePortrait ? 4 : 6),
                 Text(
                   'เลือกพนักงาน',
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w700,
-                    fontSize: 13,
+                    fontSize: phonePortrait ? 12.5 : 13,
                     color: const Color(0xFF314C6D),
                   ),
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: phonePortrait ? 2 : 4),
                 Text(
-                  'ไม่แสดงเมื่อทุกตำแหน่งเป็นคนขับรถ / เฝ้ากลางคืน / รับจ้างรายวัน — หลายตำแหน่งยังแสดงถ้ามีตำแหน่งอื่น',
+                  phonePortrait
+                      ? 'ไม่แสดงคนขับรถ / เฝ้ากลางคืน / รับจ้างรายวัน'
+                      : 'ไม่แสดงเมื่อทุกตำแหน่งเป็นคนขับรถ / เฝ้ากลางคืน / รับจ้างรายวัน — หลายตำแหน่งยังแสดงถ้ามีตำแหน่งอื่น',
                   style: GoogleFonts.kanit(
-                    fontSize: 12,
+                    fontSize: phonePortrait ? 11.5 : 12,
                     color: const Color(0xFF64748B),
                     height: 1.3,
                   ),
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: phonePortrait ? 4 : 6),
                 _buildOtEmployeeChips(g),
-                const SizedBox(height: 10),
+                SizedBox(height: phonePortrait ? 8 : 10),
                 _AnimatedInputField(
                   controller: g.hoursController,
                   onChanged: (_) => _scheduleUiRefresh(),
@@ -16660,39 +17018,52 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                   style: GoogleFonts.kanit(
                     color: const Color(0xFF1D2A3A),
-                    fontSize: 22,
+                    fontSize: phonePortrait ? 18 : 22,
                     fontWeight: FontWeight.w700,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'จำนวนชั่วโมง OT ของกลุ่มนี้',
-                    prefixIcon: Icon(Icons.timelapse_outlined),
+                  decoration: InputDecoration(
+                    labelText: phonePortrait
+                        ? 'ชั่วโมง OT'
+                        : 'จำนวนชั่วโมง OT ของกลุ่มนี้',
+                    prefixIcon: const Icon(Icons.timelapse_outlined),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: phonePortrait ? 6 : 8),
           _AnimatedInputField(
             controller: _otDescController,
-            decoration: const InputDecoration(
-              labelText: 'รายละเอียดงาน OT',
-              prefixIcon: Icon(Icons.note_alt_outlined),
+            decoration: InputDecoration(
+              labelText: phonePortrait ? 'รายละเอียด OT' : 'รายละเอียดงาน OT',
+              prefixIcon: const Icon(Icons.note_alt_outlined),
             ),
             keyboardType: TextInputType.multiline,
             textInputAction: TextInputAction.newline,
-            minLines: 2,
-            maxLines: 5,
+            minLines: phonePortrait ? 2 : 2,
+            maxLines: phonePortrait ? 4 : 5,
             onChanged: (_) => setState(() {}),
           ),
           if (_otDescSuggestions.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: phonePortrait ? 6 : 8),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: phonePortrait ? 6 : 8,
+              runSpacing: phonePortrait ? 6 : 8,
               children: _otDescSuggestions
                   .map(
                     (s) => ActionChip(
-                      label: Text(s, style: GoogleFonts.kanit(fontSize: 12)),
+                      label: Text(
+                        s,
+                        style: GoogleFonts.kanit(
+                          fontSize: phonePortrait ? 11.5 : 12,
+                        ),
+                      ),
+                      visualDensity: phonePortrait
+                          ? VisualDensity.compact
+                          : VisualDensity.standard,
+                      materialTapTargetSize: phonePortrait
+                          ? MaterialTapTargetSize.shrinkWrap
+                          : MaterialTapTargetSize.padded,
                       onPressed: () =>
                           setState(() => _otDescController.text = s),
                     ),
@@ -16700,14 +17071,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   .toList(),
             ),
           ],
-          const SizedBox(height: 8),
+          SizedBox(height: phonePortrait ? 6 : 8),
           AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.all(10),
+            padding: EdgeInsets.all(phonePortrait ? 8 : 10),
             decoration: BoxDecoration(
               color: const Color(0xFFFFF7E8),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
               border: Border.all(
                 color: hasValidPreview
                     ? const Color(0xFFF2D39D)
@@ -16718,10 +17089,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               duration: const Duration(milliseconds: 200),
               child: !hasValidPreview
                   ? Text(
-                      'เลือกพนักงานและระบุชั่วโมง OT ก่อนกดบันทึกกลุ่มนี้',
+                      phonePortrait
+                          ? 'เลือกพนักงานและชั่วโมง OT ก่อนบันทึก'
+                          : 'เลือกพนักงานและระบุชั่วโมง OT ก่อนกดบันทึกกลุ่มนี้',
                       key: const ValueKey('ot-empty'),
                       textAlign: TextAlign.center,
                       style: GoogleFonts.kanit(
+                        fontSize: phonePortrait ? 12.5 : 14,
                         fontWeight: FontWeight.w600,
                         color: const Color(0xFF7A6A4A),
                       ),
@@ -16730,11 +17104,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       'กลุ่มที่ $nextGroupNum: $empCount คน × ${hours.toStringAsFixed(1)} ชม.',
                       key: ValueKey('$empCount|$hours'),
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      style: GoogleFonts.kanit(
+                        fontSize: phonePortrait ? 13 : 14,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: phonePortrait ? 10 : 12),
           _SmoothPressable(
             enabled: !_saving,
             child: FilledButton.icon(
@@ -16744,13 +17121,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       _releaseKeyboardFocus();
                       _saveQuickEntry();
                     },
-              icon: const Icon(Icons.save_outlined),
+              icon: Icon(
+                Icons.save_outlined,
+                size: phonePortrait ? 20 : 24,
+              ),
               label: Text(
                 'บันทึกกลุ่มนี้',
-                style: GoogleFonts.kanit(),
+                style: GoogleFonts.kanit(
+                  fontSize: phonePortrait ? 15 : 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
+                minimumSize: Size.fromHeight(phonePortrait ? 44 : 48),
               ),
             ),
           ),
@@ -16783,30 +17166,36 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       'ไฟฟ้าดับ',
       'อุบัติเหตุเล็กน้อย',
     ];
+    final size = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
     final typeOpts = <({String v, String label})>[
-      (v: 'info', label: 'ℹ️ ข้อมูล'),
-      (v: 'warning', label: '⚠️ เตือน'),
-      (v: 'problem', label: '🚨 ปัญหา'),
-      (v: 'success', label: '✅ สำเร็จ'),
-      (v: 'complaint', label: '📢 ข้อร้องเรียน'),
-      (v: 'request', label: '📋 ความต้องการ'),
+      (v: 'info', label: phonePortrait ? 'ข้อมูล' : 'ℹ️ ข้อมูล'),
+      (v: 'warning', label: phonePortrait ? 'เตือน' : '⚠️ เตือน'),
+      (v: 'problem', label: phonePortrait ? 'ปัญหา' : '🚨 ปัญหา'),
+      (v: 'success', label: phonePortrait ? 'สำเร็จ' : '✅ สำเร็จ'),
+      (v: 'complaint', label: phonePortrait ? 'ร้องเรียน' : '📢 ข้อร้องเรียน'),
+      (v: 'request', label: phonePortrait ? 'ความต้องการ' : '📋 ความต้องการ'),
     ];
     final suggestions = _eventDescSuggestionsFromDay();
+    final chipFont = phonePortrait ? 11.5 : 12.5;
+    final sectionGap = phonePortrait ? 8.0 : 12.0;
+    final editing = _dailyEventTxId != null && _dailyEventTxId!.isNotEmpty;
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.all(18),
+        padding: EdgeInsets.all(phonePortrait ? 12 : 18),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(phonePortrait ? 16 : 22),
           border: Border.all(color: const Color(0xFFE3ECF7)),
           boxShadow: [
             BoxShadow(
               color: const Color(0xFFFF6D00).withValues(alpha: 0.07),
-              blurRadius: 12,
+              blurRadius: phonePortrait ? 8 : 12,
               offset: const Offset(0, 4),
             ),
           ],
@@ -16814,27 +17203,32 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (_dailyEventTxId != null && _dailyEventTxId!.isNotEmpty) ...[
+            if (editing) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: EdgeInsets.symmetric(
+                  horizontal: phonePortrait ? 10 : 12,
+                  vertical: phonePortrait ? 6 : 8,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF3E0),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
                   border: Border.all(color: const Color(0xFFFFCC80)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.edit_note_rounded,
-                      size: 20,
-                      color: Color(0xFFE65100),
+                      size: phonePortrait ? 18 : 20,
+                      color: const Color(0xFFE65100),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: phonePortrait ? 6 : 8),
                     Expanded(
                       child: Text(
-                        'กำลังแก้ไขเหตุการณ์ที่มีอยู่ — กดอัปเดตเพื่อบันทึก หรือเพิ่มใหม่ด้านล่าง',
+                        phonePortrait
+                            ? 'กำลังแก้ไข — อัปเดต หรือเพิ่มใหม่ด้านล่าง'
+                            : 'กำลังแก้ไขเหตุการณ์ที่มีอยู่ — กดอัปเดตเพื่อบันทึก หรือเพิ่มใหม่ด้านล่าง',
                         style: GoogleFonts.kanit(
-                          fontSize: 13,
+                          fontSize: phonePortrait ? 12 : 13,
                           fontWeight: FontWeight.w600,
                           color: const Color(0xFFBF360C),
                         ),
@@ -16843,45 +17237,56 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: sectionGap),
             ],
             Text(
               'ประเภท',
               style: GoogleFonts.kanit(
+                fontSize: phonePortrait ? 13 : 14,
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFF475569),
               ),
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: phonePortrait ? 4 : 6),
             Wrap(
-              spacing: 6,
-              runSpacing: 6,
+              spacing: phonePortrait ? 5 : 6,
+              runSpacing: phonePortrait ? 5 : 6,
               children: [
                 for (final o in typeOpts)
                   ChoiceChip(
                     label: Text(
                       o.label,
                       style: GoogleFonts.kanit(
-                        fontSize: 12.5,
+                        fontSize: chipFont,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     selected: _dailyEventType == o.v,
+                    visualDensity: phonePortrait
+                        ? VisualDensity.compact
+                        : VisualDensity.standard,
+                    materialTapTargetSize: phonePortrait
+                        ? MaterialTapTargetSize.shrinkWrap
+                        : MaterialTapTargetSize.padded,
+                    labelPadding: phonePortrait
+                        ? const EdgeInsets.symmetric(horizontal: 6)
+                        : null,
                     onSelected: (sel) {
                       if (sel) setState(() => _dailyEventType = o.v);
                     },
                   ),
               ],
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: sectionGap),
             Text(
               'ความสำคัญ',
               style: GoogleFonts.kanit(
+                fontSize: phonePortrait ? 13 : 14,
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFF475569),
               ),
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: phonePortrait ? 4 : 6),
             SegmentedButton<String>(
               segments: const [
                 ButtonSegment<String>(value: 'normal', label: Text('ปกติ')),
@@ -16893,57 +17298,72 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 setState(() => _dailyEventPriority = s.first);
               },
               style: ButtonStyle(
+                visualDensity: phonePortrait
+                    ? VisualDensity.compact
+                    : VisualDensity.standard,
                 textStyle: WidgetStatePropertyAll(
-                  GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                  GoogleFonts.kanit(
+                    fontWeight: FontWeight.w700,
+                    fontSize: phonePortrait ? 13 : 14,
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'แตะพื้นที่ว่างบนการ์ดเพื่อซ่อนแป้นพิมพ์',
-              style: GoogleFonts.kanit(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: Colors.black45,
+            SizedBox(height: sectionGap),
+            if (!phonePortrait) ...[
+              Text(
+                'แตะพื้นที่ว่างบนการ์ดเพื่อซ่อนแป้นพิมพ์',
+                style: GoogleFonts.kanit(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black45,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
+              const SizedBox(height: 6),
+            ],
             TextFormField(
               controller: _dailyEventDescController,
-              minLines: 3,
-              maxLines: 6,
+              minLines: phonePortrait ? 2 : 3,
+              maxLines: phonePortrait ? 5 : 6,
               keyboardType: TextInputType.multiline,
               autocorrect: false,
               enableSuggestions: false,
               style: GoogleFonts.kanit(
-                fontSize: 16,
+                fontSize: phonePortrait ? 14.5 : 16,
                 fontWeight: FontWeight.w600,
                 color: const Color(0xFF1D2A3A),
               ),
-              decoration: const InputDecoration(
-                labelText: 'รายละเอียดเหตุการณ์',
-                hintText:
-                    'พิมพ์รายละเอียดเป็นภาษาไทย เช่น ฝนตกหนักต้องหยุดงาน หรือกดวลีด่วนด้านล่าง',
-                hintMaxLines: 3,
+              decoration: InputDecoration(
+                labelText: phonePortrait ? 'รายละเอียด' : 'รายละเอียดเหตุการณ์',
+                hintText: phonePortrait
+                    ? 'เช่น ฝนตกหนักต้องหยุดงาน หรือกดวลีด่วน'
+                    : 'พิมพ์รายละเอียดเป็นภาษาไทย เช่น ฝนตกหนักต้องหยุดงาน หรือกดวลีด่วนด้านล่าง',
+                hintMaxLines: phonePortrait ? 2 : 3,
                 alignLabelWithHint: true,
-                prefixIcon: Icon(Icons.edit_note_outlined),
+                isDense: phonePortrait,
+                prefixIcon: phonePortrait
+                    ? null
+                    : const Icon(Icons.edit_note_outlined),
+                contentPadding: phonePortrait
+                    ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
+                    : null,
               ),
               onChanged: (_) => _scheduleUiRefresh(),
             ),
             if (suggestions.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: phonePortrait ? 6 : 8),
               Text(
                 'จากประวัติ',
                 style: GoogleFonts.kanit(
-                  fontSize: 12,
+                  fontSize: phonePortrait ? 11.5 : 12,
                   fontWeight: FontWeight.w700,
                   color: const Color(0xFF64748B),
                 ),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: phonePortrait ? 4 : 6),
               Wrap(
-                spacing: 6,
-                runSpacing: 6,
+                spacing: phonePortrait ? 5 : 6,
+                runSpacing: phonePortrait ? 5 : 6,
                 children: [
                   for (final s in suggestions)
                     ActionChip(
@@ -16951,8 +17371,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         s,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.kanit(fontSize: 12),
+                        style: GoogleFonts.kanit(
+                          fontSize: phonePortrait ? 11.5 : 12,
+                        ),
                       ),
+                      visualDensity: phonePortrait
+                          ? VisualDensity.compact
+                          : VisualDensity.standard,
+                      materialTapTargetSize: phonePortrait
+                          ? MaterialTapTargetSize.shrinkWrap
+                          : MaterialTapTargetSize.padded,
+                      labelPadding: phonePortrait
+                          ? const EdgeInsets.symmetric(horizontal: 6)
+                          : null,
                       onPressed: () {
                         setState(() => _dailyEventDescController.text = s);
                       },
@@ -16960,23 +17391,37 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ],
               ),
             ],
-            const SizedBox(height: 10),
+            SizedBox(height: phonePortrait ? 8 : 10),
             Text(
               'วลีด่วน',
               style: GoogleFonts.kanit(
-                fontSize: 12,
+                fontSize: phonePortrait ? 11.5 : 12,
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFF64748B),
               ),
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: phonePortrait ? 4 : 6),
             Wrap(
-              spacing: 6,
-              runSpacing: 6,
+              spacing: phonePortrait ? 5 : 6,
+              runSpacing: phonePortrait ? 5 : 6,
               children: [
                 for (final tmpl in quickPhrases)
                   ActionChip(
-                    label: Text(tmpl, style: GoogleFonts.kanit(fontSize: 12)),
+                    label: Text(
+                      tmpl,
+                      style: GoogleFonts.kanit(
+                        fontSize: phonePortrait ? 11.5 : 12,
+                      ),
+                    ),
+                    visualDensity: phonePortrait
+                        ? VisualDensity.compact
+                        : VisualDensity.standard,
+                    materialTapTargetSize: phonePortrait
+                        ? MaterialTapTargetSize.shrinkWrap
+                        : MaterialTapTargetSize.padded,
+                    labelPadding: phonePortrait
+                        ? const EdgeInsets.symmetric(horizontal: 6)
+                        : null,
                     onPressed: () {
                       setState(() {
                         final prev = _dailyEventDescController.text.trim();
@@ -16988,43 +17433,53 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
               ],
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: phonePortrait ? 12 : 16),
             _SmoothPressable(
               enabled: !_saving,
               child: FilledButton.icon(
                 onPressed: _saving ? null : _saveQuickEntry,
                 icon: Icon(
-                  _dailyEventTxId != null && _dailyEventTxId!.isNotEmpty
-                      ? Icons.update_rounded
-                      : Icons.save_outlined,
+                  editing ? Icons.update_rounded : Icons.save_outlined,
+                  size: phonePortrait ? 20 : 24,
                 ),
                 label: Text(
                   _saving
                       ? 'กำลังบันทึก...'
-                      : (_dailyEventTxId != null &&
-                                _dailyEventTxId!.isNotEmpty
-                            ? 'อัปเดตเหตุการณ์'
-                            : 'บันทึกเหตุการณ์'),
+                      : (editing
+                          ? (phonePortrait ? 'อัปเดต' : 'อัปเดตเหตุการณ์')
+                          : (phonePortrait ? 'บันทึก' : 'บันทึกเหตุการณ์')),
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
-                    fontSize: 18,
+                    fontSize: phonePortrait ? 16 : 18,
                   ),
                 ),
                 style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
+                  minimumSize: Size.fromHeight(phonePortrait ? 46 : 54),
                   backgroundColor: const Color(0xFFFF9800),
                   foregroundColor: Colors.white,
                 ),
               ),
             ),
-            if (_dailyEventTxId != null && _dailyEventTxId!.isNotEmpty) ...[
-              const SizedBox(height: 8),
+            if (editing) ...[
+              SizedBox(height: phonePortrait ? 6 : 8),
               OutlinedButton.icon(
                 onPressed: _saving ? null : _startNewDailyEvent,
-                icon: const Icon(Icons.add_rounded),
+                icon: Icon(
+                  Icons.add_rounded,
+                  size: phonePortrait ? 18 : 24,
+                ),
                 label: Text(
-                  'เพิ่มเหตุการณ์ใหม่',
-                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                  phonePortrait ? 'เพิ่มใหม่' : 'เพิ่มเหตุการณ์ใหม่',
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w700,
+                    fontSize: phonePortrait ? 13.5 : 14,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: Size.fromHeight(phonePortrait ? 40 : 48),
+                  visualDensity: phonePortrait
+                      ? VisualDensity.compact
+                      : VisualDensity.standard,
                 ),
               ),
             ],
@@ -17043,18 +17498,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final editing =
         _maintenanceTxId != null && _maintenanceTxId!.trim().isNotEmpty;
     final todayRows = _maintenanceRowsToday();
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
     const ink = Color(0xFF1C1917);
     const muted = Color(0xFF78716C);
     const line = Color(0xFFE7E5E4);
     const accent = Color(0xFFC2410C);
     const softBg = Color(0xFFFAFAF9);
+    final pad = phonePortrait ? 12.0 : 18.0;
+    final gapSm = phonePortrait ? 10.0 : 14.0;
+    final gapMd = phonePortrait ? 12.0 : 16.0;
+    final chipGap = phonePortrait ? 6.0 : 8.0;
+    final fieldRadius = phonePortrait ? 12.0 : 14.0;
 
     Widget sectionLabel(String text) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: EdgeInsets.only(bottom: phonePortrait ? 5 : 8),
           child: Text(
             text,
             style: GoogleFonts.kanit(
-              fontSize: 13,
+              fontSize: phonePortrait ? 12 : 13,
               fontWeight: FontWeight.w600,
               color: muted,
               letterSpacing: 0.2,
@@ -17068,6 +17531,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       required VoidCallback onTap,
       bool compact = false,
     }) {
+      final tight = phonePortrait || compact;
       return Material(
         color: selected ? accent.withValues(alpha: 0.10) : softBg,
         borderRadius: BorderRadius.circular(999),
@@ -17078,8 +17542,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOut,
             padding: EdgeInsets.symmetric(
-              horizontal: compact ? 12 : 14,
-              vertical: compact ? 7 : 9,
+              horizontal: tight ? (phonePortrait ? 10 : 12) : 14,
+              vertical: tight ? (phonePortrait ? 6 : 7) : 9,
             ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
@@ -17089,13 +17553,47 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
             child: Text(
               label,
+              maxLines: phonePortrait ? 2 : 1,
+              overflow: TextOverflow.ellipsis,
               style: GoogleFonts.kanit(
-                fontSize: compact ? 12.5 : 13.5,
+                fontSize: tight
+                    ? (phonePortrait ? 12 : 12.5)
+                    : (phonePortrait ? 12.5 : 13.5),
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 color: selected ? accent : ink,
+                height: 1.2,
               ),
             ),
           ),
+        ),
+      );
+    }
+
+    InputDecoration fieldDecoration({
+      String? hintText,
+      Widget? prefixIcon,
+    }) {
+      return InputDecoration(
+        hintText: hintText,
+        alignLabelWithHint: true,
+        filled: true,
+        fillColor: softBg,
+        isDense: phonePortrait,
+        contentPadding: phonePortrait
+            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
+            : null,
+        prefixIcon: prefixIcon,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(fieldRadius),
+          borderSide: const BorderSide(color: line),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(fieldRadius),
+          borderSide: const BorderSide(color: line),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(fieldRadius),
+          borderSide: BorderSide(color: accent.withValues(alpha: 0.55)),
         ),
       );
     }
@@ -17106,50 +17604,63 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+        padding: EdgeInsets.fromLTRB(pad, phonePortrait ? 12 : 16, pad, pad),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(phonePortrait ? 16 : 20),
           border: Border.all(color: line),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              isRepair ? 'แจ้งซ่อม' : 'บันทึกซ่อมบำรุง',
+              isRepair
+                  ? 'แจ้งซ่อม'
+                  : (phonePortrait ? 'บันทึกซ่อม' : 'บันทึกซ่อมบำรุง'),
               style: GoogleFonts.kanit(
-                fontSize: 20,
+                fontSize: phonePortrait ? 17 : 20,
                 fontWeight: FontWeight.w800,
                 color: ink,
                 height: 1.15,
               ),
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: phonePortrait ? 2 : 4),
             Text(
               isRepair
-                  ? 'เลือกเครื่อง → ระบุอาการ → ส่งให้ผู้ดูแล'
-                  : 'เลือกเครื่อง → ประเภทงาน → จำนวนเงิน',
+                  ? (phonePortrait
+                      ? 'เลือกเครื่อง → อาการ → ส่งผู้ดูแล'
+                      : 'เลือกเครื่อง → ระบุอาการ → ส่งให้ผู้ดูแล')
+                  : (phonePortrait
+                      ? 'เลือกเครื่อง → ประเภท → จำนวนเงิน'
+                      : 'เลือกเครื่อง → ประเภทงาน → จำนวนเงิน'),
               style: GoogleFonts.kanit(
-                fontSize: 13,
+                fontSize: phonePortrait ? 12 : 13,
                 fontWeight: FontWeight.w500,
                 color: muted,
+                height: 1.25,
               ),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: gapSm),
             SegmentedButton<MaintenanceSubMode>(
               segments: [
                 ButtonSegment(
                   value: MaintenanceSubMode.serviceLog,
                   label: Text(
-                    'บันทึกซ่อม',
-                    style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                    phonePortrait ? 'บันทึก' : 'บันทึกซ่อม',
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w600,
+                      fontSize: phonePortrait ? 12.5 : null,
+                    ),
                   ),
                 ),
                 ButtonSegment(
                   value: MaintenanceSubMode.repairRequest,
                   label: Text(
                     'แจ้งซ่อม',
-                    style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w600,
+                      fontSize: phonePortrait ? 12.5 : null,
+                    ),
                   ),
                 ),
               ],
@@ -17169,6 +17680,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               },
               style: ButtonStyle(
                 visualDensity: VisualDensity.compact,
+                tapTargetSize: phonePortrait
+                    ? MaterialTapTargetSize.shrinkWrap
+                    : MaterialTapTargetSize.padded,
                 foregroundColor: WidgetStateProperty.resolveWith((states) {
                   if (states.contains(WidgetState.selected)) return accent;
                   return muted;
@@ -17176,24 +17690,30 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
             if (editing) ...[
-              const SizedBox(height: 12),
+              SizedBox(height: phonePortrait ? 8 : 12),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: EdgeInsets.symmetric(
+                  horizontal: phonePortrait ? 10 : 12,
+                  vertical: phonePortrait ? 8 : 10,
+                ),
                 decoration: BoxDecoration(
                   color: softBg,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
                   border: Border.all(color: line),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.edit_outlined, size: 18, color: muted),
-                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.edit_outlined,
+                      size: phonePortrait ? 16 : 18,
+                      color: muted,
+                    ),
+                    SizedBox(width: phonePortrait ? 6 : 8),
                     Expanded(
                       child: Text(
                         'กำลังแก้ไขรายการนี้',
                         style: GoogleFonts.kanit(
-                          fontSize: 13,
+                          fontSize: phonePortrait ? 12 : 13,
                           fontWeight: FontWeight.w600,
                           color: ink,
                         ),
@@ -17203,11 +17723,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
               ),
             ],
-            const SizedBox(height: 18),
+            SizedBox(height: phonePortrait ? 14 : 18),
             sectionLabel('กลุ่ม'),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: chipGap,
+              runSpacing: chipGap,
               children: [
                 for (final g in MaintenanceAssetGroup.values)
                   pickChip(
@@ -17220,11 +17740,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
               ],
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: gapMd),
             sectionLabel('รายการ'),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: chipGap,
+              runSpacing: chipGap,
               children: [
                 for (final name in assets)
                   pickChip(
@@ -17236,11 +17756,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ],
             ),
             if (!isRepair) ...[
-              const SizedBox(height: 16),
+              SizedBox(height: gapMd),
               sectionLabel('ประเภทงาน'),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: chipGap,
+                runSpacing: chipGap,
                 children: [
                   for (final type in types)
                     pickChip(
@@ -17252,7 +17772,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ],
             if (isRepair) ...[
-              const SizedBox(height: 16),
+              SizedBox(height: gapMd),
               sectionLabel('ความเร่งด่วน'),
               SegmentedButton<String>(
                 segments: [
@@ -17260,14 +17780,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     value: 'normal',
                     label: Text(
                       'ปกติ',
-                      style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w600,
+                        fontSize: phonePortrait ? 12.5 : null,
+                      ),
                     ),
                   ),
                   ButtonSegment(
                     value: 'urgent',
                     label: Text(
                       'ด่วน',
-                      style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w600,
+                        fontSize: phonePortrait ? 12.5 : null,
+                      ),
                     ),
                   ),
                 ],
@@ -17280,90 +17806,75 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 },
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
+                  tapTargetSize: phonePortrait
+                      ? MaterialTapTargetSize.shrinkWrap
+                      : MaterialTapTargetSize.padded,
                   textStyle: WidgetStatePropertyAll(
                     GoogleFonts.kanit(fontWeight: FontWeight.w600),
                   ),
                 ),
               ),
             ],
-            const SizedBox(height: 16),
-            sectionLabel(isRepair ? 'อาการ / รายละเอียด' : 'รายละเอียด'),
+            SizedBox(height: gapMd),
+            sectionLabel(
+              isRepair
+                  ? (phonePortrait ? 'อาการ' : 'อาการ / รายละเอียด')
+                  : 'รายละเอียด',
+            ),
             TextFormField(
               controller: _maintenanceDetailController,
-              minLines: 2,
-              maxLines: 4,
+              minLines: phonePortrait ? 2 : 2,
+              maxLines: phonePortrait ? 3 : 4,
               style: GoogleFonts.kanit(
-                fontSize: 15.5,
+                fontSize: phonePortrait ? 14.5 : 15.5,
                 fontWeight: FontWeight.w600,
                 color: ink,
               ),
-              decoration: InputDecoration(
+              decoration: fieldDecoration(
                 hintText: isRepair
-                    ? 'เช่น สตาร์ทไม่ติด, มีเสียงผิดปกติ'
-                    : 'เช่น รอบที่ 5, เปลี่ยนไส้กรอง',
-                alignLabelWithHint: true,
-                filled: true,
-                fillColor: softBg,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: line),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: line),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: accent.withValues(alpha: 0.55)),
-                ),
+                    ? (phonePortrait
+                        ? 'เช่น สตาร์ทไม่ติด'
+                        : 'เช่น สตาร์ทไม่ติด, มีเสียงผิดปกติ')
+                    : (phonePortrait
+                        ? 'เช่น รอบที่ 5'
+                        : 'เช่น รอบที่ 5, เปลี่ยนไส้กรอง'),
               ),
               onChanged: (_) => _scheduleUiRefresh(),
             ),
             if (!isRepair) ...[
-              const SizedBox(height: 14),
-              sectionLabel('จำนวนเงิน (บาท)'),
+              SizedBox(height: phonePortrait ? 10 : 14),
+              sectionLabel(phonePortrait ? 'จำนวนเงิน' : 'จำนวนเงิน (บาท)'),
               TextFormField(
                 controller: _maintenanceAmountController,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 style: GoogleFonts.kanit(
-                  fontSize: 20,
+                  fontSize: phonePortrait ? 18 : 20,
                   fontWeight: FontWeight.w800,
                   color: ink,
                 ),
-                decoration: InputDecoration(
+                decoration: fieldDecoration(
                   hintText: '0',
-                  filled: true,
-                  fillColor: softBg,
-                  prefixIcon: const Icon(Icons.payments_outlined, color: muted),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: line),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: line),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide:
-                        BorderSide(color: accent.withValues(alpha: 0.55)),
+                  prefixIcon: Icon(
+                    Icons.payments_outlined,
+                    color: muted,
+                    size: phonePortrait ? 20 : 24,
                   ),
                 ),
                 onChanged: (_) => _scheduleUiRefresh(),
               ),
             ],
-            const SizedBox(height: 18),
+            SizedBox(height: phonePortrait ? 14 : 18),
             _SmoothPressable(
               enabled: !_saving,
               child: FilledButton(
                 onPressed: _saving ? null : _saveQuickEntry,
                 style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
+                  minimumSize: Size.fromHeight(phonePortrait ? 46 : 52),
                   backgroundColor: accent,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(fieldRadius),
                   ),
                   elevation: 0,
                 ),
@@ -17371,44 +17882,57 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _saving
                       ? 'กำลังบันทึก...'
                       : (isRepair
-                          ? (editing ? 'อัปเดตแจ้งซ่อม' : 'ส่งแจ้งซ่อม')
+                          ? (editing
+                              ? (phonePortrait ? 'อัปเดต' : 'อัปเดตแจ้งซ่อม')
+                              : (phonePortrait ? 'ส่งแจ้งซ่อม' : 'ส่งแจ้งซ่อม'))
                           : (editing ? 'อัปเดตรายการ' : 'บันทึก')),
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
-                    fontSize: 17,
+                    fontSize: phonePortrait ? 15.5 : 17,
                   ),
                 ),
               ),
             ),
             if (editing) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: phonePortrait ? 4 : 8),
               TextButton(
                 onPressed: _saving ? null : _startNewMaintenance,
+                style: TextButton.styleFrom(
+                  visualDensity: phonePortrait
+                      ? VisualDensity.compact
+                      : VisualDensity.standard,
+                  padding: phonePortrait
+                      ? const EdgeInsets.symmetric(vertical: 4)
+                      : null,
+                ),
                 child: Text(
                   'เพิ่มรายการใหม่',
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w700,
+                    fontSize: phonePortrait ? 13 : null,
                     color: muted,
                   ),
                 ),
               ),
             ],
             if (todayRows.isNotEmpty) ...[
-              const SizedBox(height: 20),
+              SizedBox(height: phonePortrait ? 14 : 20),
               Row(
                 children: [
                   Text(
                     'วันนี้',
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w700,
-                      fontSize: 14,
+                      fontSize: phonePortrait ? 13 : 14,
                       color: ink,
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: phonePortrait ? 6 : 8),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: phonePortrait ? 6 : 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: softBg,
                       borderRadius: BorderRadius.circular(999),
@@ -17417,7 +17941,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     child: Text(
                       '${todayRows.length}',
                       style: GoogleFonts.kanit(
-                        fontSize: 12,
+                        fontSize: phonePortrait ? 11 : 12,
                         fontWeight: FontWeight.w700,
                         color: muted,
                       ),
@@ -17425,10 +17949,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: phonePortrait ? 8 : 10),
               for (final t in todayRows) ...[
                 _buildMaintenanceSavedCard(t),
-                const SizedBox(height: 8),
+                SizedBox(height: phonePortrait ? 6 : 8),
               ],
             ],
           ],
@@ -17448,6 +17972,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         : t.amount.toStringAsFixed(2);
     final urgency =
         ((t.eventPriority ?? '').trim() == 'urgent') ? 'ด่วน' : 'ปกติ';
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
     final metaLine = isRepair
         ? '${type.isEmpty ? 'แจ้งซ่อม' : type} · $urgency'
             '${isCurrent ? ' · กำลังแก้ไข' : ''}'
@@ -17456,16 +17983,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     const ink = Color(0xFF1C1917);
     const muted = Color(0xFF78716C);
     const line = Color(0xFFE7E5E4);
+    final radius = phonePortrait ? 12.0 : 14.0;
     return Material(
       color: isCurrent ? const Color(0xFFFFF7ED) : const Color(0xFFFAFAF9),
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(radius),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(radius),
         onTap: () => _loadMaintenanceIntoForm(t),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: EdgeInsets.symmetric(
+            horizontal: phonePortrait ? 11 : 14,
+            vertical: phonePortrait ? 9 : 12,
+          ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(radius),
             border: Border.all(
               color: isCurrent ? const Color(0xFFFDBA74) : line,
             ),
@@ -17475,29 +18006,34 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             children: [
               Text(
                 asset.isEmpty ? '(ไม่ระบุรายการ)' : asset,
+                maxLines: phonePortrait ? 2 : 1,
+                overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w700,
-                  fontSize: 14.5,
+                  fontSize: phonePortrait ? 13.5 : 14.5,
                   color: ink,
+                  height: 1.2,
                 ),
               ),
-              const SizedBox(height: 2),
+              SizedBox(height: phonePortrait ? 1 : 2),
               Text(
                 metaLine,
+                maxLines: phonePortrait ? 2 : 1,
+                overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.kanit(
-                  fontSize: 12.5,
+                  fontSize: phonePortrait ? 11.5 : 12.5,
                   fontWeight: FontWeight.w600,
                   color: muted,
                 ),
               ),
               if (detail.isNotEmpty) ...[
-                const SizedBox(height: 4),
+                SizedBox(height: phonePortrait ? 3 : 4),
                 Text(
                   detail,
-                  maxLines: 2,
+                  maxLines: phonePortrait ? 2 : 2,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.kanit(
-                    fontSize: 13,
+                    fontSize: phonePortrait ? 12 : 13,
                     color: muted,
                   ),
                 ),
@@ -17510,19 +18046,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _dailyEventSavedDetailCard(AppTransaction t) {
+    final size = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
     final desc = _stripRecorderSuffix(t.description).trim();
     final typeLabel = _dailyEventTypeLabel(t.eventType);
     final pri = ((t.eventPriority ?? '').trim() == 'urgent') ? 'ด่วน' : 'ปกติ';
     final created = t.createdAt;
     final timeHint = created != null
-        ? 'บันทึกในระบบ ${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
+        ? (phonePortrait
+            ? '${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
+            : 'บันทึกในระบบ ${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}')
         : null;
     final isCurrent = t.id == _dailyEventTxId;
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(phonePortrait ? 10 : 12),
       decoration: BoxDecoration(
         color: isCurrent ? const Color(0xFFFFF8E1) : const Color(0xFFFFFBF5),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
         border: Border.all(
           color: isCurrent ? const Color(0xFFFFB74D) : const Color(0xFFFFE0B2),
         ),
@@ -17531,28 +18072,35 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$typeLabel • $pri${isCurrent ? ' • กำลังแก้ไข' : ''}',
+            '$typeLabel • $pri${isCurrent ? (phonePortrait ? ' • แก้ไข' : ' • กำลังแก้ไข') : ''}',
+            maxLines: phonePortrait ? 1 : 2,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.kanit(
-              fontSize: 13.5,
+              fontSize: phonePortrait ? 12.5 : 13.5,
               fontWeight: FontWeight.w700,
               color: const Color(0xFFE65100),
             ),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: phonePortrait ? 3 : 4),
           Text(
             desc.isEmpty ? '(ไม่มีรายละเอียด)' : desc,
+            maxLines: phonePortrait ? 3 : 5,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.kanit(
-              fontSize: 15,
+              fontSize: phonePortrait ? 13.5 : 15,
               fontWeight: FontWeight.w600,
               color: const Color(0xFF1D2A3A),
               height: 1.3,
             ),
           ),
           if (timeHint != null) ...[
-            const SizedBox(height: 6),
+            SizedBox(height: phonePortrait ? 4 : 6),
             Text(
               timeHint,
-              style: GoogleFonts.kanit(fontSize: 12, color: Colors.black45),
+              style: GoogleFonts.kanit(
+                fontSize: phonePortrait ? 11 : 12,
+                color: Colors.black45,
+              ),
             ),
           ],
         ],
@@ -17561,6 +18109,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildDailyEventSavedTodaySection() {
+    final size = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
     final saved = _moduleDayTransactions
         .where(
           (t) =>
@@ -17571,41 +18122,50 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         .toList();
     if (saved.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.only(top: 10),
+        padding: EdgeInsets.only(top: phonePortrait ? 8 : 10),
         child: Text(
-          'ยังไม่มีเหตุการณ์ในวันที่เลือก — กรอกด้านบนแล้วกดบันทึก',
+          phonePortrait
+              ? 'ยังไม่มีเหตุการณ์ — กรอกด้านบนแล้วกดบันทึก'
+              : 'ยังไม่มีเหตุการณ์ในวันที่เลือก — กรอกด้านบนแล้วกดบันทึก',
           textAlign: TextAlign.center,
-          style: GoogleFonts.kanit(fontSize: 13.5, color: Colors.black45),
+          style: GoogleFonts.kanit(
+            fontSize: phonePortrait ? 12.5 : 13.5,
+            color: Colors.black45,
+          ),
         ),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 14),
+        SizedBox(height: phonePortrait ? 10 : 14),
         Text(
-          'เหตุการณ์วันนี้ (${saved.length} รายการ) — แตะเพื่อแก้ไข',
+          phonePortrait
+              ? 'วันนี้ (${saved.length}) — แตะแก้ไข'
+              : 'เหตุการณ์วันนี้ (${saved.length} รายการ) — แตะเพื่อแก้ไข',
           style: GoogleFonts.kanit(
-            fontSize: 15,
+            fontSize: phonePortrait ? 13.5 : 15,
             fontWeight: FontWeight.w800,
             color: const Color(0xFFE65100),
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: phonePortrait ? 6 : 8),
         ...saved.map(
           (t) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: EdgeInsets.only(bottom: phonePortrait ? 6 : 8),
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
                 onTap: () {
                   _loadDailyEventIntoForm(t);
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        'โหลดเหตุการณ์มาแก้ไขด้านบนแล้ว',
+                        phonePortrait
+                            ? 'โหลดมาแก้ไขด้านบนแล้ว'
+                            : 'โหลดเหตุการณ์มาแก้ไขด้านบนแล้ว',
                         style: GoogleFonts.kanit(),
                       ),
                       duration: const Duration(seconds: 2),
@@ -17804,6 +18364,7 @@ class _AdvanceChoiceButton extends StatefulWidget {
     required this.icon,
     required this.primaryColor,
     required this.onTap,
+    this.compact = false,
   });
 
   final bool selected;
@@ -17811,6 +18372,7 @@ class _AdvanceChoiceButton extends StatefulWidget {
   final IconData icon;
   final Color primaryColor;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   State<_AdvanceChoiceButton> createState() => _AdvanceChoiceButtonState();
@@ -17821,6 +18383,7 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
 
   @override
   Widget build(BuildContext context) {
+    final compact = widget.compact;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) => setState(() => _pressedScale = 0.96),
@@ -17837,12 +18400,15 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+          padding: EdgeInsets.symmetric(
+            vertical: compact ? 10 : 14,
+            horizontal: compact ? 8 : 12,
+          ),
           decoration: BoxDecoration(
             color: widget.selected
                 ? widget.primaryColor.withValues(alpha: 0.12)
                 : const Color(0xFFF4F6F9),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(compact ? 12 : 14),
             border: Border.all(
               color: widget.selected
                   ? widget.primaryColor
@@ -17853,7 +18419,7 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
                 ? [
                     BoxShadow(
                       color: widget.primaryColor.withValues(alpha: 0.12),
-                      blurRadius: 8,
+                      blurRadius: compact ? 6 : 8,
                       offset: const Offset(0, 3),
                     ),
                   ]
@@ -17863,18 +18429,20 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
             children: [
               Icon(
                 widget.icon,
-                size: 24,
+                size: compact ? 20 : 24,
                 color: widget.selected
                     ? widget.primaryColor
                     : const Color(0xFF78909C),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: compact ? 6 : 10),
               Expanded(
                 child: Text(
                   widget.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w700,
-                    fontSize: 15,
+                    fontSize: compact ? 13.5 : 15,
                     color: widget.selected
                         ? const Color(0xFF1D2A3A)
                         : const Color(0xFF546E7A),
@@ -17890,12 +18458,12 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
                         Icons.check_circle_rounded,
                         key: ValueKey<String>('${widget.label}_on'),
                         color: const Color(0xFF2E7D32),
-                        size: 26,
+                        size: compact ? 22 : 26,
                       )
                     : SizedBox(
                         key: ValueKey<String>('${widget.label}_off'),
-                        width: 26,
-                        height: 26,
+                        width: compact ? 22 : 26,
+                        height: compact ? 22 : 26,
                       ),
               ),
             ],
@@ -20355,40 +20923,57 @@ class _SignatureDialogState extends State<_SignatureDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final screen = MediaQuery.of(context).size;
-    final dialogWidth = (screen.width * 0.92).clamp(360.0, 820.0);
-    final canvasHeight = (screen.height * 0.36).clamp(240.0, 420.0);
+    final screen = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        screen.shortestSide < 600 && screen.height >= screen.width;
+    final dialogWidth = (screen.width * 0.92).clamp(
+      phonePortrait ? 300.0 : 360.0,
+      820.0,
+    );
+    final canvasHeight = (screen.height * (phonePortrait ? 0.32 : 0.36)).clamp(
+      phonePortrait ? 180.0 : 240.0,
+      phonePortrait ? 320.0 : 420.0,
+    );
 
     return Dialog(
       backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(phonePortrait ? 18 : 22),
+      ),
       child: SizedBox(
         width: dialogWidth,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+          padding: EdgeInsets.fromLTRB(
+            phonePortrait ? 14 : 18,
+            phonePortrait ? 12 : 16,
+            phonePortrait ? 14 : 18,
+            phonePortrait ? 10 : 14,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'ลงลายเซ็นก่อนบันทึก',
+                phonePortrait ? 'ลงลายเซ็น' : 'ลงลายเซ็นก่อนบันทึก',
                 style: GoogleFonts.kanit(
-                  fontSize: 22,
+                  fontSize: phonePortrait ? 18 : 22,
                   fontWeight: FontWeight.w800,
                   color: const Color(0xFF203246),
                 ),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: phonePortrait ? 4 : 6),
               Text(
-                'เซ็นชื่อในกรอบด้านล่าง แล้วกด "ยืนยันลายเซ็น"',
+                phonePortrait
+                    ? 'เซ็นในกรอบ แล้วกดยืนยัน'
+                    : 'เซ็นชื่อในกรอบด้านล่าง แล้วกด "ยืนยันลายเซ็น"',
                 style: GoogleFonts.kanit(
-                  fontSize: 13.5,
+                  fontSize: phonePortrait ? 12.5 : 13.5,
                   color: const Color(0xFF6A7B8F),
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: phonePortrait ? 8 : 12),
               ClipRRect(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(phonePortrait ? 12 : 16),
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onPanStart: (details) {
@@ -20409,7 +20994,8 @@ class _SignatureDialogState extends State<_SignatureDialog> {
                     decoration: BoxDecoration(
                       color: const Color(0xFFF8FBFF),
                       border: Border.all(color: const Color(0xFFD7E2EE)),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius:
+                          BorderRadius.circular(phonePortrait ? 12 : 16),
                     ),
                     child: RepaintBoundary(
                       child: CustomPaint(
@@ -20423,7 +21009,7 @@ class _SignatureDialogState extends State<_SignatureDialog> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: phonePortrait ? 8 : 12),
               Row(
                 children: [
                   TextButton.icon(
@@ -20431,10 +21017,16 @@ class _SignatureDialogState extends State<_SignatureDialog> {
                       _strokes.clear();
                       _paintRevision++;
                     }),
-                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    icon: Icon(
+                      Icons.refresh_rounded,
+                      size: phonePortrait ? 16 : 18,
+                    ),
                     label: Text(
-                      'ล้างลายเซ็น',
-                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      phonePortrait ? 'ล้าง' : 'ล้างลายเซ็น',
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: phonePortrait ? 13.5 : null,
+                      ),
                     ),
                   ),
                   const Spacer(),
@@ -20445,10 +21037,22 @@ class _SignatureDialogState extends State<_SignatureDialog> {
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF0F9EA8),
                       foregroundColor: Colors.white,
+                      minimumSize: phonePortrait
+                          ? const Size(0, 40)
+                          : null,
+                      padding: phonePortrait
+                          ? const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            )
+                          : null,
                     ),
                     child: Text(
-                      'ยืนยันลายเซ็น',
-                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      phonePortrait ? 'ยืนยัน' : 'ยืนยันลายเซ็น',
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: phonePortrait ? 14 : null,
+                      ),
                     ),
                   ),
                 ],
