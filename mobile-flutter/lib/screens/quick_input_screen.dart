@@ -15352,7 +15352,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w800,
-                      fontSize: 17,
+                      fontSize: MediaQuery.sizeOf(context).shortestSide < 600
+                          ? 15.0
+                          : 17.0,
                       color: const Color(0xFF0F172A),
                       height: 1.2,
                     ),
@@ -15427,6 +15429,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       for (final id in poolBucketIds)
         ...(_attendanceAssignments[id] ?? const <String>{}),
     };
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -15446,14 +15451,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            padding: EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: phonePortrait ? 6 : 9,
+            ),
             color: const Color(0xFF475569),
             child: Text(
               people.isEmpty ? hashtag : '$hashtag · ${people.length} คน',
               textAlign: TextAlign.center,
+              maxLines: phonePortrait ? 1 : 2,
+              overflow: TextOverflow.ellipsis,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w800,
-                fontSize: 16,
+                fontSize: phonePortrait ? 13.5 : 16,
                 color: Colors.white,
               ),
             ),
@@ -15475,7 +15485,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 140),
                   width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                  padding: EdgeInsets.fromLTRB(
+                    phonePortrait ? 6 : 8,
+                    phonePortrait ? 6 : 8,
+                    phonePortrait ? 6 : 8,
+                    phonePortrait ? 6 : 8,
+                  ),
                   color: hovering
                       ? accent.withValues(alpha: 0.08)
                       : const Color(0xFFF8FAFD),
@@ -15485,23 +15500,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             emptyText,
                             textAlign: TextAlign.center,
                             style: GoogleFonts.kanit(
-                              fontSize: 14.5,
+                              fontSize: phonePortrait ? 13 : 14.5,
                               color: Colors.black45,
                             ),
                           ),
                         )
                       : Scrollbar(
                           controller: scrollController,
-                          thumbVisibility: true,
+                          thumbVisibility: !phonePortrait,
                           radius: const Radius.circular(8),
                           child: SingleChildScrollView(
                             controller: scrollController,
                             // เลื่อนดูรายชื่อแบบลื่นๆ (เด้งปลายรายการเหมือนเลื่อนการ์ดในเกม)
                             physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.only(right: 8),
+                            padding: EdgeInsets.only(
+                              right: phonePortrait ? 4 : 8,
+                            ),
                           child: Wrap(
-                            spacing: 8,
-                            runSpacing: 10,
+                            spacing: phonePortrait ? 6 : 8,
+                            runSpacing: phonePortrait ? 8 : 10,
                             children: people.map((e) {
                                 final id = e.id;
                                 final selected = pickedPool.contains(id);
@@ -15516,9 +15533,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                     borderRadius: BorderRadius.circular(14),
                                     color: Colors.transparent,
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 16,
-                                        vertical: 12,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: phonePortrait ? 14 : 16,
+                                        vertical: phonePortrait ? 10 : 12,
                                       ),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFF1565C0),
@@ -15529,7 +15546,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                         style: GoogleFonts.kanit(
                                           fontWeight: FontWeight.w700,
                                           color: Colors.white,
-                                          fontSize: 18,
+                                          fontSize: phonePortrait ? 16 : 18,
                                         ),
                                       ),
                                     ),
@@ -15577,20 +15594,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required Color accent,
     VoidCallback? onTap,
   }) {
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
     return Material(
       color: selected
           ? accent.withValues(alpha: 0.18)
           : placed
           ? const Color(0xFFE8F5E9)
           : Colors.white,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          padding: EdgeInsets.symmetric(
+            horizontal: phonePortrait ? 12 : 16,
+            vertical: phonePortrait ? 9 : 13,
+          ),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
             border: Border.all(
               color: selected
                   ? accent
@@ -15604,7 +15627,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             name,
             style: GoogleFonts.kanit(
               fontWeight: FontWeight.w700,
-              fontSize: 18,
+              fontSize: phonePortrait ? 15 : 18,
               color: const Color(0xFF1E293B),
             ),
           ),
@@ -15620,18 +15643,39 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final macroN = _attendanceAssignments['att_drv_macro']?.length ?? 0;
     final drumN = _attendanceAssignments['att_drv_drum']?.length ?? 0;
     final drvLeaveN = _attendanceAssignments['att_drv_leave']?.length ?? 0;
+    final size = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
 
     final sandSummary = workN + leaveN == 0
-        ? 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ'
+        ? (phonePortrait
+            ? 'ยังไม่มีรายชื่อ — แตะเพื่อเริ่ม'
+            : 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ')
         : 'ทำงาน $workN · ลา $leaveN';
     final driverSummary = macroN + drumN + drvLeaveN == 0
-        ? 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ'
+        ? (phonePortrait
+            ? 'ยังไม่มีรายชื่อ — แตะเพื่อเริ่ม'
+            : 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ')
         : 'แม็คโคร $macroN · ดรัม $drumN · ลา $drvLeaveN';
+
+    final picker = AttendanceSubModePicker(
+      sandYardSummary: sandSummary,
+      driverSummary: driverSummary,
+      onSelect: (section) {
+        AppHaptics.confirm();
+        setState(() {
+          _attendanceSection = section;
+          if (section == AttendanceSection.driver) {
+            _syncAttendanceMacroDriversFromVehicleUsage();
+          }
+        });
+      },
+    );
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(phonePortrait ? 12 : 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
@@ -15641,19 +15685,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _employeeDataLoadProgressBanner(),
-          AttendanceSubModePicker(
-            sandYardSummary: sandSummary,
-            driverSummary: driverSummary,
-            onSelect: (section) {
-              AppHaptics.confirm();
-              setState(() {
-                _attendanceSection = section;
-                if (section == AttendanceSection.driver) {
-                  _syncAttendanceMacroDriversFromVehicleUsage();
-                }
-              });
-            },
-          ),
+          // ให้การ์ดเลือกกลุ่มสูงพอสัมผัสบนมือถือแนวตั้ง (Picker ใช้ Expanded)
+          if (phonePortrait)
+            SizedBox(
+              height: (size.height * 0.52).clamp(340.0, 480.0),
+              child: picker,
+            )
+          else
+            picker,
         ],
       ),
     );
@@ -15691,6 +15730,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final dateLabel =
         '${_selectedDate.day}/${_selectedDate.month}/$y';
     final canSave = !_saving && !_employeesLoading;
+    final size = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
+    final title = phonePortrait
+        ? (section == AttendanceSection.sandYard
+            ? 'พนักงานท่าทราย'
+            : 'คนขับรถ')
+        : _attendanceSectionTitle(section);
+    final saveLabel = _saving
+        ? 'กำลังบันทึก...'
+        : (phonePortrait
+            ? 'บันทึกเช็คชื่อ'
+            : _attendanceSectionSaveLabel(section));
     return Scaffold(
       backgroundColor: const Color(0xFFF3F7FB),
       body: SafeArea(
@@ -15698,15 +15750,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 16, 0),
+              padding: EdgeInsets.fromLTRB(
+                phonePortrait ? 4 : 8,
+                phonePortrait ? 2 : 4,
+                phonePortrait ? 8 : 16,
+                0,
+              ),
               child: Row(
                 children: [
                   IconButton(
                     onPressed: _handleQuickInputBack,
-                    iconSize: 28,
+                    iconSize: phonePortrait ? 24 : 28,
                     style: IconButton.styleFrom(
-                      minimumSize: const Size(52, 52),
-                      padding: const EdgeInsets.all(12),
+                      minimumSize: Size(
+                        phonePortrait ? 44 : 52,
+                        phonePortrait ? 44 : 52,
+                      ),
+                      padding: EdgeInsets.all(phonePortrait ? 8 : 12),
                       tapTargetSize: MaterialTapTargetSize.padded,
                     ),
                     icon: const Icon(Icons.arrow_back_ios_new_rounded),
@@ -15716,10 +15776,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     child: Column(
                       children: [
                         Text(
-                          _attendanceSectionTitle(section),
+                          title,
                           textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.kanit(
-                            fontSize: 23,
+                            fontSize: phonePortrait ? 18 : 23,
                             fontWeight: FontWeight.w800,
                             color: const Color(0xFF0F5FAF),
                           ),
@@ -15727,7 +15789,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         Text(
                           dateLabel,
                           style: GoogleFonts.kanit(
-                            fontSize: 14.5,
+                            fontSize: phonePortrait ? 13 : 14.5,
                             fontWeight: FontWeight.w600,
                             color: const Color(0xFF64748B),
                           ),
@@ -15735,18 +15797,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ],
                     ),
                   ),
-                  const SizedBox(width: 44),
+                  SizedBox(width: phonePortrait ? 36 : 44),
                 ],
               ),
             ),
             if (_employeesLoading)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                padding: EdgeInsets.fromLTRB(
+                  phonePortrait ? 12 : 16,
+                  phonePortrait ? 4 : 8,
+                  phonePortrait ? 12 : 16,
+                  0,
+                ),
                 child: _employeeDataLoadProgressBanner(),
               ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                padding: EdgeInsets.fromLTRB(
+                  phonePortrait ? 8 : 12,
+                  phonePortrait ? 4 : 8,
+                  phonePortrait ? 8 : 12,
+                  phonePortrait ? 4 : 8,
+                ),
                 child: section == AttendanceSection.sandYard
                     ? _buildAttendanceSandYardBoard()
                     : _buildAttendanceDriverBoard(),
@@ -15758,7 +15830,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               child: SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  padding: EdgeInsets.fromLTRB(
+                    phonePortrait ? 12 : 16,
+                    phonePortrait ? 8 : 10,
+                    phonePortrait ? 12 : 16,
+                    phonePortrait ? 10 : 12,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -15766,28 +15843,31 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         _attendanceBoardSummary(section),
                         textAlign: TextAlign.center,
                         style: GoogleFonts.kanit(
-                          fontSize: 15,
+                          fontSize: phonePortrait ? 13.5 : 15,
                           fontWeight: FontWeight.w700,
                           color: const Color(0xFF475569),
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: phonePortrait ? 6 : 8),
                       _SmoothPressable(
                         enabled: canSave,
                         child: FilledButton.icon(
                           onPressed: canSave ? _saveQuickEntry : null,
-                          icon: const Icon(Icons.how_to_reg_outlined),
+                          icon: Icon(
+                            Icons.how_to_reg_outlined,
+                            size: phonePortrait ? 20 : 24,
+                          ),
                           label: Text(
-                            _saving
-                                ? 'กำลังบันทึก...'
-                                : _attendanceSectionSaveLabel(section),
+                            saveLabel,
                             style: GoogleFonts.kanit(
                               fontWeight: FontWeight.w800,
-                              fontSize: 19,
+                              fontSize: phonePortrait ? 16 : 19,
                             ),
                           ),
                           style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(54),
+                            minimumSize: Size.fromHeight(
+                              phonePortrait ? 48 : 54,
+                            ),
                           ),
                         ),
                       ),
@@ -15847,26 +15927,37 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       scrollController: _attendanceGeneralPoolScroll,
     );
 
+    final size = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
+    final workH = phonePortrait
+        ? _attWorkCardHeight.clamp(200.0, 300.0)
+        : _attWorkCardHeight;
+    final leaveH = phonePortrait ? 160.0 : 220.0;
+
     return _attendanceFullscreenBoardLayout(
       pool: pool,
       cards: [
         _AttBoardCard(
           child: workCard,
-          height: _attWorkCardHeight,
+          height: workH,
           flex: 3,
-          onResize: _resizeAttWorkCard,
-          onResizeEnd: _saveAttWorkCardHeight,
+          onResize: phonePortrait ? null : _resizeAttWorkCard,
+          onResizeEnd: phonePortrait ? null : _saveAttWorkCardHeight,
         ),
-        _AttBoardCard(child: leaveCard, height: 220, flex: 2),
+        _AttBoardCard(child: leaveCard, height: leaveH, flex: 2),
       ],
     );
   }
 
   Widget _buildAttendanceDriverBoard() {
     final missingFromMacro = _attendanceMacroDriversMissingFromVehicleUsage();
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
     final macroSyncBanner = missingFromMacro > 0
         ? Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: EdgeInsets.only(bottom: phonePortrait ? 6 : 10),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: const Color(0xFFFFF3E0),
@@ -15874,20 +15965,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 border: Border.all(color: Color(0xFFFFCC80)),
               ),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                padding: EdgeInsets.fromLTRB(
+                  phonePortrait ? 10 : 12,
+                  phonePortrait ? 8 : 10,
+                  8,
+                  phonePortrait ? 8 : 10,
+                ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.front_loader,
                       color: Color(0xFFEF6C00),
-                      size: 22,
+                      size: phonePortrait ? 18 : 22,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'มีคนขับจากบันทึกแม็คโคร $missingFromMacro คนที่ยังไม่อยู่ในกล่อง',
+                        phonePortrait
+                            ? 'แม็คโคร $missingFromMacro คนยังไม่อยู่ในกล่อง'
+                            : 'มีคนขับจากบันทึกแม็คโคร $missingFromMacro คนที่ยังไม่อยู่ในกล่อง',
                         style: GoogleFonts.kanit(
-                          fontSize: 13.5,
+                          fontSize: phonePortrait ? 12.5 : 13.5,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF5D4037),
                           height: 1.25,
@@ -15913,7 +16011,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           )
         : _macroDriverIdsFromVehicleUsageToday().isNotEmpty
             ? Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: EdgeInsets.only(bottom: phonePortrait ? 4 : 10),
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
@@ -15922,7 +16020,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     ),
                     icon: const Icon(Icons.sync_rounded, size: 18),
                     label: Text(
-                      'อัปเดตจากบันทึกแม็คโคร',
+                      phonePortrait ? 'จากแม็คโคร' : 'อัปเดตจากบันทึกแม็คโคร',
                       style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -15987,6 +16085,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       scrollController: _attendanceDriverPoolScroll,
     );
 
+    final zoneH = phonePortrait ? 168.0 : 240.0;
+    final leaveH = phonePortrait ? 148.0 : 220.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -15995,9 +16096,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           child: _attendanceFullscreenBoardLayout(
             pool: pool,
             cards: [
-              _AttBoardCard(child: macroCard, height: 240),
-              _AttBoardCard(child: drumCard, height: 240),
-              _AttBoardCard(child: leaveCard, height: 220),
+              _AttBoardCard(child: macroCard, height: zoneH),
+              _AttBoardCard(child: drumCard, height: zoneH),
+              _AttBoardCard(child: leaveCard, height: leaveH),
             ],
           ),
         ),
@@ -16011,20 +16112,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }) {
     final size = MediaQuery.sizeOf(context);
     final wide = size.width >= 820 || size.width > size.height;
-    const gap = 10.0;
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
+    final gap = phonePortrait ? 8.0 : 10.0;
 
     if (wide) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(flex: 34, child: pool),
-          const SizedBox(width: gap),
+          SizedBox(width: gap),
           Expanded(
             flex: 66,
             child: Column(
               children: [
                 for (var i = 0; i < cards.length; i++) ...[
-                  if (i > 0) const SizedBox(height: gap),
+                  if (i > 0) SizedBox(height: gap),
                   Expanded(flex: cards[i].flex, child: cards[i].child),
                 ],
               ],
@@ -16034,18 +16137,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       );
     }
 
-    // ชิปชื่อใหญ่ขึ้น — เผื่อความสูงพูลและการ์ดตามไปด้วย
-    final poolH = (size.height * 0.38).clamp(300.0, 460.0);
+    // มือถือแนวตั้ง: พูลเล็กลง เหลือที่ให้กล่องวางชื่อ — แท็บเล็ตแนวตั้งคงพูลใหญ่
+    final poolH = phonePortrait
+        ? (size.height * 0.22).clamp(140.0, 200.0)
+        : (size.height * 0.38).clamp(300.0, 460.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(height: poolH, child: pool),
-        const SizedBox(height: gap),
+        SizedBox(height: gap),
         Expanded(
           child: ListView.separated(
             physics: const BouncingScrollPhysics(),
             itemCount: cards.length,
-            separatorBuilder: (context, index) => const SizedBox(height: gap),
+            separatorBuilder: (context, index) => SizedBox(height: gap),
             itemBuilder: (context, i) {
               final card = cards[i];
               final body = SizedBox(height: card.height, child: card.child);

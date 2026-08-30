@@ -87,8 +87,11 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
     final size = MediaQuery.sizeOf(context);
     final isTablet = size.shortestSide >= 600;
     final isLandscape = size.width > size.height;
+    final phonePortrait = !isTablet && !isLandscape;
     final useColumns = isTablet && isLandscape;
-    final gap = isTablet ? 16.0 : 12.0;
+    final gap = phonePortrait ? 10.0 : (isTablet ? 16.0 : 12.0);
+    final titleSize = phonePortrait ? 22.0 : (isTablet ? 30.0 : 25.0);
+    final subtitleSize = phonePortrait ? 12.5 : (isTablet ? 15.0 : 13.5);
 
     final sand = _AttendanceModeOption(
       title: 'เช็คชื่อพนักงานท่าทราย',
@@ -97,6 +100,7 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
       accent: const Color(0xFF2FB6A6),
       iconTileColor: const Color(0xFFE0F7F4),
       vertical: useColumns,
+      compact: phonePortrait,
       onTap: () => widget.onSelect(AttendanceSection.sandYard),
     );
     final driver = _AttendanceModeOption(
@@ -106,6 +110,7 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
       accent: const Color(0xFF00897B),
       iconTileColor: const Color(0xFFE0F2F1),
       vertical: useColumns,
+      compact: phonePortrait,
       onTap: () => widget.onSelect(AttendanceSection.driver),
     );
 
@@ -118,14 +123,14 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
             'จะเช็คชื่อกลุ่มไหน?',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: isTablet ? 30.0 : 25.0,
+              fontSize: titleSize,
               fontWeight: FontWeight.w800,
               height: 1.1,
               letterSpacing: -0.5,
               color: const Color(0xFF1A2433),
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: phonePortrait ? 6 : 10),
           Center(
             child: Container(
               width: isTablet ? 56 : 44,
@@ -136,12 +141,14 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: phonePortrait ? 6 : 8),
           Text(
-            'แยกกระดานเต็มจอ — ลากวางรายชื่อเหมือนเกม',
+            phonePortrait
+                ? 'เลือกกลุ่มแล้วลากวางรายชื่อบนกระดาน'
+                : 'แยกกระดานเต็มจอ — ลากวางรายชื่อเหมือนเกม',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: isTablet ? 15.0 : 13.5,
+              fontSize: subtitleSize,
               fontWeight: FontWeight.w500,
               color: const Color(0xFF64748B),
               height: 1.35,
@@ -151,33 +158,69 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
       ),
     );
 
+    Widget optionsBody({required double? slotHeight}) {
+      if (useColumns) {
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: _staggerTile(1, sand)),
+            SizedBox(width: gap),
+            Expanded(child: _staggerTile(2, driver)),
+          ],
+        );
+      }
+      final tiles = <Widget>[
+        if (slotHeight != null)
+          SizedBox(height: slotHeight, child: _staggerTile(1, sand))
+        else
+          _staggerTile(1, sand),
+        SizedBox(height: gap),
+        if (slotHeight != null)
+          SizedBox(height: slotHeight, child: _staggerTile(2, driver))
+        else
+          _staggerTile(2, driver),
+      ];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: tiles,
+      );
+    }
+
+    // มีความสูงจำกัดจาก parent (มือถือแนวตั้ง) — แบ่งพื้นที่เท่ากัน / เลื่อนได้
+    final bounded = phonePortrait;
     final options = useColumns
-        ? Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(child: _staggerTile(1, sand)),
-              SizedBox(width: gap),
-              Expanded(child: _staggerTile(2, driver)),
-            ],
-          )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _staggerTile(1, sand),
-              SizedBox(height: gap),
-              _staggerTile(2, driver),
-            ],
-          );
+        ? SizedBox(height: isTablet ? 240 : 220, child: optionsBody(slotHeight: null))
+        : bounded
+            ? Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final minCard = 108.0;
+                    final equal = (constraints.maxHeight - gap) / 2;
+                    final slotH = equal < minCard ? minCard : equal;
+                    final needsScroll =
+                        slotH * 2 + gap > constraints.maxHeight + 0.5;
+                    final body = optionsBody(slotHeight: slotH);
+                    if (!needsScroll) return body;
+                    return ListView(
+                      padding: EdgeInsets.zero,
+                      physics: const ClampingScrollPhysics(),
+                      children: [
+                        SizedBox(height: slotH, child: _staggerTile(1, sand)),
+                        SizedBox(height: gap),
+                        SizedBox(height: slotH, child: _staggerTile(2, driver)),
+                      ],
+                    );
+                  },
+                ),
+              )
+            : optionsBody(slotHeight: null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         header,
         SizedBox(height: gap),
-        // แนวตั้ง (แท็บเล็ตแนวนอน): FittedBox ในแต่ละการ์ดกัน overflow
-        useColumns
-            ? SizedBox(height: isTablet ? 240 : 220, child: options)
-            : options,
+        options,
       ],
     );
   }
@@ -192,6 +235,7 @@ class _AttendanceModeOption extends StatelessWidget {
     required this.iconTileColor,
     required this.onTap,
     this.vertical = false,
+    this.compact = false,
   });
 
   final String title;
@@ -201,20 +245,27 @@ class _AttendanceModeOption extends StatelessWidget {
   final Color iconTileColor;
   final VoidCallback onTap;
   final bool vertical;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
     final iconBox = vertical
         ? (isTablet ? 72.0 : 64.0)
-        : (isTablet ? 64.0 : 56.0);
+        : (compact
+            ? 48.0
+            : (isTablet ? 64.0 : 56.0));
     final iconSize = iconBox * 0.52;
     final titleSize = vertical
         ? (isTablet ? 21.0 : 19.0)
-        : (isTablet ? 23.0 : 21.0);
+        : (compact
+            ? 17.0
+            : (isTablet ? 23.0 : 21.0));
     final subtitleSize = vertical
         ? (isTablet ? 14.5 : 13.5)
-        : (isTablet ? 15.0 : 14.0);
+        : (compact
+            ? 12.5
+            : (isTablet ? 15.0 : 14.0));
 
     final iconTile = Container(
       width: iconBox,
@@ -244,11 +295,11 @@ class _AttendanceModeOption extends StatelessWidget {
             color: const Color(0xFF1A2433),
           ),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: compact ? 3 : 6),
         Text(
           subtitle,
           textAlign: vertical ? TextAlign.center : TextAlign.start,
-          maxLines: 2,
+          maxLines: compact ? 2 : 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: subtitleSize,
@@ -286,13 +337,13 @@ class _AttendanceModeOption extends StatelessWidget {
         : Row(
             children: [
               iconTile,
-              SizedBox(width: isTablet ? 18 : 14),
+              SizedBox(width: compact ? 12 : (isTablet ? 18 : 14)),
               Expanded(child: textBlock),
-              const SizedBox(width: 8),
+              SizedBox(width: compact ? 4 : 8),
               Icon(
                 Icons.chevron_right_rounded,
                 color: accent.withValues(alpha: 0.9),
-                size: isTablet ? 32 : 28,
+                size: compact ? 24 : (isTablet ? 32 : 28),
               ),
             ],
           );
@@ -300,7 +351,47 @@ class _AttendanceModeOption extends StatelessWidget {
     // มือถือแนวตั้งอยู่ใน Column ไม่มี max height — ห้ามใช้
     // CrossAxisAlignment.stretch โดยตรง (การ์ดสูงเป็นศูนย์ / แตะไม่ได้)
     // IntrinsicHeight ให้แถบสีซ้ายสูงเต็มการ์ดโดยไม่พัง layout
-    final minH = vertical ? 0.0 : (isTablet ? 88.0 : 80.0);
+    // เมื่อ compact + มีความสูงจาก parent ใช้ expand เต็มช่อง
+    final minH = vertical ? 0.0 : (compact ? 0.0 : (isTablet ? 88.0 : 80.0));
+    final card = DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE7ECF3)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: minH),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(width: 4, color: accent),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: vertical
+                          ? (isTablet ? 12 : 10)
+                          : (compact
+                              ? 12
+                              : (isTablet ? 18 : 14)),
+                      vertical: vertical
+                          ? (isTablet ? 14 : 10)
+                          : (compact
+                              ? 10
+                              : (isTablet ? 16 : 13)),
+                    ),
+                    child: body,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     return SoftPressButton(
       onTap: onTap,
       size: SoftPressSize.large,
@@ -314,40 +405,9 @@ class _AttendanceModeOption extends StatelessWidget {
         pressedBlurRadius: 5,
         pressedOffsetY: 1,
       ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE7ECF3)),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: minH),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(width: 4, color: accent),
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: vertical
-                            ? (isTablet ? 12 : 10)
-                            : (isTablet ? 18 : 14),
-                        vertical: vertical
-                            ? (isTablet ? 14 : 10)
-                            : (isTablet ? 16 : 13),
-                      ),
-                      child: body,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+      child: compact && !vertical
+          ? SizedBox.expand(child: card)
+          : card,
     );
   }
 }
