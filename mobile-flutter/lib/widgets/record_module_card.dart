@@ -73,16 +73,29 @@ class RecordModuleCard extends StatelessWidget {
             ? constraints.maxHeight
             : maxW;
         final isLandscapeCell = maxW > maxH * 1.08;
+        // มือถือ 2 คอลัมน์: การ์ดกว้างขึ้น — ลดไอคอนเล็กน้อย เพิ่มตัวอักษร
+        final phoneWidePortrait = !isLandscapeCell && maxW >= 140;
         final cardW = isLandscapeCell ? maxW : (maxW < maxH ? maxW : maxH);
         final cardH = isLandscapeCell ? maxH : cardW;
         final scaleRef = isLandscapeCell
             ? (maxH < maxW ? maxH : maxW)
             : cardW;
-        final iconSize = (scaleRef * (isLandscapeCell ? 0.54 : 0.5))
-            .clamp(isLandscapeCell ? 32.0 : 40.0, isLandscapeCell ? 50.0 : 66.0);
-        final pad = (scaleRef * 0.1).clamp(8.0, 14.0);
-        final titleSize = (scaleRef * 0.11).clamp(11.5, 14.5);
-        final statusSize = (scaleRef * 0.09).clamp(10.0, 12.0);
+        final iconSize = (scaleRef *
+                (isLandscapeCell
+                    ? 0.54
+                    : phoneWidePortrait
+                        ? 0.36
+                        : 0.5))
+            .clamp(
+              isLandscapeCell ? 32.0 : (phoneWidePortrait ? 34.0 : 40.0),
+              isLandscapeCell ? 50.0 : (phoneWidePortrait ? 48.0 : 66.0),
+            );
+        final pad = (scaleRef * (phoneWidePortrait ? 0.08 : 0.1))
+            .clamp(8.0, 14.0);
+        final titleSize = (scaleRef * (phoneWidePortrait ? 0.105 : 0.11))
+            .clamp(phoneWidePortrait ? 13.0 : 11.5, phoneWidePortrait ? 16.0 : 14.5);
+        final statusSize = (scaleRef * (phoneWidePortrait ? 0.085 : 0.09))
+            .clamp(phoneWidePortrait ? 11.0 : 10.0, phoneWidePortrait ? 13.0 : 12.0);
         final radius = isLandscapeCell ? 16.0 : 18.0;
         final textMaxWidth = isLandscapeCell
             ? (cardW - iconSize - pad * 3).clamp(48.0, cardW)

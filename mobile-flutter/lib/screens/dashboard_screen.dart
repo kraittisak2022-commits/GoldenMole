@@ -1642,13 +1642,15 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               final mqW = mq.width;
               final mqH = mq.height;
               final isLandscape = mqW > mqH;
+              final isPhonePortrait = !isLandscape && mqW < 600;
+              // แนวตั้งมือถือ: 2 คอลัมน์ให้อ่านง่าย | แท็บเล็ต: 3 | แนวนอน: 3–5
               final cross = isLandscape
                   ? (mqW >= 900
                         ? 5
                         : mqW >= 640
                         ? 4
                         : 3)
-                  : 3;
+                  : (mqW >= 600 ? 3 : 2);
               final safeMq =
                   (mqW.isFinite && mqW > 0) ? mqW : 360.0;
               final rawW = constraints.maxWidth;
@@ -1674,10 +1676,12 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   (usableWidth - (gap * (cross - 1))) / cross;
               final fitCellHeight =
                   (availH - (gap * (rows - 1))) / rows;
-              // แนวตั้ง: การ์ดจัตุรัส | แนวนอน: สี่เหลี่ยมผืนผ้าเต็มความสูงที่เหลือ
+              // แนวตั้งมือถือ: การ์ดสูงพอให้อ่านชื่อ/สถานะ | แนวนอน: เตี้ยเต็มแถว
               final preferredCellHeight = isLandscape
                   ? fitCellHeight.clamp(64.0, 108.0)
-                  : cellWidth.clamp(96.0, 200.0);
+                  : isPhonePortrait
+                      ? cellWidth.clamp(118.0, 168.0)
+                      : cellWidth.clamp(96.0, 200.0);
               final totalNeeded =
                   (preferredCellHeight * rows) + (gap * (rows - 1));
               final menuScrolls = isLandscape
@@ -1886,7 +1890,11 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             ),
                           ),
                           // เว้นช่องว่างให้เงาหัว + กันแผงเมนูทับขอบล่างส่วนหัว
-                          const SizedBox(height: 14),
+                          SizedBox(
+                            height: MediaQuery.sizeOf(context).width < 600
+                                ? 10
+                                : 14,
+                          ),
                         ],
                       ),
               ),
@@ -2181,10 +2189,11 @@ class _HomeHeaderCompact extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     const changeDayHint = 'แตะเพื่อเปลี่ยนวัน';
+    final narrow = MediaQuery.sizeOf(context).width < 600;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(narrow ? 20 : 24),
         boxShadow: const [
           BoxShadow(
             color: DailyPalette.shadowCard,
@@ -2194,11 +2203,16 @@ class _HomeHeaderCompact extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(narrow ? 20 : 24),
         child: ColoredBox(
           color: DailyPalette.card,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 14, 18),
+            padding: EdgeInsets.fromLTRB(
+              narrow ? 12 : 16,
+              narrow ? 12 : 16,
+              narrow ? 10 : 14,
+              narrow ? 12 : 18,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -2208,14 +2222,14 @@ class _HomeHeaderCompact extends StatelessWidget {
                     DecoratedBox(
                       decoration: BoxDecoration(
                         color: DailyPalette.card,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      child: const Padding(
-                        padding: EdgeInsets.all(10),
-                        child: AppLogo(size: 40),
+                      child: Padding(
+                        padding: EdgeInsets.all(narrow ? 6 : 10),
+                        child: AppLogo(size: narrow ? 32 : 40),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    SizedBox(width: narrow ? 10 : 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2224,22 +2238,22 @@ class _HomeHeaderCompact extends StatelessWidget {
                             l10n.dailyLogTitle,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w800,
-                              fontSize: 24,
+                              fontSize: narrow ? 20 : 24,
                               color: DailyPalette.ink,
                               letterSpacing: -0.4,
                               height: 1.1,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          SizedBox(height: narrow ? 2 : 4),
                           Text(
                             appName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: DailyPalette.inkMuted,
-                              fontSize: 13.5,
+                              fontSize: narrow ? 12 : 13.5,
                               fontWeight: FontWeight.w600,
                               height: 1.2,
                             ),
@@ -2271,72 +2285,77 @@ class _HomeHeaderCompact extends StatelessWidget {
                     _TopSettingsButton(onTap: onOpenSettings),
                   ],
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: narrow ? 10 : 16),
                 SoftPressButton(
                   onTap: onPickDay,
                   size: SoftPressSize.medium,
-                  borderRadius: 18,
+                  borderRadius: narrow ? 14 : 18,
                   isDarkSurface: false,
                   liftWhenIdle: true,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: DailyPalette.chipSurface,
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(narrow ? 14 : 18),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                      padding: EdgeInsets.fromLTRB(
+                        narrow ? 10 : 12,
+                        narrow ? 8 : 12,
+                        narrow ? 8 : 12,
+                        narrow ? 8 : 12,
+                      ),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.calendar_month_rounded,
                             color: DailyPalette.brand,
-                            size: 28,
+                            size: narrow ? 22 : 28,
                           ),
-                          const SizedBox(width: 14),
+                          SizedBox(width: narrow ? 10 : 14),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   selectedDateLabel,
-                                  maxLines: 2,
+                                  maxLines: narrow ? 1 : 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w800,
-                                    fontSize: 18,
+                                    fontSize: narrow ? 15 : 18,
                                     color: DailyPalette.ink,
                                     height: 1.2,
                                     letterSpacing: -0.2,
                                   ),
                                 ),
-                                const SizedBox(height: 3),
+                                SizedBox(height: narrow ? 1 : 3),
                                 Text(
                                   changeDayHint,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    fontSize: 12.5,
+                                    fontSize: narrow ? 11.5 : 12.5,
                                     color: DailyPalette.inkMuted,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          const Icon(
+                          Icon(
                             Icons.keyboard_arrow_down_rounded,
                             color: DailyPalette.brand,
-                            size: 28,
+                            size: narrow ? 22 : 28,
                           ),
                         ],
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: narrow ? 8 : 12),
                 Wrap(
                   spacing: 8,
-                  runSpacing: 8,
+                  runSpacing: 6,
                   children: [
                     _HeaderStatChip(
                       icon: Icons.access_time_filled_rounded,
