@@ -10,11 +10,32 @@ const String kMaintenanceTxCategory = 'Maintenance';
 const String kMaintenanceTypeOil = 'เปลี่ยนถ่ายน้ำมันเครื่อง';
 const String kMaintenanceTypeRepair = 'ซ่อม/ดูแลรักษา';
 const String kMaintenanceTypeParts = 'เปลี่ยนอะไหล่';
+const String kMaintenanceTypeBucketTeeth = 'เปลี่ยนเล็บขุด';
+const String kMaintenanceTypeGrease = 'อัดจารบี';
+const String kMaintenanceTypeGearOil = 'เปลี่ยนน้ำมันเกียร์';
 
-const List<String> kMaintenanceTypes = [
+/// ประเภทงานเริ่มต้น (กลุ่มทั่วไป)
+const List<String> kMaintenanceTypesDefault = [
   kMaintenanceTypeRepair,
   kMaintenanceTypeOil,
   kMaintenanceTypeParts,
+];
+
+/// @Deprecated ใช้ [maintenanceTypesFor] แทน — คงไว้ให้โค้ดเก่าอ้างอิง
+const List<String> kMaintenanceTypes = kMaintenanceTypesDefault;
+
+const List<String> kMaintenanceTypesMacro = [
+  kMaintenanceTypeRepair,
+  kMaintenanceTypeOil,
+  kMaintenanceTypeParts,
+  kMaintenanceTypeBucketTeeth,
+];
+
+const List<String> kMaintenanceTypesSandSieve = [
+  kMaintenanceTypeRepair,
+  kMaintenanceTypeParts,
+  kMaintenanceTypeGrease,
+  kMaintenanceTypeGearOil,
 ];
 
 /// กลุ่มเครื่องจักร/ยานพาหนะในเมนูบำรุงรักษา
@@ -24,6 +45,19 @@ enum MaintenanceAssetGroup {
   motorcycle,
   generator,
   sandSieve,
+}
+
+List<String> maintenanceTypesFor(MaintenanceAssetGroup group) {
+  switch (group) {
+    case MaintenanceAssetGroup.macro:
+      return kMaintenanceTypesMacro;
+    case MaintenanceAssetGroup.sandSieve:
+      return kMaintenanceTypesSandSieve;
+    case MaintenanceAssetGroup.car:
+    case MaintenanceAssetGroup.motorcycle:
+    case MaintenanceAssetGroup.generator:
+      return kMaintenanceTypesDefault;
+  }
 }
 
 extension MaintenanceAssetGroupX on MaintenanceAssetGroup {

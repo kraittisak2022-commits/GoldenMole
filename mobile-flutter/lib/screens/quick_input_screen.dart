@@ -6113,16 +6113,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _maintenanceType = kMaintenanceTypeRepair;
     _maintenanceDetailController.clear();
     _maintenanceAmountController.clear();
+    _ensureMaintenanceSelectionValid();
   }
 
-  void _ensureMaintenanceAssetValid() {
+  void _ensureMaintenanceSelectionValid() {
     final assets = maintenanceAssetsFor(_maintenanceGroup);
     if (assets.isEmpty) {
       _maintenanceAsset = '';
-      return;
-    }
-    if (!assets.contains(_maintenanceAsset)) {
+    } else if (!assets.contains(_maintenanceAsset)) {
       _maintenanceAsset = assets.first;
+    }
+    final types = maintenanceTypesFor(_maintenanceGroup);
+    if (types.isEmpty) {
+      _maintenanceType = kMaintenanceTypeRepair;
+    } else if (!types.contains(_maintenanceType)) {
+      _maintenanceType = types.first;
     }
   }
 
@@ -6141,7 +6146,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         setState(_resetMaintenanceForm);
       },
       body: () async {
-        _ensureMaintenanceAssetValid();
+        _ensureMaintenanceSelectionValid();
         final asset = _maintenanceAsset.trim();
         if (asset.isEmpty) {
           _failSave('กรุณาเลือกรถ/เครื่องจักร');
@@ -6197,13 +6202,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         MaintenanceAssetGroup.macro;
     _maintenanceGroup = group;
     _maintenanceAsset = asset;
-    _ensureMaintenanceAssetValid();
+    final type = (t.subCategory ?? '').trim();
+    _maintenanceType = type.isEmpty ? kMaintenanceTypeRepair : type;
+    _ensureMaintenanceSelectionValid();
+    // คงประเภทเดิมไว้ถ้ายังอยู่ในรายการของกลุ่ม — ถ้าไม่มีให้ fallback จาก ensure
+    final types = maintenanceTypesFor(_maintenanceGroup);
+    if (type.isNotEmpty && types.contains(type)) {
+      _maintenanceType = type;
+    }
     if (asset.isNotEmpty &&
         maintenanceAssetsFor(_maintenanceGroup).contains(asset)) {
       _maintenanceAsset = asset;
     }
-    final type = (t.subCategory ?? '').trim();
-    _maintenanceType = type.isEmpty ? kMaintenanceTypeRepair : type;
     _maintenanceDetailController.text = maintenanceDetailFromDescription(
       t.description,
       _maintenanceType,
@@ -16623,8 +16633,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildMaintenanceFormCard() {
-    _ensureMaintenanceAssetValid();
+    _ensureMaintenanceSelectionValid();
     final assets = maintenanceAssetsFor(_maintenanceGroup);
+    final types = maintenanceTypesFor(_maintenanceGroup);
     final editing =
         _maintenanceTxId != null && _maintenanceTxId!.trim().isNotEmpty;
     final todayRows = _maintenanceRowsToday();
@@ -16713,7 +16724,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       if (!sel) return;
                       setState(() {
                         _maintenanceGroup = g;
-                        _ensureMaintenanceAssetValid();
+                        _ensureMaintenanceSelectionValid();
                       });
                     },
                   ),
@@ -16762,7 +16773,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               spacing: 6,
               runSpacing: 6,
               children: [
-                for (final type in kMaintenanceTypes)
+                for (final type in types)
                   ChoiceChip(
                     label: Text(
                       type,

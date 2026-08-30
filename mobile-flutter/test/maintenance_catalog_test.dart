@@ -58,5 +58,28 @@ void main() {
         isFalse,
       );
     });
+    test('maintenanceTypesFor is group-specific', () {
+      expect(
+        maintenanceTypesFor(MaintenanceAssetGroup.macro),
+        contains(kMaintenanceTypeBucketTeeth),
+      );
+      expect(
+        maintenanceTypesFor(MaintenanceAssetGroup.sandSieve),
+        [
+          kMaintenanceTypeRepair,
+          kMaintenanceTypeParts,
+          kMaintenanceTypeGrease,
+          kMaintenanceTypeGearOil,
+        ],
+      );
+      expect(
+        maintenanceTypesFor(MaintenanceAssetGroup.sandSieve),
+        isNot(contains(kMaintenanceTypeOil)),
+      );
+      expect(
+        maintenanceTypesFor(MaintenanceAssetGroup.car),
+        kMaintenanceTypesDefault,
+      );
+    });
   });
 }
