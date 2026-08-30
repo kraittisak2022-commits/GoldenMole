@@ -88,15 +88,15 @@ class RecordModuleCard extends StatelessWidget {
                 (isLandscapeCell
                     ? 0.42
                     : phoneWidePortrait
-                        ? 0.22
+                        ? 0.28
                         : 0.36))
             .clamp(
-              isLandscapeCell ? 26.0 : (phoneWidePortrait ? 22.0 : 28.0),
-              isLandscapeCell ? 36.0 : (phoneWidePortrait ? 28.0 : 40.0),
+              isLandscapeCell ? 26.0 : (phoneWidePortrait ? 26.0 : 28.0),
+              isLandscapeCell ? 36.0 : (phoneWidePortrait ? 34.0 : 40.0),
             );
-        final wellSize = (iconGlyph * (phoneWidePortrait ? 1.85 : 1.75)).clamp(
-          isLandscapeCell ? 40.0 : (phoneWidePortrait ? 40.0 : 44.0),
-          isLandscapeCell ? 52.0 : (phoneWidePortrait ? 52.0 : 64.0),
+        final wellSize = (iconGlyph * (phoneWidePortrait ? 1.9 : 1.75)).clamp(
+          isLandscapeCell ? 40.0 : (phoneWidePortrait ? 48.0 : 44.0),
+          isLandscapeCell ? 52.0 : (phoneWidePortrait ? 62.0 : 64.0),
         );
         final pad = (scaleRef * (phoneWidePortrait ? 0.085 : 0.1)).clamp(
           phoneWidePortrait ? 10.0 : 8.0,

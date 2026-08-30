@@ -1725,11 +1725,11 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   (usableWidth - (gap * (cross - 1))) / cross;
               final fitCellHeight =
                   (availH - (gap * (rows - 1))) / rows;
-              // แนวตั้งมือถือ: การ์ดสูงกว่าจัตุรัสเล็กน้อย — บ่อไอคอน + ชื่อ + สถานะ
+              // แนวตั้งมือถือ: การ์ดสูงกว่าจัตุรัสเล็กน้อย — บ่อไอคอนใหญ่ + ชื่อ + สถานะ
               final preferredCellHeight = isLandscape
                   ? fitCellHeight.clamp(64.0, 108.0)
                   : phonePortrait
-                      ? (cellWidth * 1.12).clamp(126.0, 176.0)
+                      ? (cellWidth * 1.15).clamp(132.0, 184.0)
                       : cellWidth.clamp(96.0, 200.0);
               final totalNeeded =
                   (preferredCellHeight * rows) + (gap * (rows - 1));
