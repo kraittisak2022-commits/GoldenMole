@@ -21,8 +21,11 @@ import 'services/dashboard_service.dart';
 import 'services/locale_service.dart';
 import 'services/mobile_presence_service.dart';
 import 'services/session_service.dart';
+import 'services/theme_mode_service.dart';
+import 'theme/daily_palette.dart';
 import 'widgets/app_locale_scope.dart';
 import 'widgets/app_sync_banner.dart';
+import 'widgets/app_theme_scope.dart';
 import 'utils/app_error_binding.dart';
 import 'utils/device_perf.dart';
 import 'utils/supabase_function_session.dart';
@@ -44,24 +47,65 @@ Future<void> _preloadAppFonts() async {
   }
 }
 
-ThemeData _buildAppTheme() {
-  const brand = Color(0xFF11A8BA);
-  const ink = Color(0xFF17374C);
-  final baseLight = ThemeData(
-    brightness: Brightness.light,
+void _applySystemUiOverlay(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  SystemChrome.setSystemUIOverlayStyle(
+    SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+      systemNavigationBarIconBrightness:
+          dark ? Brightness.light : Brightness.dark,
+    ),
+  );
+}
+
+ThemeData _buildAppTheme(Brightness brightness) {
+  final daily =
+      brightness == Brightness.dark ? DailyColors.dark : DailyColors.light;
+  final brand = daily.brandDeep;
+  final ink = daily.ink;
+  final scaffoldBg = daily.surface;
+  final cardColor = daily.card;
+  final hairline = daily.hairline;
+  final muted = daily.inkMuted;
+  final outlineSide = brightness == Brightness.dark
+      ? const Color(0xFF3A4F5E)
+      : const Color(0xFFC8DDE7);
+  final inputFill = brightness == Brightness.dark
+      ? const Color(0xFF121C26)
+      : const Color(0xFFFAFCFF);
+  final chipSelected = brightness == Brightness.dark
+      ? const Color(0xFF1A3A42)
+      : const Color(0xFFDDF6F9);
+  final navIndicator = brightness == Brightness.dark
+      ? const Color(0xFF1A3A42)
+      : const Color(0xFFD5F2F5);
+  final progressTrack = brightness == Brightness.dark
+      ? const Color(0xFF1A2E38)
+      : const Color(0xFFDDF0F3);
+
+  final base = ThemeData(
+    brightness: brightness,
     useMaterial3: true,
     colorScheme: ColorScheme.fromSeed(
       seedColor: brand,
-      brightness: Brightness.light,
+      brightness: brightness,
     ),
-    scaffoldBackgroundColor: const Color(0xFFF3FBFC),
+    scaffoldBackgroundColor: scaffoldBg,
+    extensions: <ThemeExtension<dynamic>>[daily],
   );
   // ripple แบบ M3 ใหม่ — เครื่องรุ่นเล็กใช้ ripple เดิม (InkSparkle ใช้ shader)
   final splash = DevicePerf.isConstrainedDevice
       ? InkRipple.splashFactory
       : InkSparkle.splashFactory;
-  return baseLight.copyWith(
-    textTheme: GoogleFonts.kanitTextTheme(baseLight.textTheme),
+  return base.copyWith(
+    textTheme: GoogleFonts.kanitTextTheme(base.textTheme).apply(
+      bodyColor: ink,
+      displayColor: ink,
+    ),
     splashFactory: splash,
     visualDensity: VisualDensity.standard,
     // ทรานสิชันเปลี่ยนหน้าแบบ M3 ใหม่ + predictive back บน Android
@@ -73,16 +117,17 @@ ThemeData _buildAppTheme() {
       },
     ),
     appBarTheme: AppBarTheme(
-      backgroundColor: Colors.white,
+      backgroundColor: cardColor,
       foregroundColor: ink,
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
       surfaceTintColor: Colors.transparent,
-      systemOverlayStyle: const SystemUiOverlayStyle(
+      systemOverlayStyle: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        statusBarBrightness: Brightness.light,
+        statusBarIconBrightness:
+            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+        statusBarBrightness: brightness,
       ),
       titleTextStyle: GoogleFonts.kanit(
         fontSize: 20,
@@ -91,10 +136,10 @@ ThemeData _buildAppTheme() {
       ),
     ),
     cardTheme: CardThemeData(
-      color: Colors.white,
+      color: cardColor,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
-      shadowColor: const Color(0x1417374C),
+      shadowColor: daily.shadowCard,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -120,7 +165,7 @@ ThemeData _buildAppTheme() {
       style: OutlinedButton.styleFrom(
         foregroundColor: ink,
         minimumSize: const Size(64, 46),
-        side: const BorderSide(color: Color(0xFFC8DDE7)),
+        side: BorderSide(color: outlineSide),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
         textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w600, fontSize: 15),
       ),
@@ -134,21 +179,21 @@ ThemeData _buildAppTheme() {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: const Color(0xFFFAFCFF),
+      fillColor: inputFill,
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      hintStyle: GoogleFonts.kanit(color: const Color(0xFF90A9B7)),
-      labelStyle: GoogleFonts.kanit(color: const Color(0xFF5B7A8A)),
+      hintStyle: GoogleFonts.kanit(color: muted),
+      labelStyle: GoogleFonts.kanit(color: daily.inkSubtle),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFDDEAF1)),
+        borderSide: BorderSide(color: hairline),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFDDEAF1)),
+        borderSide: BorderSide(color: hairline),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: brand, width: 1.4),
+        borderSide: BorderSide(color: brand, width: 1.4),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -161,7 +206,9 @@ ThemeData _buildAppTheme() {
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: const Color(0xFF1E3A4C),
+      backgroundColor: brightness == Brightness.dark
+          ? const Color(0xFF1E3A4C)
+          : const Color(0xFF1E3A4C),
       contentTextStyle: GoogleFonts.kanit(color: Colors.white, fontSize: 14),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -169,7 +216,7 @@ ThemeData _buildAppTheme() {
       actionTextColor: const Color(0xFF6FE3F0),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: Colors.white,
+      backgroundColor: cardColor,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       titleTextStyle: GoogleFonts.kanit(
@@ -179,51 +226,51 @@ ThemeData _buildAppTheme() {
       ),
       contentTextStyle: GoogleFonts.kanit(
         fontSize: 14.5,
-        color: const Color(0xFF3D5666),
+        color: muted,
         height: 1.45,
       ),
     ),
-    bottomSheetTheme: const BottomSheetThemeData(
-      backgroundColor: Colors.white,
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: cardColor,
       surfaceTintColor: Colors.transparent,
       showDragHandle: true,
-      dragHandleColor: Color(0xFFC8DDE7),
-      shape: RoundedRectangleBorder(
+      dragHandleColor: daily.grabber,
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       clipBehavior: Clip.antiAlias,
     ),
-    chipTheme: baseLight.chipTheme.copyWith(
+    chipTheme: base.chipTheme.copyWith(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      side: const BorderSide(color: Color(0xFFDDEAF1)),
+      side: BorderSide(color: hairline),
       labelStyle: GoogleFonts.kanit(fontSize: 13, color: ink),
-      backgroundColor: Colors.white,
-      selectedColor: const Color(0xFFDDF6F9),
+      backgroundColor: cardColor,
+      selectedColor: chipSelected,
     ),
-    dividerTheme: const DividerThemeData(
-      color: Color(0xFFE3EEF3),
+    dividerTheme: DividerThemeData(
+      color: hairline,
       thickness: 1,
       space: 1,
     ),
     listTileTheme: ListTileThemeData(
-      iconColor: const Color(0xFF4E6E80),
+      iconColor: muted,
       titleTextStyle: GoogleFonts.kanit(fontSize: 15, color: ink),
       subtitleTextStyle: GoogleFonts.kanit(
         fontSize: 12.5,
-        color: const Color(0xFF6C8899),
+        color: muted,
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
-    progressIndicatorTheme: const ProgressIndicatorThemeData(
+    progressIndicatorTheme: ProgressIndicatorThemeData(
       color: brand,
-      linearTrackColor: Color(0xFFDDF0F3),
-      circularTrackColor: Color(0xFFDDF0F3),
+      linearTrackColor: progressTrack,
+      circularTrackColor: progressTrack,
     ),
     popupMenuTheme: PopupMenuThemeData(
-      color: Colors.white,
+      color: cardColor,
       surfaceTintColor: Colors.transparent,
       elevation: 6,
-      shadowColor: const Color(0x2617374C),
+      shadowColor: daily.shadowLift,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       textStyle: GoogleFonts.kanit(fontSize: 14.5, color: ink),
     ),
@@ -235,15 +282,13 @@ ThemeData _buildAppTheme() {
       textStyle: GoogleFonts.kanit(fontSize: 12, color: Colors.white),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: Colors.white,
+      backgroundColor: cardColor,
       surfaceTintColor: Colors.transparent,
-      indicatorColor: const Color(0xFFD5F2F5),
+      indicatorColor: navIndicator,
       iconTheme: WidgetStateProperty.resolveWith(
         (states) => IconThemeData(
           size: 24,
-          color: states.contains(WidgetState.selected)
-              ? const Color(0xFF0D98A5)
-              : const Color(0xFF7A8FA0),
+          color: states.contains(WidgetState.selected) ? brand : muted,
         ),
       ),
       labelTextStyle: WidgetStateProperty.resolveWith(
@@ -252,37 +297,35 @@ ThemeData _buildAppTheme() {
           fontWeight: states.contains(WidgetState.selected)
               ? FontWeight.w700
               : FontWeight.w500,
-          color: states.contains(WidgetState.selected)
-              ? const Color(0xFF0D98A5)
-              : const Color(0xFF7A8FA0),
+          color: states.contains(WidgetState.selected) ? brand : muted,
         ),
       ),
     ),
-    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: brand,
       foregroundColor: Colors.white,
       elevation: 3,
-      shape: RoundedRectangleBorder(
+      shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.all(Radius.circular(18)),
       ),
     ),
     checkboxTheme: CheckboxThemeData(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-      side: const BorderSide(color: Color(0xFFA5C2CF), width: 1.6),
+      side: BorderSide(color: outlineSide, width: 1.6),
     ),
     switchTheme: SwitchThemeData(
       trackOutlineColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.selected)
             ? Colors.transparent
-            : const Color(0xFFC8DDE7),
+            : outlineSide,
       ),
     ),
     timePickerTheme: TimePickerThemeData(
-      backgroundColor: Colors.white,
+      backgroundColor: cardColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
     ),
     datePickerTheme: DatePickerThemeData(
-      backgroundColor: Colors.white,
+      backgroundColor: cardColor,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       headerHeadlineStyle: GoogleFonts.kanit(
@@ -301,15 +344,7 @@ Future<void> main() async {
 
   // แสดงผลเต็มจอแบบแอพยุคใหม่ — เนื้อหาลอดใต้ status bar / gesture bar
   unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarDividerColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ),
-  );
+  _applySystemUiOverlay(Brightness.light);
 
   final appRootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -369,9 +404,12 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
   AdminUser? _currentAdmin;
   bool _bootstrapping = true;
   AppLocale _locale = AppLocale.th;
+  ThemeMode _themeMode = ThemeMode.light;
   final SessionService _sessionService = SessionService();
   final LocaleService _localeService = LocaleService();
-  final ThemeData _appTheme = _buildAppTheme();
+  final ThemeModeService _themeModeService = ThemeModeService();
+  late final ThemeData _lightTheme = _buildAppTheme(Brightness.light);
+  late final ThemeData _darkTheme = _buildAppTheme(Brightness.dark);
 
   @override
   void initState() {
@@ -379,6 +417,7 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _restoreSession();
     _loadSavedLocale();
+    _loadSavedThemeMode();
   }
 
   Future<void> _loadSavedLocale() async {
@@ -387,11 +426,30 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
     setState(() => _locale = saved);
   }
 
+  Future<void> _loadSavedThemeMode() async {
+    final saved = await _themeModeService.load();
+    if (!mounted) return;
+    setState(() => _themeMode = saved);
+    _applySystemUiOverlay(
+      saved == ThemeMode.dark ? Brightness.dark : Brightness.light,
+    );
+  }
+
   Future<void> _setLocale(AppLocale next) async {
     if (_locale == next) return;
     await _localeService.save(next);
     if (!mounted) return;
     setState(() => _locale = next);
+  }
+
+  Future<void> _setThemeMode(ThemeMode next) async {
+    if (_themeMode == next) return;
+    await _themeModeService.save(next);
+    if (!mounted) return;
+    setState(() => _themeMode = next);
+    _applySystemUiOverlay(
+      next == ThemeMode.dark ? Brightness.dark : Brightness.light,
+    );
   }
 
   @override
@@ -425,7 +483,16 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
   }
 
   Future<void> _restoreSession() async {
-    final minSplash = Future<void>.delayed(const Duration(milliseconds: 400));
+    // Hold branded launch splash long enough for the reveal sequence.
+    final reduceMotion = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
+    final minSplashMs = reduceMotion
+        ? 520
+        : (DevicePerf.isConstrainedDevice ? 1100 : 2000);
+    final minSplash = Future<void>.delayed(Duration(milliseconds: minSplashMs));
     try {
       final results = await Future.wait([
         _sessionService.getSavedAdmin(),
@@ -477,12 +544,12 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
       navigatorKey: widget.navigatorKey,
       title: 'GoldenMole for User',
       debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.light,
+      themeMode: _themeMode,
       scrollBehavior: DevicePerf.isConstrainedDevice
           ? const _AppScrollBehaviorConstrained()
           : const _AppScrollBehavior(),
-      theme: _appTheme,
-      darkTheme: _appTheme,
+      theme: _lightTheme,
+      darkTheme: _darkTheme,
       locale: _locale.materialLocale,
       supportedLocales: const [
         Locale('th', 'TH'),
@@ -503,11 +570,15 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
         );
         return Theme(
           data: themed,
-          child: AppLocaleScope(
-            locale: _locale,
-            onLocaleChanged: _setLocale,
-            child: AppSyncBannerHost(
-              child: child ?? const SizedBox.shrink(),
+          child: AppThemeScope(
+            themeMode: _themeMode,
+            onThemeModeChanged: _setThemeMode,
+            child: AppLocaleScope(
+              locale: _locale,
+              onLocaleChanged: _setLocale,
+              child: AppSyncBannerHost(
+                child: child ?? const SizedBox.shrink(),
+              ),
             ),
           ),
         );
