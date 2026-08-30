@@ -4898,10 +4898,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ? _fuelStock.reserveDiesel
                   : _fuelStock.mainDiesel) +
               priorLitersSameTank;
-          if (liters > available + 1e-9) {
+          // ถังติดลบอยู่แล้ว — อนุญาตบันทึกใหม่ได้ถ้าไม่เพิ่มปริมาณจากแถวเดิม
+          // (กันแก้เวลา/รายละเอียดแล้วเซฟไม่ได้ทั้งที่ยอดลิตรเท่าเดิม)
+          final increasesDraw = liters > priorLitersSameTank + 1e-9;
+          if (increasesDraw && liters > available + 1e-9) {
+            final tankName =
+                fuelTankIsReserve(tank) ? 'ถังสำรอง' : 'ถังหลัก';
+            final need = liters - available;
+            final shortfallHint = available < 0
+                ? '$tankNameติดลบอยู่ ${formatFuelLiters(available.abs())} ลิตร'
+                : '$tankNameเหลือ ${formatFuelLiters(available)} ลิตร';
+            final actionHint = fuelTankIsReserve(tank)
+                ? 'ไปเมนู «เติมเครื่องจักร» โอนจากถังหลักอย่างน้อย '
+                    '${formatFuelLiters(need)} ลิตรก่อน '
+                    'หรือสลับเป็นถังพล่าม/หลักถ้าเติมจากถังนั้น'
+                : 'รับน้ำมันเข้าถังหลักเพิ่มอย่างน้อย '
+                    '${formatFuelLiters(need)} ลิตรก่อน';
             _failSave(
-              '${fuelTankIsReserve(tank) ? 'ถังสำรอง' : 'ถังหลัก'}มีไม่พอ '
-              '(คงเหลือ ${formatFuelLiters(available)} ลิตร) — $vehicle',
+              '$shortfallHint — $actionHint ($vehicle)',
               field: 'ใช้น้ำมัน (ลิตร)',
             );
           }
