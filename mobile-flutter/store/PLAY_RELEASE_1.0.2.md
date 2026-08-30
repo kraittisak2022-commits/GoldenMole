@@ -46,7 +46,8 @@ Privacy policy: https://goldenmole.pro/privacy-policy-android.html
 
 ## Checklist ก่อนส่ง Play
 
-- [ ] อัปโหลด `app-release.aab` เป็น production / internal testing
+- [x] อัปโหลด `app-release.aab` เป็น production / internal testing
 - [ ] ใส่บันทึกประจำรุ่นด้านบน
 - [ ] ตรวจ Privacy Policy URL
-- [ ] ตั้ง `androidLatestVersionCode` / `androidLatestVersionName` ใน Supabase หลังเผยแพร่
+- [x] ตั้ง `androidLatestVersionCode` / `androidLatestVersionName` ใน Supabase หลังเผยแพร่
+  (`androidLatestVersionCode`: 3, `androidLatestVersionName`: `"1.0.2"`)
