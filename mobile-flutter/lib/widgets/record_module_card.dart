@@ -84,19 +84,19 @@ class RecordModuleCard extends StatelessWidget {
                 (isLandscapeCell
                     ? 0.54
                     : phoneWidePortrait
-                        ? 0.36
+                        ? 0.34
                         : 0.5))
             .clamp(
-              isLandscapeCell ? 32.0 : (phoneWidePortrait ? 34.0 : 40.0),
-              isLandscapeCell ? 50.0 : (phoneWidePortrait ? 48.0 : 66.0),
+              isLandscapeCell ? 32.0 : (phoneWidePortrait ? 32.0 : 40.0),
+              isLandscapeCell ? 50.0 : (phoneWidePortrait ? 44.0 : 66.0),
             );
-        final pad = (scaleRef * (phoneWidePortrait ? 0.08 : 0.1))
-            .clamp(8.0, 14.0);
-        final titleSize = (scaleRef * (phoneWidePortrait ? 0.105 : 0.11))
-            .clamp(phoneWidePortrait ? 13.0 : 11.5, phoneWidePortrait ? 16.0 : 14.5);
-        final statusSize = (scaleRef * (phoneWidePortrait ? 0.085 : 0.09))
+        final pad = (scaleRef * (phoneWidePortrait ? 0.07 : 0.1))
+            .clamp(phoneWidePortrait ? 7.0 : 8.0, phoneWidePortrait ? 12.0 : 14.0);
+        final titleSize = (scaleRef * (phoneWidePortrait ? 0.108 : 0.11))
+            .clamp(phoneWidePortrait ? 13.5 : 11.5, phoneWidePortrait ? 16.5 : 14.5);
+        final statusSize = (scaleRef * (phoneWidePortrait ? 0.086 : 0.09))
             .clamp(phoneWidePortrait ? 11.0 : 10.0, phoneWidePortrait ? 13.0 : 12.0);
-        final radius = isLandscapeCell ? 16.0 : 18.0;
+        final radius = isLandscapeCell ? 16.0 : (phoneWidePortrait ? 16.0 : 18.0);
         final textMaxWidth = isLandscapeCell
             ? (cardW - iconSize - pad * 3).clamp(48.0, cardW)
             : cardW - (pad * 2);
@@ -196,7 +196,7 @@ class RecordModuleCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Icon(icon, size: iconSize, color: accent),
-              SizedBox(height: pad * 0.5),
+              SizedBox(height: pad * (phoneWidePortrait ? 0.4 : 0.5)),
               titleBlock(),
             ],
           );

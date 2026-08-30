@@ -1228,6 +1228,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   Widget build(BuildContext context) {
     final useLiteAnimations = _reduceMotion;
     final l10n = AppLocalizations.of(context);
+    final mqSize = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        mqSize.shortestSide < 600 && mqSize.height >= mqSize.width;
     final dayKey = widget.dateKey(widget.selectedDay);
     final lastLabel = widget.data.dayTransactions.isNotEmpty
         ? l10n.formatShortDateFromYmd(
@@ -1279,11 +1282,15 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     final isAndroid = defaultTargetPlatform == TargetPlatform.android;
     final constrained = DevicePerf.isConstrainedDevice;
     final cacheRows = constrained ? 1.0 : (isAndroid ? 3.5 : 2.0);
+    final moreMenusBarH =
+        phonePortrait ? 34.0 : _kMoreMenusBarHeight;
+    final panelRadius = phonePortrait ? 18.0 : 24.0;
+    final panelPad = phonePortrait ? 8.0 : 12.0;
 
     final dailyMenuPanel = DecoratedBox(
       decoration: BoxDecoration(
         color: DailyPalette.card,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(panelRadius),
         boxShadow: const [
           BoxShadow(
             color: DailyPalette.shadowLift,
@@ -1293,7 +1300,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        padding: EdgeInsets.fromLTRB(panelPad, panelPad, panelPad, panelPad),
         child: AnimatedSwitcher(
           duration: MenuPanelTransition.duration(lite: useLiteAnimations),
           switchInCurve: Curves.easeOutCubic,
@@ -1712,13 +1719,14 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     ]
                   : primaryModules;
               final gridItemCount = visibleModules.length + 1;
-              final gap = TouchProfile.of(context).gridGap;
-              const sideInset = 2.0;
+              final gap = phonePortrait
+                  ? 8.0
+                  : TouchProfile.of(context).gridGap;
+              final sideInset = phonePortrait ? 1.0 : 2.0;
               final mq = MediaQuery.sizeOf(context);
               final mqW = mq.width;
               final mqH = mq.height;
               final isLandscape = mqW > mqH;
-              final isPhonePortrait = !isLandscape && mqW < 600;
               // แนวตั้งมือถือ: 2 คอลัมน์ให้อ่านง่าย | แท็บเล็ต: 3 | แนวนอน: 3–5
               final cross = isLandscape
                   ? (mqW >= 900
@@ -1739,11 +1747,11 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               // ช่วง AnimatedSize / กลับจากเมนูย่อย maxHeight อาจเป็นเศษส่วนเล็กมาก
               // ทำให้ clamp(1.0, panelH) พังเมื่อ panelH < 1
               final panelH = !rawMaxH.isFinite
-                  ? 120.0 + _kMoreMenusBarHeight
+                  ? 120.0 + moreMenusBarH
                   : rawMaxH < 1.0
-                      ? 1.0 + _kMoreMenusBarHeight
+                      ? 1.0 + moreMenusBarH
                       : rawMaxH;
-              final availRaw = panelH - _kMoreMenusBarHeight;
+              final availRaw = panelH - moreMenusBarH;
               final availH = availRaw < 1.0 ? 1.0 : availRaw;
               final rows =
                   (gridItemCount / cross).ceil().clamp(1, 12);
@@ -1755,8 +1763,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
               // แนวตั้งมือถือ: การ์ดสูงพอให้อ่านชื่อ/สถานะ | แนวนอน: เตี้ยเต็มแถว
               final preferredCellHeight = isLandscape
                   ? fitCellHeight.clamp(64.0, 108.0)
-                  : isPhonePortrait
-                      ? cellWidth.clamp(118.0, 168.0)
+                  : phonePortrait
+                      ? cellWidth.clamp(114.0, 164.0)
                       : cellWidth.clamp(96.0, 200.0);
               final totalNeeded =
                   (preferredCellHeight * rows) + (gap * (rows - 1));
@@ -1873,7 +1881,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     ),
                   ),
                   SizedBox(
-                    height: _kMoreMenusBarHeight,
+                    height: moreMenusBarH,
                     child: Center(
                       child: SoftPressButton(
                         onTap: () {
@@ -1883,13 +1891,13 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                           );
                         },
                         size: SoftPressSize.small,
-                        borderRadius: 20,
+                        borderRadius: phonePortrait ? 16 : 20,
                         isDarkSurface: false,
                         liftWhenIdle: true,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: phonePortrait ? 10 : 12,
+                            vertical: phonePortrait ? 4 : 6,
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -1898,18 +1906,23 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                 _moreMenusExpanded
                                     ? Icons.expand_less_rounded
                                     : Icons.expand_more_rounded,
-                                size: 20,
+                                size: phonePortrait ? 18 : 20,
                                 color: DailyPalette.inkMuted,
                               ),
-                              const SizedBox(width: 4),
+                              SizedBox(width: phonePortrait ? 3 : 4),
                               Text(
                                 _moreMenusExpanded
-                                    ? 'ซ่อนเมนูเพิ่มเติม'
-                                    : 'แสดงเมนูเพิ่มเติม',
-                                style: const TextStyle(
+                                    ? (phonePortrait
+                                        ? 'ซ่อนเมนู'
+                                        : 'ซ่อนเมนูเพิ่มเติม')
+                                    : (phonePortrait
+                                        ? 'เมนูเพิ่มเติม'
+                                        : 'แสดงเมนูเพิ่มเติม'),
+                                style: TextStyle(
                                   fontWeight: FontWeight.w700,
-                                  fontSize: 13,
+                                  fontSize: phonePortrait ? 12 : 13,
                                   color: DailyPalette.inkMuted,
+                                  height: 1.1,
                                 ),
                               ),
                             ],
@@ -1930,7 +1943,12 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
       children: [
         const Positioned.fill(child: ColoredBox(color: DailyPalette.surface)),
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          padding: EdgeInsets.fromLTRB(
+            phonePortrait ? 8 : 12,
+            phonePortrait ? 6 : 10,
+            phonePortrait ? 8 : 12,
+            phonePortrait ? 8 : 12,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -1966,11 +1984,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             ),
                           ),
                           // เว้นช่องว่างให้เงาหัว + กันแผงเมนูทับขอบล่างส่วนหัว
-                          SizedBox(
-                            height: MediaQuery.sizeOf(context).width < 600
-                                ? 10
-                                : 14,
-                          ),
+                          SizedBox(height: phonePortrait ? 8 : 14),
                         ],
                       ),
               ),
@@ -2207,13 +2221,19 @@ class _StaggerMenuTile extends StatelessWidget {
 }
 
 class _TopSettingsButton extends StatelessWidget {
-  const _TopSettingsButton({required this.onTap});
+  const _TopSettingsButton({
+    required this.onTap,
+    this.compact = false,
+  });
 
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final label = AppLocalizations.of(context).navSettings;
+    final pad = compact ? 8.0 : 10.0;
+    final iconSize = compact ? 20.0 : 22.0;
     return Tooltip(
       message: label,
       child: Semantics(
@@ -2222,19 +2242,19 @@ class _TopSettingsButton extends StatelessWidget {
         child: SoftPressButton(
           onTap: onTap,
           size: SoftPressSize.small,
-          borderRadius: 12,
+          borderRadius: compact ? 10 : 12,
           liftWhenIdle: true,
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: DailyPalette.chipSurface,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(compact ? 10 : 12),
             ),
-            child: const Padding(
-              padding: EdgeInsets.all(10),
+            child: Padding(
+              padding: EdgeInsets.all(pad),
               child: Icon(
                 Icons.settings_outlined,
                 color: DailyPalette.brand,
-                size: 22,
+                size: iconSize,
               ),
             ),
           ),
@@ -2265,11 +2285,13 @@ class _HomeHeaderCompact extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     const changeDayHint = 'แตะเพื่อเปลี่ยนวัน';
-    final narrow = MediaQuery.sizeOf(context).width < 600;
+    final size = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        size.shortestSide < 600 && size.height >= size.width;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(narrow ? 20 : 24),
+        borderRadius: BorderRadius.circular(phonePortrait ? 18 : 24),
         boxShadow: const [
           BoxShadow(
             color: DailyPalette.shadowCard,
@@ -2279,15 +2301,15 @@ class _HomeHeaderCompact extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(narrow ? 20 : 24),
+        borderRadius: BorderRadius.circular(phonePortrait ? 18 : 24),
         child: ColoredBox(
           color: DailyPalette.card,
           child: Padding(
             padding: EdgeInsets.fromLTRB(
-              narrow ? 12 : 16,
-              narrow ? 12 : 16,
-              narrow ? 10 : 14,
-              narrow ? 12 : 18,
+              phonePortrait ? 10 : 16,
+              phonePortrait ? 10 : 16,
+              phonePortrait ? 8 : 14,
+              phonePortrait ? 10 : 18,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2298,14 +2320,16 @@ class _HomeHeaderCompact extends StatelessWidget {
                     DecoratedBox(
                       decoration: BoxDecoration(
                         color: DailyPalette.card,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(
+                          phonePortrait ? 12 : 14,
+                        ),
                       ),
                       child: Padding(
-                        padding: EdgeInsets.all(narrow ? 6 : 10),
-                        child: AppLogo(size: narrow ? 32 : 40),
+                        padding: EdgeInsets.all(phonePortrait ? 5 : 10),
+                        child: AppLogo(size: phonePortrait ? 28 : 40),
                       ),
                     ),
-                    SizedBox(width: narrow ? 10 : 14),
+                    SizedBox(width: phonePortrait ? 8 : 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2316,22 +2340,22 @@ class _HomeHeaderCompact extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontWeight: FontWeight.w800,
-                              fontSize: narrow ? 20 : 24,
+                              fontSize: phonePortrait ? 18 : 24,
                               color: DailyPalette.ink,
                               letterSpacing: -0.4,
                               height: 1.1,
                             ),
                           ),
-                          SizedBox(height: narrow ? 2 : 4),
+                          SizedBox(height: phonePortrait ? 1 : 4),
                           Text(
                             appName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: DailyPalette.inkMuted,
-                              fontSize: narrow ? 12 : 13.5,
+                              fontSize: phonePortrait ? 11.5 : 13.5,
                               fontWeight: FontWeight.w600,
-                              height: 1.2,
+                              height: 1.15,
                             ),
                           ),
                         ],
@@ -2340,104 +2364,132 @@ class _HomeHeaderCompact extends StatelessWidget {
                     SoftPressButton(
                       onTap: () => onRefresh(),
                       size: SoftPressSize.small,
-                      borderRadius: 12,
+                      borderRadius: phonePortrait ? 10 : 12,
                       liftWhenIdle: true,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: DailyPalette.chipSurface,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(
+                            phonePortrait ? 10 : 12,
+                          ),
                         ),
-                        child: const Padding(
-                          padding: EdgeInsets.all(10),
+                        child: Padding(
+                          padding: EdgeInsets.all(phonePortrait ? 8 : 10),
                           child: Icon(
                             Icons.refresh_rounded,
                             color: DailyPalette.inkSubtle,
-                            size: 22,
+                            size: phonePortrait ? 20 : 22,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    _TopSettingsButton(onTap: onOpenSettings),
+                    SizedBox(width: phonePortrait ? 6 : 8),
+                    _TopSettingsButton(
+                      onTap: onOpenSettings,
+                      compact: phonePortrait,
+                    ),
                   ],
                 ),
-                SizedBox(height: narrow ? 10 : 16),
+                SizedBox(height: phonePortrait ? 8 : 16),
                 SoftPressButton(
                   onTap: onPickDay,
                   size: SoftPressSize.medium,
-                  borderRadius: narrow ? 14 : 18,
+                  borderRadius: phonePortrait ? 12 : 18,
                   isDarkSurface: false,
                   liftWhenIdle: true,
-                  child: DecoratedBox(
+                  child: Tooltip(
+                    message: changeDayHint,
+                    child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: DailyPalette.chipSurface,
-                      borderRadius: BorderRadius.circular(narrow ? 14 : 18),
+                      borderRadius: BorderRadius.circular(
+                        phonePortrait ? 12 : 18,
+                      ),
                     ),
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
-                        narrow ? 10 : 12,
-                        narrow ? 8 : 12,
-                        narrow ? 8 : 12,
-                        narrow ? 8 : 12,
+                        phonePortrait ? 10 : 12,
+                        phonePortrait ? 7 : 12,
+                        phonePortrait ? 6 : 12,
+                        phonePortrait ? 7 : 12,
                       ),
                       child: Row(
                         children: [
                           Icon(
                             Icons.calendar_month_rounded,
                             color: DailyPalette.brand,
-                            size: narrow ? 22 : 28,
+                            size: phonePortrait ? 20 : 28,
                           ),
-                          SizedBox(width: narrow ? 10 : 14),
+                          SizedBox(width: phonePortrait ? 8 : 14),
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  selectedDateLabel,
-                                  maxLines: narrow ? 1 : 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: narrow ? 15 : 18,
-                                    color: DailyPalette.ink,
-                                    height: 1.2,
-                                    letterSpacing: -0.2,
+                            child: phonePortrait
+                                ? Text(
+                                    selectedDateLabel,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14.5,
+                                      color: DailyPalette.ink,
+                                      height: 1.15,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  )
+                                : Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        selectedDateLabel,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 18,
+                                          color: DailyPalette.ink,
+                                          height: 1.2,
+                                          letterSpacing: -0.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      const Text(
+                                        changeDayHint,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12.5,
+                                          color: DailyPalette.inkMuted,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                SizedBox(height: narrow ? 1 : 3),
-                                Text(
-                                  changeDayHint,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: narrow ? 11.5 : 12.5,
-                                    color: DailyPalette.inkMuted,
-                                  ),
-                                ),
-                              ],
-                            ),
                           ),
                           Icon(
                             Icons.keyboard_arrow_down_rounded,
                             color: DailyPalette.brand,
-                            size: narrow ? 22 : 28,
+                            size: phonePortrait ? 22 : 28,
                           ),
                         ],
                       ),
                     ),
+                    ),
                   ),
                 ),
-                SizedBox(height: narrow ? 8 : 12),
+                SizedBox(height: phonePortrait ? 6 : 12),
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
+                  spacing: phonePortrait ? 6 : 8,
+                  runSpacing: phonePortrait ? 4 : 6,
                   children: [
                     _HeaderStatChip(
                       icon: Icons.access_time_filled_rounded,
                       label: '${l10n.latestPrefix} $lastLabel',
+                      compact: phonePortrait,
                     ),
-                    _LiveClockChip(l10n: l10n),
+                    _LiveClockChip(
+                      l10n: l10n,
+                      compact: phonePortrait,
+                    ),
                   ],
                 ),
               ],
@@ -2450,9 +2502,13 @@ class _HomeHeaderCompact extends StatelessWidget {
 }
 
 class _LiveClockChip extends StatefulWidget {
-  const _LiveClockChip({required this.l10n});
+  const _LiveClockChip({
+    required this.l10n,
+    this.compact = false,
+  });
 
   final AppLocalizations l10n;
+  final bool compact;
 
   @override
   State<_LiveClockChip> createState() => _LiveClockChipState();
@@ -2486,6 +2542,7 @@ class _LiveClockChipState extends State<_LiveClockChip> {
     return _HeaderStatChip(
       icon: Icons.schedule_rounded,
       label: '${widget.l10n.timePrefix} $clock',
+      compact: widget.compact,
     );
   }
 }
@@ -2494,10 +2551,12 @@ class _HeaderStatChip extends StatelessWidget {
   const _HeaderStatChip({
     required this.icon,
     required this.label,
+    this.compact = false,
   });
 
   final IconData icon;
   final String label;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -2507,29 +2566,37 @@ class _HeaderStatChip extends StatelessWidget {
         final cap = c.maxWidth.isFinite && c.maxWidth > 0
             ? c.maxWidth
             : (mqW.isFinite && mqW > 0 ? mqW : 360.0);
-        final labelMax = (cap - 44).clamp(48.0, 260.0);
+        final labelMax = (cap - (compact ? 36 : 44)).clamp(48.0, 260.0);
         return DecoratedBox(
           decoration: BoxDecoration(
             color: DailyPalette.chipSurface,
             borderRadius: BorderRadius.circular(999),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 8 : 10,
+              vertical: compact ? 4 : 6,
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, color: DailyPalette.inkMuted, size: 15),
-                const SizedBox(width: 5),
+                Icon(
+                  icon,
+                  color: DailyPalette.inkMuted,
+                  size: compact ? 13 : 15,
+                ),
+                SizedBox(width: compact ? 4 : 5),
                 ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: labelMax),
                   child: Text(
                     label,
-                    maxLines: 4,
+                    maxLines: compact ? 1 : 4,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: DailyPalette.inkMuted,
-                      fontSize: 13,
+                      fontSize: compact ? 11.5 : 13,
                       fontWeight: FontWeight.w600,
+                      height: 1.15,
                     ),
                   ),
                 ),
