@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/daily_palette.dart';
 import '../utils/device_perf.dart';
 
 /// โครงหน้าแดชบอร์ดแบบ skeleton — โหลดครั้งแรกไม่เห็นหน้าว่าง
@@ -33,8 +34,9 @@ class _DashboardLoadingViewState extends State<DashboardLoadingView>
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
     return ColoredBox(
-      color: const Color(0xFFF8FAFC),
+      color: p.surface,
       child: AnimatedBuilder(
         animation: _shimmer,
         builder: (context, _) {
@@ -52,9 +54,9 @@ class _DashboardLoadingViewState extends State<DashboardLoadingView>
                 Expanded(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: p.card,
                       borderRadius: BorderRadius.circular(28),
-                      border: Border.all(color: const Color(0xFFE7ECF3)),
+                      border: Border.all(color: p.hairline),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
@@ -107,6 +109,10 @@ class _ShimmerBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final base = dark ? p.chipSurface : const Color(0xFFE8EEF4);
+    final peak = dark ? p.card : const Color(0xFFF5F8FB);
     final sweep = (t % 1.0) * 2 - 1;
     return Container(
       width: width,
@@ -116,11 +122,7 @@ class _ShimmerBox extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment(sweep - 1, 0),
           end: Alignment(sweep + 1, 0),
-          colors: const [
-            Color(0xFFE8EEF4),
-            Color(0xFFF5F8FB),
-            Color(0xFFE8EEF4),
-          ],
+          colors: [base, peak, base],
         ),
       ),
     );
