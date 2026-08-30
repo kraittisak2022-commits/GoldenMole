@@ -204,6 +204,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   MaintenanceAssetGroup _maintenanceGroup = MaintenanceAssetGroup.macro;
   String _maintenanceAsset = '';
   String _maintenanceType = kMaintenanceTypeRepair;
+  MaintenanceSubMode _maintenanceSubMode = MaintenanceSubMode.serviceLog;
+  /// normal | urgent — ใช้เฉพาะโหมดแจ้งซ่อม
+  String _maintenanceUrgency = 'normal';
   String? _maintenanceTxId;
 
   final _leaveReasonController = TextEditingController();
@@ -6110,7 +6113,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _maintenanceTxId = null;
     _maintenanceGroup = MaintenanceAssetGroup.macro;
     _maintenanceAsset = '';
-    _maintenanceType = kMaintenanceTypeRepair;
+    _maintenanceType = _maintenanceSubMode == MaintenanceSubMode.repairRequest
+        ? kMaintenanceTypeRepairRequest
+        : kMaintenanceTypeRepair;
+    _maintenanceUrgency = 'normal';
     _maintenanceDetailController.clear();
     _maintenanceAmountController.clear();
     _ensureMaintenanceSelectionValid();
@@ -6123,6 +6129,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     } else if (!assets.contains(_maintenanceAsset)) {
       _maintenanceAsset = assets.first;
     }
+    if (_maintenanceSubMode == MaintenanceSubMode.repairRequest) {
+      _maintenanceType = kMaintenanceTypeRepairRequest;
+      return;
+    }
     final types = maintenanceTypesFor(_maintenanceGroup);
     if (types.isEmpty) {
       _maintenanceType = kMaintenanceTypeRepair;
@@ -6131,7 +6141,85 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
   }
 
+  String? _validateMaintenanceRepairForm() {
+    _ensureMaintenanceSelectionValid();
+    if (_maintenanceAsset.trim().isEmpty) {
+      return 'กรุณาเลือกรถ/เครื่องจักร';
+    }
+    if (_maintenanceDetailController.text.trim().isEmpty) {
+      return 'กรุณาระบุอาการ / รายละเอียดการแจ้งซ่อม';
+    }
+    return null;
+  }
+
+  Future<bool> _confirmMaintenanceRepairSummary() async {
+    _releaseKeyboardFocus();
+    AppHaptics.tap();
+    final asset = _maintenanceAsset.trim();
+    final detail = _maintenanceDetailController.text.trim();
+    final urgency = _maintenanceUrgency == 'urgent' ? 'ด่วน' : 'ปกติ';
+    final lines = <String>[
+      'วันที่ ${_formatDate(_selectedDate)}',
+      'กลุ่ม ${_maintenanceGroup.label}',
+      'รายการ ${asset.isEmpty ? '—' : asset}',
+      'ความเร่งด่วน $urgency',
+      'อาการ / รายละเอียด',
+      detail,
+      '',
+      'จะส่งรายงานเข้า LINE ให้ผู้ดูแล (เหมือนแจ้งเบิกเงิน)',
+    ];
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(
+          Icons.build_circle_outlined,
+          size: 36,
+          color: Color(0xFFB45309),
+        ),
+        title: Text(
+          'สรุปแจ้งซ่อม',
+          style: GoogleFonts.kanit(fontWeight: FontWeight.w800),
+        ),
+        content: SingleChildScrollView(
+          child: Text(
+            lines.join('\n'),
+            style: GoogleFonts.kanit(fontSize: 15, height: 1.45),
+          ),
+        ),
+        actionsOverflowButtonSpacing: 8,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'แก้ไข',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB45309),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'ยืนยันส่งแจ้งซ่อม',
+              style: GoogleFonts.kanit(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
   Future<void> _saveMaintenanceEntry() async {
+    if (_maintenanceSubMode == MaintenanceSubMode.repairRequest) {
+      await _saveMaintenanceRepairRequest();
+      return;
+    }
     await _runSaveWithPopups(
       successMessage: 'บันทึกบำรุงรักษาสำเร็จ',
       saveActionLabel: 'บันทึกซ่อม/ดูแลรักษาเครื่องยนต์',
@@ -6193,6 +6281,70 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  Future<void> _saveMaintenanceRepairRequest() async {
+    final preErr = _validateMaintenanceRepairForm();
+    if (preErr != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(preErr, style: GoogleFonts.kanit()),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final confirmed = await _confirmMaintenanceRepairSummary();
+    if (!confirmed || !mounted) return;
+
+    await _runSaveWithPopups(
+      successMessage: 'ส่งแจ้งซ่อมแล้ว',
+      saveActionLabel: 'แจ้งซ่อม',
+      saveButtonLabel: 'ส่งแจ้งซ่อม',
+      requireSignature: true,
+      stayOnPage: true,
+      onStayOnPageCleared: () {
+        if (!mounted) return;
+        setState(_resetMaintenanceForm);
+      },
+      body: () async {
+        final err = _validateMaintenanceRepairForm();
+        if (err != null) _failSave(err);
+        final asset = _maintenanceAsset.trim();
+        final detail = _maintenanceDetailController.text.trim();
+        const type = kMaintenanceTypeRepairRequest;
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final date = '$y-$m-$d';
+        final id =
+            (_maintenanceTxId != null && _maintenanceTxId!.trim().isNotEmpty)
+            ? _maintenanceTxId!.trim()
+            : '${DateTime.now().millisecondsSinceEpoch}_maint_req';
+        _maintenanceTxId = id;
+        final saved = AppTransaction(
+          id: id,
+          date: date,
+          type: 'Expense',
+          category: kMaintenanceTxCategory,
+          subCategory: type,
+          description: _appendRecorder(
+            maintenanceDescription(type: type, detail: detail),
+          ),
+          amount: 0,
+          note: _activeSignatureNote,
+          vehicleId: asset,
+          vehicleName: asset,
+          workType: _maintenanceGroup.code,
+          eventPriority: _maintenanceUrgency == 'urgent' ? 'urgent' : 'normal',
+        );
+        await _persist(saved);
+        if (!_lastPersistQueued) {
+          unawaited(notifyMaintenanceRepairLineAfterSaved(saved));
+        }
+      },
+    );
+  }
+
   void _applyMaintenanceToForm(AppTransaction t) {
     _maintenanceTxId = t.id;
     final asset = (t.vehicleName ?? t.vehicleId ?? '').trim();
@@ -6203,12 +6355,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _maintenanceGroup = group;
     _maintenanceAsset = asset;
     final type = (t.subCategory ?? '').trim();
-    _maintenanceType = type.isEmpty ? kMaintenanceTypeRepair : type;
+    if (type == kMaintenanceTypeRepairRequest || isMaintenanceRepairRequest(t)) {
+      _maintenanceSubMode = MaintenanceSubMode.repairRequest;
+      _maintenanceType = kMaintenanceTypeRepairRequest;
+      _maintenanceUrgency =
+          ((t.eventPriority ?? '').trim() == 'urgent') ? 'urgent' : 'normal';
+      _maintenanceAmountController.clear();
+    } else {
+      _maintenanceSubMode = MaintenanceSubMode.serviceLog;
+      _maintenanceType = type.isEmpty ? kMaintenanceTypeRepair : type;
+      _maintenanceUrgency = 'normal';
+      final amt = t.amount;
+      _maintenanceAmountController.text = amt == amt.roundToDouble()
+          ? amt.round().toString()
+          : amt.toStringAsFixed(2);
+    }
     _ensureMaintenanceSelectionValid();
-    // คงประเภทเดิมไว้ถ้ายังอยู่ในรายการของกลุ่ม — ถ้าไม่มีให้ fallback จาก ensure
-    final types = maintenanceTypesFor(_maintenanceGroup);
-    if (type.isNotEmpty && types.contains(type)) {
-      _maintenanceType = type;
+    if (_maintenanceSubMode == MaintenanceSubMode.serviceLog) {
+      final types = maintenanceTypesFor(_maintenanceGroup);
+      if (type.isNotEmpty && types.contains(type)) {
+        _maintenanceType = type;
+      }
     }
     if (asset.isNotEmpty &&
         maintenanceAssetsFor(_maintenanceGroup).contains(asset)) {
@@ -6218,10 +6385,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       t.description,
       _maintenanceType,
     );
-    final amt = t.amount;
-    _maintenanceAmountController.text = amt == amt.roundToDouble()
-        ? amt.round().toString()
-        : amt.toStringAsFixed(2);
     _persistOmitCreatedForIds.add(t.id);
   }
 
@@ -16636,6 +16799,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _ensureMaintenanceSelectionValid();
     final assets = maintenanceAssetsFor(_maintenanceGroup);
     final types = maintenanceTypesFor(_maintenanceGroup);
+    final isRepair = _maintenanceSubMode == MaintenanceSubMode.repairRequest;
     final editing =
         _maintenanceTxId != null && _maintenanceTxId!.trim().isNotEmpty;
     final todayRows = _maintenanceRowsToday();
@@ -16662,7 +16826,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'ซ่อม / ดูแลรักษาเครื่องยนต์',
+              isRepair ? 'แจ้งซ่อม' : 'ซ่อม / ดูแลรักษาเครื่องยนต์',
               style: GoogleFonts.kanit(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
@@ -16671,11 +16835,58 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
             const SizedBox(height: 4),
             Text(
-              'เลือกกลุ่ม → เลือกรายการ → ประเภทงาน → จำนวนเงิน',
+              isRepair
+                  ? 'เลือกกลุ่ม → เลือกรายการ → ระบุอาการ → ส่งเข้า LINE'
+                  : 'เลือกกลุ่ม → เลือกรายการ → ประเภทงาน → จำนวนเงิน',
               style: GoogleFonts.kanit(
                 fontSize: 13,
                 color: const Color(0xFF9A3412),
               ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                ChoiceChip(
+                  label: Text(
+                    'บันทึกซ่อมบำรุง',
+                    style: GoogleFonts.kanit(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  selected: !isRepair,
+                  onSelected: (sel) {
+                    if (!sel) return;
+                    setState(() {
+                      _maintenanceSubMode = MaintenanceSubMode.serviceLog;
+                      if (_maintenanceType == kMaintenanceTypeRepairRequest) {
+                        _maintenanceType = kMaintenanceTypeRepair;
+                      }
+                      _ensureMaintenanceSelectionValid();
+                    });
+                  },
+                ),
+                ChoiceChip(
+                  label: Text(
+                    'แจ้งซ่อม (LINE)',
+                    style: GoogleFonts.kanit(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  selected: isRepair,
+                  onSelected: (sel) {
+                    if (!sel) return;
+                    setState(() {
+                      _maintenanceSubMode = MaintenanceSubMode.repairRequest;
+                      _maintenanceType = kMaintenanceTypeRepairRequest;
+                      _ensureMaintenanceSelectionValid();
+                    });
+                  },
+                ),
+              ],
             ),
             if (editing) ...[
               const SizedBox(height: 12),
@@ -16760,36 +16971,83 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              'ประเภทงาน',
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF57534E),
+            if (!isRepair) ...[
+              const SizedBox(height: 12),
+              Text(
+                'ประเภทงาน',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF57534E),
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final type in types)
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final type in types)
+                    ChoiceChip(
+                      label: Text(
+                        type,
+                        style: GoogleFonts.kanit(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      selected: _maintenanceType == type,
+                      onSelected: (sel) {
+                        if (!sel) return;
+                        setState(() => _maintenanceType = type);
+                      },
+                    ),
+                ],
+              ),
+            ],
+            if (isRepair) ...[
+              const SizedBox(height: 12),
+              Text(
+                'ความเร่งด่วน',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF57534E),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
                   ChoiceChip(
                     label: Text(
-                      type,
+                      'ปกติ',
                       style: GoogleFonts.kanit(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    selected: _maintenanceType == type,
+                    selected: _maintenanceUrgency != 'urgent',
                     onSelected: (sel) {
                       if (!sel) return;
-                      setState(() => _maintenanceType = type);
+                      setState(() => _maintenanceUrgency = 'normal');
                     },
                   ),
-              ],
-            ),
+                  ChoiceChip(
+                    label: Text(
+                      'ด่วน',
+                      style: GoogleFonts.kanit(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    selected: _maintenanceUrgency == 'urgent',
+                    onSelected: (sel) {
+                      if (!sel) return;
+                      setState(() => _maintenanceUrgency = 'urgent');
+                    },
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             TextFormField(
               controller: _maintenanceDetailController,
@@ -16799,41 +17057,51 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 fontSize: 15.5,
                 fontWeight: FontWeight.w600,
               ),
-              decoration: const InputDecoration(
-                labelText: 'รายละเอียด (ถ้ามี)',
-                hintText: 'เช่น รอบที่ 5, เปลี่ยนไส้กรอง, ซ่อมปั๊ม',
+              decoration: InputDecoration(
+                labelText: isRepair ? 'อาการ / รายละเอียด *' : 'รายละเอียด (ถ้ามี)',
+                hintText: isRepair
+                    ? 'เช่น สตาร์ทไม่ติด, มีเสียงผิดปกติ, น้ำมันรั่ว'
+                    : 'เช่น รอบที่ 5, เปลี่ยนไส้กรอง, ซ่อมปั๊ม',
                 alignLabelWithHint: true,
-                prefixIcon: Icon(Icons.notes_outlined),
+                prefixIcon: const Icon(Icons.notes_outlined),
               ),
               onChanged: (_) => _scheduleUiRefresh(),
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _maintenanceAmountController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              style: GoogleFonts.kanit(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
+            if (!isRepair) ...[
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _maintenanceAmountController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: GoogleFonts.kanit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'จำนวนเงิน (บาท)',
+                  prefixIcon: Icon(Icons.payments_outlined),
+                ),
+                onChanged: (_) => _scheduleUiRefresh(),
               ),
-              decoration: const InputDecoration(
-                labelText: 'จำนวนเงิน (บาท)',
-                prefixIcon: Icon(Icons.payments_outlined),
-              ),
-              onChanged: (_) => _scheduleUiRefresh(),
-            ),
+            ],
             const SizedBox(height: 16),
             _SmoothPressable(
               enabled: !_saving,
               child: FilledButton.icon(
                 onPressed: _saving ? null : _saveQuickEntry,
                 icon: Icon(
-                  editing ? Icons.update_rounded : Icons.save_outlined,
+                  isRepair
+                      ? Icons.send_rounded
+                      : (editing
+                          ? Icons.update_rounded
+                          : Icons.save_outlined),
                 ),
                 label: Text(
                   _saving
                       ? 'กำลังบันทึก...'
-                      : (editing ? 'อัปเดตรายการ' : 'บันทึกบำรุงรักษา'),
+                      : (isRepair
+                          ? (editing ? 'อัปเดตแจ้งซ่อม' : 'ส่งแจ้งซ่อม')
+                          : (editing ? 'อัปเดตรายการ' : 'บันทึกบำรุงรักษา')),
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
                     fontSize: 18,
@@ -16882,11 +17150,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget _buildMaintenanceSavedCard(AppTransaction t) {
     final asset = (t.vehicleName ?? t.vehicleId ?? '').trim();
     final type = (t.subCategory ?? '').trim();
+    final isRepair = type == kMaintenanceTypeRepairRequest;
     final detail = maintenanceDetailFromDescription(t.description, type);
     final isCurrent = t.id == _maintenanceTxId;
     final amountText = t.amount == t.amount.roundToDouble()
         ? t.amount.round().toString()
         : t.amount.toStringAsFixed(2);
+    final urgency =
+        ((t.eventPriority ?? '').trim() == 'urgent') ? 'ด่วน' : 'ปกติ';
+    final metaLine = isRepair
+        ? '${type.isEmpty ? 'แจ้งซ่อม' : type} · $urgency'
+            '${isCurrent ? ' · กำลังแก้ไข' : ''}'
+        : '${type.isEmpty ? 'บำรุงรักษา' : type} · $amountText บาท'
+            '${isCurrent ? ' · กำลังแก้ไข' : ''}';
     return Material(
       color: isCurrent ? const Color(0xFFFFF7ED) : const Color(0xFFFFFBF5),
       borderRadius: BorderRadius.circular(14),
@@ -16915,8 +17191,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
               const SizedBox(height: 2),
               Text(
-                '${type.isEmpty ? 'บำรุงรักษา' : type} · $amountText บาท'
-                '${isCurrent ? ' · กำลังแก้ไข' : ''}',
+                metaLine,
                 style: GoogleFonts.kanit(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,

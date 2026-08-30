@@ -81,5 +81,25 @@ void main() {
         kMaintenanceTypesDefault,
       );
     });
+    test('isMaintenanceRepairRequest matches แจ้งซ่อม', () {
+      final t = AppTransaction(
+        id: 'r1',
+        date: '2026-08-30',
+        type: 'Expense',
+        category: kMaintenanceTxCategory,
+        subCategory: kMaintenanceTypeRepairRequest,
+        description: 'แจ้งซ่อม: สตาร์ทไม่ติด',
+        amount: 0,
+        eventPriority: 'urgent',
+      );
+      expect(isMaintenanceRepairRequest(t), isTrue);
+      expect(
+        maintenanceDetailFromDescription(
+          t.description,
+          kMaintenanceTypeRepairRequest,
+        ),
+        'สตาร์ทไม่ติด',
+      );
+    });
   });
 }

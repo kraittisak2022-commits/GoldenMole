@@ -14,6 +14,22 @@ const String kMaintenanceTypeBucketTeeth = 'เปลี่ยนเล็บข
 const String kMaintenanceTypeGrease = 'อัดจารบี';
 const String kMaintenanceTypeGearOil = 'เปลี่ยนน้ำมันเกียร์';
 
+/// โหมดย่อยในเมนูบำรุงรักษา
+enum MaintenanceSubMode {
+  /// บันทึกงานซ่อม/เปลี่ยนอะไหล่ (มีจำนวนเงิน)
+  serviceLog,
+
+  /// แจ้งซ่อมถึงผู้ดูแล + LINE
+  repairRequest,
+}
+
+/// `subCategory` ของรายการแจ้งซ่อม
+const String kMaintenanceTypeRepairRequest = 'แจ้งซ่อม';
+
+bool isMaintenanceRepairRequest(AppTransaction t) =>
+    isMaintenanceTransaction(t) &&
+    (t.subCategory ?? '').trim() == kMaintenanceTypeRepairRequest;
+
 /// ประเภทงานเริ่มต้น (กลุ่มทั่วไป)
 const List<String> kMaintenanceTypesDefault = [
   kMaintenanceTypeRepair,

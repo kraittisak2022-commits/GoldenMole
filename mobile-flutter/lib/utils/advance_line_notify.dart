@@ -5,6 +5,7 @@ import '../models/app_transaction.dart';
 import '../models/employee.dart';
 import 'advance_work_details.dart';
 import 'line_messaging.dart';
+import 'maintenance_catalog.dart';
 
 /// ผลการแจ้ง LINE หลังบันทึกเบิกเงิน
 class AdvanceLineNotifyStatus {
@@ -324,6 +325,83 @@ Future<AdvanceLineNotifyStatus> notifyLeaveLineAfterSaved(
   } catch (e, st) {
     final msg = lineNotifyAdvanceInvokeErrorMessage(e);
     debugPrint('notifyLeaveLineAfterSaved failed: $msg\n$st');
+    return AdvanceLineNotifyStatus.failed(msg);
+  }
+}
+
+String buildMaintenanceRepairLineText(AppTransaction tx) {
+  final asset = (tx.vehicleName ?? tx.vehicleId ?? '').trim();
+  final group =
+      MaintenanceAssetGroupX.tryParse(tx.workType)?.label ?? '—';
+  final detail = maintenanceDetailFromDescription(
+    tx.description,
+    kMaintenanceTypeRepairRequest,
+  );
+  final urgency = ((tx.eventPriority ?? '').trim() == 'urgent') ? 'ด่วน' : 'ปกติ';
+  final dateLine = '${_formatDateThaiBE(tx.date)} (${tx.date})';
+  final lines = <String>[
+    '━━━━ GoldenMole ━━━━',
+    '',
+    'แจ้งซ่อม',
+    '',
+    'วันที่ :',
+    dateLine,
+    '',
+    'กลุ่ม :',
+    group,
+    '',
+    'รายการ :',
+    asset.isEmpty ? '—' : asset,
+    '',
+    'ความเร่งด่วน :',
+    urgency,
+    '',
+    'อาการ / รายละเอียด :',
+    detail.isEmpty ? '—' : detail,
+  ];
+  final raw = lines.join('\n').trim();
+  return raw.length > 4800 ? raw.substring(0, 4800) : raw;
+}
+
+/// หลังบันทึกแจ้งซ่อม — แจ้งผู้ดูแลผ่าน Edge เดียวกับเบิกเงิน
+Future<AdvanceLineNotifyStatus> notifyMaintenanceRepairLineAfterSaved(
+  AppTransaction tx,
+) async {
+  if (!isMaintenanceRepairRequest(tx)) {
+    return AdvanceLineNotifyStatus.skippedNoRecipients();
+  }
+
+  final to = <String>{};
+  final extraRaw = dotenv.env['LINE_ADVANCE_NOTIFY_USER_IDS'] ?? '';
+  for (final part in extraRaw.split(',')) {
+    final u = normalizeLineUserId(part);
+    if (u != null) to.add(u);
+  }
+  if (to.isEmpty) {
+    return AdvanceLineNotifyStatus.skippedNoRecipients();
+  }
+
+  final text = buildMaintenanceRepairLineText(tx);
+  try {
+    final res = await invokeNotifyAdvanceLine(text: text, to: to.toList());
+    final body = res.data;
+    if (res.status >= 400) {
+      final msg =
+          'แจ้ง LINE ไม่สำเร็จ (HTTP ${res.status}) — ${res.data}';
+      debugPrint('notifyMaintenanceRepairLineAfterSaved: $msg');
+      return AdvanceLineNotifyStatus.failed(msg);
+    }
+    if (body is Map && body['ok'] == false) {
+      final hint = '${body['hint_th'] ?? body['message'] ?? body['error']}';
+      debugPrint('notifyMaintenanceRepairLineAfterSaved: $hint $body');
+      return AdvanceLineNotifyStatus.failed(
+        hint.isEmpty ? 'แจ้ง LINE ไม่สำเร็จ' : hint,
+      );
+    }
+    return AdvanceLineNotifyStatus.sent();
+  } catch (e, st) {
+    final msg = lineNotifyAdvanceInvokeErrorMessage(e);
+    debugPrint('notifyMaintenanceRepairLineAfterSaved failed: $msg\n$st');
     return AdvanceLineNotifyStatus.failed(msg);
   }
 }
