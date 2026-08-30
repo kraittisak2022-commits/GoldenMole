@@ -5,10 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../utils/device_perf.dart';
-import 'app_logo.dart';
 import 'app_version_label.dart';
 
 /// Launch splash — branded dark + gold reveal (~1.5–2.5s), then login/home.
+///
+/// Uses `assets/branding/splash_logo.png` (mole + GOLDEN/MOLE lockup).
+/// Login/header keep [AppLogo] / `app_logo.png`.
 class BootstrapSplash extends StatefulWidget {
   const BootstrapSplash({super.key});
 
@@ -22,9 +24,8 @@ class _BootstrapSplashState extends State<BootstrapSplash>
   late final bool _reduceMotion;
   late final bool _lite;
 
-  static const _bg = Color(0xFF0A0A0A);
+  static const _bg = Color(0xFF000000);
   static const _gold = Color(0xFFC5A55A);
-  static const _goldSoft = Color(0xFFD4BC7A);
 
   @override
   void initState() {
@@ -78,6 +79,10 @@ class _BootstrapSplashState extends State<BootstrapSplash>
           animation: _controller,
           builder: (context, _) {
             final t = _controller.value;
+            final shortest = MediaQuery.sizeOf(context).shortestSide;
+            // Full lockup (mole + stacked GOLDEN/MOLE) — leave side margin on phones.
+            final logoSize = (shortest * 0.62).clamp(200.0, 300.0);
+
             return Stack(
               fit: StackFit.expand,
               children: [
@@ -88,7 +93,7 @@ class _BootstrapSplashState extends State<BootstrapSplash>
                     children: [
                       Center(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 28),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -96,29 +101,13 @@ class _BootstrapSplashState extends State<BootstrapSplash>
                                 progress: t,
                                 lite: _lite,
                                 reduceMotion: _reduceMotion,
+                                size: logoSize,
                               ),
-                              SizedBox(height: _lite ? 22 : 28),
+                              SizedBox(height: _lite ? 18 : 22),
                               _FadeSlide(
                                 progress: t,
-                                begin: _lite ? 0.25 : 0.38,
-                                end: _lite ? 0.55 : 0.62,
-                                child: Text(
-                                  'Golden Mole',
-                                  textAlign: TextAlign.center,
-                                  style: GoogleFonts.kanit(
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.w800,
-                                    color: _goldSoft,
-                                    letterSpacing: 0.6,
-                                    height: 1.1,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              _FadeSlide(
-                                progress: t,
-                                begin: _lite ? 0.35 : 0.48,
-                                end: _lite ? 0.65 : 0.72,
+                                begin: _lite ? 0.30 : 0.42,
+                                end: _lite ? 0.60 : 0.68,
                                 child: Text(
                                   'ระบบบันทึกงานก่อสร้าง',
                                   textAlign: TextAlign.center,
@@ -188,11 +177,13 @@ class _LogoReveal extends StatelessWidget {
     required this.progress,
     required this.lite,
     required this.reduceMotion,
+    required this.size,
   });
 
   final double progress;
   final bool lite;
   final bool reduceMotion;
+  final double size;
 
   static const _gold = Color(0xFFC5A55A);
 
@@ -202,7 +193,7 @@ class _LogoReveal extends StatelessWidget {
       ((progress - (lite ? 0.0 : 0.06)) / (lite ? 0.45 : 0.42))
           .clamp(0.0, 1.0),
     );
-    final scale = reduceMotion ? 1.0 : (0.86 + 0.14 * reveal);
+    final scale = reduceMotion ? 1.0 : (0.88 + 0.12 * reveal);
     final glow = lite
         ? 0.0
         : Curves.easeOut.transform(
@@ -213,34 +204,28 @@ class _LogoReveal extends StatelessWidget {
       opacity: reveal,
       child: Transform.scale(
         scale: scale,
-        child: Container(
-          padding: const EdgeInsets.all(16),
+        child: DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF141414), Color(0xFF0A0A0A)],
-            ),
-            border: Border.all(
-              color: _gold.withValues(alpha: 0.22 + 0.28 * reveal),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: _gold.withValues(alpha: 0.10 + 0.22 * glow),
-                blurRadius: 36 + 12 * glow,
-                spreadRadius: 1,
-                offset: const Offset(0, 10),
-              ),
-              if (!lite)
-                BoxShadow(
-                  color: _gold.withValues(alpha: 0.08 * glow),
-                  blurRadius: 64,
-                  spreadRadius: 4,
-                ),
-            ],
+            boxShadow: lite
+                ? null
+                : [
+                    BoxShadow(
+                      color: _gold.withValues(alpha: 0.08 + 0.18 * glow),
+                      blurRadius: 48 + 16 * glow,
+                      spreadRadius: 2,
+                    ),
+                  ],
           ),
-          child: const AppLogo(size: 96),
+          child: Semantics(
+            label: 'โลโก้ Golden Mole',
+            child: Image.asset(
+              'assets/branding/splash_logo.png',
+              width: size,
+              height: size,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+            ),
+          ),
         ),
       ),
     );

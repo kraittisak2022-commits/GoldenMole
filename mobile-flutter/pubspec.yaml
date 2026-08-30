@@ -80,6 +80,7 @@ flutter:
   assets:
     - .env
     - assets/branding/app_logo.png
+    - assets/branding/splash_logo.png
     - assets/google_fonts/
 
   fonts:

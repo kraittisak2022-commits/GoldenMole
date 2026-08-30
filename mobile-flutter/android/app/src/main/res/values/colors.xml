@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- โทนเดียวกับหน้า BootstrapSplash ใน Flutter — เปิดแอพแล้วรอยต่อเนียน -->
-    <color name="splash_background">#FF0A0A0A</color>
+    <color name="splash_background">#FF000000</color>
 	<color name="ic_launcher_background">#000000</color>
 </resources>
