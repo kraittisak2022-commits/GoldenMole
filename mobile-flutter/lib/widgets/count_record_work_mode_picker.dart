@@ -76,10 +76,11 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
     final size = MediaQuery.sizeOf(context);
     final isTablet = size.shortestSide >= 600;
     final isLandscape = size.width > size.height;
+    final phonePortrait = !isTablet && !isLandscape;
     final useColumns = isTablet && isLandscape;
-    final titleSize = isTablet ? 34.0 : 28.0;
-    final subtitleSize = isTablet ? 17.0 : 15.0;
-    final gap = isTablet ? 16.0 : 12.0;
+    final titleSize = phonePortrait ? 24.0 : (isTablet ? 34.0 : 28.0);
+    final subtitleSize = phonePortrait ? 13.5 : (isTablet ? 17.0 : 15.0);
+    final gap = phonePortrait ? 10.0 : (isTablet ? 16.0 : 12.0);
 
     final trip = _WorkModeOption(
       title: 'ขนอย่างเดียว',
@@ -88,6 +89,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
       accent: DailyPalette.countTripIcon,
       iconTileColor: DailyPalette.chipSurface,
       vertical: useColumns,
+      compact: phonePortrait,
       onTap: () => widget.onSelect(CountRecordWorkMode.trip),
     );
     final sand = _WorkModeOption(
@@ -97,15 +99,17 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
       accent: DailyPalette.countSandIcon,
       iconTileColor: DailyPalette.chipSurface,
       vertical: useColumns,
+      compact: phonePortrait,
       onTap: () => widget.onSelect(CountRecordWorkMode.sand),
     );
     final both = _WorkModeOption(
       title: 'ขนและร่อนทราย',
-      subtitle: 'ทั้ง 2 อย่าง — แสดงสองการ์ด',
+      subtitle: 'ทั้ง 2 อย่าง — สลับการ์ดได้',
       icon: Icons.layers_rounded,
       accent: _brandTeal,
       iconTileColor: DailyPalette.chipSurface,
       vertical: useColumns,
+      compact: phonePortrait,
       dualIcons: true,
       onTap: () => widget.onSelect(CountRecordWorkMode.both),
     );
@@ -125,7 +129,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
               color: const Color(0xFF1A2433),
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: phonePortrait ? 6 : 10),
           Container(
             width: isTablet ? 56 : 44,
             height: 4,
@@ -134,7 +138,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
               borderRadius: BorderRadius.circular(999),
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: phonePortrait ? 6 : 10),
           Text(
             'เลือกประเภทงานก่อนเริ่มบันทึก',
             textAlign: TextAlign.center,
@@ -163,15 +167,34 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
             ),
           )
         : Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: _staggerTile(1, trip)),
-                SizedBox(height: gap),
-                Expanded(child: _staggerTile(2, sand)),
-                SizedBox(height: gap),
-                Expanded(child: _staggerTile(3, both)),
-              ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // มือถือแนวตั้ง: การ์ดสูงพอสัมผัส — เลื่อนได้ถ้าจอสั้น
+                final minCard = phonePortrait ? 100.0 : 88.0;
+                final equal =
+                    (constraints.maxHeight - gap * 2) / 3;
+                final slotH = equal < minCard ? minCard : equal;
+                final needsScroll =
+                    slotH * 3 + gap * 2 > constraints.maxHeight + 0.5;
+                final tiles = <Widget>[
+                  SizedBox(height: slotH, child: _staggerTile(1, trip)),
+                  SizedBox(height: gap),
+                  SizedBox(height: slotH, child: _staggerTile(2, sand)),
+                  SizedBox(height: gap),
+                  SizedBox(height: slotH, child: _staggerTile(3, both)),
+                ];
+                if (!needsScroll) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: tiles,
+                  );
+                }
+                return ListView(
+                  padding: EdgeInsets.zero,
+                  physics: const ClampingScrollPhysics(),
+                  children: tiles,
+                );
+              },
             ),
           );
 
@@ -195,6 +218,7 @@ class _WorkModeOption extends StatelessWidget {
     required this.iconTileColor,
     required this.onTap,
     this.vertical = false,
+    this.compact = false,
     this.dualIcons = false,
   });
 
@@ -205,6 +229,7 @@ class _WorkModeOption extends StatelessWidget {
   final Color iconTileColor;
   final VoidCallback onTap;
   final bool vertical;
+  final bool compact;
   final bool dualIcons;
 
   @override
@@ -212,14 +237,20 @@ class _WorkModeOption extends StatelessWidget {
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
     final iconBox = vertical
         ? (isTablet ? 72.0 : 64.0)
-        : (isTablet ? 64.0 : 56.0);
+        : (compact
+            ? 48.0
+            : (isTablet ? 64.0 : 56.0));
     final iconSize = iconBox * 0.52;
     final titleSize = vertical
         ? (isTablet ? 22.0 : 20.0)
-        : (isTablet ? 24.0 : 22.0);
+        : (compact
+            ? 18.0
+            : (isTablet ? 24.0 : 22.0));
     final subtitleSize = vertical
         ? (isTablet ? 14.5 : 13.5)
-        : (isTablet ? 15.5 : 14.5);
+        : (compact
+            ? 12.5
+            : (isTablet ? 15.5 : 14.5));
 
     Widget iconTile() {
       if (dualIcons) {
@@ -277,11 +308,11 @@ class _WorkModeOption extends StatelessWidget {
             color: const Color(0xFF1A2433),
           ),
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: compact ? 3 : 6),
         Text(
           subtitle,
           textAlign: vertical ? TextAlign.center : TextAlign.start,
-          maxLines: 2,
+          maxLines: compact ? 1 : 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: subtitleSize,
@@ -314,13 +345,13 @@ class _WorkModeOption extends StatelessWidget {
         : Row(
             children: [
               iconTile(),
-              SizedBox(width: isTablet ? 18 : 14),
+              SizedBox(width: compact ? 12 : (isTablet ? 18 : 14)),
               Expanded(child: textBlock),
-              const SizedBox(width: 8),
+              SizedBox(width: compact ? 4 : 8),
               Icon(
                 Icons.chevron_right_rounded,
                 color: accent.withValues(alpha: 0.9),
-                size: isTablet ? 32 : 28,
+                size: compact ? 24 : (isTablet ? 32 : 28),
               ),
             ],
           );
@@ -356,10 +387,14 @@ class _WorkModeOption extends StatelessWidget {
                     padding: EdgeInsets.symmetric(
                       horizontal: vertical
                           ? (isTablet ? 14 : 12)
-                          : (isTablet ? 18 : 14),
+                          : (compact
+                              ? 12
+                              : (isTablet ? 18 : 14)),
                       vertical: vertical
                           ? (isTablet ? 18 : 14)
-                          : (isTablet ? 16 : 12),
+                          : (compact
+                              ? 10
+                              : (isTablet ? 16 : 12)),
                     ),
                     child: body,
                   ),

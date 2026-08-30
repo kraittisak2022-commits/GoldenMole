@@ -1106,6 +1106,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   bool _gridEntranceCompleted = false;
   bool _countRecordTutorialScheduled = false;
   CountRecordWorkMode? _workMode;
+  /// โหมดขน+ร่อนบนมือถือแนวตั้ง: 0 = เที่ยวรถ, 1 = ร่อนทราย
+  int _bothPanelTab = 0;
   /// เปิดการ์ดเมนูรอง (OT / รายรับ-รายจ่าย / บันทึกการทำงาน)
   bool _moreMenusExpanded = false;
   static const _kMoreMenusBarHeight = 40.0;
@@ -1152,7 +1154,10 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
 
   Future<void> _selectWorkMode(CountRecordWorkMode mode) async {
     final key = widget.dateKey(widget.selectedDay);
-    setState(() => _workMode = mode);
+    setState(() {
+      _workMode = mode;
+      _bothPanelTab = 0;
+    });
     await CountRecordWorkModeStore.save(key, mode);
   }
 
@@ -1328,6 +1333,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                 final dayKeyStr = widget.dateKey(widget.selectedDay);
                 final portrait =
                     MediaQuery.orientationOf(context) == Orientation.portrait;
+                final screenW = MediaQuery.sizeOf(context).width;
+                final phonePortrait =
+                    portrait && MediaQuery.sizeOf(context).shortestSide < 600;
 
                 Widget counterCell({
                   required String title,
@@ -1418,6 +1426,61 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     borderColor: DailyPalette.hairline,
                     counterMode: CounterMode.sand,
                   );
+
+                  // มือถือแนวตั้ง: สลับแท็บแทนแบ่งครึ่งจอ (พื้นที่นับแคบเกินไป)
+                  if (phonePortrait) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SegmentedButton<int>(
+                          segments: const [
+                            ButtonSegment<int>(
+                              value: 0,
+                              label: Text('เที่ยวรถ'),
+                              icon: Icon(Icons.fire_truck_outlined, size: 18),
+                            ),
+                            ButtonSegment<int>(
+                              value: 1,
+                              label: Text('ร่อนทราย'),
+                              icon: Icon(Icons.water_drop_outlined, size: 18),
+                            ),
+                          ],
+                          selected: {_bothPanelTab},
+                          onSelectionChanged: (next) {
+                            setState(() => _bothPanelTab = next.first);
+                          },
+                          style: ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                            textStyle: WidgetStatePropertyAll(
+                              GoogleFonts.kanit(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Expanded(
+                          // IndexedStack คง State ทั้งสองแผงตอนสลับแท็บ
+                          child: IndexedStack(
+                            index: _bothPanelTab.clamp(0, 1),
+                            sizing: StackFit.expand,
+                            children: [
+                              KeyedSubtree(
+                                key: const ValueKey('count_trip_slot'),
+                                child: tripCell,
+                              ),
+                              KeyedSubtree(
+                                key: const ValueKey('count_sand_slot'),
+                                child: sandCell,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+
                   // Flex ทิศทางเดียว — หมุนจอแค่อัปเดต direction ไม่สลับ Column/Row
                   // จึงไม่ dispose State ของแผงนับ
                   return Flex(
@@ -1439,8 +1502,10 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   );
                 }
 
-                final backLabel =
-                    modeSelected ? 'เลือกงานใหม่' : 'กลับเมนูหลัก';
+                final narrowChrome = screenW < 600;
+                final backLabel = !modeSelected
+                    ? 'กลับเมนูหลัก'
+                    : (narrowChrome ? 'งานใหม่' : 'เลือกงานใหม่');
                 final d = widget.selectedDay;
                 final dayShort =
                     '${d.day.toString().padLeft(2, '0')}/'
@@ -1449,7 +1514,12 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
 
                 return CountRecordMenuShell(
                   child: Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
+                  padding: EdgeInsets.fromLTRB(
+                    narrowChrome ? 4 : 6,
+                    narrowChrome ? 8 : 10,
+                    narrowChrome ? 4 : 6,
+                    narrowChrome ? 8 : 10,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -1464,12 +1534,13 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                                   .textTheme
                                   .titleMedium
                                   ?.copyWith(
+                                    fontSize: narrowChrome ? 16 : null,
                                     fontWeight: FontWeight.w800,
                                     color: const Color(0xFF1A2433),
                                   ),
                             ),
                           ),
-                          const Spacer(),
+                          const SizedBox(width: 4),
                           SoftPressButton(
                             onTap: _openCountRecordTutorial,
                             size: SoftPressSize.small,
@@ -1492,8 +1563,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             isDarkSurface: false,
                             liftWhenIdle: true,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: narrowChrome ? 8 : 12,
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
@@ -1502,9 +1573,10 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                               ),
                               child: Text(
                                 backLabel,
-                                style: const TextStyle(
+                                style: TextStyle(
+                                  fontSize: narrowChrome ? 12.5 : 14,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF4A5A70),
+                                  color: const Color(0xFF4A5A70),
                                 ),
                               ),
                             ),
@@ -1517,37 +1589,39 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             isDarkSurface: false,
                             liftWhenIdle: true,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: narrowChrome ? 8 : 10,
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(color: const Color(0xFFD9E1EC)),
                               ),
-                              child: const Row(
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     Icons.home_outlined,
                                     size: 18,
                                     color: Color(0xFF4A5A70),
                                   ),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    'หน้าแรก',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF4A5A70),
+                                  if (!narrowChrome) ...[
+                                    const SizedBox(width: 4),
+                                    const Text(
+                                      'หน้าแรก',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF4A5A70),
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ],
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: narrowChrome ? 6 : 8),
                       SoftPressButton(
                         onTap: widget.onPickCountRecordDay,
                         size: SoftPressSize.small,
@@ -1556,9 +1630,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                         liftWhenIdle: true,
                         child: Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
+                          padding: EdgeInsets.symmetric(
                             horizontal: 12,
-                            vertical: 10,
+                            vertical: narrowChrome ? 8 : 10,
                           ),
                           decoration: BoxDecoration(
                             color: DailyPalette.chipSurface,
@@ -1574,11 +1648,13 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'วันที่ $dayShort · แตะเพื่อเปลี่ยนวัน',
+                                  narrowChrome
+                                      ? 'วันที่ $dayShort'
+                                      : 'วันที่ $dayShort · แตะเพื่อเปลี่ยนวัน',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: GoogleFonts.kanit(
-                                    fontSize: 14,
+                                    fontSize: narrowChrome ? 13 : 14,
                                     fontWeight: FontWeight.w800,
                                     color: DailyPalette.ink,
                                   ),
@@ -1592,7 +1668,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                           ),
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: narrowChrome ? 8 : 10),
                       Expanded(
                         child: AnimatedSwitcher(
                           duration: MenuPanelTransition.duration(

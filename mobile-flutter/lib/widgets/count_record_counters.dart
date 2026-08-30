@@ -2237,8 +2237,25 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     if (_units.length <= 2) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          // โหมดเต็มต้องการความสูง ~145px+ — แคบกว่านี้ใช้ compact
-          final useCompact = constraints.maxHeight < 145;
+          // จอบาง / สูงไม่พอ: เรียงแนวตั้งแทนคู่ข้างกัน
+          final stackVertical = constraints.maxWidth < 360 ||
+              (constraints.maxHeight.isFinite &&
+                  constraints.maxHeight < 130 &&
+                  _units.length == 2);
+          final useCompact = constraints.maxHeight < 145 || stackVertical;
+          if (stackVertical && _units.length > 1) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < _units.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 8),
+                  Expanded(
+                    child: _tripVehicleCard(i, compact: useCompact),
+                  ),
+                ],
+              ],
+            );
+          }
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -2257,7 +2274,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     return LayoutBuilder(
       builder: (context, constraints) {
         final h = constraints.maxHeight;
-        final maxCols = constraints.maxWidth >= 520 ? 4 : 3;
+        // มือถือแนวตั้ง: ไม่เกิน 2 คอลัมน์ — การ์ดอ่าน/กดง่ายกว่า
+        final maxCols = constraints.maxWidth >= 520
+            ? 4
+            : (constraints.maxWidth >= 400 ? 3 : 2);
 
         int rowsFor(int cols) => (_units.length + cols - 1) ~/ cols;
         double rowHeightFor(int cols) {
