@@ -290,8 +290,9 @@ workflows:
         # Upload IPA only. Set true after filling TestFlight Test Information once:
         # https://appstoreconnect.apple.com/apps/6806747374/testflight/test-info
         # (Feedback Email + Beta App Review contact). External testing needs that form.
+        # When enabling submit_to_testflight, also set expire_build_submitted_for_review: true
+        # so a prior beta-review build does not block the new submission (422).
         submit_to_testflight: false
-        expire_build_submitted_for_review: true
 
   goldenmole-user-ios-preview:
     name: GoldenMole for User iOS (Simulator Preview)
