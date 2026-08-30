@@ -30,6 +30,7 @@ import '../utils/mobile_screen_ids.dart';
 import '../theme/daily_palette.dart';
 import '../utils/record_success_speaker.dart';
 import '../widgets/app_logo.dart';
+import '../widgets/app_theme_scope.dart';
 import '../widgets/count_record_counters.dart';
 import '../widgets/count_record_day_picker.dart';
 import '../widgets/daily_record_day_picker.dart';
@@ -873,7 +874,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     final client = Supabase.instance.client;
 
     return Scaffold(
-      backgroundColor: DailyPalette.surface,
+      backgroundColor: DailyPalette.of(context).surface,
       body: LayoutBuilder(
         builder: (context, bodyConstraints) {
           final rawBody = bodyConstraints.maxWidth.isFinite &&
@@ -1261,19 +1262,20 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     final constrained = DevicePerf.isConstrainedDevice;
     final cacheRows = constrained ? 1.0 : (isAndroid ? 3.5 : 2.0);
     final moreMenusBarH =
-        phonePortrait ? 34.0 : _kMoreMenusBarHeight;
-    final panelRadius = phonePortrait ? 18.0 : 24.0;
-    final panelPad = phonePortrait ? 8.0 : 12.0;
+        phonePortrait ? 36.0 : _kMoreMenusBarHeight;
+    final panelRadius = phonePortrait ? 20.0 : 24.0;
+    final panelPad = phonePortrait ? 10.0 : 12.0;
 
+    final p = DailyPalette.of(context);
     final dailyMenuPanel = DecoratedBox(
       decoration: BoxDecoration(
-        color: DailyPalette.card,
+        color: p.card,
         borderRadius: BorderRadius.circular(panelRadius),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: DailyPalette.shadowLift,
-            blurRadius: 18,
-            offset: Offset(0, 6),
+            color: p.shadowLift,
+            blurRadius: phonePortrait ? 14 : 18,
+            offset: Offset(0, phonePortrait ? 4 : 6),
           ),
         ],
       ),
@@ -1683,9 +1685,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   : primaryModules;
               final gridItemCount = visibleModules.length + 1;
               final gap = phonePortrait
-                  ? 8.0
+                  ? 10.0
                   : TouchProfile.of(context).gridGap;
-              final sideInset = phonePortrait ? 1.0 : 2.0;
+              final sideInset = 2.0;
               final mq = MediaQuery.sizeOf(context);
               final mqW = mq.width;
               final mqH = mq.height;
@@ -1723,11 +1725,11 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   (usableWidth - (gap * (cross - 1))) / cross;
               final fitCellHeight =
                   (availH - (gap * (rows - 1))) / rows;
-              // แนวตั้งมือถือ: การ์ดสูงพอให้อ่านชื่อ/สถานะ | แนวนอน: เตี้ยเต็มแถว
+              // แนวตั้งมือถือ: การ์ดสูงกว่าจัตุรัสเล็กน้อย — บ่อไอคอน + ชื่อ + สถานะ
               final preferredCellHeight = isLandscape
                   ? fitCellHeight.clamp(64.0, 108.0)
                   : phonePortrait
-                      ? cellWidth.clamp(114.0, 164.0)
+                      ? (cellWidth * 1.12).clamp(126.0, 176.0)
                       : cellWidth.clamp(96.0, 200.0);
               final totalNeeded =
                   (preferredCellHeight * rows) + (gap * (rows - 1));
@@ -1904,7 +1906,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
 
     return Stack(
       children: [
-        const Positioned.fill(child: ColoredBox(color: DailyPalette.surface)),
+        Positioned.fill(
+          child: ColoredBox(color: DailyPalette.of(context).surface),
+        ),
         Padding(
           padding: EdgeInsets.fromLTRB(
             phonePortrait ? 8 : 12,
@@ -2183,6 +2187,51 @@ class _StaggerMenuTile extends StatelessWidget {
   }
 }
 
+class _ThemeModeToggleButton extends StatelessWidget {
+  const _ThemeModeToggleButton({this.compact = false});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final themeScope = AppThemeScope.of(context);
+    final isDark = themeScope.isDark;
+    final p = DailyPalette.of(context);
+    const tooltip = 'สลับโหมดมืด';
+    final pad = compact ? 8.0 : 10.0;
+    final iconSize = compact ? 20.0 : 22.0;
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        toggled: isDark,
+        child: SoftPressButton(
+          onTap: themeScope.toggleDarkMode,
+          size: SoftPressSize.small,
+          borderRadius: compact ? 10 : 12,
+          liftWhenIdle: true,
+          isDarkSurface: isDark,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: p.chipSurface,
+              borderRadius: BorderRadius.circular(compact ? 10 : 12),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(pad),
+              child: Icon(
+                isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                color: p.brand,
+                size: iconSize,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _TopSettingsButton extends StatelessWidget {
   const _TopSettingsButton({
     required this.onTap,
@@ -2195,6 +2244,8 @@ class _TopSettingsButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = AppLocalizations.of(context).navSettings;
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final pad = compact ? 8.0 : 10.0;
     final iconSize = compact ? 20.0 : 22.0;
     return Tooltip(
@@ -2207,16 +2258,17 @@ class _TopSettingsButton extends StatelessWidget {
           size: SoftPressSize.small,
           borderRadius: compact ? 10 : 12,
           liftWhenIdle: true,
+          isDarkSurface: isDark,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: DailyPalette.chipSurface,
+              color: p.chipSurface,
               borderRadius: BorderRadius.circular(compact ? 10 : 12),
             ),
             child: Padding(
               padding: EdgeInsets.all(pad),
               child: Icon(
                 Icons.settings_outlined,
-                color: DailyPalette.brand,
+                color: p.brand,
                 size: iconSize,
               ),
             ),
@@ -2247,6 +2299,8 @@ class _HomeHeaderCompact extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     const changeDayHint = 'แตะเพื่อเปลี่ยนวัน';
     final size = MediaQuery.sizeOf(context);
     final phonePortrait =
@@ -2255,18 +2309,18 @@ class _HomeHeaderCompact extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(phonePortrait ? 18 : 24),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: DailyPalette.shadowCard,
+            color: p.shadowCard,
             blurRadius: 12,
-            offset: Offset(0, 3),
+            offset: const Offset(0, 3),
           ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(phonePortrait ? 18 : 24),
         child: ColoredBox(
-          color: DailyPalette.card,
+          color: p.card,
           child: Padding(
             padding: EdgeInsets.fromLTRB(
               phonePortrait ? 10 : 16,
@@ -2282,7 +2336,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                   children: [
                     DecoratedBox(
                       decoration: BoxDecoration(
-                        color: DailyPalette.card,
+                        color: p.card,
                         borderRadius: BorderRadius.circular(
                           phonePortrait ? 12 : 14,
                         ),
@@ -2304,7 +2358,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                             style: TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: phonePortrait ? 18 : 24,
-                              color: DailyPalette.ink,
+                              color: p.ink,
                               letterSpacing: -0.4,
                               height: 1.1,
                             ),
@@ -2315,7 +2369,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: DailyPalette.inkMuted,
+                              color: p.inkMuted,
                               fontSize: phonePortrait ? 11.5 : 13.5,
                               fontWeight: FontWeight.w600,
                               height: 1.15,
@@ -2329,9 +2383,10 @@ class _HomeHeaderCompact extends StatelessWidget {
                       size: SoftPressSize.small,
                       borderRadius: phonePortrait ? 10 : 12,
                       liftWhenIdle: true,
+                      isDarkSurface: isDark,
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          color: DailyPalette.chipSurface,
+                          color: p.chipSurface,
                           borderRadius: BorderRadius.circular(
                             phonePortrait ? 10 : 12,
                           ),
@@ -2340,12 +2395,14 @@ class _HomeHeaderCompact extends StatelessWidget {
                           padding: EdgeInsets.all(phonePortrait ? 8 : 10),
                           child: Icon(
                             Icons.refresh_rounded,
-                            color: DailyPalette.inkSubtle,
+                            color: p.inkSubtle,
                             size: phonePortrait ? 20 : 22,
                           ),
                         ),
                       ),
                     ),
+                    SizedBox(width: phonePortrait ? 6 : 8),
+                    _ThemeModeToggleButton(compact: phonePortrait),
                     SizedBox(width: phonePortrait ? 6 : 8),
                     _TopSettingsButton(
                       onTap: onOpenSettings,
@@ -2358,13 +2415,13 @@ class _HomeHeaderCompact extends StatelessWidget {
                   onTap: onPickDay,
                   size: SoftPressSize.medium,
                   borderRadius: phonePortrait ? 12 : 18,
-                  isDarkSurface: false,
+                  isDarkSurface: isDark,
                   liftWhenIdle: true,
                   child: Tooltip(
                     message: changeDayHint,
                     child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: DailyPalette.chipSurface,
+                      color: p.chipSurface,
                       borderRadius: BorderRadius.circular(
                         phonePortrait ? 12 : 18,
                       ),
@@ -2380,7 +2437,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                         children: [
                           Icon(
                             Icons.calendar_month_rounded,
-                            color: DailyPalette.brand,
+                            color: p.brand,
                             size: phonePortrait ? 20 : 28,
                           ),
                           SizedBox(width: phonePortrait ? 8 : 14),
@@ -2390,10 +2447,10 @@ class _HomeHeaderCompact extends StatelessWidget {
                                     selectedDateLabel,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w800,
                                       fontSize: 14.5,
-                                      color: DailyPalette.ink,
+                                      color: p.ink,
                                       height: 1.15,
                                       letterSpacing: -0.2,
                                     ),
@@ -2406,23 +2463,23 @@ class _HomeHeaderCompact extends StatelessWidget {
                                         selectedDateLabel,
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontWeight: FontWeight.w800,
                                           fontSize: 18,
-                                          color: DailyPalette.ink,
+                                          color: p.ink,
                                           height: 1.2,
                                           letterSpacing: -0.2,
                                         ),
                                       ),
                                       const SizedBox(height: 3),
-                                      const Text(
+                                      Text(
                                         changeDayHint,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           fontWeight: FontWeight.w600,
                                           fontSize: 12.5,
-                                          color: DailyPalette.inkMuted,
+                                          color: p.inkMuted,
                                         ),
                                       ),
                                     ],
@@ -2430,7 +2487,7 @@ class _HomeHeaderCompact extends StatelessWidget {
                           ),
                           Icon(
                             Icons.keyboard_arrow_down_rounded,
-                            color: DailyPalette.brand,
+                            color: p.brand,
                             size: phonePortrait ? 22 : 28,
                           ),
                         ],
@@ -2523,6 +2580,7 @@ class _HeaderStatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
     return LayoutBuilder(
       builder: (context, c) {
         final mqW = MediaQuery.sizeOf(context).width;
@@ -2532,7 +2590,7 @@ class _HeaderStatChip extends StatelessWidget {
         final labelMax = (cap - (compact ? 36 : 44)).clamp(48.0, 260.0);
         return DecoratedBox(
           decoration: BoxDecoration(
-            color: DailyPalette.chipSurface,
+            color: p.chipSurface,
             borderRadius: BorderRadius.circular(999),
           ),
           child: Padding(
@@ -2545,7 +2603,7 @@ class _HeaderStatChip extends StatelessWidget {
               children: [
                 Icon(
                   icon,
-                  color: DailyPalette.inkMuted,
+                  color: p.inkMuted,
                   size: compact ? 13 : 15,
                 ),
                 SizedBox(width: compact ? 4 : 5),
@@ -2556,7 +2614,7 @@ class _HeaderStatChip extends StatelessWidget {
                     maxLines: compact ? 1 : 4,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: DailyPalette.inkMuted,
+                      color: p.inkMuted,
                       fontSize: compact ? 11.5 : 13,
                       fontWeight: FontWeight.w600,
                       height: 1.15,
@@ -2839,10 +2897,10 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
               onVerticalDragUpdate: _onDragUpdate,
               onVerticalDragEnd: _onDragEnd,
               child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: DailyPalette.of(context).card,
                   border: Border(
-                    top: BorderSide(color: DailyPalette.hairline),
+                    top: BorderSide(color: DailyPalette.of(context).hairline),
                   ),
                 ),
                 child: SizedBox(
@@ -2856,7 +2914,7 @@ class _AutoHideBottomNavState extends State<_AutoHideBottomNav>
                         width: 44,
                         height: 5,
                         decoration: BoxDecoration(
-                          color: DailyPalette.grabber,
+                          color: DailyPalette.of(context).grabber,
                           borderRadius: BorderRadius.circular(999),
                         ),
                       ),
@@ -2899,21 +2957,21 @@ class _ProBottomNav extends StatelessWidget {
   final VoidCallback onHome;
   final VoidCallback onCalendar;
 
-  static const _idle = DailyPalette.inkMuted;
-
   @override
   Widget build(BuildContext context) {
     final profile = TouchProfile.of(context);
     final navHeight = profile.navBarHeight;
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: p.card,
         boxShadow: [
           BoxShadow(
-            color: DailyPalette.shadowCard,
+            color: p.shadowCard,
             blurRadius: 12,
-            offset: Offset(0, -3),
+            offset: const Offset(0, -3),
           ),
         ],
       ),
@@ -2929,13 +2987,16 @@ class _ProBottomNav extends StatelessWidget {
                 selectedIcon: Icons.home_rounded,
                 label: l10n.navHome,
                 onTap: onHome,
+                brand: p.brand,
+                idle: p.inkMuted,
+                isDark: isDark,
               ),
-              const VerticalDivider(
+              VerticalDivider(
                 width: 1,
                 thickness: 1,
                 indent: 12,
                 endIndent: 12,
-                color: DailyPalette.hairline,
+                color: p.hairline,
               ),
               _navItem(
                 index: 1,
@@ -2943,6 +3004,9 @@ class _ProBottomNav extends StatelessWidget {
                 selectedIcon: Icons.calendar_month_rounded,
                 label: l10n.navCalendar,
                 onTap: onCalendar,
+                brand: p.brand,
+                idle: p.inkMuted,
+                isDark: isDark,
               ),
             ],
           ),
@@ -2957,16 +3021,19 @@ class _ProBottomNav extends StatelessWidget {
     required IconData selectedIcon,
     required String label,
     required VoidCallback onTap,
+    required Color brand,
+    required Color idle,
+    required bool isDark,
   }) {
     final selected = selectedIndex == index;
-    final color = selected ? DailyPalette.brand : _idle;
+    final color = selected ? brand : idle;
 
     return Expanded(
       child: SoftPressButton(
         onTap: onTap,
         size: SoftPressSize.small,
         borderRadius: 0,
-        isDarkSurface: false,
+        isDarkSurface: isDark,
         showHighlight: false,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

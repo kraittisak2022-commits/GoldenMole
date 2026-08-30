@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../l10n/app_localizations.dart';
 import '../theme/daily_palette.dart';
@@ -7,16 +8,8 @@ import '../utils/device_perf.dart';
 import '../utils/daily_module_transactions.dart';
 import 'soft_press_button.dart';
 
-const _cardDepthShadow = SoftPressDepthShadow(
-  color: DailyPalette.shadowCard,
-  blurRadius: 12,
-  offsetY: 3,
-  pressedBlurRadius: 4,
-  pressedOffsetY: 1,
-);
-
-/// การ์ดเมนูบันทึกประจำวัน — จัตุรัสในแนวตั้ง / สี่เหลี่ยมผืนผ้าในแนวนอน
-/// มินิมอล: ขาวล้วน ไม่มีขอบ เงานุ่ม สีเฉพาะที่ไอคอน
+/// การ์ดเมนูบันทึกประจำวัน — เติมเซลล์เต็มในแนวตั้ง / แถวในแนวนอน
+/// ไอคอนในบ่อสีอ่อน + ลำดับตัวอักษรชัด (Kanit) + SoftPress
 class RecordModuleCard extends StatelessWidget {
   const RecordModuleCard({
     super.key,
@@ -40,6 +33,8 @@ class RecordModuleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final p = DailyPalette.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final l10n = AppLocalizations.of(context);
     final status = fillStatus;
     final recorded = status == DailyModuleFillStatus.complete;
@@ -57,12 +52,19 @@ class RecordModuleCard extends StatelessWidget {
         : l10n.statusTapToRecord;
 
     final statusColor = recorded
-        ? DailyPalette.statusComplete
+        ? p.statusComplete
         : partial
-        ? DailyPalette.statusIncomplete
-        : DailyPalette.statusPending;
+        ? p.statusIncomplete
+        : p.statusPending;
 
     final accent = tileColor;
+    final depthShadow = SoftPressDepthShadow(
+      color: p.shadowCard,
+      blurRadius: 10,
+      offsetY: 3,
+      pressedBlurRadius: 4,
+      pressedOffsetY: 1,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -73,59 +75,87 @@ class RecordModuleCard extends StatelessWidget {
             ? constraints.maxHeight
             : maxW;
         final isLandscapeCell = maxW > maxH * 1.08;
-        // มือถือ 2 คอลัมน์: การ์ดกว้างขึ้น — ลดไอคอนเล็กน้อย เพิ่มตัวอักษร
+        // มือถือ 2 คอลัมน์: เซลล์กว้าง ≥ ~140
         final phoneWidePortrait = !isLandscapeCell && maxW >= 140;
-        final cardW = isLandscapeCell ? maxW : (maxW < maxH ? maxW : maxH);
-        final cardH = isLandscapeCell ? maxH : cardW;
+        // เติมเซลล์เต็ม — ไม่หดเป็นจัตุรัสลอยกลางช่อง (รู้สึกแบบเว็บแดชบอร์ด)
+        final cardW = maxW;
+        final cardH = maxH;
         final scaleRef = isLandscapeCell
             ? (maxH < maxW ? maxH : maxW)
-            : cardW;
-        final iconSize = (scaleRef *
+            : (maxW < maxH ? maxW : maxH);
+
+        final iconGlyph = (scaleRef *
                 (isLandscapeCell
-                    ? 0.54
+                    ? 0.42
                     : phoneWidePortrait
-                        ? 0.34
-                        : 0.5))
+                        ? 0.22
+                        : 0.36))
             .clamp(
-              isLandscapeCell ? 32.0 : (phoneWidePortrait ? 32.0 : 40.0),
-              isLandscapeCell ? 50.0 : (phoneWidePortrait ? 44.0 : 66.0),
+              isLandscapeCell ? 26.0 : (phoneWidePortrait ? 22.0 : 28.0),
+              isLandscapeCell ? 36.0 : (phoneWidePortrait ? 28.0 : 40.0),
             );
-        final pad = (scaleRef * (phoneWidePortrait ? 0.07 : 0.1))
-            .clamp(phoneWidePortrait ? 7.0 : 8.0, phoneWidePortrait ? 12.0 : 14.0);
-        final titleSize = (scaleRef * (phoneWidePortrait ? 0.108 : 0.11))
-            .clamp(phoneWidePortrait ? 13.5 : 11.5, phoneWidePortrait ? 16.5 : 14.5);
-        final statusSize = (scaleRef * (phoneWidePortrait ? 0.086 : 0.09))
-            .clamp(phoneWidePortrait ? 11.0 : 10.0, phoneWidePortrait ? 13.0 : 12.0);
-        final radius = isLandscapeCell ? 16.0 : (phoneWidePortrait ? 16.0 : 18.0);
-        final textMaxWidth = isLandscapeCell
-            ? (cardW - iconSize - pad * 3).clamp(48.0, cardW)
-            : cardW - (pad * 2);
+        final wellSize = (iconGlyph * (phoneWidePortrait ? 1.85 : 1.75)).clamp(
+          isLandscapeCell ? 40.0 : (phoneWidePortrait ? 40.0 : 44.0),
+          isLandscapeCell ? 52.0 : (phoneWidePortrait ? 52.0 : 64.0),
+        );
+        final pad = (scaleRef * (phoneWidePortrait ? 0.085 : 0.1)).clamp(
+          phoneWidePortrait ? 10.0 : 8.0,
+          phoneWidePortrait ? 14.0 : 14.0,
+        );
+        final titleSize = (scaleRef * (phoneWidePortrait ? 0.095 : 0.11)).clamp(
+          phoneWidePortrait ? 13.0 : 11.5,
+          phoneWidePortrait ? 15.5 : 14.5,
+        );
+        final statusSize = (scaleRef * (phoneWidePortrait ? 0.078 : 0.09)).clamp(
+          phoneWidePortrait ? 11.0 : 10.0,
+          phoneWidePortrait ? 12.5 : 12.0,
+        );
+        final radius = isLandscapeCell
+            ? 16.0
+            : (phoneWidePortrait ? 18.0 : 18.0);
+        final wellRadius = phoneWidePortrait ? 14.0 : 12.0;
         final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
             DevicePerf.isConstrainedDevice;
 
-        Widget statusBlock() {
+        Widget iconWell() {
+          return SizedBox(
+            width: wellSize,
+            height: wellSize,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: isDark ? 0.22 : 0.12),
+                borderRadius: BorderRadius.circular(wellRadius),
+              ),
+              child: Icon(icon, size: iconGlyph, color: accent),
+            ),
+          );
+        }
+
+        Widget statusBlock({TextAlign align = TextAlign.center}) {
           if (recorded) {
             return Row(
               mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: align == TextAlign.left
+                  ? MainAxisAlignment.start
+                  : MainAxisAlignment.center,
               children: [
                 Icon(
-                  Icons.check_rounded,
-                  size: (statusSize + 1).clamp(11.0, 13.0),
-                  color: DailyPalette.statusComplete,
+                  Icons.check_circle_rounded,
+                  size: (statusSize + 1).clamp(12.0, 14.0),
+                  color: p.statusComplete,
                 ),
-                const SizedBox(width: 3),
+                const SizedBox(width: 4),
                 Flexible(
                   child: Text(
                     statusLabel,
-                    textAlign: TextAlign.center,
+                    textAlign: align,
                     maxLines: statusMaxLines,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelSmall?.copyWith(
+                    style: GoogleFonts.kanit(
                       fontSize: statusSize,
                       fontWeight: FontWeight.w600,
-                      color: DailyPalette.statusComplete,
-                      height: 1.15,
+                      color: p.statusComplete,
+                      height: 1.2,
                     ),
                   ),
                 ),
@@ -134,80 +164,108 @@ class RecordModuleCard extends StatelessWidget {
           }
           return Text(
             statusLabel,
-            textAlign: TextAlign.center,
+            textAlign: align,
             maxLines: statusMaxLines,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelSmall?.copyWith(
+            style: GoogleFonts.kanit(
               fontSize: statusSize,
               fontWeight: FontWeight.w500,
               color: statusColor,
-              height: 1.15,
+              height: 1.2,
             ),
           );
         }
 
-        Widget titleBlock() {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: textMaxWidth,
-                child: Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  maxLines: isLandscapeCell ? 2 : 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontSize: titleSize,
-                    fontWeight: FontWeight.w600,
-                    color: DailyPalette.ink,
-                    height: 1.2,
-                  ),
-                ),
-              ),
-              SizedBox(height: pad * 0.28),
-              SizedBox(
-                width: textMaxWidth,
-                child: statusBlock(),
-              ),
-            ],
+        Widget titleText({TextAlign align = TextAlign.center}) {
+          return Text(
+            title,
+            textAlign: align,
+            maxLines: isLandscapeCell ? 2 : (phoneWidePortrait ? 2 : 3),
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.kanit(
+              fontSize: titleSize,
+              fontWeight: FontWeight.w700,
+              color: p.ink,
+              height: 1.25,
+              letterSpacing: -0.15,
+            ),
           );
         }
 
-        Widget centeredContent() {
-          if (isLandscapeCell) {
-            return Padding(
-              padding: EdgeInsets.symmetric(horizontal: pad * 0.5),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Icon(icon, size: iconSize, color: accent),
-                  SizedBox(width: pad * 0.65),
-                  Flexible(child: titleBlock()),
-                ],
-              ),
-            );
-          }
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Icon(icon, size: iconSize, color: accent),
-              SizedBox(height: pad * (phoneWidePortrait ? 0.4 : 0.5)),
-              titleBlock(),
-            ],
+        Widget portraitContent() {
+          // ไอคอนบนซ้าย + สถานะมุมขวา · ชื่อ/สถานะยึดด้านล่าง — สแกนง่ายบนมือถือ
+          return Padding(
+            padding: EdgeInsets.fromLTRB(pad, pad * 0.85, pad * 0.85, pad),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    iconWell(),
+                    const Spacer(),
+                    Padding(
+                      padding: EdgeInsets.only(top: pad * 0.15),
+                      child: _StatusMark(partial: partial),
+                    ),
+                  ],
+                ),
+                const Spacer(flex: 2),
+                titleText(align: TextAlign.left),
+                SizedBox(height: pad * 0.28),
+                statusBlock(align: TextAlign.left),
+              ],
+            ),
+          );
+        }
+
+        Widget landscapeContent() {
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: pad * 0.75),
+            child: Row(
+              children: [
+                iconWell(),
+                SizedBox(width: pad * 0.75),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      titleText(align: TextAlign.left),
+                      SizedBox(height: pad * 0.22),
+                      statusBlock(align: TextAlign.left),
+                    ],
+                  ),
+                ),
+                _StatusMark(partial: partial),
+              ],
+            ),
+          );
+        }
+
+        // แท็บเล็ตแนวตั้งคอลัมน์เดียวแคบ: คงสแต็กกลางแบบเดิม แต่ใส่บ่อไอคอน
+        Widget narrowPortraitContent() {
+          return Padding(
+            padding: EdgeInsets.all(pad),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                iconWell(),
+                SizedBox(height: pad * 0.55),
+                titleText(),
+                SizedBox(height: pad * 0.28),
+                statusBlock(),
+              ],
+            ),
           );
         }
 
         final surfaceShadow = useLiteChrome
-            ? const [
+            ? [
                 BoxShadow(
-                  color: DailyPalette.shadowCard,
-                  blurRadius: 12,
-                  offset: Offset(0, 3),
+                  color: p.shadowCard,
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
                 ),
               ]
             : null;
@@ -217,66 +275,66 @@ class RecordModuleCard extends StatelessWidget {
           height: cardH,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: DailyPalette.card,
+              color: p.card,
               borderRadius: BorderRadius.circular(radius),
+              border: Border.all(
+                color: p.hairline.withValues(alpha: isDark ? 0.9 : 0.85),
+                width: 1,
+              ),
               boxShadow: surfaceShadow,
             ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Center(child: centeredContent()),
-                Positioned(
-                  top: pad * 0.5,
-                  right: pad * 0.5,
-                  child: _StatusDot(
-                    recorded: recorded,
-                    partial: partial,
-                  ),
-                ),
-              ],
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(radius),
+              child: isLandscapeCell
+                  ? landscapeContent()
+                  : (phoneWidePortrait
+                      ? portraitContent()
+                      : Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            narrowPortraitContent(),
+                            Positioned(
+                              top: pad * 0.45,
+                              right: pad * 0.45,
+                              child: _StatusMark(partial: partial),
+                            ),
+                          ],
+                        )),
             ),
           ),
         );
 
-        return Align(
-          alignment: Alignment.center,
-          child: SoftPressButton(
-            onTap: onTap,
-            size: SoftPressSize.medium,
-            borderRadius: radius,
-            isDarkSurface: false,
-            liftWhenIdle: !useLiteChrome,
-            depthShadow: useLiteChrome ? null : _cardDepthShadow,
-            child: shapedCard,
-          ),
+        return SoftPressButton(
+          onTap: onTap,
+          size: SoftPressSize.medium,
+          borderRadius: radius,
+          isDarkSurface: isDark,
+          liftWhenIdle: !useLiteChrome,
+          depthShadow: useLiteChrome ? null : depthShadow,
+          // ห้ามให้ SoftPress หดการ์ดด้วย Align/padding นอกเซลล์
+          hitPadding: EdgeInsets.zero,
+          child: shapedCard,
         );
       },
     );
   }
 }
 
-class _StatusDot extends StatelessWidget {
-  const _StatusDot({
-    required this.recorded,
-    required this.partial,
-  });
+class _StatusMark extends StatelessWidget {
+  const _StatusMark({required this.partial});
 
-  final bool recorded;
   final bool partial;
 
   @override
   Widget build(BuildContext context) {
-    if (recorded) {
-      return const Icon(
-        Icons.check_rounded,
-        size: 14,
-        color: DailyPalette.statusComplete,
-      );
+    // มุมขวา: จุดเหลืองเฉพาะสถานะค้าง — ครบแล้วใช้เช็คในบรรทัดสถานะพอ
+    if (!partial) {
+      return const SizedBox(width: 8, height: 8);
     }
-    if (!partial) return const SizedBox.shrink();
     return Container(
-      width: 7,
-      height: 7,
+      width: 8,
+      height: 8,
+      margin: const EdgeInsets.only(top: 4, right: 2),
       decoration: const BoxDecoration(
         color: DailyPalette.statusIncompleteDot,
         shape: BoxShape.circle,
