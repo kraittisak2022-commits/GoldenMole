@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../utils/device_perf.dart';
 import 'app_version_label.dart';
@@ -111,10 +110,13 @@ class _BootstrapSplashState extends State<BootstrapSplash>
                                 child: Text(
                                   'ระบบบันทึกงานก่อสร้าง',
                                   textAlign: TextAlign.center,
-                                  style: GoogleFonts.kanit(
+                                  // Pubspec-bundled Kanit — avoid GoogleFonts
+                                  // async load during splash animation frames.
+                                  style: const TextStyle(
+                                    fontFamily: 'Kanit',
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
-                                    color: const Color(0xFF9A8F78),
+                                    color: Color(0xFF9A8F78),
                                     letterSpacing: 0.25,
                                   ),
                                 ),

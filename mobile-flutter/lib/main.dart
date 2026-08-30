@@ -33,15 +33,22 @@ import 'widgets/app_page_route.dart';
 import 'widgets/bootstrap_splash.dart';
 import 'utils/touch_profile.dart';
 
+/// Load bundled google_fonts before any widget paints.
+///
+/// Completing a font load notifies [_SystemFontsNotifier], which asserts if
+/// [RenderParagraph] tries to relayout during [SchedulerPhase.midFrameMicrotasks].
+/// Awaiting this before [runApp] keeps that notify in an idle phase.
 Future<void> _preloadAppFonts() async {
   try {
-    await GoogleFonts.pendingFonts([
-      GoogleFonts.kanit(),
-      GoogleFonts.kanit(fontWeight: FontWeight.w600),
-      GoogleFonts.kanit(fontWeight: FontWeight.w700),
-      GoogleFonts.kanit(fontWeight: FontWeight.w800),
-      GoogleFonts.orbitron(fontWeight: FontWeight.w700),
-    ]);
+    // Prime the same families/weights ThemeData + splash/login will request.
+    final probe = ThemeData(useMaterial3: true);
+    GoogleFonts.kanitTextTheme(probe.textTheme);
+    GoogleFonts.kanit(fontWeight: FontWeight.w500);
+    GoogleFonts.kanit(fontWeight: FontWeight.w600);
+    GoogleFonts.kanit(fontWeight: FontWeight.w700);
+    GoogleFonts.kanit(fontWeight: FontWeight.w800);
+    GoogleFonts.orbitron(fontWeight: FontWeight.w700);
+    await GoogleFonts.pendingFonts();
   } catch (e, st) {
     debugPrint('Font preload skipped: $e\n$st');
   }
@@ -349,9 +356,11 @@ Future<void> main() async {
   final appRootNavigatorKey = GlobalKey<NavigatorState>();
 
   try {
+    // Fonts must finish before runApp — see [_preloadAppFonts].
     await Future.wait([
       DevicePerf.init(),
       dotenv.load(fileName: '.env'),
+      _preloadAppFonts(),
     ]);
 
     final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
@@ -367,8 +376,6 @@ Future<void> main() async {
     AppErrorBinding.install(appRootNavigatorKey);
 
     runApp(MobileApp(navigatorKey: appRootNavigatorKey));
-    // โหลดฟอนต์เบื้องหลังหลัง runApp — ไม่บล็อกหน้าแรก
-    unawaited(_preloadAppFonts());
   } catch (e) {
     debugPrint('Error during initialization: $e');
     runApp(

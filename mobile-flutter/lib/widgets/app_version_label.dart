@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 /// ป้ายเวอร์ชันแอพ — โหลดจาก package_info ครั้งเดียว
@@ -42,7 +41,10 @@ class _AppVersionLabelState extends State<AppVersionLabel> {
     if (v == null || v.isEmpty) return const SizedBox.shrink();
     return Text(
       '${widget.prefix}$v',
-      style: GoogleFonts.kanit(
+      // Bundled pubspec font — safe when this label appears on splash/login
+      // while GoogleFonts may still be resolving elsewhere.
+      style: TextStyle(
+        fontFamily: 'Kanit',
         fontSize: widget.fontSize,
         fontWeight: FontWeight.w500,
         color: widget.color,
