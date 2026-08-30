@@ -9346,7 +9346,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                                         : 700),
                                               padding: EdgeInsets.fromLTRB(
                                                 phonePortrait &&
-                                                        _isMaintenanceMode
+                                                        (_isMaintenanceMode ||
+                                                            _isLaborLeaveMode)
                                                     ? 8
                                                     : phonePortrait &&
                                                           _isIncomeUtilitiesEntryMode
@@ -9354,14 +9355,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                                     : 14,
                                                 0,
                                                 phonePortrait &&
-                                                        _isMaintenanceMode
+                                                        (_isMaintenanceMode ||
+                                                            _isLaborLeaveMode)
                                                     ? 8
                                                     : phonePortrait &&
                                                           _isIncomeUtilitiesEntryMode
                                                     ? 10
                                                     : 14,
                                                 phonePortrait &&
-                                                        _isMaintenanceMode
+                                                        (_isMaintenanceMode ||
+                                                            _isLaborLeaveMode)
                                                     ? 20
                                                     : 28,
                                               ),
