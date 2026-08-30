@@ -182,13 +182,14 @@ workflows:
       app_store_connect: codemagic
     environment:
       groups:
-        - goldenmole_user
+        # Shared with Dashboard — only one Codemagic env group
+        - goldenmole_dashboard
       vars:
         BUNDLE_ID: "com.goldenmole.app"
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
-        # Set in Codemagic env group after creating the App Store Connect app
-        # APP_STORE_APPLE_ID: "1234567890"
+        # Optional: set USER_APP_STORE_APPLE_ID in group goldenmole_dashboard
+        # (Apple ID of GoldenMole for User — not the Dashboard app)
       flutter: stable
       xcode: latest
       cocoapods: default
@@ -198,7 +199,7 @@ workflows:
           set -euo pipefail
           cd "$CM_BUILD_DIR/mobile-flutter"
           if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
-            echo "ERROR: SUPABASE_URL / SUPABASE_ANON_KEY missing from env group goldenmole_user."
+            echo "ERROR: SUPABASE_URL / SUPABASE_ANON_KEY missing from env group goldenmole_dashboard."
             exit 1
           fi
           {
@@ -214,8 +215,8 @@ workflows:
         script: |
           set -euo pipefail
           if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
-            echo "ERROR: CERTIFICATE_PRIVATE_KEY is missing from group goldenmole_user."
-            echo "Reuse the same PEM as Dashboard, or run openssl genrsa 2048 (see docs/codemagic-user-ios-setup.md)."
+            echo "ERROR: CERTIFICATE_PRIVATE_KEY is missing from group goldenmole_dashboard."
+            echo "See docs/codemagic-setup.md / docs/codemagic-user-ios-setup.md."
             exit 1
           fi
           CERT_KEY_PATH="$HOME/cert_key.pem"
@@ -253,17 +254,19 @@ workflows:
           set -euo pipefail
           cd "$CM_BUILD_DIR/mobile-flutter"
           BUILD_NUMBER_ARG=""
-          if [ -n "${APP_STORE_APPLE_ID:-}" ]; then
-            LATEST_BUILD_NUMBER=$(app-store-connect get-latest-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || true)
+          # Prefer User app id so we never reuse Dashboard's APP_STORE_APPLE_ID from yaml/vars
+          ASC_APP_ID="${USER_APP_STORE_APPLE_ID:-}"
+          if [ -n "$ASC_APP_ID" ]; then
+            LATEST_BUILD_NUMBER=$(app-store-connect get-latest-build-number "$ASC_APP_ID" 2>/dev/null || true)
             LATEST_BUILD_NUMBER=${LATEST_BUILD_NUMBER:-0}
             NEW_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
             if [ "${BUILD_NUMBER:-0}" -gt "$NEW_BUILD_NUMBER" ]; then
               NEW_BUILD_NUMBER=$BUILD_NUMBER
             fi
-            echo "Using CFBundleVersion / --build-number=$NEW_BUILD_NUMBER"
+            echo "Using CFBundleVersion / --build-number=$NEW_BUILD_NUMBER (User ASC $ASC_APP_ID)"
             BUILD_NUMBER_ARG="--build-number=$NEW_BUILD_NUMBER"
           else
-            echo "APP_STORE_APPLE_ID not set — using pubspec build number."
+            echo "USER_APP_STORE_APPLE_ID not set — using pubspec build number."
           fi
           # shellcheck disable=SC2086
           flutter build ipa --release \
@@ -282,7 +285,7 @@ workflows:
           failure: true
       app_store_connect:
         auth: integration
-        # Requires App Store Connect app + APP_STORE_APPLE_ID in goldenmole_user
+        # Needs App Store Connect app for com.goldenmole.app + USER_APP_STORE_APPLE_ID in group
         submit_to_testflight: true
         expire_build_submitted_for_review: true
 
@@ -292,7 +295,7 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       groups:
-        - goldenmole_user
+        - goldenmole_dashboard
       flutter: stable
       xcode: latest
       cocoapods: default
@@ -302,7 +305,7 @@ workflows:
           set -euo pipefail
           cd "$CM_BUILD_DIR/mobile-flutter"
           if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
-            echo "ERROR: SUPABASE_URL / SUPABASE_ANON_KEY missing from env group goldenmole_user."
+            echo "ERROR: SUPABASE_URL / SUPABASE_ANON_KEY missing from env group goldenmole_dashboard."
             exit 1
           fi
           {

@@ -13,7 +13,7 @@
 | Workflow | `goldenmole-user-ios` |
 | Preview | `goldenmole-user-ios-preview` |
 | Integration | `codemagic` (ร่วมกับ Dashboard) |
-| Env group | `goldenmole_user` |
+| Env group | **`goldenmole_dashboard`** (ใช้ group เดียวกับ Dashboard) |
 
 ---
 
@@ -23,41 +23,41 @@
 2. **App IDs** → App
 3. Description: `GoldenMole for User`
 4. Bundle ID: **Explicit** → `com.goldenmole.app`
-5. Capabilities: เปิดอย่างน้อย **Associated Domains** ไม่จำเป็นตอนนี้ — ค่าเริ่มต้นพอ
-6. Register
+5. Register
 
 ## ขั้นที่ 2 — App Store Connect: สร้างแอป
 
 1. [App Store Connect](https://appstoreconnect.apple.com/) → **My Apps** → **+**
 2. Bundle ID: `com.goldenmole.app`
 3. ชื่อ: `GoldenMole for User`
-4. จด **Apple ID** ตัวเลขของแอป (App Information → Apple ID) → ใส่เป็น `APP_STORE_APPLE_ID` ใน Codemagic
+4. จด **Apple ID** ตัวเลขของแอป (App Information → Apple ID)
 
-## ขั้นที่ 3 — Codemagic env group `goldenmole_user`
+## ขั้นที่ 3 — Env group (ใช้ของเดิม)
 
-Team / แอป → **Environment variables** → group **`goldenmole_user`**:
+ไม่ต้องสร้าง group ใหม่ — workflow User อ้าง **`goldenmole_dashboard`** อยู่แล้ว
+
+ตัวแปรที่มีอยู่ใช้ร่วมได้:
+
+| Variable | ใช้กับ |
+|----------|--------|
+| `SUPABASE_URL` | Dashboard + User |
+| `SUPABASE_ANON_KEY` | Dashboard + User |
+| `CERTIFICATE_PRIVATE_KEY` | Dashboard + User (cert ชุดเดียวกัน) |
+
+เพิ่มใน group เดิม (แนะนำ):
 
 | Variable | Secure | หมายเหตุ |
 |----------|--------|----------|
-| `SUPABASE_URL` | ใช่ | เดียวกับแอป Android / `.env` |
-| `SUPABASE_ANON_KEY` | ใช่ | เดียวกับแอป Android |
-| `CERTIFICATE_PRIVATE_KEY` | ใช่ | **ใช้ PEM เดียวกับ Dashboard ได้** (Distribution cert ชุดเดียวกัน) |
-| `APP_STORE_APPLE_ID` | ไม่บังคับ secure | ตัวเลขจากขั้น 2 — ใช้เพิ่ม build number + TestFlight |
-| `LINE_ADVANCE_NOTIFY_USER_IDS` | ใช่ (ถ้ามี) | optional |
-| `NOTIFY_ADVANCE_INVOKER_SECRET` | ใช่ (ถ้ามี) | optional |
+| `USER_APP_STORE_APPLE_ID` | ไม่บังคับ | ตัวเลขจากขั้น 2 — ใช้เพิ่ม build number ของแอป User |
 
-Integration `codemagic` (ASC API key) ตั้งไว้แล้วถ้าเคย build Dashboard — ไม่ต้องสร้างใหม่
-
-> Apple จำกัด Distribution cert ≈ 3 ใบ — **อย่ารัน `openssl genrsa` ใหม่** ถ้า Dashboard ใช้อยู่แล้ว ให้ copy `CERTIFICATE_PRIVATE_KEY` จาก group `goldenmole_dashboard` มาใส่ `goldenmole_user`
+> อย่าใส่ Apple ID ของ Dashboard ลงตัวแปรนี้
 
 ## ขั้นที่ 4 — Start build
 
-1. Push branch ที่มี `mobile-flutter/ios/` + `codemagic.yaml` อัปเดตแล้ว
-2. Codemagic → แอป GoldenMole → **Start new build**
+1. Push branch ที่มี `codemagic.yaml` อัปเดตแล้ว
+2. Codemagic → แอป **GoldenMole** (ตัวเดิม) → **Start new build**
 3. เลือก workflow **GoldenMole for User iOS**
 4. รอ IPA + TestFlight (~15–30 นาที)
-
-Preview ในเบราว์เซอร์: workflow **GoldenMole for User iOS (Simulator Preview)**
 
 ---
 
@@ -65,11 +65,10 @@ Preview ในเบราว์เซอร์: workflow **GoldenMole for User 
 
 | Error | แก้ |
 |-------|-----|
+| unknown variable group `goldenmole_user` | อัปเดต yaml ให้ใช้ `goldenmole_dashboard` แล้ว (pull main ล่าสุด) |
 | Bundle ID not found | สร้าง App ID `com.goldenmole.app` บน Apple Developer |
-| 409 Distribution certificate | ลบ Distribution cert เก่าที่ไม่ใช้ / ใช้ PEM เดิมของ Dashboard |
-| Missing SUPABASE_* | ใส่ใน group `goldenmole_user` และผูก group กับ workflow |
-| TestFlight submit fail | ตรวจว่าสร้างแอปใน ASC แล้ว และ `APP_STORE_APPLE_ID` ถูกต้อง |
-| Integration `codemagic` not found | ดูขั้น API key ใน `docs/codemagic-setup.md` |
+| 409 Distribution certificate | ใช้ PEM เดิมใน `goldenmole_dashboard` — อย่า genrsa ใหม่ |
+| Missing SUPABASE_* | ตรวจ group `goldenmole_dashboard` |
 
 ---
 
@@ -77,4 +76,4 @@ Preview ในเบราว์เซอร์: workflow **GoldenMole for User 
 
 - `mobile-flutter/ios/` — Xcode / Flutter iOS project
 - `codemagic.yaml` — workflow `goldenmole-user-ios`
-- `docs/codemagic-setup.md` — Dashboard iOS (อ้างอิง signing / API key)
+- `docs/codemagic-setup.md` — Dashboard iOS
