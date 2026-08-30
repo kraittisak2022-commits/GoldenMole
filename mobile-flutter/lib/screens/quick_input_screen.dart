@@ -9021,7 +9021,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         ),
       );
     }
-    final heading = widget.appBarTitle ?? 'คีย์ข้อมูลง่าย';
+    final headingRaw = widget.appBarTitle ?? 'คีย์ข้อมูลง่าย';
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
+    final heading = phonePortrait && _isMacroVehicleMode
+        ? 'การใช้รถแม็คโคร'
+        : headingRaw;
     final canPop = Navigator.of(context).canPop();
     // Use sizeOf / viewInsets in narrow scopes so keyboard animation does not
     // rebuild the entire form tree every frame (see ListView spacer + overlay Builder).
@@ -9077,7 +9083,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     child: Column(
                       children: [
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          padding: EdgeInsets.fromLTRB(
+                            phonePortrait && _isMacroVehicleMode ? 10 : 16,
+                            phonePortrait && _isMacroVehicleMode ? 4 : 8,
+                            phonePortrait && _isMacroVehicleMode ? 10 : 16,
+                            0,
+                          ),
                           child: Row(
                             children: [
                               if (canPop ||
@@ -9085,10 +9096,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   _attendanceSection != null)
                                 IconButton(
                                   onPressed: _handleQuickInputBack,
-                                  iconSize: 28,
+                                  iconSize: phonePortrait && _isMacroVehicleMode
+                                      ? 24
+                                      : 28,
                                   style: IconButton.styleFrom(
-                                    minimumSize: const Size(52, 52),
-                                    padding: const EdgeInsets.all(12),
+                                    minimumSize: Size(
+                                      phonePortrait && _isMacroVehicleMode
+                                          ? 44
+                                          : 52,
+                                      phonePortrait && _isMacroVehicleMode
+                                          ? 44
+                                          : 52,
+                                    ),
+                                    padding: EdgeInsets.all(
+                                      phonePortrait && _isMacroVehicleMode
+                                          ? 8
+                                          : 12,
+                                    ),
                                     tapTargetSize:
                                         MaterialTapTargetSize.padded,
                                   ),
@@ -9104,8 +9128,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                     Text(
                                       heading,
                                       textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: GoogleFonts.kanit(
-                                        fontSize: 24,
+                                        fontSize: phonePortrait &&
+                                                _isMacroVehicleMode
+                                            ? 18
+                                            : 24,
                                         fontWeight: FontWeight.w800,
                                         color: Colors.white,
                                       ),
@@ -9126,11 +9155,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 44),
+                              SizedBox(
+                                width: phonePortrait && _isMacroVehicleMode
+                                    ? 36
+                                    : 44,
+                              ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 14),
+                        SizedBox(
+                          height: phonePortrait && _isMacroVehicleMode ? 10 : 14,
+                        ),
                         Expanded(
                           child: FadeTransition(
                             opacity: _contentFade,
@@ -11128,20 +11163,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     VoidCallback? onRemove,
   }) {
     const accent = _macroAccent;
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
+    final padH = phonePortrait ? 10.0 : 14.0;
+    final padV = phonePortrait ? 9.0 : 12.0;
+    final fontSize = phonePortrait ? 14.0 : 16.0;
+    final iconSize = phonePortrait ? 17.0 : 20.0;
     return AnimatedScale(
       scale: selected ? 1.03 : 1,
       duration: const Duration(milliseconds: 160),
       curve: Curves.easeOutBack,
       child: Material(
         color: selected ? _macroAccentTint : Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
           onTap: onTap,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
               border: Border.all(
                 color: selected ? accent : const Color(0xFFE0E6ED),
                 width: selected ? 1.8 : 1,
@@ -11151,32 +11193,38 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (selected)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 5),
                     child: Icon(
                       Icons.check_circle_rounded,
-                      size: 20,
+                      size: iconSize,
                       color: accent,
                     ),
                   )
                 else if (icon != null)
                   Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: Icon(icon, size: 20, color: const Color(0xFF90A4AE)),
+                    padding: const EdgeInsets.only(right: 5),
+                    child: Icon(
+                      icon,
+                      size: iconSize,
+                      color: const Color(0xFF90A4AE),
+                    ),
                   ),
                 if (starred)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 4),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 3),
                     child: Icon(
                       Icons.star_rounded,
-                      size: 17,
-                      color: Color(0xFFFFA000),
+                      size: phonePortrait ? 15 : 17,
+                      color: const Color(0xFFFFA000),
                     ),
                   ),
                 Text(
                   label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.kanit(
-                    fontSize: 16,
+                    fontSize: fontSize,
                     fontWeight: FontWeight.w700,
                     color: selected
                         ? _macroAccentInk
@@ -11184,14 +11232,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                 ),
                 if (onRemove != null) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 4),
                   InkWell(
                     borderRadius: BorderRadius.circular(999),
                     onTap: onRemove,
-                    child: const Icon(
+                    child: Icon(
                       Icons.cancel_rounded,
-                      size: 19,
-                      color: Color(0xFFD14343),
+                      size: phonePortrait ? 17 : 19,
+                      color: const Color(0xFFD14343),
                     ),
                   ),
                 ],
@@ -11203,17 +11251,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  Widget _macroSectionLabel(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Text(
-      text,
-      style: GoogleFonts.kanit(
-        fontSize: 13.5,
-        fontWeight: FontWeight.w700,
-        color: const Color(0xFF78909C),
+  Widget _macroSectionLabel(String text) {
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
+    return Padding(
+      padding: EdgeInsets.only(bottom: phonePortrait ? 4 : 6),
+      child: Text(
+        text,
+        style: GoogleFonts.kanit(
+          fontSize: phonePortrait ? 12.5 : 13.5,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF78909C),
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _buildMacroVehicleRow({
     required _MacroVehicleDraft row,
@@ -11235,16 +11288,69 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       });
     final customTags =
         tags.where((t) => !_kMacroWorkQuickPhrases.contains(t)).toList();
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
+    final iconBox = phonePortrait ? 40.0 : 52.0;
+    final titleSize = phonePortrait ? 18.0 : 23.0;
+    final gap = phonePortrait ? 8.0 : 12.0;
+
+    Widget statusBadge() {
+      if (isIdle) {
+        return Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: phonePortrait ? 7 : 8,
+            vertical: 4,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF8E1),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: const Color(0xFFFFE082)),
+          ),
+          child: Text(
+            phonePortrait ? 'ไม่ได้ทำงาน' : 'วันนั้นไม่ได้ทำงาน',
+            style: GoogleFonts.kanit(
+              fontSize: phonePortrait ? 11 : 12,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFFF57F17),
+            ),
+          ),
+        );
+      }
+      if (isSaved) {
+        return Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: phonePortrait ? 7 : 8,
+            vertical: 4,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E9),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: const Color(0xFFA5D6A7)),
+          ),
+          child: Text(
+            'บันทึกแล้ว',
+            style: GoogleFonts.kanit(
+              fontSize: phonePortrait ? 11 : 12,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF2E7D32),
+            ),
+          ),
+        );
+      }
+      return const SizedBox.shrink();
+    }
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: EdgeInsets.only(bottom: phonePortrait ? 10 : 12),
+      padding: EdgeInsets.all(phonePortrait ? 12 : 14),
       decoration: BoxDecoration(
         color: isComplete || isSaved
             ? _macroAccent.withValues(alpha: 0.05)
             : const Color(0xFFF7F8FA),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(phonePortrait ? 16 : 18),
         border: Border.all(
           color: isComplete || isSaved
               ? _macroAccent
@@ -11267,29 +11373,31 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 52,
-                height: 52,
+                width: iconBox,
+                height: iconBox,
                 decoration: BoxDecoration(
                   color: isIdle ? const Color(0xFFECEFF1) : _macroAccentTint,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(phonePortrait ? 12 : 16),
                 ),
                 child: Icon(
                   isIdle
                       ? Icons.do_not_disturb_on_outlined
                       : Icons.construction_rounded,
-                  size: 30,
+                  size: phonePortrait ? 22 : 30,
                   color: isIdle ? const Color(0xFF78909C) : _macroAccent,
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: phonePortrait ? 10 : 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'รถแม็คโคร คันที่ $displayIndex',
+                      phonePortrait
+                          ? 'คันที่ $displayIndex'
+                          : 'รถแม็คโคร คันที่ $displayIndex',
                       style: GoogleFonts.kanit(
-                        fontSize: 13,
+                        fontSize: phonePortrait ? 12 : 13,
                         fontWeight: FontWeight.w700,
                         color: const Color(0xFF607D8B),
                       ),
@@ -11300,7 +11408,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.kanit(
-                        fontSize: 23,
+                        fontSize: titleSize,
                         fontWeight: FontWeight.w800,
                         color: isIdle
                             ? const Color(0xFF546E7A)
@@ -11308,49 +11416,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         height: 1.2,
                       ),
                     ),
+                    if (phonePortrait && (isIdle || isSaved)) ...[
+                      const SizedBox(height: 6),
+                      statusBadge(),
+                    ],
                   ],
                 ),
               ),
-              if (isIdle)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF8E1),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFFFE082)),
-                  ),
-                  child: Text(
-                    'วันนั้นไม่ได้ทำงาน',
-                    style: GoogleFonts.kanit(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFFF57F17),
-                    ),
-                  ),
-                )
-              else if (isSaved)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFA5D6A7)),
-                  ),
-                  child: Text(
-                    'บันทึกแล้ว',
-                    style: GoogleFonts.kanit(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF2E7D32),
-                    ),
-                  ),
-                ),
+              if (!phonePortrait) statusBadge(),
               if (isSaved || hasDriver || hasDetails)
                 IconButton(
                   onPressed: () => _handleMacroVehicleRowDelete(row),
@@ -11358,36 +11431,46 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   color: const Color(0xFFD14343),
                   tooltip: isSaved ? 'ลบรายการที่บันทึก' : 'ล้างแถว',
                   visualDensity: VisualDensity.compact,
+                  constraints: phonePortrait
+                      ? const BoxConstraints(minWidth: 40, minHeight: 40)
+                      : null,
+                  padding: phonePortrait ? EdgeInsets.zero : null,
                 ),
             ],
           ),
           if (isIdle) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: phonePortrait ? 8 : 10),
             Text(
-              'ยังไม่ครบคนขับหรืองานวันนี้ — จะไม่บันทึกคันนี้',
+              phonePortrait
+                  ? 'ยังไม่ครบคนขับหรืองาน — จะไม่บันทึกคันนี้'
+                  : 'ยังไม่ครบคนขับหรืองานวันนี้ — จะไม่บันทึกคันนี้',
               style: GoogleFonts.kanit(
-                fontSize: 13.5,
+                fontSize: phonePortrait ? 12.5 : 13.5,
                 fontWeight: FontWeight.w600,
                 color: const Color(0xFF78909C),
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          _macroSectionLabel('คนขับ — แตะเลือก'),
+          SizedBox(height: gap),
+          _macroSectionLabel(
+            phonePortrait ? 'คนขับ' : 'คนขับ — แตะเลือก',
+          ),
           if (drivers.isEmpty)
             Text(
-              'ยังไม่พบพนักงานตำแหน่ง «คนขับรถแม็คโคร» '
-              'และยังไม่ได้ตั้งคนขับเริ่มต้นของรถคันนี้บนเว็บ',
+              phonePortrait
+                  ? 'ยังไม่พบคนขับแม็คโคร / คนขับเริ่มต้นของรถคันนี้'
+                  : 'ยังไม่พบพนักงานตำแหน่ง «คนขับรถแม็คโคร» '
+                      'และยังไม่ได้ตั้งคนขับเริ่มต้นของรถคันนี้บนเว็บ',
               style: GoogleFonts.kanit(
-                fontSize: 13.5,
+                fontSize: phonePortrait ? 12.5 : 13.5,
                 fontWeight: FontWeight.w600,
                 color: const Color(0xFFD14343),
               ),
             )
           else
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: phonePortrait ? 6 : 8,
+              runSpacing: phonePortrait ? 6 : 8,
               children: [
                 for (final e in drivers)
                   _macroPickButton(
@@ -11403,7 +11486,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
               ],
             ),
-          const SizedBox(height: 12),
+          SizedBox(height: gap),
           _macroSectionLabel('ช่วงเวลาทำงาน'),
           Row(
             children: [
@@ -11419,7 +11502,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   },
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: phonePortrait ? 6 : 8),
               Expanded(
                 child: _macroPickButton(
                   label: 'ครึ่งวัน',
@@ -11434,11 +11517,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          _macroSectionLabel('งานวันนี้ — แตะเลือกได้หลายงาน แตะซ้ำเพื่อเอาออก'),
+          SizedBox(height: gap),
+          _macroSectionLabel(
+            phonePortrait
+                ? 'งานวันนี้ — แตะเลือกได้หลายงาน'
+                : 'งานวันนี้ — แตะเลือกได้หลายงาน แตะซ้ำเพื่อเอาออก',
+          ),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: phonePortrait ? 6 : 8,
+            runSpacing: phonePortrait ? 6 : 8,
             children: [
               for (final phrase in _kMacroWorkQuickPhrases)
                 _macroPickButton(
@@ -11462,9 +11549,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ],
           ),
           if (tags.length > 1) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: phonePortrait ? 8 : 10),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              padding: EdgeInsets.symmetric(
+                horizontal: phonePortrait ? 10 : 12,
+                vertical: phonePortrait ? 8 : 9,
+              ),
               decoration: BoxDecoration(
                 color: _macroAccentTint,
                 borderRadius: BorderRadius.circular(12),
@@ -11473,7 +11563,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               child: Text(
                 'ลำดับงาน: ${tags.join(' → ')}',
                 style: GoogleFonts.kanit(
-                  fontSize: 14,
+                  fontSize: phonePortrait ? 13 : 14,
                   fontWeight: FontWeight.w700,
                   color: _macroAccentInk,
                   height: 1.3,
@@ -11482,21 +11572,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ],
           if (isSaved && isComplete) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: gap),
             _SmoothPressable(
               enabled: !_saving,
               child: OutlinedButton.icon(
                 onPressed: _saving ? null : () => _saveSingleMacroRow(row),
-                icon: const Icon(Icons.sync_rounded),
+                icon: Icon(
+                  Icons.sync_rounded,
+                  size: phonePortrait ? 18 : 22,
+                ),
                 label: Text(
                   'อัปเดตคันนี้',
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
-                    fontSize: 16,
+                    fontSize: phonePortrait ? 14.5 : 16,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
+                  minimumSize: Size.fromHeight(phonePortrait ? 44 : 48),
                   foregroundColor: _macroAccent,
                   side: BorderSide(
                     color: _macroAccent.withValues(alpha: 0.55),
@@ -11530,17 +11623,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         idleCount++;
       }
     }
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(phonePortrait ? 18 : 22),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(phonePortrait ? 18 : 22),
             border: Border.all(color: const Color(0xFFE3ECF7)),
             boxShadow: [
               BoxShadow(
@@ -11550,13 +11646,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ],
           ),
-          padding: const EdgeInsets.all(18),
+          padding: EdgeInsets.all(phonePortrait ? 12 : 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (macroCars.isEmpty) ...[
                 Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: EdgeInsets.all(phonePortrait ? 12 : 14),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFF3F3),
                     borderRadius: BorderRadius.circular(14),
@@ -11567,6 +11663,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     style: GoogleFonts.kanit(
                       color: const Color(0xFFD14343),
                       fontWeight: FontWeight.w700,
+                      fontSize: phonePortrait ? 13.5 : 15,
                     ),
                   ),
                 ),
@@ -11576,18 +11673,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       (r) => _macroSelectableDriversFor(r.vehicleId).isNotEmpty,
                     ))
                   Padding(
-                    padding: const EdgeInsets.only(top: 10),
+                    padding: EdgeInsets.only(top: phonePortrait ? 4 : 10),
                     child: Text(
-                      'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถแม็คโคร" '
-                      'และยังไม่ได้ตั้งคนขับเริ่มต้นของรถแม็คโครบนเว็บ '
-                      '(ตั้งค่า > รถ/เครื่องจักร)',
+                      phonePortrait
+                          ? 'ยังไม่พบคนขับแม็คโคร / คนขับเริ่มต้นของรถ '
+                              '(ตั้งค่า > รถ/เครื่องจักร)'
+                          : 'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถแม็คโคร" '
+                              'และยังไม่ได้ตั้งคนขับเริ่มต้นของรถแม็คโครบนเว็บ '
+                              '(ตั้งค่า > รถ/เครื่องจักร)',
                       style: GoogleFonts.kanit(
                         color: const Color(0xFFD14343),
                         fontWeight: FontWeight.w700,
+                        fontSize: phonePortrait ? 13 : 14.5,
+                        height: 1.3,
                       ),
                     ),
                   ),
-                const SizedBox(height: 12),
+                SizedBox(height: phonePortrait ? 8 : 12),
                 ...List.generate(macroCars.length, (index) {
                   final car = macroCars[index];
                   final row = _macroDraftForVehicle(car);
@@ -11600,7 +11702,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 }),
                 const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: EdgeInsets.all(phonePortrait ? 10 : 12),
                   decoration: BoxDecoration(
                     color: _macroAccentTint,
                     borderRadius: BorderRadius.circular(12),
@@ -11611,34 +11713,45 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     ),
                   ),
                   child: Text(
-                    'ทำงาน $workedCount/${macroCars.length} คัน'
-                    '${idleCount > 0 ? ' · ไม่ได้ทำงาน $idleCount คัน' : ''}'
-                    '${savedCount > 0 ? ' · บันทึกแล้ว $savedCount คัน' : ''}',
+                    phonePortrait
+                        ? 'ทำงาน $workedCount/${macroCars.length}'
+                            '${idleCount > 0 ? ' · ว่าง $idleCount' : ''}'
+                            '${savedCount > 0 ? ' · บันทึกแล้ว $savedCount' : ''}'
+                        : 'ทำงาน $workedCount/${macroCars.length} คัน'
+                            '${idleCount > 0 ? ' · ไม่ได้ทำงาน $idleCount คัน' : ''}'
+                            '${savedCount > 0 ? ' · บันทึกแล้ว $savedCount คัน' : ''}',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w800,
-                      fontSize: 16.5,
+                      fontSize: phonePortrait ? 14.5 : 16.5,
                     ),
                   ),
                 ),
               ],
-              const SizedBox(height: 14),
+              SizedBox(height: phonePortrait ? 10 : 14),
               _SmoothPressable(
                 enabled: !_saving && macroCars.isNotEmpty,
                 child: FilledButton.icon(
                   onPressed: _saving || macroCars.isEmpty
                       ? null
                       : _saveQuickEntry,
-                  icon: const Icon(Icons.save_outlined),
+                  icon: Icon(
+                    Icons.save_outlined,
+                    size: phonePortrait ? 20 : 24,
+                  ),
                   label: Text(
-                    _saving ? 'กำลังบันทึก...' : 'บันทึกการใช้รถแม็คโคร',
+                    _saving
+                        ? 'กำลังบันทึก...'
+                        : (phonePortrait
+                            ? 'บันทึกแม็คโคร'
+                            : 'บันทึกการใช้รถแม็คโคร'),
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w800,
-                      fontSize: 19,
+                      fontSize: phonePortrait ? 16 : 19,
                     ),
                   ),
                   style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(56),
+                    minimumSize: Size.fromHeight(phonePortrait ? 48 : 56),
                   ),
                 ),
               ),
