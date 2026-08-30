@@ -1,6 +1,7 @@
 # Goldenmole Dashboard — Codemagic iOS workflow
 # Docs: https://docs.codemagic.io/yaml-code-signing/signing-ios/
 # Setup guide: docs/codemagic-setup.md
+# Flutter User app: docs/codemagic-user-ios-setup.md (workflows goldenmole-user-ios*)
 #
 # One-time setup:
 # 1. App ID com.goldenmole.dashboard in Apple Developer → Identifiers
@@ -166,4 +167,167 @@ workflows:
           ls -d "$CM_BUILD_DIR"/simulator-build/Build/Products/Debug-iphonesimulator/*.app
     artifacts:
       - simulator-build/Build/Products/Debug-iphonesimulator/*.app
+      - /tmp/xcodebuild_logs/*.log
+
+  # ---------------------------------------------------------------------------
+  # GoldenMole for User (Flutter) — App Store / TestFlight
+  # Bundle ID: com.goldenmole.app  ·  Display name: GoldenMole for User
+  # Setup: docs/codemagic-user-ios-setup.md
+  # ---------------------------------------------------------------------------
+  goldenmole-user-ios:
+    name: GoldenMole for User iOS
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: codemagic
+    environment:
+      groups:
+        - goldenmole_user
+      vars:
+        BUNDLE_ID: "com.goldenmole.app"
+        XCODE_WORKSPACE: "ios/Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+        # Set in Codemagic env group after creating the App Store Connect app
+        # APP_STORE_APPLE_ID: "1234567890"
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Write Flutter .env from secrets
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/mobile-flutter"
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "ERROR: SUPABASE_URL / SUPABASE_ANON_KEY missing from env group goldenmole_user."
+            exit 1
+          fi
+          {
+            echo "SUPABASE_URL=$SUPABASE_URL"
+            echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+            echo "LINE_ADVANCE_NOTIFY_USER_IDS=${LINE_ADVANCE_NOTIFY_USER_IDS:-}"
+            echo "NOTIFY_ADVANCE_INVOKER_SECRET=${NOTIFY_ADVANCE_INVOKER_SECRET:-}"
+          } > .env
+          echo "Wrote mobile-flutter/.env for asset bundling."
+      - name: Set up keychain for code signing
+        script: keychain initialize
+      - name: Create and fetch signing files automatically
+        script: |
+          set -euo pipefail
+          if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            echo "ERROR: CERTIFICATE_PRIVATE_KEY is missing from group goldenmole_user."
+            echo "Reuse the same PEM as Dashboard, or run openssl genrsa 2048 (see docs/codemagic-user-ios-setup.md)."
+            exit 1
+          fi
+          CERT_KEY_PATH="$HOME/cert_key.pem"
+          printf '%s\n' "$CERTIFICATE_PRIVATE_KEY" > "$CERT_KEY_PATH"
+          if ! openssl rsa -in "$CERT_KEY_PATH" -check -noout 2>/dev/null; then
+            echo "ERROR: CERTIFICATE_PRIVATE_KEY is invalid. Regenerate with: openssl genrsa 2048"
+            exit 1
+          fi
+          if ! app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create \
+            --certificate-key=@file:"$CERT_KEY_PATH"; then
+            echo ""
+            echo "If you see error 409: revoke ALL Apple Distribution certs, then rebuild."
+            echo "Also create App ID $BUNDLE_ID in Apple Developer → Identifiers."
+            echo "https://developer.apple.com/account/resources/identifiers/list"
+            exit 1
+          fi
+      - name: Add certificates to keychain
+        script: keychain add-certificates
+      - name: Set up code signing settings on Xcode project
+        script: xcode-project use-profiles
+      - name: Get Flutter packages
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/mobile-flutter"
+          flutter pub get
+      - name: Install CocoaPods
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/mobile-flutter/ios"
+          pod install
+      - name: Flutter build ipa
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/mobile-flutter"
+          BUILD_NUMBER_ARG=""
+          if [ -n "${APP_STORE_APPLE_ID:-}" ]; then
+            LATEST_BUILD_NUMBER=$(app-store-connect get-latest-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || true)
+            LATEST_BUILD_NUMBER=${LATEST_BUILD_NUMBER:-0}
+            NEW_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
+            if [ "${BUILD_NUMBER:-0}" -gt "$NEW_BUILD_NUMBER" ]; then
+              NEW_BUILD_NUMBER=$BUILD_NUMBER
+            fi
+            echo "Using CFBundleVersion / --build-number=$NEW_BUILD_NUMBER"
+            BUILD_NUMBER_ARG="--build-number=$NEW_BUILD_NUMBER"
+          else
+            echo "APP_STORE_APPLE_ID not set — using pubspec build number."
+          fi
+          # shellcheck disable=SC2086
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist \
+            $BUILD_NUMBER_ARG
+    artifacts:
+      - mobile-flutter/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      email:
+        recipients:
+          - kraittisak2022@gmail.com
+        notify:
+          success: true
+          failure: true
+      app_store_connect:
+        auth: integration
+        # Requires App Store Connect app + APP_STORE_APPLE_ID in goldenmole_user
+        submit_to_testflight: true
+        expire_build_submitted_for_review: true
+
+  goldenmole-user-ios-preview:
+    name: GoldenMole for User iOS (Simulator Preview)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - goldenmole_user
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Write Flutter .env from secrets
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/mobile-flutter"
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "ERROR: SUPABASE_URL / SUPABASE_ANON_KEY missing from env group goldenmole_user."
+            exit 1
+          fi
+          {
+            echo "SUPABASE_URL=$SUPABASE_URL"
+            echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+            echo "LINE_ADVANCE_NOTIFY_USER_IDS=${LINE_ADVANCE_NOTIFY_USER_IDS:-}"
+            echo "NOTIFY_ADVANCE_INVOKER_SECRET=${NOTIFY_ADVANCE_INVOKER_SECRET:-}"
+          } > .env
+      - name: Get Flutter packages
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/mobile-flutter"
+          flutter pub get
+      - name: Install CocoaPods
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/mobile-flutter/ios"
+          pod install
+      - name: Build for iOS Simulator
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/mobile-flutter"
+          flutter build ios --debug --simulator --no-codesign
+          echo "Simulator .app:"
+          find build/ios -name "*.app" -type d | head -20
+    artifacts:
+      - mobile-flutter/build/ios/iphonesimulator/*.app
       - /tmp/xcodebuild_logs/*.log

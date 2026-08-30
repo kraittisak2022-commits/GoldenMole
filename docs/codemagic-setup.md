@@ -2,6 +2,9 @@
 
 คู่มือตั้งค่า build iOS บน Codemagic จาก Windows (ไม่ต้องมี Mac)
 
+> **แอปผู้ใช้ (Flutter)** — Bundle `com.goldenmole.app` / workflow `GoldenMole for User iOS`  
+> ดูคู่มือแยก: [`docs/codemagic-user-ios-setup.md`](codemagic-user-ios-setup.md)
+
 ## สิ่งที่ตั้งค่าใน repo แล้ว
 
 | รายการ | ค่า |

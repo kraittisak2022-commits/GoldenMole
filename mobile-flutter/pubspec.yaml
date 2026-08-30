@@ -132,7 +132,8 @@ flutter:
 
 flutter_launcher_icons:
   android: true
-  ios: false
+  ios: true
+  remove_alpha_ios: true
   # ใช้โลโก้ Golden Mole เดียวกับ `AppLogo` / splash
   image_path: assets/branding/app_logo.png
   adaptive_icon_background: "#000000"
