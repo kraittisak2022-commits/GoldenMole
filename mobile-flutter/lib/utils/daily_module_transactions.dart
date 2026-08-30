@@ -1223,6 +1223,7 @@ const List<({String category, String shortLabel})> kDailyRecordSummaryModules = 
   (category: 'จำนวนเที่ยวรถ', shortLabel: 'รถดรัม'),
   (category: 'การใช้รถแม็คโคร', shortLabel: 'แม็คโคร'),
   (category: 'น้ำมัน', shortLabel: 'น้ำมัน'),
+  (category: 'บำรุงรักษา', shortLabel: 'บำรุง'),
   (category: 'เหตุการณ์', shortLabel: 'เหตุการณ์'),
   (category: 'ค่าแรง', shortLabel: 'ค่าแรง'),
   (category: 'OT', shortLabel: 'OT'),
@@ -1704,6 +1705,8 @@ bool transactionMatchesDailyModule(
       return macroVehicleLike();
     case 'น้ำมัน':
       return fuelLike();
+    case 'บำรุงรักษา':
+      return t.category.trim() == 'Maintenance';
     case 'เหตุการณ์':
       return dailyEventLike();
     case 'ค่าแรง':

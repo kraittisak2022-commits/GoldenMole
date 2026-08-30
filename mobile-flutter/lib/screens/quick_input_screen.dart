@@ -31,6 +31,7 @@ import '../utils/advance_work_details.dart';
 import '../utils/attendance_session_times.dart';
 import '../utils/daily_module_transactions.dart';
 import '../utils/fuel_stock.dart';
+import '../utils/maintenance_catalog.dart';
 import '../utils/count_record_vehicle_defaults.dart';
 import '../utils/labor_canvas_keys.dart';
 import '../utils/device_perf.dart';
@@ -106,6 +107,7 @@ const _kOfflineCapableModuleCategories = {
   'เช็คชื่อ',
   'การใช้รถแม็คโคร',
   'น้ำมัน',
+  'บำรุงรักษา',
   'เหตุการณ์',
   'ลางาน',
 };
@@ -196,6 +198,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   String _dailyEventPriority = 'normal';
   /// id เหตุการณ์ที่กำลังแก้ไข — null = บันทึกใหม่
   String? _dailyEventTxId;
+
+  final _maintenanceDetailController = TextEditingController();
+  final _maintenanceAmountController = TextEditingController();
+  MaintenanceAssetGroup _maintenanceGroup = MaintenanceAssetGroup.macro;
+  String _maintenanceAsset = '';
+  String _maintenanceType = kMaintenanceTypeRepair;
+  String? _maintenanceTxId;
+
   final _leaveReasonController = TextEditingController();
   final _leaveDaysController = TextEditingController(text: '1');
   final _advanceAmountPerPersonController = TextEditingController();
@@ -314,6 +324,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
   bool get _isFuelMode => (widget.initialCategory ?? '').contains('น้ำมัน');
   bool get _isMacroVehicleMode => widget.initialCategory == 'การใช้รถแม็คโคร';
+  bool get _isMaintenanceMode =>
+      widget.initialCategory == kMaintenanceModuleCategory;
 
   bool get _isOfflineCapableCategory =>
       _kOfflineCapableModuleCategories.contains(
@@ -1077,6 +1089,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _homeSandRoundTxId = null;
     _genericTxId = null;
     _dailyEventTxId = null;
+    _maintenanceTxId = null;
   }
 
   void _disposeVehicleDrafts() {
@@ -1257,6 +1270,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _dailyEventDescController.clear();
         _dailyEventType = 'info';
         _dailyEventPriority = 'normal';
+      }
+    } else if (_isMaintenanceMode) {
+      if (!_saving) {
+        _resetMaintenanceForm();
       }
     } else if (_isIncomeUtilitiesEntryMode) {
       _iuEntryKind = null;
@@ -2329,6 +2346,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (!_saving) _hydrateDailyEventFromTransactions(txs);
       return;
     }
+    if (_isMaintenanceMode) {
+      if (!_saving) _hydrateMaintenanceFromTransactions(txs);
+      return;
+    }
     if (txs.isEmpty) return;
     void setIfEmpty(TextEditingController c, String val) {
       if (val.isEmpty) return;
@@ -2498,6 +2519,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     _otDescController.dispose();
     _dailyEventDescController.dispose();
+    _maintenanceDetailController.dispose();
+    _maintenanceAmountController.dispose();
     _disposeVehicleDrafts();
     _disposeFuelVehicleDrafts();
     _disposeMacroVehicleDrafts();
@@ -3326,6 +3349,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     if (_isDailyEventMode) {
       await _saveDailyEventEntry();
+      return;
+    }
+    if (_isMaintenanceMode) {
+      await _saveMaintenanceEntry();
       return;
     }
     if (_isIncomeUtilitiesEntryMode) {
@@ -6077,6 +6104,149 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       default:
         return 'ข้อมูล';
     }
+  }
+
+  void _resetMaintenanceForm() {
+    _maintenanceTxId = null;
+    _maintenanceGroup = MaintenanceAssetGroup.macro;
+    _maintenanceAsset = '';
+    _maintenanceType = kMaintenanceTypeRepair;
+    _maintenanceDetailController.clear();
+    _maintenanceAmountController.clear();
+  }
+
+  void _ensureMaintenanceAssetValid() {
+    final assets = maintenanceAssetsFor(_maintenanceGroup);
+    if (assets.isEmpty) {
+      _maintenanceAsset = '';
+      return;
+    }
+    if (!assets.contains(_maintenanceAsset)) {
+      _maintenanceAsset = assets.first;
+    }
+  }
+
+  Future<void> _saveMaintenanceEntry() async {
+    await _runSaveWithPopups(
+      successMessage: 'บันทึกบำรุงรักษาสำเร็จ',
+      saveActionLabel: 'บันทึกซ่อม/ดูแลรักษาเครื่องยนต์',
+      saveButtonLabel:
+          _maintenanceTxId != null && _maintenanceTxId!.isNotEmpty
+          ? 'อัปเดตรายการ'
+          : 'บันทึก',
+      requireSignature: false,
+      stayOnPage: true,
+      onStayOnPageCleared: () {
+        if (!mounted) return;
+        setState(_resetMaintenanceForm);
+      },
+      body: () async {
+        _ensureMaintenanceAssetValid();
+        final asset = _maintenanceAsset.trim();
+        if (asset.isEmpty) {
+          _failSave('กรุณาเลือกรถ/เครื่องจักร');
+        }
+        final amount =
+            double.tryParse(_maintenanceAmountController.text.trim()) ?? 0;
+        if (amount <= 0) {
+          _failSave(
+            'กรุณาระบุจำนวนเงินให้มากกว่า 0',
+            field: 'จำนวนเงิน',
+          );
+        }
+        final type = _maintenanceType.trim().isEmpty
+            ? kMaintenanceTypeRepair
+            : _maintenanceType.trim();
+        final detail = _maintenanceDetailController.text.trim();
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final date = '$y-$m-$d';
+        final id =
+            (_maintenanceTxId != null && _maintenanceTxId!.trim().isNotEmpty)
+            ? _maintenanceTxId!.trim()
+            : '${DateTime.now().millisecondsSinceEpoch}_maint';
+        _maintenanceTxId = id;
+        await _persist(
+          AppTransaction(
+            id: id,
+            date: date,
+            type: 'Expense',
+            category: kMaintenanceTxCategory,
+            subCategory: type,
+            description: _appendRecorder(
+              maintenanceDescription(type: type, detail: detail),
+            ),
+            amount: amount,
+            note: _activeSignatureNote,
+            vehicleId: asset,
+            vehicleName: asset,
+            workType: _maintenanceGroup.code,
+          ),
+        );
+      },
+    );
+  }
+
+  void _applyMaintenanceToForm(AppTransaction t) {
+    _maintenanceTxId = t.id;
+    final asset = (t.vehicleName ?? t.vehicleId ?? '').trim();
+    final group =
+        MaintenanceAssetGroupX.tryParse(t.workType) ??
+        maintenanceGroupForAsset(asset) ??
+        MaintenanceAssetGroup.macro;
+    _maintenanceGroup = group;
+    _maintenanceAsset = asset;
+    _ensureMaintenanceAssetValid();
+    if (asset.isNotEmpty &&
+        maintenanceAssetsFor(_maintenanceGroup).contains(asset)) {
+      _maintenanceAsset = asset;
+    }
+    final type = (t.subCategory ?? '').trim();
+    _maintenanceType = type.isEmpty ? kMaintenanceTypeRepair : type;
+    _maintenanceDetailController.text = maintenanceDetailFromDescription(
+      t.description,
+      _maintenanceType,
+    );
+    final amt = t.amount;
+    _maintenanceAmountController.text = amt == amt.roundToDouble()
+        ? amt.round().toString()
+        : amt.toStringAsFixed(2);
+    _persistOmitCreatedForIds.add(t.id);
+  }
+
+  void _hydrateMaintenanceFromTransactions(List<AppTransaction> txs) {
+    // เปิดหน้าใหม่สำหรับบันทึกรายการถัดไป — ไม่บังคับโหลดแถวล่าสุดเข้าฟอร์ม
+    // (เลือกจากรายการด้านล่างเมื่อต้องการแก้)
+    if (_maintenanceTxId != null) {
+      for (final t in txs) {
+        if (t.id == _maintenanceTxId) {
+          _applyMaintenanceToForm(t);
+          return;
+        }
+      }
+    }
+  }
+
+  void _loadMaintenanceIntoForm(AppTransaction t) {
+    setState(() => _applyMaintenanceToForm(t));
+  }
+
+  void _startNewMaintenance() {
+    setState(_resetMaintenanceForm);
+  }
+
+  List<AppTransaction> _maintenanceRowsToday() {
+    final ymd = _quickYmd(_selectedDate);
+    return _moduleDayTransactions
+        .where(
+          (t) => transactionMatchesDailyModule(
+            t,
+            ymd,
+            kMaintenanceModuleCategory,
+          ),
+        )
+        .toList(growable: false);
   }
 
   /// จำนวนวันลาจากช่วงวันที่เลือก (นับรวมวันแรกและวันสุดท้าย)
@@ -13404,6 +13574,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ? _buildOtFormCard()
               : _isDailyEventMode
               ? _buildDailyEventFormCard()
+              : _isMaintenanceMode
+              ? _buildMaintenanceFormCard()
               : _buildFormCard(),
         ),
       ),
@@ -16445,6 +16617,313 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ],
             _buildDailyEventSavedTodaySection(),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMaintenanceFormCard() {
+    _ensureMaintenanceAssetValid();
+    final assets = maintenanceAssetsFor(_maintenanceGroup);
+    final editing =
+        _maintenanceTxId != null && _maintenanceTxId!.trim().isNotEmpty;
+    final todayRows = _maintenanceRowsToday();
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFE8E0D5)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFB45309).withValues(alpha: 0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'ซ่อม / ดูแลรักษาเครื่องยนต์',
+              style: GoogleFonts.kanit(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF7C2D12),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'เลือกกลุ่ม → เลือกรายการ → ประเภทงาน → จำนวนเงิน',
+              style: GoogleFonts.kanit(
+                fontSize: 13,
+                color: const Color(0xFF9A3412),
+              ),
+            ),
+            if (editing) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFDBA74)),
+                ),
+                child: Text(
+                  'กำลังแก้ไขรายการที่มีอยู่ — กดอัปเดต หรือเพิ่มใหม่ด้านล่าง',
+                  style: GoogleFonts.kanit(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF9A3412),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            Text(
+              'กลุ่ม',
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF57534E),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final g in MaintenanceAssetGroup.values)
+                  ChoiceChip(
+                    label: Text(
+                      g.label,
+                      style: GoogleFonts.kanit(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    selected: _maintenanceGroup == g,
+                    onSelected: (sel) {
+                      if (!sel) return;
+                      setState(() {
+                        _maintenanceGroup = g;
+                        _ensureMaintenanceAssetValid();
+                      });
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'รายการ',
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF57534E),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final name in assets)
+                  ChoiceChip(
+                    label: Text(
+                      name,
+                      style: GoogleFonts.kanit(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    selected: _maintenanceAsset == name,
+                    onSelected: (sel) {
+                      if (!sel) return;
+                      setState(() => _maintenanceAsset = name);
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'ประเภทงาน',
+              style: GoogleFonts.kanit(
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF57534E),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final type in kMaintenanceTypes)
+                  ChoiceChip(
+                    label: Text(
+                      type,
+                      style: GoogleFonts.kanit(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    selected: _maintenanceType == type,
+                    onSelected: (sel) {
+                      if (!sel) return;
+                      setState(() => _maintenanceType = type);
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _maintenanceDetailController,
+              minLines: 2,
+              maxLines: 4,
+              style: GoogleFonts.kanit(
+                fontSize: 15.5,
+                fontWeight: FontWeight.w600,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'รายละเอียด (ถ้ามี)',
+                hintText: 'เช่น รอบที่ 5, เปลี่ยนไส้กรอง, ซ่อมปั๊ม',
+                alignLabelWithHint: true,
+                prefixIcon: Icon(Icons.notes_outlined),
+              ),
+              onChanged: (_) => _scheduleUiRefresh(),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _maintenanceAmountController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              style: GoogleFonts.kanit(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'จำนวนเงิน (บาท)',
+                prefixIcon: Icon(Icons.payments_outlined),
+              ),
+              onChanged: (_) => _scheduleUiRefresh(),
+            ),
+            const SizedBox(height: 16),
+            _SmoothPressable(
+              enabled: !_saving,
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _saveQuickEntry,
+                icon: Icon(
+                  editing ? Icons.update_rounded : Icons.save_outlined,
+                ),
+                label: Text(
+                  _saving
+                      ? 'กำลังบันทึก...'
+                      : (editing ? 'อัปเดตรายการ' : 'บันทึกบำรุงรักษา'),
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                  ),
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(54),
+                  backgroundColor: const Color(0xFFB45309),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+            if (editing) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _saving ? null : _startNewMaintenance,
+                icon: const Icon(Icons.add_rounded),
+                label: Text(
+                  'เพิ่มรายการใหม่',
+                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+            if (todayRows.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              Text(
+                'บันทึกวันนี้ (${todayRows.length})',
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  color: const Color(0xFF7C2D12),
+                ),
+              ),
+              const SizedBox(height: 8),
+              for (final t in todayRows) ...[
+                _buildMaintenanceSavedCard(t),
+                const SizedBox(height: 8),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMaintenanceSavedCard(AppTransaction t) {
+    final asset = (t.vehicleName ?? t.vehicleId ?? '').trim();
+    final type = (t.subCategory ?? '').trim();
+    final detail = maintenanceDetailFromDescription(t.description, type);
+    final isCurrent = t.id == _maintenanceTxId;
+    final amountText = t.amount == t.amount.roundToDouble()
+        ? t.amount.round().toString()
+        : t.amount.toStringAsFixed(2);
+    return Material(
+      color: isCurrent ? const Color(0xFFFFF7ED) : const Color(0xFFFFFBF5),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _loadMaintenanceIntoForm(t),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color:
+                  isCurrent ? const Color(0xFFFDBA74) : const Color(0xFFFED7AA),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                asset.isEmpty ? '(ไม่ระบุรายการ)' : asset,
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14.5,
+                  color: const Color(0xFF9A3412),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${type.isEmpty ? 'บำรุงรักษา' : type} · $amountText บาท'
+                '${isCurrent ? ' · กำลังแก้ไข' : ''}',
+                style: GoogleFonts.kanit(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFFB45309),
+                ),
+              ),
+              if (detail.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  detail,
+                  style: GoogleFonts.kanit(
+                    fontSize: 13.5,
+                    color: const Color(0xFF57534E),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

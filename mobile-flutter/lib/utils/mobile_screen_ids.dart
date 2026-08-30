@@ -44,6 +44,8 @@ abstract final class MobileScreenIds {
         return 'step.quick_input.macro_vehicle';
       case 'น้ำมัน':
         return 'step.quick_input.fuel';
+      case 'บำรุงรักษา':
+        return 'step.quick_input.maintenance';
       case 'ทรายที่ล้างที่บ้าน':
         return 'step.quick_input.sand_wash_home';
       case 'เหตุการณ์':

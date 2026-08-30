@@ -103,6 +103,13 @@ const List<_DailyModuleDef> _kDailyModules = [
     color: DailyPalette.moduleFuel,
   ),
   _DailyModuleDef(
+    title: 'บำรุงรักษา',
+    icon: Icons.build_circle_outlined,
+    category: 'บำรุงรักษา',
+    quickInputTitle: 'บันทึกซ่อม/ดูแลรักษาเครื่องยนต์',
+    color: DailyPalette.moduleMaintenance,
+  ),
+  _DailyModuleDef(
     title: 'เหตุการณ์',
     icon: Icons.warning_amber_rounded,
     category: 'เหตุการณ์',
@@ -1016,6 +1023,7 @@ const _kDailyMenuDetailCategories = {
   'จำนวนเที่ยวรถ',
   'การใช้รถแม็คโคร',
   'น้ำมัน',
+  'บำรุงรักษา',
   'ค่าแรง',
   'เช็คชื่อ',
   'OT',

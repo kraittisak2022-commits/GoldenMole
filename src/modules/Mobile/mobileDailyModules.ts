@@ -11,6 +11,7 @@ import {
     CalendarX,
     PiggyBank,
     CircleDollarSign,
+    Wrench,
 } from 'lucide-react';
 
 export type DailyModuleDef = {
@@ -50,6 +51,13 @@ export const MOBILE_DAILY_MODULES: DailyModuleDef[] = [
         category: 'น้ำมัน',
         quickInputTitle: 'บันทึกน้ำมัน',
         color: '#FFAB00',
+    },
+    {
+        title: 'บำรุงรักษา',
+        icon: Wrench,
+        category: 'บำรุงรักษา',
+        quickInputTitle: 'บันทึกซ่อม/ดูแลรักษาเครื่องยนต์',
+        color: '#B45309',
     },
     {
         title: 'ทรายที่ล้างที่บ้าน',
