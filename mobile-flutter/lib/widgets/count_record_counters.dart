@@ -1237,14 +1237,17 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       if (mounted) {
         AppHaptics.success();
         unawaited(RecordSuccessSpeaker.instance.speakSuccess());
+        // ไม่โชว์ SnackBar ทุกครั้งที่เพิ่มรอบ — feedback อยู่บนการ์ด
+        // (burst + haptics + เสียง); เลิกทำได้ด้วยการกดค้างบนการ์ด
         final reachedGoal = widget.mode == CounterMode.trip &&
             _tripGoal > 0 &&
             u.rounds == _tripGoal;
         if (reachedGoal) {
           AppHaptics.warn();
           _toast('${u.title} ครบเป้า $_tripGoal เที่ยวแล้ว!');
-        } else {
-          _showRecordSnackBar(u, stamp, queued: queued);
+        } else if (queued) {
+          // แจ้งเฉพาะเมื่อออฟไลน์ — ไม่เกะกะตอนใช้งานปกติ
+          _toast('บันทึกในเครื่องแล้ว — จะอัปโหลดเมื่อมีเน็ต');
         }
       }
     } catch (e) {
@@ -1897,35 +1900,6 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         duration: const Duration(seconds: 2),
       ),
     );
-  }
-
-  /// Snackbar หลังบันทึกสำเร็จ — มีปุ่ม «เลิกทำ» ย้อนรายการล่าสุดได้ทันที (Gmail-style)
-  void _showRecordSnackBar(_CounterUnit u, String stamp, {required bool queued}) {
-    if (!mounted) return;
-    final isTrip = widget.mode == CounterMode.trip;
-    final base = isTrip
-        ? '${u.title} • เที่ยวที่ ${u.rounds} • $stamp'
-        : 'รอบที่ ${u.rounds} • $stamp';
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            queued ? '$base\n(บันทึกในเครื่อง — จะอัปโหลดเมื่อมีเน็ต)' : base,
-          ),
-          backgroundColor: const Color(0xFF2E7D32),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-          action: SnackBarAction(
-            label: 'เลิกทำ',
-            textColor: const Color(0xFFFFE082),
-            onPressed: () {
-              final idx = u.lapTimes.lastIndexOf(stamp);
-              if (idx >= 0) unawaited(_undoRecordAt(u, idx));
-            },
-          ),
-        ),
-      );
   }
 
   /// รวมยอดทั้งวันจากทุกหน่วยนับ แยกช่วงเช้า (ก่อน 12:00) / บ่าย
