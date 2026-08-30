@@ -1,14 +1,14 @@
 import 'dart:io';
-import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/admin_user.dart';
 import '../models/saved_login_profile.dart';
 import '../services/auth_service.dart';
 import '../services/session_service.dart';
+import '../theme/daily_palette.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
 import '../widgets/app_logo.dart';
@@ -21,7 +21,7 @@ typedef LoginSuccessCallback = Future<void> Function(
   bool persistSession,
 );
 
-/// โทนสีและเลย์เอาต์อ้างอิงจาก `src/modules/Auth/LoginPage.tsx` (เว็บ)
+/// Native phone-first login — brand hero, short welcome, focused fields, one CTA.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
     super.key,
@@ -39,7 +39,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   static const Color _gold = Color(0xFFC5A55A);
   static const Color _goldDark = Color(0xFF8B7A3E);
 
@@ -50,7 +50,6 @@ class _LoginScreenState extends State<LoginScreen>
   final _passwordFocus = FocusNode();
 
   bool _submitting = false;
-  bool _darkMode = true;
   bool _obscurePassword = true;
   bool _rememberSession = true;
   bool _showForm = true;
@@ -58,9 +57,7 @@ class _LoginScreenState extends State<LoginScreen>
   String? _errorMessage;
   String? _unlockingProfileId;
   List<SavedLoginProfile> _savedProfiles = const [];
-  late AnimationController _shimmerController;
   late AnimationController _entranceController;
-  late AnimationController _ambientController;
   late Animation<double> _logoEntranceScale;
 
   @override
@@ -71,20 +68,12 @@ class _LoginScreenState extends State<LoginScreen>
       pageId: MobileScreenIds.pageLogin,
       stepId: MobileScreenIds.stepLoginForm,
     );
-    _shimmerController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 3),
-    )..repeat();
     _entranceController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1100),
+      duration: const Duration(milliseconds: 720),
     )..forward();
-    _ambientController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 10),
-    )..repeat();
-    _logoEntranceScale = Tween<double>(begin: 0.82, end: 1.0).animate(
-      CurvedAnimation(parent: _entranceController, curve: Curves.easeOutBack),
+    _logoEntranceScale = Tween<double>(begin: 0.92, end: 1.0).animate(
+      CurvedAnimation(parent: _entranceController, curve: Curves.easeOutCubic),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadLoginPrefs());
   }
@@ -132,8 +121,6 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void dispose() {
     _entranceController.dispose();
-    _ambientController.dispose();
-    _shimmerController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     _usernameFocus.dispose();
@@ -268,460 +255,236 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   InputDecoration _fieldDecoration({
+    required bool isDark,
     required String label,
     required String hint,
     required IconData icon,
     Widget? suffixIcon,
   }) {
-    if (_darkMode) {
-      return InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(icon, color: Colors.white54),
-        suffixIcon: suffixIcon,
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.06),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0x6600C8FF), width: 1.2),
-        ),
-        labelStyle: GoogleFonts.kanit(color: Colors.white60, fontSize: 13),
-        hintStyle: GoogleFonts.kanit(
-          color: Colors.white.withValues(alpha: 0.35),
-        ),
-      );
-    }
+    final fill = isDark
+        ? Colors.white.withValues(alpha: 0.07)
+        : DailyPalette.card;
+    final borderColor =
+        isDark ? Colors.white.withValues(alpha: 0.12) : DailyPalette.hairline;
+    final focusColor = isDark ? _gold : DailyPalette.brand;
+    final iconColor =
+        isDark ? Colors.white54 : DailyPalette.inkMuted;
+    final labelColor =
+        isDark ? Colors.white60 : DailyPalette.inkSubtle;
+
     return InputDecoration(
       labelText: label,
       hintText: hint,
-      prefixIcon: Icon(icon, color: Colors.brown.shade300),
+      prefixIcon: Icon(icon, color: iconColor, size: 22),
       suffixIcon: suffixIcon,
       filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.72),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      fillColor: fill,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: borderColor),
+      ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.brown.shade100),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: borderColor),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: _gold.withValues(alpha: 0.9), width: 1.4),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: focusColor, width: 1.6),
       ),
-      labelStyle: GoogleFonts.kanit(color: Colors.brown.shade700, fontSize: 13),
-      hintStyle: GoogleFonts.kanit(color: Colors.black.withValues(alpha: 0.38)),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.red.shade300),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.red.shade400, width: 1.4),
+      ),
+      labelStyle: GoogleFonts.kanit(color: labelColor, fontSize: 14),
+      hintStyle: GoogleFonts.kanit(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.32)
+            : DailyPalette.inkMuted.withValues(alpha: 0.7),
+        fontSize: 14,
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = _darkMode ? Colors.white : Colors.black87;
-    final textSecondary = _darkMode ? Colors.white70 : Colors.black54;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final textPrimary = isDark ? Colors.white : DailyPalette.ink;
+    final textSecondary = isDark ? Colors.white70 : DailyPalette.inkMuted;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
-    return Theme(
-      data: Theme.of(context).copyWith(
-        brightness: _darkMode ? Brightness.dark : Brightness.light,
-        scaffoldBackgroundColor: Colors.transparent,
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness:
+            isDark ? Brightness.light : Brightness.dark,
+        statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+        systemNavigationBarColor:
+            isDark ? const Color(0xFF0A0A0A) : DailyPalette.surface,
+        systemNavigationBarIconBrightness:
+            isDark ? Brightness.light : Brightness.dark,
       ),
-      child: Scaffold(
-        body: Stack(
-          children: [
-            Positioned.fill(child: _buildBackground()),
-            RepaintBoundary(
-              child: AnimatedBuilder(
-                animation: _ambientController,
-                builder: (context, _) {
-                  final t = _ambientController.value * 2 * math.pi;
-                  return Stack(
-                    children: [
-                      Positioned(
-                        top: -80 + 14 * math.sin(t * 0.8),
-                        left: -40 + 10 * math.cos(t * 0.6),
-                        child: _glowOrb(
-                          size: 260,
-                          colors: _darkMode
-                              ? [const Color(0x330096FF), Colors.transparent]
-                              : [
-                                  _gold.withValues(alpha: 0.14),
-                                  Colors.transparent,
-                                ],
-                        ),
-                      ),
-                      Positioned(
-                        bottom: -60 + 12 * math.cos(t * 0.9),
-                        right: -30 + 8 * math.sin(t * 0.5),
-                        child: _glowOrb(
-                          size: 220,
-                          colors: _darkMode
-                              ? [const Color(0x287850FF), Colors.transparent]
-                              : [
-                                  _goldDark.withValues(alpha: 0.12),
-                                  Colors.transparent,
-                                ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+    );
+
+    return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF0A0A0A) : DailyPalette.surface,
+      resizeToAvoidBottomInset: true,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? const [
+                    Color(0xFF0A0A0A),
+                    Color(0xFF121212),
+                    Color(0xFF0A0A0A),
+                  ]
+                : [
+                    const Color(0xFFF3FBFC),
+                    DailyPalette.surface,
+                    Color.lerp(DailyPalette.surface, _gold, 0.04)!,
+                  ],
+          ),
+        ),
+        child: SafeArea(
+          child: FadeTransition(
+            opacity: CurvedAnimation(
+              parent: _entranceController,
+              curve: const Interval(0.05, 1.0, curve: Curves.easeOutCubic),
             ),
-            SafeArea(
-              child: Align(
-                alignment: Alignment.topRight,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 8, right: 8),
-                  child: Material(
-                    color: _darkMode
-                        ? Colors.white.withValues(alpha: 0.1)
-                        : Colors.black.withValues(alpha: 0.06),
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: () => setState(() => _darkMode = !_darkMode),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Icon(
-                          _darkMode
-                              ? Icons.light_mode_rounded
-                              : Icons.dark_mode_rounded,
-                          color: _darkMode
-                              ? const Color(0xFF00D4FF)
-                              : Colors.brown.shade600,
-                          size: 22,
+            child: Column(
+              children: [
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: EdgeInsets.fromLTRB(
+                          24,
+                          12,
+                          24,
+                          16 + bottomInset.clamp(0, 120),
                         ),
-                      ),
-                    ),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight - 28,
+                            maxWidth: 420,
+                          ),
+                          child: IntrinsicHeight(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Spacer(flex: 1),
+                                _buildHero(
+                                  isDark: isDark,
+                                  textPrimary: textPrimary,
+                                  textSecondary: textSecondary,
+                                ),
+                                const SizedBox(height: 36),
+                                Form(
+                                  key: _formKey,
+                                  child: !_prefsLoaded
+                                      ? const Padding(
+                                          padding: EdgeInsets.symmetric(
+                                            vertical: 32,
+                                          ),
+                                          child: Center(
+                                            child: SizedBox(
+                                              width: 28,
+                                              height: 28,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.4,
+                                                color: DailyPalette.brand,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : _savedProfiles.isNotEmpty && !_showForm
+                                          ? _buildProfilePicker(
+                                              isDark: isDark,
+                                              textPrimary: textPrimary,
+                                              textSecondary: textSecondary,
+                                            )
+                                          : _buildLoginFormFields(
+                                              isDark: isDark,
+                                              textPrimary: textPrimary,
+                                              textSecondary: textSecondary,
+                                            ),
+                                ),
+                                const Spacer(flex: 2),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
-              ),
-            ),
-            SafeArea(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
+                Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: AppVersionLabel(
-                    color: textSecondary.withValues(alpha: 0.75),
+                    color: textSecondary.withValues(alpha: 0.7),
                     fontSize: 11,
                   ),
                 ),
-              ),
+              ],
             ),
-            Center(
-              child: FadeTransition(
-                opacity: CurvedAnimation(
-                  parent: _entranceController,
-                  curve: const Interval(0.12, 1.0, curve: Curves.easeOutCubic),
-                ),
-                child: SlideTransition(
-                  position:
-                      Tween<Offset>(
-                        begin: const Offset(0, 0.1),
-                        end: Offset.zero,
-                      ).animate(
-                        CurvedAnimation(
-                          parent: _entranceController,
-                          curve: const Interval(
-                            0.08,
-                            1.0,
-                            curve: Curves.easeOutCubic,
-                          ),
-                        ),
-                      ),
-                  child: SingleChildScrollView(
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 28,
-                    ),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 440),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(28),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(28),
-                              color: _darkMode
-                                  ? Colors.white.withValues(alpha: 0.06)
-                                  : Colors.white.withValues(alpha: 0.72),
-                              border: Border.all(
-                                color: _darkMode
-                                    ? Colors.white.withValues(alpha: 0.1)
-                                    : Colors.brown.shade100.withValues(
-                                        alpha: 0.6,
-                                      ),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: _darkMode
-                                      ? const Color(0x3300C8FF)
-                                      : _gold.withValues(alpha: 0.18),
-                                  blurRadius: 32,
-                                  offset: const Offset(0, 18),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _topGlowBar(),
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    22,
-                                    22,
-                                    22,
-                                    26,
-                                  ),
-                                  child: Form(
-                                    key: _formKey,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        _buildLogo(),
-                                        const SizedBox(height: 18),
-                                        Text(
-                                          'ระบบจัดการโครงการก่อสร้าง',
-                                          textAlign: TextAlign.center,
-                                          style: GoogleFonts.kanit(
-                                            fontSize: 13,
-                                            color: _darkMode
-                                                ? const Color(0x99B8F4FF)
-                                                : textSecondary,
-                                            letterSpacing: 0.2,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          'Construction Management',
-                                          textAlign: TextAlign.center,
-                                          style: GoogleFonts.kanit(
-                                            fontSize: 12,
-                                            color: textSecondary.withValues(
-                                              alpha: 0.85,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 16),
-                                        _featureBadges(),
-                                        const SizedBox(height: 22),
-                                        if (!_prefsLoaded)
-                                          const Padding(
-                                            padding: EdgeInsets.symmetric(
-                                              vertical: 24,
-                                            ),
-                                            child: Center(
-                                              child: SizedBox(
-                                                width: 28,
-                                                height: 28,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth: 2.4,
-                                                ),
-                                              ),
-                                            ),
-                                          )
-                                        else if (_savedProfiles.isNotEmpty &&
-                                            !_showForm)
-                                          _buildProfilePicker(
-                                            textPrimary: textPrimary,
-                                            textSecondary: textSecondary,
-                                          )
-                                        else
-                                          _buildLoginFormFields(
-                                            textPrimary: textPrimary,
-                                            textSecondary: textSecondary,
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  height: 1,
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: _darkMode
-                                          ? [
-                                              Colors.transparent,
-                                              const Color(0x5500C8FF),
-                                              const Color(0x557850FF),
-                                              Colors.transparent,
-                                            ]
-                                          : [
-                                              Colors.transparent,
-                                              _gold.withValues(alpha: 0.45),
-                                              Colors.transparent,
-                                            ],
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBackground() {
-    if (_darkMode) {
-      return Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF050510), Color(0xFF0A0A1A), Color(0xFF101028)],
           ),
         ),
-      );
-    }
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFFF8F4EB),
-            Color.lerp(const Color(0xFFF0E8D8), Colors.white, 0.35)!,
-          ],
-        ),
       ),
     );
   }
 
-  Widget _glowOrb({required double size, required List<Color> colors}) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(colors: colors),
-        ),
-      ),
-    );
-  }
-
-  Widget _topGlowBar() {
-    return SizedBox(
-      height: 3,
-      child: AnimatedBuilder(
-        animation: _shimmerController,
-        builder: (context, child) {
-          final t = _shimmerController.value;
-          return DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment(-1.2 + t * 2.4, 0),
-                end: Alignment(0.2 + t * 2.4, 0),
-                colors: _darkMode
-                    ? [
-                        Colors.transparent,
-                        const Color(0xFF00C8FF),
-                        const Color(0xFF7850FF),
-                        Colors.transparent,
-                      ]
-                    : [
-                        Colors.transparent,
-                        _gold,
-                        _goldDark,
-                        Colors.transparent,
-                      ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildLogo() {
+  Widget _buildHero({
+    required bool isDark,
+    required Color textPrimary,
+    required Color textSecondary,
+  }) {
     return Column(
       children: [
-        AnimatedBuilder(
-          animation: Listenable.merge([_logoEntranceScale, _ambientController]),
-          builder: (context, _) {
-            final pulse =
-                1.0 + 0.04 * math.sin(_ambientController.value * 2 * math.pi);
-            final scale = (_logoEntranceScale.value * pulse).clamp(0.85, 1.12);
-            return Transform.scale(
-              scale: scale,
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(22),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: _darkMode
-                        ? const [Color(0xFF0A0A20), Color(0xFF111130)]
-                        : const [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
-                  ),
-                  border: Border.all(
-                    color: _darkMode
-                        ? const Color(0x4400C8FF)
-                        : _gold.withValues(alpha: 0.4),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _darkMode
-                          ? const Color(0x5500C8FF)
-                          : _gold.withValues(alpha: 0.28),
-                      blurRadius: 26,
-                      spreadRadius: 0,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: AppLogo(size: _darkMode ? 76 : 72),
-              ),
-            );
-          },
+        ScaleTransition(
+          scale: _logoEntranceScale,
+          child: const AppLogo(size: 112),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          'ยินดีต้อนรับ',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.kanit(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            height: 1.15,
+            color: textPrimary,
+            letterSpacing: 0.2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'เข้าสู่ระบบเพื่อบันทึกงานประจำวัน',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.kanit(
+            fontSize: 15,
+            height: 1.4,
+            color: textSecondary,
+          ),
         ),
         const SizedBox(height: 14),
-        ShaderMask(
-          blendMode: BlendMode.srcIn,
-          shaderCallback: (bounds) {
-            if (_darkMode) {
-              return const LinearGradient(
-                colors: [
-                  Color(0xFF5ED4FF),
-                  Color(0xFF7AA8FF),
-                  Color(0xFFB794FF),
-                ],
-              ).createShader(bounds);
-            }
-            return LinearGradient(
-              colors: [Colors.black87, Colors.brown.shade800],
-            ).createShader(bounds);
-          },
-          child: Text(
-            'เข้าสู่ระบบ',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.kanit(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.5,
-              color: Colors.white,
+        Container(
+          width: 40,
+          height: 3,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(99),
+            gradient: LinearGradient(
+              colors: isDark
+                  ? [_goldDark, _gold]
+                  : [DailyPalette.brand, DailyPalette.brandDeep],
             ),
           ),
         ),
@@ -729,42 +492,8 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _featureBadges() {
-    final chips = ['วิเคราะห์', 'จัดการงาน', 'รายรับ-จ่าย'];
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 8,
-      runSpacing: 8,
-      children: chips.map((label) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            color: _darkMode
-                ? const Color(0x1400C8FF)
-                : Colors.black.withValues(alpha: 0.05),
-            border: Border.all(
-              color: _darkMode
-                  ? const Color(0x2200C8FF)
-                  : Colors.black.withValues(alpha: 0.08),
-            ),
-          ),
-          child: Text(
-            label,
-            style: GoogleFonts.kanit(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: _darkMode
-                  ? const Color(0xCC7ADFFF)
-                  : Colors.black.withValues(alpha: 0.72),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
   Widget _buildProfilePicker({
+    required bool isDark,
     required Color textPrimary,
     required Color textSecondary,
   }) {
@@ -773,34 +502,34 @@ class _LoginScreenState extends State<LoginScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'โปรไฟล์ที่บันทึกไว้',
+          'เลือกโปรไฟล์',
           textAlign: TextAlign.center,
           style: GoogleFonts.kanit(
-            fontSize: 17,
+            fontSize: 18,
             fontWeight: FontWeight.w700,
             color: textPrimary,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
-          'แตะโปรไฟล์เพื่อเข้าสู่ระบบ',
+          'แตะเพื่อเข้าสู่ระบบ',
           textAlign: TextAlign.center,
-          style: GoogleFonts.kanit(fontSize: 13, color: textSecondary),
+          style: GoogleFonts.kanit(fontSize: 14, color: textSecondary),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 24),
         Wrap(
           alignment: WrapAlignment.center,
-          spacing: 14,
-          runSpacing: 16,
+          spacing: 16,
+          runSpacing: 18,
           children: _savedProfiles
-              .map((p) => _profileChip(p, busy: busy))
+              .map((p) => _profileChip(p, isDark: isDark, busy: busy))
               .toList(),
         ),
         if (_errorMessage != null) ...[
-          const SizedBox(height: 16),
-          _errorBanner(),
+          const SizedBox(height: 20),
+          _errorBanner(isDark: isDark),
         ],
-        const SizedBox(height: 20),
+        const SizedBox(height: 28),
         TextButton(
           onPressed: busy
               ? null
@@ -810,12 +539,15 @@ class _LoginScreenState extends State<LoginScreen>
                     _passwordController.clear();
                     _showForm = true;
                   }),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            foregroundColor: isDark ? _gold : DailyPalette.brandDeep,
+          ),
           child: Text(
             'ใช้บัญชีอื่น',
             style: GoogleFonts.kanit(
               fontWeight: FontWeight.w700,
-              fontSize: 14,
-              color: _darkMode ? const Color(0xFF7ADFFF) : _goldDark,
+              fontSize: 15,
             ),
           ),
         ),
@@ -823,13 +555,17 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _profileChip(SavedLoginProfile profile, {required bool busy}) {
+  Widget _profileChip(
+    SavedLoginProfile profile, {
+    required bool isDark,
+    required bool busy,
+  }) {
     final unlocking = _unlockingProfileId == profile.id;
-    final accent = _darkMode ? const Color(0xFF0080FF) : _gold;
-    final accentDark = _darkMode ? const Color(0xFF6020C0) : _goldDark;
+    final accent = isDark ? _gold : DailyPalette.brand;
+    final accentDark = isDark ? _goldDark : DailyPalette.brandDeep;
 
     return SizedBox(
-      width: 96,
+      width: 100,
       child: Column(
         children: [
           Stack(
@@ -843,8 +579,8 @@ class _LoginScreenState extends State<LoginScreen>
                   onLongPress:
                       busy ? null : () => _confirmRemoveProfile(profile),
                   child: Ink(
-                    width: 72,
-                    height: 72,
+                    width: 76,
+                    height: 76,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
@@ -854,8 +590,8 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: accent.withValues(alpha: 0.35),
-                          blurRadius: 12,
+                          color: accent.withValues(alpha: 0.28),
+                          blurRadius: 14,
                           offset: const Offset(0, 6),
                         ),
                       ],
@@ -875,7 +611,7 @@ class _LoginScreenState extends State<LoginScreen>
                               style: GoogleFonts.kanit(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
-                                fontSize: 22,
+                                fontSize: 24,
                               ),
                             ),
                     ),
@@ -883,24 +619,25 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
               ),
               Positioned(
-                top: -4,
-                right: -4,
+                top: -2,
+                right: -2,
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
                     customBorder: const CircleBorder(),
                     onTap: busy ? null : () => _confirmRemoveProfile(profile),
                     child: Container(
-                      width: 24,
-                      height: 24,
+                      width: 28,
+                      height: 28,
+                      alignment: Alignment.center,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: _darkMode
-                            ? Colors.black.withValues(alpha: 0.65)
-                            : Colors.black54,
+                        color: isDark
+                            ? Colors.black.withValues(alpha: 0.7)
+                            : DailyPalette.ink.withValues(alpha: 0.55),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          width: 1.2,
+                          color: Colors.white.withValues(alpha: 0.9),
+                          width: 1.5,
                         ),
                       ),
                       child: const Icon(
@@ -914,12 +651,12 @@ class _LoginScreenState extends State<LoginScreen>
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           InkWell(
             onTap: busy ? null : () => _unlockProfile(profile),
             borderRadius: BorderRadius.circular(8),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
               child: Column(
                 children: [
                   Text(
@@ -928,9 +665,9 @@ class _LoginScreenState extends State<LoginScreen>
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: _darkMode ? Colors.white : Colors.black87,
+                      color: isDark ? Colors.white : DailyPalette.ink,
                     ),
                   ),
                   Text(
@@ -939,8 +676,8 @@ class _LoginScreenState extends State<LoginScreen>
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
-                      fontSize: 10,
-                      color: _darkMode ? Colors.white54 : Colors.black45,
+                      fontSize: 11,
+                      color: isDark ? Colors.white54 : DailyPalette.inkMuted,
                     ),
                   ),
                 ],
@@ -953,6 +690,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildLoginFormFields({
+    required bool isDark,
     required Color textPrimary,
     required Color textSecondary,
   }) {
@@ -962,12 +700,13 @@ class _LoginScreenState extends State<LoginScreen>
         TextFormField(
           controller: _usernameController,
           focusNode: _usernameFocus,
-          style: GoogleFonts.kanit(color: textPrimary, fontSize: 15),
+          style: GoogleFonts.kanit(color: textPrimary, fontSize: 16),
           textInputAction: TextInputAction.next,
           onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
-          cursorColor: _darkMode ? const Color(0xFF00C8FF) : _goldDark,
+          cursorColor: isDark ? _gold : DailyPalette.brand,
           decoration: _fieldDecoration(
-            label: 'ชื่อผู้ใช้ (Username)',
+            isDark: isDark,
+            label: 'ชื่อผู้ใช้',
             hint: 'กรอกชื่อผู้ใช้',
             icon: Icons.person_outline_rounded,
           ),
@@ -983,12 +722,13 @@ class _LoginScreenState extends State<LoginScreen>
           controller: _passwordController,
           focusNode: _passwordFocus,
           obscureText: _obscurePassword,
-          style: GoogleFonts.kanit(color: textPrimary, fontSize: 15),
+          style: GoogleFonts.kanit(color: textPrimary, fontSize: 16),
           textInputAction: TextInputAction.done,
           onFieldSubmitted: (_) => _handleKeyboardSubmit(),
-          cursorColor: _darkMode ? const Color(0xFF00C8FF) : _goldDark,
+          cursorColor: isDark ? _gold : DailyPalette.brand,
           decoration: _fieldDecoration(
-            label: 'รหัสผ่าน (Password)',
+            isDark: isDark,
+            label: 'รหัสผ่าน',
             hint: 'กรอกรหัสผ่าน',
             icon: Icons.lock_outline_rounded,
             suffixIcon: IconButton(
@@ -998,7 +738,7 @@ class _LoginScreenState extends State<LoginScreen>
                 _obscurePassword
                     ? Icons.visibility_outlined
                     : Icons.visibility_off_outlined,
-                color: _darkMode ? Colors.white54 : Colors.brown.shade400,
+                color: isDark ? Colors.white54 : DailyPalette.inkMuted,
               ),
             ),
           ),
@@ -1009,14 +749,13 @@ class _LoginScreenState extends State<LoginScreen>
             return null;
           },
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         InkWell(
           onTap: () => setState(() => _rememberSession = !_rememberSession),
           borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(vertical: 8),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 SizedBox(
                   width: 28,
@@ -1028,30 +767,29 @@ class _LoginScreenState extends State<LoginScreen>
                     checkColor: Colors.white,
                     fillColor: WidgetStateProperty.resolveWith((states) {
                       if (states.contains(WidgetState.selected)) {
-                        return _darkMode
-                            ? const Color(0xFF0080FF)
-                            : _goldDark;
+                        return isDark ? _goldDark : DailyPalette.brand;
                       }
-                      return _darkMode
+                      return isDark
                           ? Colors.white.withValues(alpha: 0.1)
-                          : Colors.black.withValues(alpha: 0.06);
+                          : DailyPalette.chipSurface;
                     }),
                     side: BorderSide(
-                      color: _darkMode
+                      color: isDark
                           ? Colors.white38
-                          : Colors.brown.shade200,
+                          : DailyPalette.hairline,
                     ),
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
                   ),
                 ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'จำโปรไฟล์นี้ — เข้าครั้งถัดไปได้เร็วขึ้น',
+                    'จำโปรไฟล์นี้ไว้บนเครื่อง',
                     style: GoogleFonts.kanit(
-                      fontSize: 13,
+                      fontSize: 14,
                       height: 1.35,
-                      color: textPrimary.withValues(alpha: 0.92),
+                      color: textPrimary.withValues(alpha: 0.9),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1061,13 +799,13 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
         if (_errorMessage != null) ...[
-          const SizedBox(height: 14),
-          _errorBanner(),
+          const SizedBox(height: 12),
+          _errorBanner(isDark: isDark),
         ],
-        const SizedBox(height: 18),
-        _gradientSubmitButton(),
+        const SizedBox(height: 22),
+        _primarySubmitButton(isDark: isDark),
         if (_savedProfiles.isNotEmpty) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           TextButton(
             onPressed: _submitting
                 ? null
@@ -1075,47 +813,54 @@ class _LoginScreenState extends State<LoginScreen>
                       _errorMessage = null;
                       _showForm = false;
                     }),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              foregroundColor: isDark ? _gold : DailyPalette.brandDeep,
+            ),
             child: Text(
               'กลับไปเลือกโปรไฟล์',
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: _darkMode ? const Color(0xFF7ADFFF) : _goldDark,
+                fontSize: 14,
               ),
             ),
           ),
         ],
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Text(
-          'ติดต่อผู้ดูแลระบบหากลืมรหัสผ่าน',
+          'ลืมรหัสผ่าน? ติดต่อผู้ดูแลระบบ',
           textAlign: TextAlign.center,
           style: GoogleFonts.kanit(
-            fontSize: 11,
-            color: textSecondary.withValues(alpha: 0.75),
+            fontSize: 12,
+            color: textSecondary.withValues(alpha: 0.8),
           ),
         ),
       ],
     );
   }
 
-  Widget _errorBanner() {
+  Widget _errorBanner({required bool isDark}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: _darkMode ? 0.14 : 0.08),
+        color: Colors.red.withValues(alpha: isDark ? 0.14 : 0.07),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.35)),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.shield_outlined, size: 20, color: Colors.red.shade300),
+          Icon(
+            Icons.error_outline_rounded,
+            size: 20,
+            color: isDark ? Colors.red.shade200 : Colors.red.shade700,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               _errorMessage!,
               style: GoogleFonts.kanit(
-                color: Colors.red.shade200,
+                color: isDark ? Colors.red.shade200 : Colors.red.shade800,
                 fontSize: 13,
                 height: 1.35,
               ),
@@ -1126,14 +871,15 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _gradientSubmitButton() {
+  Widget _primarySubmitButton({required bool isDark}) {
     final gradient = LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: _darkMode
-          ? const [Color(0xFF0080FF), Color(0xFF6020C0)]
-          : [_gold, _goldDark],
+      colors: isDark
+          ? const [_gold, _goldDark]
+          : const [DailyPalette.brand, DailyPalette.brandDeep],
     );
+    final shadowColor = isDark ? _gold : DailyPalette.brand;
 
     return SoftPressButton(
       onTap: _submitting ? null : _submit,
@@ -1143,12 +889,10 @@ class _LoginScreenState extends State<LoginScreen>
       isDarkSurface: true,
       liftWhenIdle: true,
       depthShadow: SoftPressDepthShadow(
-        color: (_darkMode ? const Color(0xFF0080FF) : _gold).withValues(
-          alpha: 0.35,
-        ),
-        blurRadius: 18,
+        color: shadowColor.withValues(alpha: 0.32),
+        blurRadius: 16,
         offsetY: 8,
-        pressedBlurRadius: 8,
+        pressedBlurRadius: 6,
         pressedOffsetY: 3,
       ),
       child: DecoratedBox(
@@ -1157,7 +901,7 @@ class _LoginScreenState extends State<LoginScreen>
           borderRadius: BorderRadius.circular(16),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 15),
+          padding: const EdgeInsets.symmetric(vertical: 16),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -1172,18 +916,18 @@ class _LoginScreenState extends State<LoginScreen>
                 )
               else
                 const Icon(
-                  Icons.lock_outline_rounded,
+                  Icons.arrow_forward_rounded,
                   color: Colors.white,
                   size: 20,
                 ),
               const SizedBox(width: 10),
               Text(
-                _submitting ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ',
+                _submitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ',
                 style: GoogleFonts.kanit(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                  letterSpacing: 0.3,
+                  fontSize: 17,
+                  letterSpacing: 0.2,
                 ),
               ),
             ],
