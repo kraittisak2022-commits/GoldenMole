@@ -218,6 +218,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
   );
 
+  /// Phone vertical layout — same gate as daily menus / attendance.
+  bool _phonePortrait(BuildContext context) {
+    final s = MediaQuery.sizeOf(context);
+    return s.shortestSide < 600 && s.height >= s.width;
+  }
+
   String _ymd(DateTime d) {
     final y = d.year.toString().padLeft(4, '0');
     final m = d.month.toString().padLeft(2, '0');
@@ -304,34 +310,48 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   void _openDayDetails(_CalendarDay day) {
+    final phonePortrait = _phonePortrait(context);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       backgroundColor: const Color(0xFFF4F6F9),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(phonePortrait ? 18 : 24),
+        ),
       ),
       builder: (context) {
         return _calendarBottomSheetBody(
           context: context,
+          padding: EdgeInsets.fromLTRB(
+            phonePortrait ? 12 : 16,
+            phonePortrait ? 2 : 4,
+            phonePortrait ? 12 : 16,
+            0,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _dayDetailHeader(day),
-              const SizedBox(height: 12),
+              _dayDetailHeader(day, compact: phonePortrait),
+              SizedBox(height: phonePortrait ? 8 : 12),
               if (day.thaiPublicHolidayNames.isNotEmpty)
                 _daySectionCard(
                   icon: Icons.star_outline_rounded,
-                  title: 'นักขัตฤกษ์ (ประมาณการ)',
-                  subtitle: 'แจ้งเตือนทางปฏิทิน — ไม่ได้หมายว่าองค์กรหยุดครบถ้วน',
+                  title: phonePortrait
+                      ? 'นักขัตฤกษ์'
+                      : 'นักขัตฤกษ์ (ประมาณการ)',
+                  subtitle: phonePortrait
+                      ? 'แจ้งเตือนทางปฏิทิน'
+                      : 'แจ้งเตือนทางปฏิทิน — ไม่ได้หมายว่าองค์กรหยุดครบถ้วน',
                   color: const Color(0xFF5C7C9F),
+                  compact: phonePortrait,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       for (final name in day.thaiPublicHolidayNames)
-                        _dayBulletLine(name),
+                        _dayBulletLine(name, compact: phonePortrait),
                     ],
                   ),
                 ),
@@ -341,19 +361,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   icon: Icons.event_busy_outlined,
                   title: 'วันหยุด / กิจกรรม',
                   color: const Color(0xFFE57373),
+                  compact: phonePortrait,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (day.weeklyOffLine != null)
-                        _dayBulletLine(day.weeklyOffLine!),
+                        _dayBulletLine(
+                          day.weeklyOffLine!,
+                          compact: phonePortrait,
+                        ),
                       if (day.weeklyOffMoveReason != null &&
                           day.weeklyOffMoveReason!.isNotEmpty)
                         _dayBulletLine(
                           'เลื่อนหยุด: ${day.weeklyOffMoveReason}',
                           muted: true,
+                          compact: phonePortrait,
                         ),
                       for (final desc in day.userHolidayDescriptions)
-                        _dayBulletLine(desc),
+                        _dayBulletLine(desc, compact: phonePortrait),
                     ],
                   ),
                 ),
@@ -362,12 +387,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   icon: Icons.person_off_outlined,
                   title: 'รายการลา (${day.leaveDetails.length})',
                   color: const Color(0xFFFFB74D),
+                  compact: phonePortrait,
                   child: Column(
                     children: [
                       for (var i = 0; i < day.leaveDetails.length; i++) ...[
                         if (i > 0)
-                          const Divider(height: 20, color: Color(0xFFE8ECF0)),
-                        _dayLeaveCard(day.leaveDetails[i]),
+                          Divider(
+                            height: phonePortrait ? 14 : 20,
+                            color: const Color(0xFFE8ECF0),
+                          ),
+                        _dayLeaveCard(
+                          day.leaveDetails[i],
+                          compact: phonePortrait,
+                        ),
                       ],
                     ],
                   ),
@@ -377,11 +409,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   icon: Icons.waves_outlined,
                   title: 'ทรายที่ล้างที่บ้าน',
                   color: const Color(0xFF00897B),
+                  compact: phonePortrait,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       for (final line in day.homeSandLines)
-                        _dayBulletLine(line),
+                        _dayBulletLine(line, compact: phonePortrait),
                     ],
                   ),
                 ),
@@ -390,11 +423,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   icon: Icons.flag_outlined,
                   title: 'เหตุการณ์ประจำวัน',
                   color: const Color(0xFFE65100),
+                  compact: phonePortrait,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       for (final line in day.dailyEventLines)
-                        _dayBulletLine(line),
+                        _dayBulletLine(line, compact: phonePortrait),
                     ],
                   ),
                 ),
@@ -405,26 +439,52 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   subtitle: 'เพิ่มงานหรือเหตุการณ์ได้จากปุ่มด้านล่าง',
                   compact: true,
                 ),
-              const SizedBox(height: 8),
+              SizedBox(height: phonePortrait ? 6 : 8),
               OutlinedButton.icon(
                 onPressed: () async {
                   Navigator.of(context).pop();
                   await _showMoveWeeklyOffSheet();
                 },
-                icon: const Icon(Icons.swap_horiz_rounded),
+                icon: Icon(
+                  Icons.swap_horiz_rounded,
+                  size: phonePortrait ? 18 : 22,
+                ),
                 label: Text(
-                  'ย้ายหยุดรายสัปดาห์',
-                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                  phonePortrait ? 'ย้ายหยุดสัปดาห์' : 'ย้ายหยุดรายสัปดาห์',
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w700,
+                    fontSize: phonePortrait ? 13.5 : 14,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: Size.fromHeight(phonePortrait ? 42 : 48),
+                  visualDensity: phonePortrait
+                      ? VisualDensity.compact
+                      : VisualDensity.standard,
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: phonePortrait ? 6 : 8),
               FilledButton.icon(
                 onPressed: () {
                   Navigator.of(context).pop();
                   _openCreateEntrySheet();
                 },
-                icon: const Icon(Icons.add_circle_outline),
-                label: Text('เพิ่มวันหยุด / ลางาน', style: GoogleFonts.kanit()),
+                icon: Icon(
+                  Icons.add_circle_outline,
+                  size: phonePortrait ? 18 : 22,
+                ),
+                label: Text(
+                  phonePortrait ? 'เพิ่มวันหยุด/ลา' : 'เพิ่มวันหยุด / ลางาน',
+                  style: GoogleFonts.kanit(
+                    fontSize: phonePortrait ? 13.5 : 14,
+                  ),
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: Size.fromHeight(phonePortrait ? 44 : 48),
+                  visualDensity: phonePortrait
+                      ? VisualDensity.compact
+                      : VisualDensity.standard,
+                ),
               ),
             ],
           ),
@@ -433,18 +493,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _dayDetailHeader(_CalendarDay day) {
+  Widget _dayDetailHeader(_CalendarDay day, {bool compact = false}) {
     final tags = day.allTags();
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(compact ? 10 : 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(compact ? 12 : 16),
         border: Border.all(color: const Color(0xFFE3E8EF)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 10,
+            blurRadius: compact ? 6 : 10,
             offset: const Offset(0, 3),
           ),
         ],
@@ -455,7 +515,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Text(
             _thaiWeekdayLong(_selectedDate),
             style: GoogleFonts.kanit(
-              fontSize: 13,
+              fontSize: compact ? 12 : 13,
               fontWeight: FontWeight.w600,
               color: const Color(0xFF64748B),
             ),
@@ -463,19 +523,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Text(
             _formatDateThai(_selectedDate),
             style: GoogleFonts.kanit(
-              fontSize: 22,
+              fontSize: compact ? 18 : 22,
               fontWeight: FontWeight.w800,
               color: const Color(0xFF1A2A3C),
               height: 1.15,
             ),
           ),
           if (tags.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: compact ? 6 : 10),
             Wrap(
-              spacing: 6,
-              runSpacing: 6,
+              spacing: compact ? 4 : 6,
+              runSpacing: compact ? 4 : 6,
               children: tags
-                  .map((t) => _CalendarTagChip(tag: t, compact: false))
+                  .map(
+                    (t) => _CalendarTagChip(
+                      tag: t,
+                      // Day-detail chips stay readable; cell chips stay tiny.
+                      compact: false,
+                    ),
+                  )
                   .toList(),
             ),
           ],
@@ -490,29 +556,35 @@ class _CalendarScreenState extends State<CalendarScreen> {
     required Color color,
     required Widget child,
     String? subtitle,
+    bool compact = false,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: EdgeInsets.only(bottom: compact ? 8 : 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(compact ? 12 : 16),
         border: Border.all(color: const Color(0xFFE8ECF0)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 10 : 12,
+              compact ? 8 : 10,
+              compact ? 10 : 12,
+              compact ? 8 : 10,
+            ),
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.08),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(15),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(compact ? 11 : 15),
               ),
             ),
             child: Row(
               children: [
-                Icon(icon, size: 20, color: color),
-                const SizedBox(width: 8),
+                Icon(icon, size: compact ? 17 : 20, color: color),
+                SizedBox(width: compact ? 6 : 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -521,7 +593,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         title,
                         style: GoogleFonts.kanit(
                           fontWeight: FontWeight.w800,
-                          fontSize: 15,
+                          fontSize: compact ? 13.5 : 15,
                           color: color.withValues(alpha: 0.95),
                         ),
                       ),
@@ -529,7 +601,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         Text(
                           subtitle,
                           style: GoogleFonts.kanit(
-                            fontSize: 11,
+                            fontSize: compact ? 10.5 : 11,
                             color: Colors.black54,
                             height: 1.25,
                           ),
@@ -541,7 +613,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 10 : 12,
+              compact ? 8 : 10,
+              compact ? 10 : 12,
+              compact ? 10 : 12,
+            ),
             child: child,
           ),
         ],
@@ -549,29 +626,33 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _dayBulletLine(String text, {bool muted = false}) {
+  Widget _dayBulletLine(
+    String text, {
+    bool muted = false,
+    bool compact = false,
+  }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: EdgeInsets.only(bottom: compact ? 4 : 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(top: 7),
+            padding: EdgeInsets.only(top: compact ? 6 : 7),
             child: Container(
-              width: 5,
-              height: 5,
+              width: compact ? 4 : 5,
+              height: compact ? 4 : 5,
               decoration: BoxDecoration(
                 color: muted ? Colors.black26 : const Color(0xFF90A4AE),
                 shape: BoxShape.circle,
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: compact ? 6 : 8),
           Expanded(
             child: Text(
               text,
               style: GoogleFonts.kanit(
-                fontSize: 14,
+                fontSize: compact ? 13 : 14,
                 height: 1.35,
                 color: muted ? Colors.black54 : const Color(0xFF37474F),
               ),
@@ -582,7 +663,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _dayLeaveCard(CalendarLeaveDetail item) {
+  Widget _dayLeaveCard(CalendarLeaveDetail item, {bool compact = false}) {
     final reason = item.reason.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -591,7 +672,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           item.headline,
           style: GoogleFonts.kanit(
             fontWeight: FontWeight.w800,
-            fontSize: 14.5,
+            fontSize: compact ? 13.5 : 14.5,
             color: const Color(0xFF1A2A3C),
             height: 1.3,
           ),
@@ -600,22 +681,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
           const SizedBox(height: 2),
           Text(
             item.spanNote!,
-            style: GoogleFonts.kanit(fontSize: 12, color: Colors.black54),
+            style: GoogleFonts.kanit(
+              fontSize: compact ? 11 : 12,
+              color: Colors.black54,
+            ),
           ),
         ],
-        const SizedBox(height: 6),
+        SizedBox(height: compact ? 4 : 6),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 10,
+            vertical: compact ? 6 : 8,
+          ),
           decoration: BoxDecoration(
             color: const Color(0xFFFFF8E1),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(compact ? 8 : 10),
             border: Border.all(color: const Color(0xFFFFE082)),
           ),
           child: Text(
             reason.isNotEmpty ? reason : 'ยังไม่ระบุเหตุผล',
             style: GoogleFonts.kanit(
-              fontSize: 13.5,
+              fontSize: compact ? 12.5 : 13.5,
               height: 1.35,
               color: reason.isNotEmpty
                   ? const Color(0xFF5D4037)
@@ -809,13 +896,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _leaveEmpIds.clear();
     _entryMode = 'Holiday';
     _leaveType = 'Leave';
+    final phonePortrait = _phonePortrait(context);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(phonePortrait ? 18 : 24),
+        ),
       ),
       builder: (sheetContext) {
         return FutureBuilder<_CalendarPayload>(
@@ -829,27 +919,36 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
                   child: _calendarBottomSheetBody(
                     context: context,
-                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                    padding: EdgeInsets.fromLTRB(
+                      phonePortrait ? 12 : 16,
+                      phonePortrait ? 4 : 6,
+                      phonePortrait ? 12 : 16,
+                      0,
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          'เพิ่มข้อมูลปฏิทิน • ${_formatDateThai(_selectedDate)}',
+                          phonePortrait
+                              ? 'เพิ่ม • ${_formatDateThai(_selectedDate)}'
+                              : 'เพิ่มข้อมูลปฏิทิน • ${_formatDateThai(_selectedDate)}',
                           style: GoogleFonts.kanit(
-                            fontSize: 18,
+                            fontSize: phonePortrait ? 16 : 18,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        SizedBox(height: phonePortrait ? 8 : 12),
                         SegmentedButton<String>(
                           style: _compactSegmentedStyle,
-                          segments: const [
+                          segments: [
                             ButtonSegment(
                               value: 'Holiday',
-                              label: Text('วันหยุด/นัดหมาย'),
+                              label: Text(
+                                phonePortrait ? 'หยุด/นัด' : 'วันหยุด/นัดหมาย',
+                              ),
                             ),
-                            ButtonSegment(
+                            const ButtonSegment(
                               value: 'Leave',
                               label: Text('ลางาน'),
                             ),
@@ -859,7 +958,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             setSheetState(() => _entryMode = set.first);
                           },
                         ),
-                        const SizedBox(height: 10),
+                        SizedBox(height: phonePortrait ? 8 : 10),
                         if (_entryMode == 'Leave') ...[
                           SegmentedButton<String>(
                             style: _compactSegmentedStyle,
@@ -882,10 +981,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               setSheetState(() => _leaveType = set.first);
                             },
                           ),
-                          const SizedBox(height: 10),
+                          SizedBox(height: phonePortrait ? 8 : 10),
                           Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
+                            spacing: phonePortrait ? 6 : 8,
+                            runSpacing: phonePortrait ? 6 : 8,
                             children: (data?.employees ?? const <Employee>[])
                                 .map((e) {
                                   final id = e.id;
@@ -896,8 +995,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                   return FilterChip(
                                     label: Text(
                                       name,
-                                      style: GoogleFonts.kanit(),
+                                      style: GoogleFonts.kanit(
+                                        fontSize: phonePortrait ? 13 : 14,
+                                      ),
                                     ),
+                                    visualDensity: phonePortrait
+                                        ? VisualDensity.compact
+                                        : VisualDensity.standard,
                                     selected: selected,
                                     onSelected: (_) {
                                       setSheetState(() {
@@ -915,17 +1019,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         ] else ...[
                           TextFormField(
                             controller: _eventTitleController,
-                            decoration: const InputDecoration(
+                            style: GoogleFonts.kanit(
+                              fontSize: phonePortrait ? 14.5 : 16,
+                            ),
+                            decoration: InputDecoration(
                               labelText: 'หัวข้อ',
-                              prefixIcon: Icon(Icons.title),
+                              isDense: phonePortrait,
+                              prefixIcon: Icon(
+                                Icons.title,
+                                size: phonePortrait ? 20 : 24,
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          SizedBox(height: phonePortrait ? 6 : 8),
                           TextFormField(
                             controller: _eventTimeController,
-                            decoration: const InputDecoration(
+                            style: GoogleFonts.kanit(
+                              fontSize: phonePortrait ? 14.5 : 16,
+                            ),
+                            decoration: InputDecoration(
                               labelText: 'เวลา (ไม่บังคับ)',
-                              prefixIcon: Icon(Icons.schedule_outlined),
+                              isDense: phonePortrait,
+                              prefixIcon: Icon(
+                                Icons.schedule_outlined,
+                                size: phonePortrait ? 20 : 24,
+                              ),
                             ),
                             onTap: () async {
                               final t = await showTimePicker(
@@ -939,25 +1057,42 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             },
                           ),
                         ],
-                        const SizedBox(height: 8),
+                        SizedBox(height: phonePortrait ? 6 : 8),
                         TextFormField(
                           controller: _eventNoteController,
-                          minLines: 2,
-                          maxLines: 3,
-                          decoration: const InputDecoration(
+                          minLines: phonePortrait ? 2 : 2,
+                          maxLines: phonePortrait ? 2 : 3,
+                          style: GoogleFonts.kanit(
+                            fontSize: phonePortrait ? 14.5 : 16,
+                          ),
+                          decoration: InputDecoration(
                             labelText: 'หมายเหตุ',
-                            prefixIcon: Icon(Icons.notes_outlined),
+                            isDense: phonePortrait,
+                            prefixIcon: Icon(
+                              Icons.notes_outlined,
+                              size: phonePortrait ? 20 : 24,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        SizedBox(height: phonePortrait ? 10 : 12),
                         FilledButton.icon(
                           onPressed: _savingEntry || data == null
                               ? null
                               : () => _saveCalendarOrLeaveEntry(data),
-                          icon: const Icon(Icons.save_outlined),
+                          icon: Icon(
+                            Icons.save_outlined,
+                            size: phonePortrait ? 18 : 22,
+                          ),
                           label: Text(
                             _savingEntry ? 'กำลังบันทึก...' : 'บันทึก',
-                            style: GoogleFonts.kanit(),
+                            style: GoogleFonts.kanit(
+                              fontSize: phonePortrait ? 14 : 15,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            minimumSize: Size.fromHeight(
+                              phonePortrait ? 44 : 48,
+                            ),
                           ),
                         ),
                       ],
@@ -972,14 +1107,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _monthNavRow(String monthLabel, int y, int m) {
+  Widget _monthNavRow(String monthLabel, int y, int m, {bool compact = false}) {
+    final btnSize = compact ? 36.0 : 40.0;
+    final iconSize = compact ? 22.0 : 24.0;
     return Row(
       children: [
         Expanded(
           child: Text(
             monthLabel,
             style: GoogleFonts.kanit(
-              fontSize: widget.embedded ? 17 : 20,
+              fontSize: compact
+                  ? (widget.embedded ? 15.0 : 17.0)
+                  : (widget.embedded ? 17.0 : 20.0),
               fontWeight: FontWeight.w800,
               color: const Color(0xFF1A1A1A),
             ),
@@ -989,23 +1128,39 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
         IconButton(
           tooltip: 'เดือนก่อน',
-          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          constraints: BoxConstraints(minWidth: btnSize, minHeight: btnSize),
           padding: EdgeInsets.zero,
+          visualDensity: compact ? VisualDensity.compact : null,
           onPressed: () => setState(() {
             _monthCursor = DateTime(y, m - 1, 1);
           }),
-          icon: const Icon(Icons.chevron_left, color: Color(0xFF5C6470)),
+          icon: Icon(
+            Icons.chevron_left,
+            size: iconSize,
+            color: const Color(0xFF5C6470),
+          ),
         ),
         IconButton(
           tooltip: 'เดือนถัดไป',
-          constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+          constraints: BoxConstraints(minWidth: btnSize, minHeight: btnSize),
           padding: EdgeInsets.zero,
+          visualDensity: compact ? VisualDensity.compact : null,
           onPressed: () => setState(() {
             _monthCursor = DateTime(y, m + 1, 1);
           }),
-          icon: const Icon(Icons.chevron_right, color: Color(0xFF5C6470)),
+          icon: Icon(
+            Icons.chevron_right,
+            size: iconSize,
+            color: const Color(0xFF5C6470),
+          ),
         ),
-        IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
+        IconButton(
+          onPressed: _reload,
+          constraints: BoxConstraints(minWidth: btnSize, minHeight: btnSize),
+          padding: EdgeInsets.zero,
+          visualDensity: compact ? VisualDensity.compact : null,
+          icon: Icon(Icons.refresh, size: iconSize),
+        ),
       ],
     );
   }
@@ -1013,6 +1168,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget _calendarBody({required double bottomClearance}) {
     final y = _monthCursor.year;
     final m = _monthCursor.month;
+    final phonePortrait = _phonePortrait(context);
     final selectedLabel =
         '${_thaiWeekdayLong(_selectedDate)} ${_formatDateThai(_selectedDate)}';
 
@@ -1020,9 +1176,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox(
-            height: 220,
-            child: ListPageSkeleton(rowCount: 3, showHeaderBlock: false),
+          return SizedBox(
+            height: phonePortrait ? 180 : 220,
+            child: const ListPageSkeleton(rowCount: 3, showHeaderBlock: false),
           );
         }
         if (snapshot.hasError) {
@@ -1048,46 +1204,63 @@ class _CalendarScreenState extends State<CalendarScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              padding: EdgeInsets.fromLTRB(
+                phonePortrait ? 10 : 12,
+                phonePortrait ? 2 : 4,
+                phonePortrait ? 10 : 12,
+                phonePortrait ? 6 : 8,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (widget.embedded) ...[
-                    _monthNavRow(_formatThaiMonthYear(_monthCursor), y, m),
-                    const SizedBox(height: 4),
+                    _monthNavRow(
+                      _formatThaiMonthYear(_monthCursor),
+                      y,
+                      m,
+                      compact: phonePortrait,
+                    ),
+                    SizedBox(height: phonePortrait ? 2 : 4),
                   ],
                   Text(
                     selectedLabel,
                     style: GoogleFonts.kanit(
                       color: const Color(0xFF1A2A3C),
-                      fontSize: 13,
+                      fontSize: phonePortrait ? 12 : 13,
                       fontWeight: FontWeight.w700,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: phonePortrait ? 6 : 8),
                   Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                    spacing: phonePortrait ? 4 : 6,
+                    runSpacing: phonePortrait ? 4 : 6,
                     children: [
                       _legendChip(
                         color: const Color(0xFFE57373),
                         label: 'หยุด',
+                        compact: phonePortrait,
                       ),
                       _legendChip(
                         color: const Color(0xFF5C7C9F),
-                        label: 'นักขัตฤกษ์',
+                        label: phonePortrait ? 'นักขัต' : 'นักขัตฤกษ์',
+                        compact: phonePortrait,
                       ),
                       _legendChip(
                         color: const Color(0xFFFFB74D),
                         label: 'ลา',
+                        compact: phonePortrait,
                       ),
                       _legendChip(
                         color: const Color(0xFF00897B),
-                        label: 'ทรายบ้าน',
+                        label: phonePortrait ? 'ทราย' : 'ทรายบ้าน',
+                        compact: phonePortrait,
                       ),
                       _legendChip(
                         color: const Color(0xFFE65100),
-                        label: 'เหตุการณ์',
+                        label: phonePortrait ? 'เหตุ' : 'เหตุการณ์',
+                        compact: phonePortrait,
                       ),
                     ],
                   ),
@@ -1101,21 +1274,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
             if (widget.embedded)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: EdgeInsets.only(top: phonePortrait ? 4 : 8),
                 child: _calendarGridBlock(
                   days: days,
                   bottomClearance: 0,
-                  fixedGridHeight: 268,
+                  fixedGridHeight: phonePortrait ? 232 : 268,
+                  compact: phonePortrait,
                 ),
               )
             else
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: EdgeInsets.only(top: phonePortrait ? 4 : 8),
                   child: _calendarGridBlock(
                     days: days,
                     bottomClearance: bottomClearance,
                     fixedGridHeight: null,
+                    compact: phonePortrait,
                   ),
                 ),
               ),
@@ -1130,6 +1305,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     required List<_CalendarDay?> days,
     required double bottomClearance,
     required double? fixedGridHeight,
+    bool compact = false,
   }) {
     return ColoredBox(
       color: Colors.white,
@@ -1137,7 +1313,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+            padding: EdgeInsets.fromLTRB(compact ? 2 : 4, 0, compact ? 2 : 4, 0),
             child: Row(
               children: [
                 for (final d in const [
@@ -1157,7 +1333,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         maxLines: 1,
                         style: GoogleFonts.kanit(
                           fontWeight: FontWeight.w700,
-                          fontSize: 10,
+                          fontSize: compact ? 9 : 10,
                           color: const Color(0xFF6B7280),
                         ),
                       ),
@@ -1170,31 +1346,39 @@ class _CalendarScreenState extends State<CalendarScreen> {
           if (fixedGridHeight != null)
             SizedBox(
               height: fixedGridHeight,
-              child: _monthGrid(days: days),
+              child: _monthGrid(days: days, compact: compact),
             )
           else
             Expanded(
               child: Padding(
                 padding: EdgeInsets.only(bottom: bottomClearance),
-                child: _monthGrid(days: days),
+                child: _monthGrid(days: days, compact: compact),
               ),
             ),
           if (widget.embedded) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: compact ? 6 : 8),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              padding: EdgeInsets.fromLTRB(
+                compact ? 10 : 12,
+                0,
+                compact ? 10 : 12,
+                compact ? 6 : 8,
+              ),
               child: FilledButton.icon(
                 onPressed: _openCreateEntrySheet,
-                icon: const Icon(Icons.add, size: 18),
+                icon: Icon(Icons.add, size: compact ? 16 : 18),
                 label: Text(
-                  'เพิ่มวันหยุด/ลา',
-                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                  compact ? 'เพิ่มหยุด/ลา' : 'เพิ่มวันหยุด/ลา',
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w700,
+                    fontSize: compact ? 13.5 : 14,
+                  ),
                 ),
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF0D98A5),
-                  minimumSize: const Size.fromHeight(42),
+                  minimumSize: Size.fromHeight(compact ? 38 : 42),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(compact ? 12 : 14),
                   ),
                 ),
               ),
@@ -1205,12 +1389,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _monthGrid({required List<_CalendarDay?> days}) {
+  Widget _monthGrid({
+    required List<_CalendarDay?> days,
+    bool compact = false,
+  }) {
     return LayoutBuilder(
       builder: (context, gridConstraints) {
-        const mainGap = 3.0;
-        const crossGap = 6.0;
-        const padH = 8.0;
+        final mainGap = compact ? 2.0 : 3.0;
+        final crossGap = compact ? 3.0 : 6.0;
+        final padH = compact ? 4.0 : 8.0;
         const padTop = 0.0;
         final rows = (days.length / 7).ceil().clamp(1, 12);
         final innerW = gridConstraints.maxWidth - padH * 2;
@@ -1221,7 +1408,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         final cellH = (innerH - mainGap * (rows - 1)) / rows;
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(padH, padTop, padH, 0),
+          padding: EdgeInsets.fromLTRB(padH, padTop, padH, 0),
           child: GridView.builder(
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -1248,6 +1435,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 day: day,
                 selected: isSelected,
                 today: isToday,
+                compact: compact,
                 onTap: () => _pickDay(day),
               );
             },
@@ -1262,17 +1450,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final y = _monthCursor.year;
     final m = _monthCursor.month;
     final monthLabel = _formatThaiMonthYear(_monthCursor);
+    final phonePortrait = _phonePortrait(context);
     final bottomFabClearance =
-        MediaQuery.of(context).padding.bottom + 42.0;
+        MediaQuery.of(context).padding.bottom + (phonePortrait ? 36.0 : 42.0);
 
     if (widget.embedded) {
       return Material(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(phonePortrait ? 16 : 22),
         clipBehavior: Clip.antiAlias,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(phonePortrait ? 16 : 22),
             border: Border.all(color: const Color(0xFFE7ECF3)),
           ),
           child: _calendarBody(bottomClearance: 0),
@@ -1293,23 +1482,37 @@ class _CalendarScreenState extends State<CalendarScreen> {
           scrolledUnderElevation: 0,
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
-          titleSpacing: 12,
+          toolbarHeight: phonePortrait ? 48 : kToolbarHeight,
+          titleSpacing: phonePortrait ? 8 : 12,
           centerTitle: false,
-          title: _monthNavRow(monthLabel, y, m),
+          title: _monthNavRow(monthLabel, y, m, compact: phonePortrait),
         ),
         body: _calendarBody(bottomClearance: bottomFabClearance),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: _openCreateEntrySheet,
-          icon: const Icon(Icons.add),
-          label: Text('เพิ่มวันหยุด/ลา', style: GoogleFonts.kanit()),
-        ),
+        floatingActionButton: phonePortrait
+            ? FloatingActionButton(
+                onPressed: _openCreateEntrySheet,
+                tooltip: 'เพิ่มวันหยุด/ลา',
+                child: const Icon(Icons.add),
+              )
+            : FloatingActionButton.extended(
+                onPressed: _openCreateEntrySheet,
+                icon: const Icon(Icons.add),
+                label: Text('เพิ่มวันหยุด/ลา', style: GoogleFonts.kanit()),
+              ),
       ),
     );
   }
 
-  Widget _legendChip({required Color color, required String label}) {
+  Widget _legendChip({
+    required Color color,
+    required String label,
+    bool compact = false,
+  }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 6 : 8,
+        vertical: compact ? 1 : 2,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
@@ -1319,7 +1522,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         label,
         style: GoogleFonts.kanit(
           color: color,
-          fontSize: 11.5,
+          fontSize: compact ? 10.5 : 11.5,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -1652,42 +1855,53 @@ class _DayCell extends StatelessWidget {
     required this.selected,
     required this.today,
     required this.onTap,
+    this.compact = false,
   });
   final _CalendarDay day;
   final bool selected;
   final bool today;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final accent = day.primaryAccentColor();
-    final tags = day.cellTags(max: 2);
-    final dots = day.markerDotColors(max: 4);
+    final tags = compact ? const <_CalendarDayTag>[] : day.cellTags(max: 2);
+    final dots = day.markerDotColors(max: compact ? 3 : 4);
     final hasActivity = day.activityCount > 0;
+    final showTags = !compact && hasActivity && tags.isNotEmpty;
 
     final borderColor = selected
         ? const Color(0xFF1E88E5)
         : today
         ? const Color(0xFF90A4AE)
         : const Color(0xFFE8ECF0);
-    final borderW = selected ? 1.8 : 1.0;
+    final borderW = selected ? (compact ? 1.5 : 1.8) : 1.0;
+    final radius = compact ? 8.0 : 10.0;
+    final accentW = compact ? 2.0 : 3.0;
+    final dayFs = compact ? (today ? 11.0 : 13.0) : (today ? 13.0 : 16.0);
+    final todayBox = compact ? 20.0 : 26.0;
+    final pad = compact
+        ? const EdgeInsets.fromLTRB(3, 3, 3, 2)
+        : const EdgeInsets.fromLTRB(5, 5, 5, 4);
+    final dotSize = compact ? 4.0 : 5.0;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(radius),
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
           decoration: BoxDecoration(
             color: selected ? const Color(0xFFF0F7FF) : Colors.white,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(radius),
             border: Border.all(width: borderW, color: borderColor),
             boxShadow: selected
                 ? [
                     BoxShadow(
                       color: const Color(0xFF1E88E5).withValues(alpha: 0.12),
-                      blurRadius: 6,
+                      blurRadius: compact ? 4 : 6,
                       offset: const Offset(0, 2),
                     ),
                   ]
@@ -1698,17 +1912,17 @@ class _DayCell extends StatelessWidget {
             children: [
               if (accent != null)
                 Container(
-                  width: 3,
+                  width: accentW,
                   decoration: BoxDecoration(
                     color: accent,
-                    borderRadius: const BorderRadius.horizontal(
-                      left: Radius.circular(10),
+                    borderRadius: BorderRadius.horizontal(
+                      left: Radius.circular(radius),
                     ),
                   ),
                 ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(5, 5, 5, 4),
+                  padding: pad,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1716,8 +1930,8 @@ class _DayCell extends StatelessWidget {
                         children: [
                           if (today)
                             Container(
-                              width: 26,
-                              height: 26,
+                              width: todayBox,
+                              height: todayBox,
                               alignment: Alignment.center,
                               decoration: BoxDecoration(
                                 color: selected
@@ -1729,7 +1943,7 @@ class _DayCell extends StatelessWidget {
                                 '${day.day}',
                                 style: GoogleFonts.kanit(
                                   fontWeight: FontWeight.w800,
-                                  fontSize: 13,
+                                  fontSize: dayFs,
                                   color: Colors.white,
                                   height: 1,
                                 ),
@@ -1740,7 +1954,7 @@ class _DayCell extends StatelessWidget {
                               '${day.day}',
                               style: GoogleFonts.kanit(
                                 fontWeight: FontWeight.w800,
-                                fontSize: 16,
+                                fontSize: dayFs,
                                 height: 1,
                                 color: selected
                                     ? const Color(0xFF1565C0)
@@ -1748,14 +1962,14 @@ class _DayCell extends StatelessWidget {
                               ),
                             ),
                           const Spacer(),
-                          if (dots.isNotEmpty)
+                          if (dots.isNotEmpty && !compact)
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 for (final c in dots)
                                   Container(
-                                    width: 5,
-                                    height: 5,
+                                    width: dotSize,
+                                    height: dotSize,
                                     margin: const EdgeInsets.only(left: 2),
                                     decoration: BoxDecoration(
                                       color: c,
@@ -1766,7 +1980,26 @@ class _DayCell extends StatelessWidget {
                             ),
                         ],
                       ),
-                      if (hasActivity) ...[
+                      if (compact && dots.isNotEmpty) ...[
+                        const Spacer(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            for (final c in dots)
+                              Container(
+                                width: dotSize,
+                                height: dotSize,
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: c,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ] else if (showTags) ...[
                         const SizedBox(height: 3),
                         Expanded(
                           child: Align(
