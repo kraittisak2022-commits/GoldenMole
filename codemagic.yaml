@@ -247,8 +247,10 @@ workflows:
       - name: Install CocoaPods
         script: |
           set -euo pipefail
-          cd "$CM_BUILD_DIR/mobile-flutter/ios"
-          pod install
+          cd "$CM_BUILD_DIR/mobile-flutter"
+          flutter precache --ios
+          cd ios
+          pod install --repo-update
       - name: Flutter build ipa
         script: |
           set -euo pipefail
@@ -322,8 +324,10 @@ workflows:
       - name: Install CocoaPods
         script: |
           set -euo pipefail
-          cd "$CM_BUILD_DIR/mobile-flutter/ios"
-          pod install
+          cd "$CM_BUILD_DIR/mobile-flutter"
+          flutter precache --ios
+          cd ios
+          pod install --repo-update
       - name: Build for iOS Simulator
         script: |
           set -euo pipefail
