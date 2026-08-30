@@ -283,6 +283,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   List<AppTransaction> _moduleDayAllTransactions = const [];
   bool _moduleDayLoading = false;
 
+  /// โหลดรอบแรกของวันเสร็จแล้ว (แม้รายการว่าง) — ใช้กันไม่ให้โชว์ «กำลังโหลด» ซ้ำตอน soft poll
+  bool _moduleDayHydrated = false;
+
   /// กันผล _loadModuleTransactions ที่เสร็จช้ากว่า (เช่น โหลดตอนเปิดหน้าแล้วบันทึกเสร็จก่อน) ไป dispose draft ที่ใช้อยู่
   int _moduleTransactionsLoadGeneration = 0;
 
@@ -292,7 +295,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// ระหว่างรอธุรกรรมของวันที่เลือก และ (ถ้าเป็นเมนูค่าแรง/OT) รายชื่อพนักงาน
   bool get _blockingModuleBootstrap {
     if (!_hasTrackedModuleCategory) return false;
-    if (_moduleDayLoading && _moduleDayTransactions.isEmpty) return true;
+    // บำรุงรักษา: ฟอร์มใช้แคตตาล็อกได้ทันที — ประวัติซิงก์เบื้องหลัง
+    if (_isMaintenanceMode) return false;
+    if (_moduleDayLoading && !_moduleDayHydrated) return true;
     if (_showsEmployeeLoadingUi && _employeesLoading && _employees.isEmpty) {
       return true;
     }
@@ -302,7 +307,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   bool get _softModuleRefreshing =>
       _hasTrackedModuleCategory &&
       _moduleDayLoading &&
-      _moduleDayTransactions.isNotEmpty;
+      (_moduleDayHydrated || _isMaintenanceMode);
 
   /// แสดงรายการประวัติเฉพาะเมื่อผู้ใช้กด (ค่าเริ่มต้นซ่อน)
   bool _moduleHistoryVisible = false;
@@ -1343,6 +1348,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _moduleDayTransactions = matched;
         _moduleDayAllTransactions = rows;
         _moduleDayLoading = false;
+        _moduleDayHydrated = true;
         _moduleHistoryVisible = false;
       });
       if (!isCurrentLoad()) return;
@@ -1405,25 +1411,33 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
       }
       if (mounted && isCurrentLoad()) {
-        setState(() => _moduleDayLoading = false);
+        setState(() {
+          _moduleDayLoading = false;
+          _moduleDayHydrated = true;
+        });
         _captureModuleFormBaseline();
       }
       return;
     }
 
     if (!mounted || !isCurrentLoad()) return;
-    // มีข้อมูลแล้ว → รีเฟรชเงียบ ไม่โชว์ «กำลังโหลดข้อมูล» / ไม่ซ่อนประวัติ
-    final hasCachedModule = cat == 'ลางาน'
-        ? _moduleDayAllTransactions.isNotEmpty
-        : _moduleDayTransactions.isNotEmpty;
+    // โหลดรอบแรกของวันเสร็จแล้ว → รีเฟรชเงียบ ไม่โชว์ «กำลังโหลดข้อมูล» / ไม่ซ่อนประวัติ
+    // (รวมวันว่างที่ไม่มีรายการในโมดูลนี้ — เดิมใช้ isNotEmpty ทำให้ poll โชว์โหลดซ้ำ)
+    final hasCachedModule = _moduleDayHydrated ||
+        (cat == 'ลางาน'
+            ? _moduleDayAllTransactions.isNotEmpty
+            : _moduleDayTransactions.isNotEmpty);
     if (!hasCachedModule) {
       setState(() {
         _moduleDayLoading = true;
         _moduleHistoryVisible = false;
       });
-      _clearHydrationSlots();
-      if (!(preserveIncomeUtilitiesForm && cat == 'รายจ่ายรายรับ')) {
-        _clearModuleFormFields();
+      // บำรุงรักษา: อย่าเคลียร์ฟอร์มตอนซิงก์เบื้องหลัง — ผู้ใช้กรอกได้ทันที
+      if (!_isMaintenanceMode) {
+        _clearHydrationSlots();
+        if (!(preserveIncomeUtilitiesForm && cat == 'รายจ่ายรายรับ')) {
+          _clearModuleFormFields();
+        }
       }
     }
     if (!mounted || !isCurrentLoad()) return;
@@ -1449,10 +1463,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ? await _mergeOfflineQueue(rows, ymd)
           : rows;
       if (!mounted || !isCurrentLoad()) return;
-      _clearHydrationSlots();
+      // Soft refresh บำรุงรักษา: คงสถานะแก้ไข — ไม่เคลียร์ slot ทุกครั้งที่ซิงก์
+      if (!hasCachedModule || !_isMaintenanceMode) {
+        _clearHydrationSlots();
+      }
       await applyRows(
         mergedRows,
-        clearForm: _moduleDayTransactions.isEmpty,
+        clearForm: !hasCachedModule && _moduleDayTransactions.isEmpty,
       );
       if (_isFuelMode && forceRefresh && mounted && isCurrentLoad()) {
         await _refreshFuelStock(forceNetwork: true);
@@ -1464,6 +1481,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _moduleDayTransactions = const [];
           _moduleDayAllTransactions = const [];
           _moduleDayLoading = false;
+          _moduleDayHydrated = true;
           _moduleHistoryVisible = false;
         });
         _captureModuleFormBaseline();
@@ -6166,7 +6184,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       'อาการ / รายละเอียด',
       detail,
       '',
-      'จะส่งรายงานเข้า LINE ให้ผู้ดูแล (เหมือนแจ้งเบิกเงิน)',
+      'จะส่งรายงานให้ผู้ดูแลอัตโนมัติ',
     ];
     final ok = await showDialog<bool>(
       context: context,
@@ -6568,6 +6586,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       setState(() {
         _selectedDate = DateTime(picked.year, picked.month, picked.day);
         _fuelMacroPromptDayKey = null;
+        _moduleDayHydrated = false;
+        if (_isMaintenanceMode) {
+          _maintenanceTxId = null;
+        }
       });
       // แสดงแคชวันก่อน แล้วค่อยซิงก์เน็ตเงียบ ๆ — อย่า force ให้หน้าค้างโหลด
       await _loadModuleTransactions(forceRefresh: false);
@@ -16803,252 +16825,251 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final editing =
         _maintenanceTxId != null && _maintenanceTxId!.trim().isNotEmpty;
     final todayRows = _maintenanceRowsToday();
+    const ink = Color(0xFF1C1917);
+    const muted = Color(0xFF78716C);
+    const line = Color(0xFFE7E5E4);
+    const accent = Color(0xFFC2410C);
+    const softBg = Color(0xFFFAFAF9);
+
+    Widget sectionLabel(String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            text,
+            style: GoogleFonts.kanit(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: muted,
+              letterSpacing: 0.2,
+            ),
+          ),
+        );
+
+    Widget pickChip({
+      required String label,
+      required bool selected,
+      required VoidCallback onTap,
+      bool compact = false,
+    }) {
+      return Material(
+        color: selected ? accent.withValues(alpha: 0.10) : softBg,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 12 : 14,
+              vertical: compact ? 7 : 9,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: selected ? accent.withValues(alpha: 0.45) : line,
+              ),
+            ),
+            child: Text(
+              label,
+              style: GoogleFonts.kanit(
+                fontSize: compact ? 12.5 : 13.5,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? accent : ink,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE8E0D5)),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFB45309).withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: line),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              isRepair ? 'แจ้งซ่อม' : 'ซ่อม / ดูแลรักษาเครื่องยนต์',
+              isRepair ? 'แจ้งซ่อม' : 'บันทึกซ่อมบำรุง',
               style: GoogleFonts.kanit(
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: FontWeight.w800,
-                color: const Color(0xFF7C2D12),
+                color: ink,
+                height: 1.15,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               isRepair
-                  ? 'เลือกกลุ่ม → เลือกรายการ → ระบุอาการ → ส่งเข้า LINE'
-                  : 'เลือกกลุ่ม → เลือกรายการ → ประเภทงาน → จำนวนเงิน',
+                  ? 'เลือกเครื่อง → ระบุอาการ → ส่งให้ผู้ดูแล'
+                  : 'เลือกเครื่อง → ประเภทงาน → จำนวนเงิน',
               style: GoogleFonts.kanit(
                 fontSize: 13,
-                color: const Color(0xFF9A3412),
+                fontWeight: FontWeight.w500,
+                color: muted,
               ),
             ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                ChoiceChip(
+            const SizedBox(height: 14),
+            SegmentedButton<MaintenanceSubMode>(
+              segments: [
+                ButtonSegment(
+                  value: MaintenanceSubMode.serviceLog,
                   label: Text(
-                    'บันทึกซ่อมบำรุง',
-                    style: GoogleFonts.kanit(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    'บันทึกซ่อม',
+                    style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
                   ),
-                  selected: !isRepair,
-                  onSelected: (sel) {
-                    if (!sel) return;
-                    setState(() {
-                      _maintenanceSubMode = MaintenanceSubMode.serviceLog;
-                      if (_maintenanceType == kMaintenanceTypeRepairRequest) {
-                        _maintenanceType = kMaintenanceTypeRepair;
-                      }
-                      _ensureMaintenanceSelectionValid();
-                    });
-                  },
                 ),
-                ChoiceChip(
+                ButtonSegment(
+                  value: MaintenanceSubMode.repairRequest,
                   label: Text(
-                    'แจ้งซ่อม (LINE)',
-                    style: GoogleFonts.kanit(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    'แจ้งซ่อม',
+                    style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
                   ),
-                  selected: isRepair,
-                  onSelected: (sel) {
-                    if (!sel) return;
-                    setState(() {
-                      _maintenanceSubMode = MaintenanceSubMode.repairRequest;
-                      _maintenanceType = kMaintenanceTypeRepairRequest;
-                      _ensureMaintenanceSelectionValid();
-                    });
-                  },
                 ),
               ],
+              selected: {_maintenanceSubMode},
+              onSelectionChanged: (s) {
+                if (s.isEmpty) return;
+                setState(() {
+                  _maintenanceSubMode = s.first;
+                  if (_maintenanceSubMode == MaintenanceSubMode.repairRequest) {
+                    _maintenanceType = kMaintenanceTypeRepairRequest;
+                  } else if (_maintenanceType ==
+                      kMaintenanceTypeRepairRequest) {
+                    _maintenanceType = kMaintenanceTypeRepair;
+                  }
+                  _ensureMaintenanceSelectionValid();
+                });
+              },
+              style: ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                foregroundColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) return accent;
+                  return muted;
+                }),
+              ),
             ),
             if (editing) ...[
               const SizedBox(height: 12),
               Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF7ED),
+                  color: softBg,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFFDBA74)),
+                  border: Border.all(color: line),
                 ),
-                child: Text(
-                  'กำลังแก้ไขรายการที่มีอยู่ — กดอัปเดต หรือเพิ่มใหม่ด้านล่าง',
-                  style: GoogleFonts.kanit(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF9A3412),
-                  ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.edit_outlined, size: 18, color: muted),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'กำลังแก้ไขรายการนี้',
+                        style: GoogleFonts.kanit(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: ink,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
-            const SizedBox(height: 14),
-            Text(
-              'กลุ่ม',
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF57534E),
-              ),
-            ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 18),
+            sectionLabel('กลุ่ม'),
             Wrap(
-              spacing: 6,
-              runSpacing: 6,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 for (final g in MaintenanceAssetGroup.values)
-                  ChoiceChip(
-                    label: Text(
-                      g.label,
-                      style: GoogleFonts.kanit(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                  pickChip(
+                    label: g.label,
                     selected: _maintenanceGroup == g,
-                    onSelected: (sel) {
-                      if (!sel) return;
-                      setState(() {
-                        _maintenanceGroup = g;
-                        _ensureMaintenanceSelectionValid();
-                      });
-                    },
+                    onTap: () => setState(() {
+                      _maintenanceGroup = g;
+                      _ensureMaintenanceSelectionValid();
+                    }),
                   ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              'รายการ',
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF57534E),
-              ),
-            ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 16),
+            sectionLabel('รายการ'),
             Wrap(
-              spacing: 6,
-              runSpacing: 6,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 for (final name in assets)
-                  ChoiceChip(
-                    label: Text(
-                      name,
-                      style: GoogleFonts.kanit(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                  pickChip(
+                    label: name,
                     selected: _maintenanceAsset == name,
-                    onSelected: (sel) {
-                      if (!sel) return;
-                      setState(() => _maintenanceAsset = name);
-                    },
+                    compact: true,
+                    onTap: () => setState(() => _maintenanceAsset = name),
                   ),
               ],
             ),
             if (!isRepair) ...[
-              const SizedBox(height: 12),
-              Text(
-                'ประเภทงาน',
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF57534E),
-                ),
-              ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 16),
+              sectionLabel('ประเภทงาน'),
               Wrap(
-                spacing: 6,
-                runSpacing: 6,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   for (final type in types)
-                    ChoiceChip(
-                      label: Text(
-                        type,
-                        style: GoogleFonts.kanit(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                    pickChip(
+                      label: type,
                       selected: _maintenanceType == type,
-                      onSelected: (sel) {
-                        if (!sel) return;
-                        setState(() => _maintenanceType = type);
-                      },
+                      onTap: () => setState(() => _maintenanceType = type),
                     ),
                 ],
               ),
             ],
             if (isRepair) ...[
-              const SizedBox(height: 12),
-              Text(
-                'ความเร่งด่วน',
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF57534E),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  ChoiceChip(
+              const SizedBox(height: 16),
+              sectionLabel('ความเร่งด่วน'),
+              SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(
+                    value: 'normal',
                     label: Text(
                       'ปกติ',
-                      style: GoogleFonts.kanit(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
                     ),
-                    selected: _maintenanceUrgency != 'urgent',
-                    onSelected: (sel) {
-                      if (!sel) return;
-                      setState(() => _maintenanceUrgency = 'normal');
-                    },
                   ),
-                  ChoiceChip(
+                  ButtonSegment(
+                    value: 'urgent',
                     label: Text(
                       'ด่วน',
-                      style: GoogleFonts.kanit(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
                     ),
-                    selected: _maintenanceUrgency == 'urgent',
-                    onSelected: (sel) {
-                      if (!sel) return;
-                      setState(() => _maintenanceUrgency = 'urgent');
-                    },
                   ),
                 ],
+                selected: {
+                  _maintenanceUrgency == 'urgent' ? 'urgent' : 'normal',
+                },
+                onSelectionChanged: (s) {
+                  if (s.isEmpty) return;
+                  setState(() => _maintenanceUrgency = s.first);
+                },
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  textStyle: WidgetStatePropertyAll(
+                    GoogleFonts.kanit(fontWeight: FontWeight.w600),
+                  ),
+                ),
               ),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
+            sectionLabel(isRepair ? 'อาการ / รายละเอียด' : 'รายละเอียด'),
             TextFormField(
               controller: _maintenanceDetailController,
               minLines: 2,
@@ -17056,86 +17077,137 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               style: GoogleFonts.kanit(
                 fontSize: 15.5,
                 fontWeight: FontWeight.w600,
+                color: ink,
               ),
               decoration: InputDecoration(
-                labelText: isRepair ? 'อาการ / รายละเอียด *' : 'รายละเอียด (ถ้ามี)',
                 hintText: isRepair
-                    ? 'เช่น สตาร์ทไม่ติด, มีเสียงผิดปกติ, น้ำมันรั่ว'
-                    : 'เช่น รอบที่ 5, เปลี่ยนไส้กรอง, ซ่อมปั๊ม',
+                    ? 'เช่น สตาร์ทไม่ติด, มีเสียงผิดปกติ'
+                    : 'เช่น รอบที่ 5, เปลี่ยนไส้กรอง',
                 alignLabelWithHint: true,
-                prefixIcon: const Icon(Icons.notes_outlined),
+                filled: true,
+                fillColor: softBg,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: line),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: line),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: accent.withValues(alpha: 0.55)),
+                ),
               ),
               onChanged: (_) => _scheduleUiRefresh(),
             ),
             if (!isRepair) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
+              sectionLabel('จำนวนเงิน (บาท)'),
               TextFormField(
                 controller: _maintenanceAmountController,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 style: GoogleFonts.kanit(
-                  fontSize: 18,
+                  fontSize: 20,
                   fontWeight: FontWeight.w800,
+                  color: ink,
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'จำนวนเงิน (บาท)',
-                  prefixIcon: Icon(Icons.payments_outlined),
+                decoration: InputDecoration(
+                  hintText: '0',
+                  filled: true,
+                  fillColor: softBg,
+                  prefixIcon: const Icon(Icons.payments_outlined, color: muted),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: line),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: line),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide:
+                        BorderSide(color: accent.withValues(alpha: 0.55)),
+                  ),
                 ),
                 onChanged: (_) => _scheduleUiRefresh(),
               ),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             _SmoothPressable(
               enabled: !_saving,
-              child: FilledButton.icon(
+              child: FilledButton(
                 onPressed: _saving ? null : _saveQuickEntry,
-                icon: Icon(
-                  isRepair
-                      ? Icons.send_rounded
-                      : (editing
-                          ? Icons.update_rounded
-                          : Icons.save_outlined),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  backgroundColor: accent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
                 ),
-                label: Text(
+                child: Text(
                   _saving
                       ? 'กำลังบันทึก...'
                       : (isRepair
                           ? (editing ? 'อัปเดตแจ้งซ่อม' : 'ส่งแจ้งซ่อม')
-                          : (editing ? 'อัปเดตรายการ' : 'บันทึกบำรุงรักษา')),
+                          : (editing ? 'อัปเดตรายการ' : 'บันทึก')),
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
-                    fontSize: 18,
+                    fontSize: 17,
                   ),
-                ),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(54),
-                  backgroundColor: const Color(0xFFB45309),
-                  foregroundColor: Colors.white,
                 ),
               ),
             ),
             if (editing) ...[
               const SizedBox(height: 8),
-              OutlinedButton.icon(
+              TextButton(
                 onPressed: _saving ? null : _startNewMaintenance,
-                icon: const Icon(Icons.add_rounded),
-                label: Text(
+                child: Text(
                   'เพิ่มรายการใหม่',
-                  style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w700,
+                    color: muted,
+                  ),
                 ),
               ),
             ],
             if (todayRows.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              Text(
-                'บันทึกวันนี้ (${todayRows.length})',
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                  color: const Color(0xFF7C2D12),
-                ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Text(
+                    'วันนี้',
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: ink,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: softBg,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: line),
+                    ),
+                    child: Text(
+                      '${todayRows.length}',
+                      style: GoogleFonts.kanit(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: muted,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               for (final t in todayRows) ...[
                 _buildMaintenanceSavedCard(t),
                 const SizedBox(height: 8),
@@ -17163,19 +17235,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             '${isCurrent ? ' · กำลังแก้ไข' : ''}'
         : '${type.isEmpty ? 'บำรุงรักษา' : type} · $amountText บาท'
             '${isCurrent ? ' · กำลังแก้ไข' : ''}';
+    const ink = Color(0xFF1C1917);
+    const muted = Color(0xFF78716C);
+    const line = Color(0xFFE7E5E4);
     return Material(
-      color: isCurrent ? const Color(0xFFFFF7ED) : const Color(0xFFFFFBF5),
+      color: isCurrent ? const Color(0xFFFFF7ED) : const Color(0xFFFAFAF9),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () => _loadMaintenanceIntoForm(t),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color:
-                  isCurrent ? const Color(0xFFFDBA74) : const Color(0xFFFED7AA),
+              color: isCurrent ? const Color(0xFFFDBA74) : line,
             ),
           ),
           child: Column(
@@ -17184,27 +17258,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               Text(
                 asset.isEmpty ? '(ไม่ระบุรายการ)' : asset,
                 style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   fontSize: 14.5,
-                  color: const Color(0xFF9A3412),
+                  color: ink,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 metaLine,
                 style: GoogleFonts.kanit(
-                  fontSize: 13,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w600,
-                  color: const Color(0xFFB45309),
+                  color: muted,
                 ),
               ),
               if (detail.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(
                   detail,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.kanit(
-                    fontSize: 13.5,
-                    color: const Color(0xFF57534E),
+                    fontSize: 13,
+                    color: muted,
                   ),
                 ),
               ],
