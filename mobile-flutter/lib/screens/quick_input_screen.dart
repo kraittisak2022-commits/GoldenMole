@@ -12921,6 +12921,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required String selected,
     required ValueChanged<String> onChanged,
   }) {
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
     Widget chip(String tank, String label, String hint) {
       final on = normalizeFuelTank(selected) == tank;
       return Expanded(
@@ -12931,7 +12934,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             borderRadius: BorderRadius.circular(12),
             onTap: () => onChanged(tank),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              padding: EdgeInsets.symmetric(
+                horizontal: phonePortrait ? 8 : 10,
+                vertical: phonePortrait ? 8 : 10,
+              ),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
@@ -12945,7 +12951,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   Text(
                     label,
                     style: GoogleFonts.kanit(
-                      fontSize: 14.5,
+                      fontSize: phonePortrait ? 13.5 : 14.5,
                       fontWeight: FontWeight.w800,
                       color: on
                           ? const Color(0xFF0D47A1)
@@ -12955,7 +12961,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   Text(
                     hint,
                     style: GoogleFonts.kanit(
-                      fontSize: 11.5,
+                      fontSize: phonePortrait ? 11 : 11.5,
                       fontWeight: FontWeight.w500,
                       color: const Color(0xFF78909C),
                     ),
@@ -12970,9 +12976,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
     return Row(
       children: [
-        chip(kFuelTankMain, 'ถังหลัก', 'เติมที่พล่าม'),
-        const SizedBox(width: 8),
-        chip(kFuelTankReserve, 'ถังสำรอง', 'เครื่องจักร'),
+        chip(kFuelTankMain, 'ถังหลัก', phonePortrait ? 'พล่าม' : 'เติมที่พล่าม'),
+        SizedBox(width: phonePortrait ? 6 : 8),
+        chip(
+          kFuelTankReserve,
+          'ถังสำรอง',
+          'เครื่องจักร',
+        ),
       ],
     );
   }
@@ -13250,6 +13260,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         double.tryParse(_fuelCarFillLitersController.text.trim()) ?? 0;
     final editing =
         _fuelCarFillTxId != null && _fuelCarFillTxId!.isNotEmpty;
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
 
     Widget vehicleTile(FuelCarFillVehicle vehicle, IconData icon) {
       final isSelected = _fuelCarFillVehicle == vehicle;
@@ -13349,37 +13362,40 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(phonePortrait ? 12 : 18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(phonePortrait ? 18 : 22),
         border: Border.all(color: const Color(0xFFE3ECF7)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'เติมน้ำมันรถยนต์',
+            phonePortrait ? 'เติมรถยนต์' : 'เติมน้ำมันรถยนต์',
             style: GoogleFonts.kanit(
-              fontSize: 24,
+              fontSize: phonePortrait ? 18 : 24,
               fontWeight: FontWeight.w800,
               color: const Color(0xFF6A1B9A),
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: phonePortrait ? 4 : 6),
           Text(
-            'หักจากถังหลัก — เลือกรถแล้วระบุจำนวนลิตรและเวลา'
-            '${editing ? ' · โหลดของวันนี้แล้ว กดบันทึกเพื่ออัปเดต' : ''}',
+            phonePortrait
+                ? 'หักจากถังหลัก — เลือกรถ ใส่ลิตรและเวลา'
+                    '${editing ? ' · โหลดแล้ว กดอัปเดต' : ''}'
+                : 'หักจากถังหลัก — เลือกรถแล้วระบุจำนวนลิตรและเวลา'
+                    '${editing ? ' · โหลดของวันนี้แล้ว กดบันทึกเพื่ออัปเดต' : ''}',
             style: GoogleFonts.kanit(
-              fontSize: 13,
+              fontSize: phonePortrait ? 12.5 : 13,
               fontWeight: FontWeight.w500,
               color: Colors.black54,
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: phonePortrait ? 10 : 14),
           _buildFuelStockBanner(pendingMainDelta: liters > 0 ? -liters : 0),
-          const SizedBox(height: 14),
+          SizedBox(height: phonePortrait ? 10 : 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -13482,16 +13498,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 editing
                     ? Icons.edit_outlined
                     : Icons.directions_car_filled_rounded,
+                size: phonePortrait ? 20 : 24,
               ),
               label: Text(
-                editing ? 'อัปเดตรายการนี้' : 'บันทึกเติมน้ำมันรถยนต์',
+                editing
+                    ? (phonePortrait ? 'อัปเดต' : 'อัปเดตรายการนี้')
+                    : (phonePortrait ? 'บันทึกเติมรถยนต์' : 'บันทึกเติมน้ำมันรถยนต์'),
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w800,
-                  fontSize: 20,
+                  fontSize: phonePortrait ? 16 : 20,
                 ),
               ),
               style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(62),
+                minimumSize: Size.fromHeight(phonePortrait ? 48 : 62),
                 backgroundColor: const Color(0xFF6A1B9A),
               ),
             ),
@@ -13547,13 +13566,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
       }
     }
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(phonePortrait ? 12 : 18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(phonePortrait ? 18 : 22),
         border: Border.all(color: const Color(0xFFE3ECF7)),
         boxShadow: [
           BoxShadow(
@@ -13567,26 +13589,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'บันทึกการใช้น้ำมันรถแม็คโคร',
+            phonePortrait ? 'น้ำมันแม็คโคร' : 'บันทึกการใช้น้ำมันรถแม็คโคร',
             style: GoogleFonts.kanit(
-              fontSize: 24,
+              fontSize: phonePortrait ? 18 : 24,
               fontWeight: FontWeight.w800,
               color: const Color(0xFF0F5FAF),
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: phonePortrait ? 4 : 6),
           Text(
-            'แสดงเฉพาะคันที่มีบันทึกการใช้รถแม็คโครของวันนี้ — '
-            'กรอกเฉพาะคันที่เติมน้ำมัน · '
-            'ถังสำรองหักเฉพาะสำรอง · ถังหลัก (พล่าม) หักเฉพาะหลัก',
+            phonePortrait
+                ? 'เฉพาะคันที่มีบันทึกการใช้รถวันนี้ — กรอกคันที่เติม'
+                : 'แสดงเฉพาะคันที่มีบันทึกการใช้รถแม็คโครของวันนี้ — '
+                    'กรอกเฉพาะคันที่เติมน้ำมัน · '
+                    'ถังสำรองหักเฉพาะสำรอง · ถังหลัก (พล่าม) หักเฉพาะหลัก',
             style: GoogleFonts.kanit(
-              fontSize: 13,
+              fontSize: phonePortrait ? 12.5 : 13,
               fontWeight: FontWeight.w500,
               color: Colors.black54,
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: phonePortrait ? 8 : 12),
           _buildFuelStockBanner(
             pendingMainDelta: pendingMain == 0 ? null : pendingMain,
             pendingReserveDelta: pendingReserve == 0 ? null : pendingReserve,
@@ -13693,32 +13717,37 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
               ),
               child: Text(
-                'วันนี้ใช้รถ ${coverage.usedCount} คัน · เติมน้ำมัน ${coverage.fueledCount} คัน · รวม $litersLabel ลิตร',
+                phonePortrait
+                    ? 'ใช้รถ ${coverage.usedCount} · เติม ${coverage.fueledCount} · $litersLabel ล.'
+                    : 'วันนี้ใช้รถ ${coverage.usedCount} คัน · เติมน้ำมัน ${coverage.fueledCount} คัน · รวม $litersLabel ลิตร',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w700,
-                  fontSize: 16,
+                  fontSize: phonePortrait ? 13.5 : 16,
                 ),
               ),
             ),
           ],
-          const SizedBox(height: 14),
+          SizedBox(height: phonePortrait ? 10 : 14),
           _SmoothPressable(
             enabled: !_saving && fuelCars.isNotEmpty,
             child: FilledButton.icon(
               onPressed: _saving || fuelCars.isEmpty
                   ? null
                   : _saveFuelVehicleUsageEntries,
-              icon: const Icon(Icons.local_gas_station_outlined),
+              icon: Icon(
+                Icons.local_gas_station_outlined,
+                size: phonePortrait ? 20 : 24,
+              ),
               label: Text(
-                'บันทึกการใช้น้ำมัน',
+                phonePortrait ? 'บันทึกน้ำมัน' : 'บันทึกการใช้น้ำมัน',
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w800,
-                  fontSize: 20,
+                  fontSize: phonePortrait ? 16 : 20,
                 ),
               ),
               style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(62),
+                minimumSize: Size.fromHeight(phonePortrait ? 48 : 62),
               ),
             ),
           ),
