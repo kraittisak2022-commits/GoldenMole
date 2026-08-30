@@ -474,6 +474,39 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
   }
 
+  /// หาแถว VehicleUsage เดิมของวันนั้นสำหรับร่างฟอร์ม (txId หรือจับคู่ชื่อ/รหัสรถ)
+  AppTransaction? _priorFuelVehicleUsageForDraft(_FuelVehicleDraft row) {
+    final id = row.txId?.trim();
+    if (id != null && id.isNotEmpty) {
+      for (final t in _moduleDayAllTransactions) {
+        if (t.id == id && isFuelMacroVehicleUsageRow(t)) return t;
+      }
+    }
+    final vehicle = row.vehicleId.trim();
+    if (vehicle.isEmpty) return null;
+    final catalogHit = _vehicleCatalog.findByNameOrId(vehicle);
+    AppTransaction? best;
+    var bestMs = -1;
+    for (final t in _moduleDayAllTransactions) {
+      if (!isFuelMacroVehicleUsageRow(t)) continue;
+      final label = transactionVehicleLabel(t);
+      final vid = (t.vehicleId ?? '').trim();
+      final matched = transactionVehicleMatches(t, vehicle) ||
+          (catalogHit != null &&
+              (label == catalogHit.name ||
+                  vid == catalogHit.id ||
+                  transactionVehicleMatches(t, catalogHit.name) ||
+                  transactionVehicleMatches(t, catalogHit.id)));
+      if (!matched) continue;
+      final ms = t.createdAt?.millisecondsSinceEpoch ?? 0;
+      if (best == null || ms >= bestMs) {
+        best = t;
+        bestMs = ms;
+      }
+    }
+    return best;
+  }
+
   /// สร้างแถวบันทึกน้ำมัน 1 แถวต่อ 1 รถแม็คโครจากตั้งค่าแอพ
   void _syncFuelVehicleDraftsFromMacroCars({
     Iterable<AppTransaction>? dayFuelRows,
@@ -481,14 +514,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }) {
     final cars = _fuelMacroCars();
     final fuelByVehicle = <String, AppTransaction>{};
+    void indexFuelRow(AppTransaction t) {
+      void put(String key) {
+        final k = key.trim();
+        if (k.isEmpty) return;
+        fuelByVehicle[k] = t;
+      }
+
+      final label = transactionVehicleLabel(t);
+      put(label);
+      put(t.vehicleId ?? '');
+      final hit = _vehicleCatalog.findByNameOrId(
+        label.isNotEmpty ? label : (t.vehicleId ?? ''),
+      );
+      if (hit != null) {
+        put(hit.id);
+        put(hit.name);
+      }
+    }
+
     final source = dayFuelRows ?? _moduleDayTransactions;
     for (final t in source) {
-      if (t.category != 'Fuel') continue;
-      final mov = (t.fuelMovement ?? '').trim();
-      if (mov.isNotEmpty && mov != 'stock_out') continue;
-      final vid = transactionVehicleLabel(t);
-      if (vid.isEmpty) continue;
-      fuelByVehicle[vid] = t;
+      if (!isFuelMacroVehicleUsageRow(t)) continue;
+      indexFuelRow(t);
     }
 
     final preserved = <String, _FuelVehicleDraft>{
@@ -512,9 +560,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (row.fuelType.trim().isEmpty) row.fuelType = 'Diesel';
       final typed = row.litersController.text.trim().isNotEmpty ||
           row.liters.trim().isNotEmpty;
+      final missingTxId = row.txId == null || row.txId!.trim().isEmpty;
+      final existing = fuelByVehicle[car];
       if (forceHydrate) {
-        if (fuelByVehicle.containsKey(car)) {
-          _hydrateFuelDraftFromTransaction(row, fuelByVehicle[car]!);
+        if (existing != null) {
+          _hydrateFuelDraftFromTransaction(row, existing);
         } else {
           row.txId = null;
           row.liters = '';
@@ -522,8 +572,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           row.litersController.clear();
           row.timeController.clear();
         }
-      } else if (!typed && fuelByVehicle.containsKey(car)) {
-        _hydrateFuelDraftFromTransaction(row, fuelByVehicle[car]!);
+      } else if (existing != null && (!typed || missingTxId)) {
+        // มีแถวของคันนี้แล้ว — ผูก txId เสมอแม้พิมพ์ลิตรไว้แล้ว
+        // (กันเซฟเป็นรายการใหม่แล้วโดนบล็อกตอนถังติดลบ)
+        _hydrateFuelDraftFromTransaction(row, existing);
       }
       next.add(row);
     }
@@ -4881,14 +4933,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           final tankLabel = fuelTankIsReserve(tank)
               ? 'ถังสำรอง'
               : 'พล่าม/หลัก';
-          AppTransaction? priorTx;
-          if (row.txId != null) {
-            for (final t in _moduleDayAllTransactions) {
-              if (t.id == row.txId) {
-                priorTx = t;
-                break;
-              }
-            }
+          final priorTx = _priorFuelVehicleUsageForDraft(row);
+          if (priorTx != null) {
+            row.txId = priorTx.id;
           }
           final priorLitersSameTank = priorTx != null &&
                   fuelUsageTankOf(priorTx) == tank
@@ -4898,10 +4945,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ? _fuelStock.reserveDiesel
                   : _fuelStock.mainDiesel) +
               priorLitersSameTank;
-          // ถังติดลบอยู่แล้ว — อนุญาตบันทึกใหม่ได้ถ้าไม่เพิ่มปริมาณจากแถวเดิม
-          // (กันแก้เวลา/รายละเอียดแล้วเซฟไม่ได้ทั้งที่ยอดลิตรเท่าเดิม)
-          final increasesDraw = liters > priorLitersSameTank + 1e-9;
-          if (increasesDraw && liters > available + 1e-9) {
+          if (!fuelUsageStockAllowsSave(
+            liters: liters,
+            available: available,
+            priorLitersSameTank: priorLitersSameTank,
+          )) {
             final tankName =
                 fuelTankIsReserve(tank) ? 'ถังสำรอง' : 'ถังหลัก';
             final need = liters - available;
