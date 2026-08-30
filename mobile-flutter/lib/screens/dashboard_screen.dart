@@ -34,7 +34,6 @@ import '../widgets/count_record_counters.dart';
 import '../widgets/count_record_day_picker.dart';
 import '../widgets/daily_record_day_picker.dart';
 import '../widgets/count_record_menu_shell.dart';
-import '../widgets/count_record_tutorial.dart';
 import '../widgets/count_record_work_mode_picker.dart';
 import '../widgets/dashboard_loading_view.dart';
 import '../widgets/app_page_route.dart';
@@ -1104,7 +1103,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
   /// After the grid entrance animation finishes, drop stagger transforms so
   /// scrolling does not composite Fade+Slide+Scale on every tile each frame.
   bool _gridEntranceCompleted = false;
-  bool _countRecordTutorialScheduled = false;
   CountRecordWorkMode? _workMode;
   /// โหมดขน+ร่อนบนมือถือแนวตั้ง: 0 = เที่ยวรถ, 1 = ร่อนทราย
   int _bothPanelTab = 0;
@@ -1141,7 +1139,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     _entranceController.forward();
     if (widget.countAndRecordMenuOpen) {
       unawaited(_loadDayWorkMode());
-      _scheduleCountRecordTutorialIfNeeded();
     }
   }
 
@@ -1161,24 +1158,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     await CountRecordWorkModeStore.save(key, mode);
   }
 
-  void _scheduleCountRecordTutorialIfNeeded() {
-    if (_countRecordTutorialScheduled) return;
-    _countRecordTutorialScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !widget.countAndRecordMenuOpen) return;
-      unawaited(CountRecordTutorial.showIfFirstTime(context));
-    });
-  }
-
-  void _openCountRecordTutorial() {
-    unawaited(
-      CountRecordTutorial.show(
-        context,
-        markCompleteOnFinish: false,
-      ),
-    );
-  }
-
   @override
   void didUpdateWidget(covariant _DailyHomeContent oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -1195,7 +1174,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
       _syncErrorTrackerStep();
       if (widget.countAndRecordMenuOpen) {
         unawaited(_loadDayWorkMode());
-        _scheduleCountRecordTutorialIfNeeded();
       }
     }
   }
@@ -1548,21 +1526,6 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             ),
                           ),
                           const SizedBox(width: 4),
-                          SoftPressButton(
-                            onTap: _openCountRecordTutorial,
-                            size: SoftPressSize.small,
-                            borderRadius: 20,
-                            isDarkSurface: false,
-                            liftWhenIdle: true,
-                            child: const Padding(
-                              padding: EdgeInsets.all(8),
-                              child: Icon(
-                                Icons.school_outlined,
-                                color: DailyPalette.moduleCountRecord,
-                                size: 22,
-                              ),
-                            ),
-                          ),
                           SoftPressButton(
                             onTap: onBack,
                             size: SoftPressSize.small,
