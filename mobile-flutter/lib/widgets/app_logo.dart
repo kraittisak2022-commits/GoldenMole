@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// โลโก้ GOLDEN MOLE (`assets/branding/app_logo.png`)
+/// Full brand lockup: gold mole + FOR USER / GOLDEN MOLE (`assets/branding/app_logo.png`)
 class AppLogo extends StatelessWidget {
   const AppLogo({
     super.key,
