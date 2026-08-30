@@ -12638,49 +12638,61 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     // แก้รายการเดิม: แสดงเฉพาะส่วนต่างจากค่าที่บันทึกไว้
     final pendingMain = editing ? (liters - priorLiters) : liters;
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(phonePortrait ? 12 : 18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(phonePortrait ? 18 : 22),
         border: Border.all(color: const Color(0xFFE3ECF7)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            editing ? 'แก้ไขน้ำมันเข้าถัง' : 'เพิ่มน้ำมันเข้าถัง',
+            editing
+                ? (phonePortrait ? 'แก้ไขน้ำมันเข้าถัง' : 'แก้ไขน้ำมันเข้าถัง')
+                : (phonePortrait ? 'เพิ่มน้ำมันเข้าถัง' : 'เพิ่มน้ำมันเข้าถัง'),
             style: GoogleFonts.kanit(
-              fontSize: 24,
+              fontSize: phonePortrait ? 18 : 24,
               fontWeight: FontWeight.w800,
               color: const Color(0xFF2E7D32),
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: phonePortrait ? 4 : 6),
           Text(
             editing
-                ? 'โหลดรายการของวันนี้แล้ว — แก้ค่าแล้วกดอัปเดต'
-                : 'รถน้ำมันมาเติมดีเซลเข้าถังหลัก — กรอกจำนวนลิตรและเวลา '
-                    '(ราคาใส่ทีหลังได้)',
+                ? (phonePortrait
+                    ? 'โหลดของวันนี้แล้ว — แก้แล้วกดอัปเดต'
+                    : 'โหลดรายการของวันนี้แล้ว — แก้ค่าแล้วกดอัปเดต')
+                : (phonePortrait
+                    ? 'รถน้ำมันเติมดีเซลเข้าถังหลัก'
+                    : 'รถน้ำมันมาเติมดีเซลเข้าถังหลัก — กรอกจำนวนลิตรและเวลา '
+                        '(ราคาใส่ทีหลังได้)'),
             style: GoogleFonts.kanit(
-              fontSize: 13,
+              fontSize: phonePortrait ? 12.5 : 13,
               fontWeight: FontWeight.w500,
               color: Colors.black54,
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: phonePortrait ? 10 : 14),
           _buildFuelStockBanner(
             pendingMainDelta: pendingMain == 0 ? null : pendingMain,
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: phonePortrait ? 8 : 10),
           Align(
             alignment: Alignment.centerLeft,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: EdgeInsets.symmetric(
+                horizontal: phonePortrait ? 8 : 10,
+                vertical: phonePortrait ? 4 : 5,
+              ),
               decoration: BoxDecoration(
                 color: const Color(0xFFE8F5E9),
                 borderRadius: BorderRadius.circular(999),
@@ -12689,14 +12701,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               child: Text(
                 'ดีเซล',
                 style: GoogleFonts.kanit(
-                  fontSize: 13.5,
+                  fontSize: phonePortrait ? 12.5 : 13.5,
                   fontWeight: FontWeight.w800,
                   color: const Color(0xFF2E7D32),
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: phonePortrait ? 10 : 14),
           TextFormField(
             controller: _fuelStockInLitersController,
             readOnly: true,
@@ -12712,15 +12724,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
             style: GoogleFonts.kanit(
               color: const Color(0xFF1D2A3A),
-              fontSize: 20,
+              fontSize: phonePortrait ? 17 : 20,
               fontWeight: FontWeight.w800,
             ),
-            decoration: const InputDecoration(
-              labelText: 'จำนวนลิตรที่เติมเข้าถัง',
-              prefixIcon: Icon(Icons.opacity_outlined),
+            decoration: InputDecoration(
+              labelText: phonePortrait
+                  ? 'จำนวนลิตร'
+                  : 'จำนวนลิตรที่เติมเข้าถัง',
+              prefixIcon: const Icon(Icons.opacity_outlined),
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: phonePortrait ? 10 : 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -12740,17 +12754,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                   style: GoogleFonts.kanit(
                     color: const Color(0xFF1D2A3A),
-                    fontSize: 20,
+                    fontSize: phonePortrait ? 17 : 20,
                     fontWeight: FontWeight.w800,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'ราคาต่อลิตร (ไม่บังคับ)',
-                    helperText: 'กรอกทีหลังได้',
-                    prefixIcon: Icon(Icons.price_change_outlined),
+                  decoration: InputDecoration(
+                    labelText: phonePortrait
+                        ? 'ราคา/ลิตร'
+                        : 'ราคาต่อลิตร (ไม่บังคับ)',
+                    helperText: phonePortrait ? null : 'กรอกทีหลังได้',
+                    prefixIcon: const Icon(Icons.price_change_outlined),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: phonePortrait ? 8 : 10),
               Expanded(
                 child: TextFormField(
                   controller: _fuelStockInTimeController,
@@ -12758,18 +12774,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   onTap: () => _pickFuelTimeInto(_fuelStockInTimeController),
                   style: GoogleFonts.kanit(
                     color: const Color(0xFF1D2A3A),
-                    fontSize: 20,
+                    fontSize: phonePortrait ? 17 : 20,
                     fontWeight: FontWeight.w800,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'เวลาที่เติม',
-                    prefixIcon: Icon(Icons.access_time_outlined),
+                  decoration: InputDecoration(
+                    labelText: phonePortrait ? 'เวลา' : 'เวลาที่เติม',
+                    prefixIcon: const Icon(Icons.access_time_outlined),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: phonePortrait ? 10 : 12),
           TextFormField(
             controller: _fuelStockInAmountController,
             readOnly: true,
@@ -12782,39 +12798,45 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
             style: GoogleFonts.kanit(
               color: const Color(0xFF1D2A3A),
-              fontSize: 20,
+              fontSize: phonePortrait ? 17 : 20,
               fontWeight: FontWeight.w800,
             ),
-            decoration: const InputDecoration(
-              labelText: 'จำนวนเงินรวม (ไม่บังคับ)',
-              helperText:
-                  'มีราคาแล้วจะคำนวณให้อัตโนมัติ — ว่างไว้ก่อนได้',
-              prefixIcon: Icon(Icons.payments_outlined),
+            decoration: InputDecoration(
+              labelText: phonePortrait
+                  ? 'เงินรวม (ไม่บังคับ)'
+                  : 'จำนวนเงินรวม (ไม่บังคับ)',
+              helperText: phonePortrait
+                  ? null
+                  : 'มีราคาแล้วจะคำนวณให้อัตโนมัติ — ว่างไว้ก่อนได้',
+              prefixIcon: const Icon(Icons.payments_outlined),
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: phonePortrait ? 12 : 16),
           _SmoothPressable(
             enabled: !_saving,
             child: FilledButton.icon(
               onPressed: _saving ? null : _saveFuelStockInEntry,
               icon: Icon(
                 editing ? Icons.save_outlined : Icons.add_circle_outline,
+                size: phonePortrait ? 20 : 24,
               ),
               label: Text(
-                editing ? 'อัปเดตรายการนี้' : 'บันทึกเพิ่มน้ำมัน',
+                editing
+                    ? (phonePortrait ? 'อัปเดต' : 'อัปเดตรายการนี้')
+                    : (phonePortrait ? 'บันทึกเพิ่มน้ำมัน' : 'บันทึกเพิ่มน้ำมัน'),
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w800,
-                  fontSize: 20,
+                  fontSize: phonePortrait ? 16 : 20,
                 ),
               ),
               style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(62),
+                minimumSize: Size.fromHeight(phonePortrait ? 48 : 62),
                 backgroundColor: const Color(0xFF2E7D32),
               ),
             ),
           ),
           if (dayRows.isNotEmpty) ...[
-            const SizedBox(height: 16),
+            SizedBox(height: phonePortrait ? 12 : 16),
             Text(
               'รายการรับเข้าวันนี้',
               style: GoogleFonts.kanit(
@@ -12966,6 +12988,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
     final editing =
         _fuelWithdrawTxId != null && _fuelWithdrawTxId!.isNotEmpty;
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
 
     Widget purposeTile(FuelWithdrawPurpose purpose, IconData icon) {
       final isSelected = _fuelWithdrawPurpose == purpose;
@@ -13047,10 +13072,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(phonePortrait ? 12 : 18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(phonePortrait ? 18 : 22),
         border: Border.all(color: const Color(0xFFE3ECF7)),
       ),
       child: Column(
@@ -13059,27 +13084,31 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           Text(
             'เบิกน้ำมัน',
             style: GoogleFonts.kanit(
-              fontSize: 24,
+              fontSize: phonePortrait ? 18 : 24,
               fontWeight: FontWeight.w800,
               color: const Color(0xFFEF6C00),
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: phonePortrait ? 4 : 6),
           Text(
             editing
-                ? 'โหลดรายการของวันนี้แล้ว — แก้ค่าแล้วกดอัปเดต '
-                    '(เปลี่ยนวัตถุประสงค์ได้ถ้าต้องการดูรายการอื่น)'
-                : 'เติมเครื่องจักร = โอนเข้าถังสำรอง · '
-                    'ปั่นไฟ/นายกเบิก = หักจากถังหลัก · '
-                    'รถตาเปลื่ยนบันทึกร่วมกับเมนูเติมน้ำมันรถยนต์',
+                ? (phonePortrait
+                    ? 'โหลดของวันนี้แล้ว — แก้แล้วกดอัปเดต'
+                    : 'โหลดรายการของวันนี้แล้ว — แก้ค่าแล้วกดอัปเดต '
+                        '(เปลี่ยนวัตถุประสงค์ได้ถ้าต้องการดูรายการอื่น)')
+                : (phonePortrait
+                    ? 'เครื่องจักร→สำรอง · อื่นๆ→ถังหลัก'
+                    : 'เติมเครื่องจักร = โอนเข้าถังสำรอง · '
+                        'ปั่นไฟ/นายกเบิก = หักจากถังหลัก · '
+                        'รถตาเปลื่ยนบันทึกร่วมกับเมนูเติมน้ำมันรถยนต์'),
             style: GoogleFonts.kanit(
-              fontSize: 13,
+              fontSize: phonePortrait ? 12.5 : 13,
               fontWeight: FontWeight.w500,
               color: Colors.black54,
               height: 1.35,
             ),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: phonePortrait ? 10 : 14),
           _buildFuelStockBanner(
             pendingMainDelta: liters > 0 ? -liters : 0,
             pendingReserveDelta:
@@ -13088,7 +13117,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     ? liters
                     : 0,
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: phonePortrait ? 10 : 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -13194,16 +13223,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               onPressed: _saving ? null : _saveFuelWithdrawEntry,
               icon: Icon(
                 editing ? Icons.edit_outlined : Icons.output_rounded,
+                size: phonePortrait ? 20 : 24,
               ),
               label: Text(
-                editing ? 'อัปเดตรายการนี้' : 'บันทึกเบิกน้ำมัน',
+                editing
+                    ? (phonePortrait ? 'อัปเดต' : 'อัปเดตรายการนี้')
+                    : 'บันทึกเบิกน้ำมัน',
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w800,
-                  fontSize: 20,
+                  fontSize: phonePortrait ? 16 : 20,
                 ),
               ),
               style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(62),
+                minimumSize: Size.fromHeight(phonePortrait ? 48 : 62),
                 backgroundColor: const Color(0xFFEF6C00),
               ),
             ),
@@ -14115,8 +14147,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             MediaQuery.sizeOf(context).width;
     final compactShell =
         phonePortrait &&
-        (_isMaintenanceMode || _isDailyEventMode || _isLaborLeaveMode);
-    final shellPad = compactShell ? 8.0 : 16.0;
+        (_isMaintenanceMode ||
+            _isDailyEventMode ||
+            _isLaborLeaveMode ||
+            _isIncomeUtilitiesEntryMode);
+    final shellPad = compactShell
+        ? (_isIncomeUtilitiesEntryMode ? 12.0 : 8.0)
+        : 16.0;
     return [
       _buildModuleHistorySection(),
       RepaintBoundary(
