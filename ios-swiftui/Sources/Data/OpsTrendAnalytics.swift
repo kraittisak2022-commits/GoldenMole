@@ -30,7 +30,7 @@ enum OpsTrendPeriod: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// Daily trip target used for score / attainment (matches trip board target).
-    var tripDailyTarget: Double { 250 }
+    var tripDailyTarget: Double { 200 }
 }
 
 enum OpsTrendFocus: String, CaseIterable, Identifiable, Sendable {
