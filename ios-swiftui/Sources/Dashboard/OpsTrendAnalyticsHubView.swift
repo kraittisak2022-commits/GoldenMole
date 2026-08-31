@@ -34,6 +34,7 @@ struct OpsTrendAnalyticsHubView: View {
                     if focus == .trip || focus == .both {
                         sessionSplitCard
                     }
+                    advancedSection
                     detailCards
                     insightsCard
                 }
@@ -590,6 +591,181 @@ struct OpsTrendAnalyticsHubView: View {
                     miniStat("บ่ายทั้งช่วง", OpsTrendAnalytics.formatCompact(afternoonTotal), "เที่ยว")
                 }
             }
+        }
+    }
+
+    // MARK: - Advanced speed / volume
+
+    private var advancedSection: some View {
+        let modes: [OpsTrendAdvancedMode] = {
+            switch focus {
+            case .both: return [report.tripAdvanced, report.sandAdvanced]
+            case .trip: return [report.tripAdvanced]
+            case .sand: return [report.sandAdvanced]
+            }
+        }()
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("วิเคราะห์ขั้นสูง · ความเร็ว × ปริมาณ")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+            Text(period == .week ? "จากเวลาแตะรอบจริงรายวัน" : "รวมเป็นสัปดาห์ย่อยจากเวลาแตะรอบ")
+                .font(.caption)
+                .foregroundStyle(AppTheme.inkMuted)
+
+            ForEach(Array(modes.enumerated()), id: \.offset) { _, mode in
+                advancedModeCard(mode)
+            }
+
+            if focus == .both {
+                advancedHeadToHead
+            }
+        }
+    }
+
+    private func advancedModeCard(_ mode: OpsTrendAdvancedMode) -> some View {
+        let accent = mode.title.contains("ทราย") ? AppTheme.brand : AppTheme.info
+        return SectionCard(
+            "\(mode.title) · Pro",
+            systemImage: "speedometer",
+            subtitle: "คะแนนรวม \(mode.combinedScore) · ความเร็ว \(mode.speedScore) · ปริมาณ \(mode.volumeScore)"
+        ) {
+            HStack(spacing: 10) {
+                advancedScorePill("รวม", mode.combinedScore, accent)
+                advancedScorePill("เร็ว", mode.speedScore, Color(hex: "#16a34a"))
+                advancedScorePill("ปริมาณ", mode.volumeScore, AppTheme.warning)
+                Spacer(minLength: 0)
+                paceChip(mode.pace, accent: accent)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                miniStat("ปริมาณรวม", OpsTrendAnalytics.formatCompact(mode.volumeTotal), mode.unit)
+                miniStat("เฉลี่ย/วัน", OpsTrendAnalytics.formatCompact(mode.volumeAvgPerDay), mode.unit)
+                miniStat("จังหวะเฉลี่ย", OpsTrendAnalytics.formatIntervalSec(mode.avgIntervalSec), "")
+                miniStat("อัตราผลิต", OpsTrendAnalytics.formatPerHour(mode.throughputPerHour), "")
+                miniStat("ชม.ทำงาน", CountRecordAnalytics.formatDurationHours(mode.activeHoursTotal), "")
+                miniStat(
+                    "คิวรวม",
+                    mode.cubicTotal > 0 ? OpsTrendAnalytics.formatCompact(mode.cubicTotal) : "—",
+                    "คิว"
+                )
+            }
+
+            HStack(spacing: 12) {
+                deltaBadge("ปริมาณ", mode.volumeChangePct)
+                deltaBadge("ความเร็ว", mode.speedChangePct)
+                deltaBadge("อัตรา/ชม.", mode.throughputChangePct)
+            }
+
+            if !mode.seriesLabels.isEmpty {
+                Text("อัตราผลิตต่อช่วง")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
+                Chart {
+                    ForEach(Array(mode.seriesLabels.enumerated()), id: \.offset) { i, label in
+                        let v = i < mode.throughputSeries.count ? mode.throughputSeries[i] : 0
+                        BarMark(x: .value("ช่วง", label), y: .value("ต่อชม.", v))
+                            .foregroundStyle(accent.opacity(0.9))
+                            .cornerRadius(3)
+                    }
+                }
+                .frame(height: 140)
+                .chartYAxis {
+                    AxisMarks(position: .leading) { _ in
+                        AxisGridLine().foregroundStyle(AppTheme.hairline)
+                        AxisValueLabel().foregroundStyle(AppTheme.inkMuted)
+                    }
+                }
+
+                Text("จังหวะเฉลี่ย (วินาที) — ยิ่งต่ำยิ่งเร็ว")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
+                    .padding(.top, 4)
+                Chart {
+                    ForEach(Array(mode.seriesLabels.enumerated()), id: \.offset) { i, label in
+                        let v = i < mode.intervalSeries.count ? mode.intervalSeries[i] : 0
+                        if v > 0 {
+                            LineMark(x: .value("ช่วง", label), y: .value("วินาที", v))
+                                .foregroundStyle(accent)
+                                .interpolationMethod(.catmullRom)
+                            PointMark(x: .value("ช่วง", label), y: .value("วินาที", v))
+                                .foregroundStyle(accent)
+                        }
+                    }
+                }
+                .frame(height: 130)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(mode.insights.prefix(4).enumerated()), id: \.offset) { _, line in
+                    Text("· \(line)")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func advancedScorePill(_ title: String, _ score: Int, _ color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text("\(score)")
+                .font(.subheadline.weight(.bold).monospacedDigit())
+                .foregroundStyle(color)
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(AppTheme.inkMuted)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(color.opacity(0.12))
+        )
+    }
+
+    private func deltaBadge(_ title: String, _ pct: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(AppTheme.inkMuted)
+            Text(OpsTrendAnalytics.formatSignedPct(pct))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(deltaColor(pct))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(AppTheme.surfaceSoft)
+        )
+    }
+
+    private var advancedHeadToHead: some View {
+        SectionCard(
+            "เทียบเที่ยวรถ × ร่อนทราย",
+            systemImage: "flag.checkered",
+            subtitle: "คะแนนขั้นสูงในช่วงนี้"
+        ) {
+            GroupedBarChartView(
+                labels: ["ความเร็ว", "ปริมาณ", "รวม"],
+                seriesA: [
+                    Double(report.tripAdvanced.speedScore),
+                    Double(report.tripAdvanced.volumeScore),
+                    Double(report.tripAdvanced.combinedScore),
+                ],
+                seriesB: [
+                    Double(report.sandAdvanced.speedScore),
+                    Double(report.sandAdvanced.volumeScore),
+                    Double(report.sandAdvanced.combinedScore),
+                ],
+                colorA: AppTheme.info,
+                colorB: AppTheme.brand,
+                labelA: "เที่ยวรถ",
+                labelB: "ร่อนทราย"
+            )
         }
     }
 

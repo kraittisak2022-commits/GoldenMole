@@ -178,6 +178,115 @@ struct OpsTrendBucketScore: Identifiable, Sendable {
     let sandTotal: Double
 }
 
+/// Per-bucket pace/volume sample derived from lap timestamps.
+struct OpsTrendPacePoint: Identifiable, Sendable {
+    let id: String
+    let label: String
+    let startKey: String
+    let endKey: String
+    let dayCount: Int
+    let tripRounds: Int
+    let sandRounds: Int
+    let tripCubic: Double
+    let sandCubic: Double
+    let tripAvgIntervalSec: Double?
+    let sandAvgIntervalSec: Double?
+    let tripPerHour: Double
+    let sandPerHour: Double
+    let tripActiveHours: Double
+    let sandActiveHours: Double
+    let tripIntervalSamples: Int
+    let sandIntervalSamples: Int
+    let tripPeakHourLabel: String?
+    let sandPeakHourLabel: String?
+}
+
+/// Advanced speed + volume package for one mode (trip or sand).
+struct OpsTrendAdvancedMode: Sendable {
+    let title: String
+    let unit: String
+    let volumeTotal: Double
+    let volumeAvgPerDay: Double
+    let volumePeak: Double
+    let volumePeakLabel: String
+    let volumeChangePct: Double?
+    let cubicTotal: Double
+    let avgIntervalSec: Double?
+    let prevAvgIntervalSec: Double?
+    /// Positive = faster (interval shorter). Derived from interval change.
+    let speedChangePct: Double?
+    let throughputPerHour: Double
+    let prevThroughputPerHour: Double
+    let throughputChangePct: Double?
+    let activeHoursTotal: Double
+    let speedScore: Int
+    let volumeScore: Int
+    let combinedScore: Int
+    let pace: OpsTrendPace
+    let peakHourLabel: String?
+    let seriesLabels: [String]
+    let intervalSeries: [Double]
+    let throughputSeries: [Double]
+    let volumeSeries: [Double]
+    let insights: [String]
+
+    static let emptyTrip = OpsTrendAdvancedMode(
+        title: "เที่ยวรถ",
+        unit: "เที่ยว",
+        volumeTotal: 0,
+        volumeAvgPerDay: 0,
+        volumePeak: 0,
+        volumePeakLabel: "—",
+        volumeChangePct: nil,
+        cubicTotal: 0,
+        avgIntervalSec: nil,
+        prevAvgIntervalSec: nil,
+        speedChangePct: nil,
+        throughputPerHour: 0,
+        prevThroughputPerHour: 0,
+        throughputChangePct: nil,
+        activeHoursTotal: 0,
+        speedScore: 0,
+        volumeScore: 0,
+        combinedScore: 0,
+        pace: .newBaseline,
+        peakHourLabel: nil,
+        seriesLabels: [],
+        intervalSeries: [],
+        throughputSeries: [],
+        volumeSeries: [],
+        insights: []
+    )
+
+    static let emptySand = OpsTrendAdvancedMode(
+        title: "ร่อนทราย",
+        unit: "รอบ",
+        volumeTotal: 0,
+        volumeAvgPerDay: 0,
+        volumePeak: 0,
+        volumePeakLabel: "—",
+        volumeChangePct: nil,
+        cubicTotal: 0,
+        avgIntervalSec: nil,
+        prevAvgIntervalSec: nil,
+        speedChangePct: nil,
+        throughputPerHour: 0,
+        prevThroughputPerHour: 0,
+        throughputChangePct: nil,
+        activeHoursTotal: 0,
+        speedScore: 0,
+        volumeScore: 0,
+        combinedScore: 0,
+        pace: .newBaseline,
+        peakHourLabel: nil,
+        seriesLabels: [],
+        intervalSeries: [],
+        throughputSeries: [],
+        volumeSeries: [],
+        insights: []
+    )
+}
+
 struct OpsTrendReport: Sendable {
     let period: OpsTrendPeriod
     let filter: DateFilter
@@ -189,6 +298,9 @@ struct OpsTrendReport: Sendable {
     let sand: OpsTrendMetricCard
     let scorecard: OpsTrendScorecard
     let bucketScores: [OpsTrendBucketScore]
+    let tripAdvanced: OpsTrendAdvancedMode
+    let sandAdvanced: OpsTrendAdvancedMode
+    let pacePoints: [OpsTrendPacePoint]
     let insights: [String]
     let coverageDays: Int
     let activeDays: Int
@@ -249,6 +361,9 @@ struct OpsTrendReport: Sendable {
             sand: emptyCard,
             scorecard: emptyScore,
             bucketScores: [],
+            tripAdvanced: .emptyTrip,
+            sandAdvanced: .emptySand,
+            pacePoints: [],
             insights: [],
             coverageDays: 0,
             activeDays: 0,
@@ -379,6 +494,57 @@ enum OpsTrendAnalytics {
             ratio: ratio
         )
 
+        let dailyPace = dayKeys.map {
+            dayPace(dayKey: $0, byDay: byDay, transactions: transactions, employees: employees)
+        }
+        let prevDailyPace = prevKeys.map {
+            dayPace(dayKey: $0, byDay: byDay, transactions: transactions, employees: employees)
+        }
+        let pacePoints: [OpsTrendPacePoint]
+        let prevPacePoints: [OpsTrendPacePoint]
+        switch period {
+        case .week:
+            pacePoints = dailyPace
+            prevPacePoints = alignPaceSeries(prevDailyPace, toCount: dailyPace.count)
+        case .month:
+            let buckets = bucketPaceWeekly(dailyPace)
+            pacePoints = buckets
+            prevPacePoints = alignPaceSeries(bucketPaceWeekly(prevDailyPace), toCount: buckets.count)
+        }
+
+        let tripAdvanced = buildAdvancedMode(
+            title: "เที่ยวรถ",
+            unit: "เที่ยว",
+            period: period,
+            points: pacePoints,
+            prevPoints: prevPacePoints,
+            rounds: \.tripRounds,
+            cubic: \.tripCubic,
+            interval: \.tripAvgIntervalSec,
+            perHour: \.tripPerHour,
+            activeHours: \.tripActiveHours,
+            samples: \.tripIntervalSamples,
+            peak: \.tripPeakHourLabel,
+            idealIntervalSec: 150,
+            volumeDailyTarget: period.tripDailyTarget
+        )
+        let sandAdvanced = buildAdvancedMode(
+            title: "ร่อนทราย",
+            unit: "รอบ",
+            period: period,
+            points: pacePoints,
+            prevPoints: prevPacePoints,
+            rounds: \.sandRounds,
+            cubic: \.sandCubic,
+            interval: \.sandAvgIntervalSec,
+            perHour: \.sandPerHour,
+            activeHours: \.sandActiveHours,
+            samples: \.sandIntervalSamples,
+            peak: \.sandPeakHourLabel,
+            idealIntervalSec: 240,
+            volumeDailyTarget: 40
+        )
+
         return OpsTrendReport(
             period: period,
             filter: filter,
@@ -390,6 +556,9 @@ enum OpsTrendAnalytics {
             sand: sand,
             scorecard: scored,
             bucketScores: bucketScores,
+            tripAdvanced: tripAdvanced,
+            sandAdvanced: sandAdvanced,
+            pacePoints: pacePoints,
             insights: insights,
             coverageDays: daily.count,
             activeDays: activeDays,
@@ -820,5 +989,300 @@ enum OpsTrendAnalytics {
     nonisolated static func formatSignedInt(_ value: Int) -> String {
         let sign = value > 0 ? "+" : ""
         return "\(sign)\(value)"
+    }
+
+    nonisolated static func formatIntervalSec(_ sec: Double?) -> String {
+        CountRecordAnalytics.formatPace(sec)
+    }
+
+    nonisolated static func formatPerHour(_ v: Double) -> String {
+        guard v > 0 else { return "—" }
+        return String(format: "%.1f/ชม.", v)
+    }
+
+    // MARK: - Advanced speed / volume
+
+    private nonisolated static func dayPace(
+        dayKey: String,
+        byDay: [String: [Transaction]],
+        transactions: [Transaction],
+        employees: [Employee]
+    ) -> OpsTrendPacePoint {
+        let dayTx = byDay[dayKey] ?? transactions.filter { String($0.date.prefix(10)) == dayKey }
+        let tripUnits = CountRecordLogic.buildTripUnits(dayKey: dayKey, transactions: dayTx, employees: employees)
+        let sand = CountRecordLogic.buildSandUnit(dayKey: dayKey, transactions: dayTx)
+        let tripLaps = tripUnits.flatMap(\.lapTimes)
+        let sandLaps = sand?.lapTimes ?? []
+        let tripRounds = tripUnits.reduce(0) { $0 + $1.rounds }
+        let sandRounds = sand?.rounds ?? 0
+
+        let tripIntervals = CountRecordAnalytics.computeLapIntervals(lapTimes: tripLaps, dayKey: dayKey)
+        let sandIntervals = CountRecordAnalytics.computeLapIntervals(lapTimes: sandLaps, dayKey: dayKey)
+        let tripStats = CountRecordAnalytics.computeIntervalStats(tripIntervals)
+        let sandStats = CountRecordAnalytics.computeIntervalStats(sandIntervals)
+        let tripDur = CountRecordAnalytics.computeWorkDuration(lapTimes: tripLaps, dayKey: dayKey)
+        let sandDur = CountRecordAnalytics.computeWorkDuration(lapTimes: sandLaps, dayKey: dayKey)
+        let tripHours = tripDur?.totalActiveHours ?? 0
+        let sandHours = sandDur?.totalActiveHours ?? 0
+        let tripPeak = CountRecordAnalytics.computePeakHour(
+            CountRecordAnalytics.computeHourlyHeatmap(lapTimes: tripLaps, dayKey: dayKey)
+        )
+        let sandPeak = CountRecordAnalytics.computePeakHour(
+            CountRecordAnalytics.computeHourlyHeatmap(lapTimes: sandLaps, dayKey: dayKey)
+        )
+        let tripCubic = dayTx
+            .filter { CountRecordLogic.isCountRecordVehicleRow($0) }
+            .reduce(0.0) { $0 + ($1.totalCubic ?? $1.perCarCubic ?? 0) }
+        let sandCubic = dayTx
+            .filter { $0.category == "DailyLog" && $0.subCategory == "Sand" }
+            .reduce(0.0) { $0 + DashboardAggregations.sandWashedCubic($1) }
+
+        return OpsTrendPacePoint(
+            id: dayKey,
+            label: DashboardAggregations.dayLabel(dayKey),
+            startKey: dayKey,
+            endKey: dayKey,
+            dayCount: 1,
+            tripRounds: tripRounds,
+            sandRounds: sandRounds,
+            tripCubic: tripCubic,
+            sandCubic: sandCubic,
+            tripAvgIntervalSec: tripStats.avg,
+            sandAvgIntervalSec: sandStats.avg,
+            tripPerHour: tripHours > 0 ? Double(tripRounds) / tripHours : 0,
+            sandPerHour: sandHours > 0 ? Double(sandRounds) / sandHours : 0,
+            tripActiveHours: tripHours,
+            sandActiveHours: sandHours,
+            tripIntervalSamples: tripIntervals.count,
+            sandIntervalSamples: sandIntervals.count,
+            tripPeakHourLabel: tripPeak?.label,
+            sandPeakHourLabel: sandPeak?.label
+        )
+    }
+
+    private nonisolated static func bucketPaceWeekly(_ daily: [OpsTrendPacePoint]) -> [OpsTrendPacePoint] {
+        guard !daily.isEmpty else { return [] }
+        var out: [OpsTrendPacePoint] = []
+        var i = 0
+        var week = 1
+        while i < daily.count {
+            let end = min(i + 7, daily.count)
+            let slice = Array(daily[i..<end])
+            out.append(mergePacePoints(slice, id: "pw\(week)-\(slice.first!.startKey)", label: "W\(week)"))
+            week += 1
+            i = end
+        }
+        return out
+    }
+
+    private nonisolated static func mergePacePoints(_ slice: [OpsTrendPacePoint], id: String, label: String) -> OpsTrendPacePoint {
+        let tripRounds = slice.reduce(0) { $0 + $1.tripRounds }
+        let sandRounds = slice.reduce(0) { $0 + $1.sandRounds }
+        let tripHours = slice.reduce(0.0) { $0 + $1.tripActiveHours }
+        let sandHours = slice.reduce(0.0) { $0 + $1.sandActiveHours }
+        let tripSamples = slice.reduce(0) { $0 + $1.tripIntervalSamples }
+        let sandSamples = slice.reduce(0) { $0 + $1.sandIntervalSamples }
+
+        func weightedInterval(_ keyPath: KeyPath<OpsTrendPacePoint, Double?>, samples: KeyPath<OpsTrendPacePoint, Int>) -> Double? {
+            var sum = 0.0
+            var n = 0
+            for p in slice {
+                guard let v = p[keyPath: keyPath], p[keyPath: samples] > 0 else { continue }
+                sum += v * Double(p[keyPath: samples])
+                n += p[keyPath: samples]
+            }
+            return n > 0 ? sum / Double(n) : nil
+        }
+
+        let peakTrip = slice.max(by: { $0.tripRounds < $1.tripRounds })?.tripPeakHourLabel
+        let peakSand = slice.max(by: { $0.sandRounds < $1.sandRounds })?.sandPeakHourLabel
+
+        return OpsTrendPacePoint(
+            id: id,
+            label: label,
+            startKey: slice.first!.startKey,
+            endKey: slice.last!.endKey,
+            dayCount: slice.reduce(0) { $0 + $1.dayCount },
+            tripRounds: tripRounds,
+            sandRounds: sandRounds,
+            tripCubic: slice.reduce(0) { $0 + $1.tripCubic },
+            sandCubic: slice.reduce(0) { $0 + $1.sandCubic },
+            tripAvgIntervalSec: weightedInterval(\.tripAvgIntervalSec, samples: \.tripIntervalSamples),
+            sandAvgIntervalSec: weightedInterval(\.sandAvgIntervalSec, samples: \.sandIntervalSamples),
+            tripPerHour: tripHours > 0 ? Double(tripRounds) / tripHours : 0,
+            sandPerHour: sandHours > 0 ? Double(sandRounds) / sandHours : 0,
+            tripActiveHours: tripHours,
+            sandActiveHours: sandHours,
+            tripIntervalSamples: tripSamples,
+            sandIntervalSamples: sandSamples,
+            tripPeakHourLabel: peakTrip,
+            sandPeakHourLabel: peakSand
+        )
+    }
+
+    private nonisolated static func alignPaceSeries(_ points: [OpsTrendPacePoint], toCount count: Int) -> [OpsTrendPacePoint] {
+        if points.count == count { return points }
+        if points.count > count { return Array(points.suffix(count)) }
+        let pad = count - points.count
+        let blanks: [OpsTrendPacePoint] = (0..<pad).map { idx in
+            OpsTrendPacePoint(
+                id: "ppad-\(idx)",
+                label: "—",
+                startKey: "",
+                endKey: "",
+                dayCount: 1,
+                tripRounds: 0,
+                sandRounds: 0,
+                tripCubic: 0,
+                sandCubic: 0,
+                tripAvgIntervalSec: nil,
+                sandAvgIntervalSec: nil,
+                tripPerHour: 0,
+                sandPerHour: 0,
+                tripActiveHours: 0,
+                sandActiveHours: 0,
+                tripIntervalSamples: 0,
+                sandIntervalSamples: 0,
+                tripPeakHourLabel: nil,
+                sandPeakHourLabel: nil
+            )
+        }
+        return blanks + points
+    }
+
+    private nonisolated static func buildAdvancedMode(
+        title: String,
+        unit: String,
+        period: OpsTrendPeriod,
+        points: [OpsTrendPacePoint],
+        prevPoints: [OpsTrendPacePoint],
+        rounds: KeyPath<OpsTrendPacePoint, Int>,
+        cubic: KeyPath<OpsTrendPacePoint, Double>,
+        interval: KeyPath<OpsTrendPacePoint, Double?>,
+        perHour: KeyPath<OpsTrendPacePoint, Double>,
+        activeHours: KeyPath<OpsTrendPacePoint, Double>,
+        samples: KeyPath<OpsTrendPacePoint, Int>,
+        peak: KeyPath<OpsTrendPacePoint, String?>,
+        idealIntervalSec: Double,
+        volumeDailyTarget: Double
+    ) -> OpsTrendAdvancedMode {
+        let labels = points.map(\.label)
+        let volumeSeries = points.map { Double($0[keyPath: rounds]) }
+        let throughputSeries = points.map { $0[keyPath: perHour] }
+        let intervalSeries = points.map { $0[keyPath: interval] ?? 0 }
+
+        let volumeTotal = volumeSeries.reduce(0, +)
+        let days = max(1, points.reduce(0) { $0 + $1.dayCount })
+        let prevDays = max(1, prevPoints.reduce(0) { $0 + $1.dayCount })
+        let volumeAvg = volumeTotal / Double(days)
+        let prevVolume = prevPoints.reduce(0.0) { $0 + Double($1[keyPath: rounds]) }
+        let prevVolumeAvg = prevVolume / Double(prevDays)
+        let volumeChange = DashboardAggregations.pctChangeVsPrev(cur: volumeAvg, prev: prevVolumeAvg)
+
+        var peakVal = 0.0
+        var peakLabel = "—"
+        for p in points {
+            let v = Double(p[keyPath: rounds])
+            if v >= peakVal {
+                peakVal = v
+                peakLabel = p.label
+            }
+        }
+
+        func weightedAvgInterval(_ list: [OpsTrendPacePoint]) -> Double? {
+            var sum = 0.0
+            var n = 0
+            for p in list {
+                guard let v = p[keyPath: interval], p[keyPath: samples] > 0 else { continue }
+                sum += v * Double(p[keyPath: samples])
+                n += p[keyPath: samples]
+            }
+            return n > 0 ? sum / Double(n) : nil
+        }
+
+        let avgInterval = weightedAvgInterval(points)
+        let prevInterval = weightedAvgInterval(prevPoints)
+        // Shorter interval = faster → invert sign of pct change on interval
+        let speedChange: Double? = {
+            guard let avgInterval, let prevInterval, prevInterval > 0 else { return nil }
+            return ((prevInterval - avgInterval) / prevInterval) * 100
+        }()
+
+        let hours = points.reduce(0.0) { $0 + $1[keyPath: activeHours] }
+        let prevHours = prevPoints.reduce(0.0) { $0 + $1[keyPath: activeHours] }
+        let throughput = hours > 0 ? volumeTotal / hours : 0
+        let prevThroughput = prevHours > 0 ? prevVolume / prevHours : 0
+        let throughputChange = DashboardAggregations.pctChangeVsPrev(cur: throughput, prev: prevThroughput)
+
+        let cubicTotal = points.reduce(0.0) { $0 + $1[keyPath: cubic] }
+        let peakHour = points.max(by: { $0[keyPath: rounds] < $1[keyPath: rounds] })?[keyPath: peak]
+
+        let speedScore: Int = {
+            guard let avgInterval, avgInterval > 0 else { return 40 }
+            let ratio = idealIntervalSec / avgInterval
+            return Int(min(100, max(10, ratio * 70)).rounded())
+        }()
+        let volumeScore = Int(min(100, (volumeAvg / max(volumeDailyTarget, 1)) * 100).rounded())
+        let combined = Int((Double(speedScore) * 0.45 + Double(volumeScore) * 0.55).rounded())
+
+        let pace: OpsTrendPace = {
+            if prevVolumeAvg == 0 && volumeAvg > 0 { return .newBaseline }
+            if let speedChange {
+                if speedChange >= 8 { return .faster }
+                if speedChange <= -8 { return .slower }
+            }
+            if let volumeChange {
+                if volumeChange >= 8 { return .faster }
+                if volumeChange <= -8 { return .slower }
+            }
+            return .steady
+        }()
+
+        var insights: [String] = []
+        insights.append("ปริมาณเฉลี่ย \(formatCompact(volumeAvg)) \(unit)/วัน (\(formatSignedPct(volumeChange)) vs \(period.shortLabel)ก่อน)")
+        if let avgInterval {
+            insights.append("จังหวะเฉลี่ย \(formatIntervalSec(avgInterval)) · \(formatSignedPct(speedChange)) ความเร็ว")
+        }
+        if throughput > 0 {
+            insights.append("อัตราผลิต \(formatPerHour(throughput)) (\(formatSignedPct(throughputChange)) vs \(period.shortLabel)ก่อน)")
+        }
+        if hours > 0 {
+            insights.append("ชั่วโมงทำงานรวม \(CountRecordAnalytics.formatDurationHours(hours))")
+        }
+        if let peakHour, !peakHour.isEmpty {
+            insights.append("ชั่วโมงพีคโดยรวม \(peakHour)")
+        }
+        if cubicTotal > 0 {
+            insights.append("คิวรวม \(formatCompact(cubicTotal)) คิว")
+        }
+        insights.append("คะแนนความเร็ว \(speedScore) · ปริมาณ \(volumeScore) · รวมขั้นสูง \(combined)")
+
+        return OpsTrendAdvancedMode(
+            title: title,
+            unit: unit,
+            volumeTotal: volumeTotal,
+            volumeAvgPerDay: volumeAvg,
+            volumePeak: peakVal,
+            volumePeakLabel: peakLabel,
+            volumeChangePct: volumeChange,
+            cubicTotal: cubicTotal,
+            avgIntervalSec: avgInterval,
+            prevAvgIntervalSec: prevInterval,
+            speedChangePct: speedChange,
+            throughputPerHour: throughput,
+            prevThroughputPerHour: prevThroughput,
+            throughputChangePct: throughputChange,
+            activeHoursTotal: hours,
+            speedScore: speedScore,
+            volumeScore: volumeScore,
+            combinedScore: combined,
+            pace: pace,
+            peakHourLabel: peakHour,
+            seriesLabels: labels,
+            intervalSeries: intervalSeries,
+            throughputSeries: throughputSeries,
+            volumeSeries: volumeSeries,
+            insights: insights
+        )
     }
 }
