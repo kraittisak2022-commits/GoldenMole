@@ -434,41 +434,6 @@ void main() {
       const bal = FuelStockBalance(mainDiesel: 100, reserveDiesel: -45.5);
       expect(bal.reserveShortfallLiters, 45.5);
     });
-
-    test('fuelUsageStockAllowsSave permits non-increasing edit when overdrawn', () {
-      expect(
-        fuelUsageStockAllowsSave(
-          liters: 108,
-          available: -130.11,
-          priorLitersSameTank: 108,
-        ),
-        isTrue,
-      );
-      expect(
-        fuelUsageStockAllowsSave(
-          liters: 100,
-          available: -130.11,
-          priorLitersSameTank: 108,
-        ),
-        isTrue,
-      );
-      expect(
-        fuelUsageStockAllowsSave(
-          liters: 120,
-          available: -130.11,
-          priorLitersSameTank: 108,
-        ),
-        isFalse,
-      );
-      expect(
-        fuelUsageStockAllowsSave(
-          liters: 100,
-          available: -130.11,
-          priorLitersSameTank: 0,
-        ),
-        isFalse,
-      );
-    });
   });
 
   group('latest fuel day rows', () {

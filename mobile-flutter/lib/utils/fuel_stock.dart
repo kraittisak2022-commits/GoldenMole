@@ -715,19 +715,6 @@ String formatFuelLiters(double liters) {
   return liters.toStringAsFixed(2);
 }
 
-/// ตรวจว่าบันทึกการใช้ได้เมื่อเทียบกับคงเหลือถัง
-///
-/// [available] = คงเหลือถัง + ลิตรของแถวเดิมที่กำลังแก้ (ถังเดียวกัน)
-/// ถ้าไม่เพิ่มปริมาณจากแถวเดิม อนุญาตแม้ [available] ติดลบ
-bool fuelUsageStockAllowsSave({
-  required double liters,
-  required double available,
-  required double priorLitersSameTank,
-}) {
-  if (liters <= priorLitersSameTank + 1e-9) return true;
-  return liters <= available + 1e-9;
-}
-
 FuelStockBalance _fuelBalanceAdd(
   FuelStockBalance b, {
   required String tank,

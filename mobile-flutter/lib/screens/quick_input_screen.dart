@@ -4988,36 +4988,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           if (priorTx != null) {
             row.txId = priorTx.id;
           }
-          final priorLitersSameTank = priorTx != null &&
-                  fuelUsageTankOf(priorTx) == tank
-              ? fuelTxLiters(priorTx)
-              : 0.0;
-          final available = (fuelTankIsReserve(tank)
-                  ? _fuelStock.reserveDiesel
-                  : _fuelStock.mainDiesel) +
-              priorLitersSameTank;
-          if (!fuelUsageStockAllowsSave(
-            liters: liters,
-            available: available,
-            priorLitersSameTank: priorLitersSameTank,
-          )) {
-            final tankName =
-                fuelTankIsReserve(tank) ? 'ถังสำรอง' : 'ถังหลัก';
-            final need = liters - available;
-            final shortfallHint = available < 0
-                ? '$tankNameติดลบอยู่ ${formatFuelLiters(available.abs())} ลิตร'
-                : '$tankNameเหลือ ${formatFuelLiters(available)} ลิตร';
-            final actionHint = fuelTankIsReserve(tank)
-                ? 'ไปเมนู «เติมเครื่องจักร» โอนจากถังหลักอย่างน้อย '
-                    '${formatFuelLiters(need)} ลิตรก่อน '
-                    'หรือสลับเป็นถังพล่าม/หลักถ้าเติมจากถังนั้น'
-                : 'รับน้ำมันเข้าถังหลักเพิ่มอย่างน้อย '
-                    '${formatFuelLiters(need)} ลิตรก่อน';
-            _failSave(
-              '$shortfallHint — $actionHint ($vehicle)',
-              field: 'ใช้น้ำมัน (ลิตร)',
-            );
-          }
           final txId =
               row.txId ??
               '${DateTime.now().millisecondsSinceEpoch}_fuel_out_$i';
