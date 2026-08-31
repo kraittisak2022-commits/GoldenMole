@@ -30,6 +30,7 @@ import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
 import '../utils/attendance_session_times.dart';
 import '../utils/daily_module_transactions.dart';
+import '../theme/daily_palette.dart';
 import '../utils/fuel_stock.dart';
 import '../utils/maintenance_catalog.dart';
 import '../utils/count_record_vehicle_defaults.dart';
@@ -17663,11 +17664,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
-    const ink = Color(0xFF1C1917);
-    const muted = Color(0xFF78716C);
-    const line = Color(0xFFE7E5E4);
-    const accent = Color(0xFFC2410C);
-    const softBg = Color(0xFFFAFAF9);
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ink = p.ink;
+    final muted = p.inkMuted;
+    final line = p.hairline;
+    final accent =
+        isDark ? const Color(0xFFFB923C) : const Color(0xFFC2410C);
+    final softBg = p.chipSurface;
+    final cardBg = p.card;
     final pad = phonePortrait ? 12.0 : 18.0;
     final gapSm = phonePortrait ? 10.0 : 14.0;
     final gapMd = phonePortrait ? 12.0 : 16.0;
@@ -17695,7 +17700,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }) {
       final tight = phonePortrait || compact;
       return Material(
-        color: selected ? accent.withValues(alpha: 0.10) : softBg,
+        color: selected
+            ? accent.withValues(alpha: isDark ? 0.22 : 0.10)
+            : softBg,
         borderRadius: BorderRadius.circular(999),
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
@@ -17710,7 +17717,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
-                color: selected ? accent.withValues(alpha: 0.45) : line,
+                color: selected
+                    ? accent.withValues(alpha: isDark ? 0.55 : 0.45)
+                    : line,
               ),
             ),
             child: Text(
@@ -17737,6 +17746,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }) {
       return InputDecoration(
         hintText: hintText,
+        hintStyle: GoogleFonts.kanit(color: muted),
         alignLabelWithHint: true,
         filled: true,
         fillColor: softBg,
@@ -17747,11 +17757,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         prefixIcon: prefixIcon,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(fieldRadius),
-          borderSide: const BorderSide(color: line),
+          borderSide: BorderSide(color: line),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(fieldRadius),
-          borderSide: const BorderSide(color: line),
+          borderSide: BorderSide(color: line),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(fieldRadius),
@@ -17768,7 +17778,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         curve: Curves.easeOutCubic,
         padding: EdgeInsets.fromLTRB(pad, phonePortrait ? 12 : 16, pad, pad),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cardBg,
           borderRadius: BorderRadius.circular(phonePortrait ? 16 : 20),
           border: Border.all(color: line),
         ),
@@ -17974,6 +17984,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   textStyle: WidgetStatePropertyAll(
                     GoogleFonts.kanit(fontWeight: FontWeight.w600),
                   ),
+                  foregroundColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) return accent;
+                    return muted;
+                  }),
                 ),
               ),
             ],
@@ -18142,12 +18156,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             '${isCurrent ? ' · กำลังแก้ไข' : ''}'
         : '${type.isEmpty ? 'บำรุงรักษา' : type} · $amountText บาท'
             '${isCurrent ? ' · กำลังแก้ไข' : ''}';
-    const ink = Color(0xFF1C1917);
-    const muted = Color(0xFF78716C);
-    const line = Color(0xFFE7E5E4);
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final ink = p.ink;
+    final muted = p.inkMuted;
+    final line = p.hairline;
+    final accent =
+        isDark ? const Color(0xFFFB923C) : const Color(0xFFC2410C);
     final radius = phonePortrait ? 12.0 : 14.0;
+    final rowBg = isCurrent
+        ? (isDark
+            ? accent.withValues(alpha: 0.18)
+            : const Color(0xFFFFF7ED))
+        : p.chipSurface;
+    final rowBorder = isCurrent
+        ? (isDark
+            ? accent.withValues(alpha: 0.55)
+            : const Color(0xFFFDBA74))
+        : line;
     return Material(
-      color: isCurrent ? const Color(0xFFFFF7ED) : const Color(0xFFFAFAF9),
+      color: rowBg,
       borderRadius: BorderRadius.circular(radius),
       child: InkWell(
         borderRadius: BorderRadius.circular(radius),
@@ -18159,9 +18187,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radius),
-            border: Border.all(
-              color: isCurrent ? const Color(0xFFFDBA74) : line,
-            ),
+            border: Border.all(color: rowBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
