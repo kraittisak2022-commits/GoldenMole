@@ -178,6 +178,56 @@ struct OpsTrendBucketScore: Identifiable, Sendable {
     let sandTotal: Double
 }
 
+enum OpsTrendAlertSeverity: String, Sendable {
+    case critical
+    case warning
+    case opportunity
+
+    var label: String {
+        switch self {
+        case .critical: return "เร่งแก้"
+        case .warning: return "เฝ้าระวัง"
+        case .opportunity: return "โอกาสเร่ง"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .critical: return "exclamationmark.octagon.fill"
+        case .warning: return "exclamationmark.triangle.fill"
+        case .opportunity: return "lightbulb.fill"
+        }
+    }
+}
+
+/// Actionable ops signal — anomaly or opportunity to improve output.
+struct OpsTrendAlert: Identifiable, Sendable {
+    let id: String
+    let severity: OpsTrendAlertSeverity
+    let area: String
+    let title: String
+    let detail: String
+    let action: String
+}
+
+struct OpsTrendActionPlan: Sendable {
+    let alerts: [OpsTrendAlert]
+    let playbook: [String]
+    let healthLabel: String
+    let criticalCount: Int
+    let warningCount: Int
+    let opportunityCount: Int
+
+    static let empty = OpsTrendActionPlan(
+        alerts: [],
+        playbook: [],
+        healthLabel: "ยังไม่มีสัญญาณ",
+        criticalCount: 0,
+        warningCount: 0,
+        opportunityCount: 0
+    )
+}
+
 /// Per-bucket pace/volume sample derived from lap timestamps.
 struct OpsTrendPacePoint: Identifiable, Sendable {
     let id: String
@@ -301,6 +351,7 @@ struct OpsTrendReport: Sendable {
     let tripAdvanced: OpsTrendAdvancedMode
     let sandAdvanced: OpsTrendAdvancedMode
     let pacePoints: [OpsTrendPacePoint]
+    let actionPlan: OpsTrendActionPlan
     let insights: [String]
     let coverageDays: Int
     let activeDays: Int
@@ -364,6 +415,7 @@ struct OpsTrendReport: Sendable {
             tripAdvanced: .emptyTrip,
             sandAdvanced: .emptySand,
             pacePoints: [],
+            actionPlan: .empty,
             insights: [],
             coverageDays: 0,
             activeDays: 0,
@@ -545,6 +597,18 @@ enum OpsTrendAnalytics {
             volumeDailyTarget: 40
         )
 
+        let actionPlan = buildActionPlan(
+            period: period,
+            daily: daily,
+            trip: trip,
+            sand: sand,
+            tripAdvanced: tripAdvanced,
+            sandAdvanced: sandAdvanced,
+            scorecard: scored,
+            streak: streak,
+            ratio: ratio
+        )
+
         return OpsTrendReport(
             period: period,
             filter: filter,
@@ -559,6 +623,7 @@ enum OpsTrendAnalytics {
             tripAdvanced: tripAdvanced,
             sandAdvanced: sandAdvanced,
             pacePoints: pacePoints,
+            actionPlan: actionPlan,
             insights: insights,
             coverageDays: daily.count,
             activeDays: activeDays,
@@ -1283,6 +1348,321 @@ enum OpsTrendAnalytics {
             throughputSeries: throughputSeries,
             volumeSeries: volumeSeries,
             insights: insights
+        )
+    }
+
+    // MARK: - Actionable alerts / playbook
+
+    private nonisolated static func buildActionPlan(
+        period: OpsTrendPeriod,
+        daily: [OpsTrendPoint],
+        trip: OpsTrendMetricCard,
+        sand: OpsTrendMetricCard,
+        tripAdvanced: OpsTrendAdvancedMode,
+        sandAdvanced: OpsTrendAdvancedMode,
+        scorecard: OpsTrendScorecard,
+        streak: Int,
+        ratio: Double?
+    ) -> OpsTrendActionPlan {
+        var alerts: [OpsTrendAlert] = []
+        let target = period.tripDailyTarget
+        let tripAvg = trip.average
+        let sandAvg = sand.average
+
+        // --- Anomalies from daily series ---
+        if daily.count >= 3 {
+            let tripVals = daily.map { Double($0.tripRounds) }
+            let sandVals = daily.map { Double($0.sandRounds) }
+            let tripMean = tripVals.reduce(0, +) / Double(tripVals.count)
+            let sandMean = sandVals.reduce(0, +) / Double(sandVals.count)
+
+            // Consecutive weak trip days (< 60% of period avg or < 50% target)
+            let weakTripThreshold = max(target * 0.5, tripMean * 0.6)
+            var weakTripStreak = 0
+            var weakTripLabels: [String] = []
+            for p in daily.reversed() {
+                if Double(p.tripRounds) < weakTripThreshold {
+                    weakTripStreak += 1
+                    weakTripLabels.append(p.label)
+                } else {
+                    break
+                }
+            }
+            if weakTripStreak >= 2 {
+                alerts.append(OpsTrendAlert(
+                    id: "trip-weak-streak",
+                    severity: weakTripStreak >= 3 ? .critical : .warning,
+                    area: "เที่ยวรถ",
+                    title: "เที่ยวรถต่ำติดกัน \(weakTripStreak) วัน",
+                    detail: "วันล่าสุด \(weakTripLabels.reversed().joined(separator: ", ")) ต่ำกว่าเกณฑ์ \(formatCompact(weakTripThreshold)) เที่ยว/วัน",
+                    action: "ตรวจคิวรถ/คนขับช่วงเช้า และเร่งรอบบ่ายให้ชดเชยวันนี้"
+                ))
+            }
+
+            var weakSandStreak = 0
+            var weakSandLabels: [String] = []
+            let weakSandThreshold = max(20.0, sandMean * 0.55)
+            for p in daily.reversed() {
+                if Double(p.sandRounds) < weakSandThreshold {
+                    weakSandStreak += 1
+                    weakSandLabels.append(p.label)
+                } else {
+                    break
+                }
+            }
+            if weakSandStreak >= 2 {
+                alerts.append(OpsTrendAlert(
+                    id: "sand-weak-streak",
+                    severity: weakSandStreak >= 3 ? .critical : .warning,
+                    area: "ร่อนทราย",
+                    title: "ร่อนทรายต่ำติดกัน \(weakSandStreak) วัน",
+                    detail: "วันล่าสุด \(weakSandLabels.reversed().joined(separator: ", ")) ต่ำกว่าเกณฑ์ \(formatCompact(weakSandThreshold)) รอบ/วัน",
+                    action: "เช็คเครื่องร่อน/คนประจำเครื่อง และเวลาเริ่มเช้า"
+                ))
+            }
+
+            // Sharp single-day drop vs mean
+            if let last = daily.last, tripMean > 0, Double(last.tripRounds) < tripMean * 0.45, last.tripRounds > 0 {
+                alerts.append(OpsTrendAlert(
+                    id: "trip-sharp-drop",
+                    severity: .warning,
+                    area: "เที่ยวรถ",
+                    title: "วันนี้/วันล่าสุดเที่ยวรถร่วงแรง",
+                    detail: "\(last.label) ได้ \(last.tripRounds) เที่ยว (~\(Int((Double(last.tripRounds) / tripMean) * 100))% ของเฉลี่ยช่วง)",
+                    action: "ไล่ดูรถที่รอบน้อยผิดปกติในบอร์ดเที่ยวรถ"
+                ))
+            }
+            if let last = daily.last, sandMean > 0, Double(last.sandRounds) < sandMean * 0.4, last.sandRounds > 0 {
+                alerts.append(OpsTrendAlert(
+                    id: "sand-sharp-drop",
+                    severity: .warning,
+                    area: "ร่อนทราย",
+                    title: "รอบร่อนวันล่าสุดต่ำผิดปกติ",
+                    detail: "\(last.label) ได้ \(last.sandRounds) รอบ (~\(Int((Double(last.sandRounds) / sandMean) * 100))% ของเฉลี่ย)",
+                    action: "ตรวจจังหวะร่อนและพักเครื่องว่ายาวเกิน"
+                ))
+            }
+
+            // Zero activity while other mode has work
+            let tripNoSand = daily.filter { $0.tripRounds >= Int(target * 0.4) && $0.sandRounds == 0 }.count
+            if tripNoSand >= 2 {
+                alerts.append(OpsTrendAlert(
+                    id: "trip-sans-sand",
+                    severity: .warning,
+                    area: "สมดุล",
+                    title: "มีเที่ยวรถแต่ไม่บันทึกร่อน \(tripNoSand) วัน",
+                    detail: "อาจหลุดบันทึกรอบร่อน หรือเครื่องร่อนไม่ทำงานคู่กัน",
+                    action: "ตรวจฟีดร่อนทรายวันนั้นทันทีถ้าเครื่องควรทำงาน"
+                ))
+            }
+            let sandNoTrip = daily.filter { $0.sandRounds >= 25 && $0.tripRounds == 0 }.count
+            if sandNoTrip >= 2 {
+                alerts.append(OpsTrendAlert(
+                    id: "sand-sans-trip",
+                    severity: .opportunity,
+                    area: "สมดุล",
+                    title: "ร่อนได้แต่เที่ยวรถเป็น 0 — \(sandNoTrip) วัน",
+                    detail: "ทรายอาจค้างกอง หรือบันทึกเที่ยวไม่ครบ",
+                    action: "เปิดบอร์ดเที่ยวรถตรวจว่ามีรถวิ่งแต่ไม่กดนับหรือไม่"
+                ))
+            }
+
+            // Afternoon lag: morning heavy but afternoon weak across period
+            let morn = daily.reduce(0) { $0 + $1.tripMorning }
+            let aft = daily.reduce(0) { $0 + $1.tripAfternoon }
+            if morn + aft > 20, Double(aft) < Double(morn) * 0.55 {
+                alerts.append(OpsTrendAlert(
+                    id: "afternoon-lag",
+                    severity: .opportunity,
+                    area: "เที่ยวรถ",
+                    title: "บ่ายอ่อนกว่าเช้าชัด",
+                    detail: "เช้า \(morn) vs บ่าย \(aft) เที่ยวในช่วงนี้",
+                    action: "จัดคิวรถช่วงบ่าย/หลังพักเที่ยงให้หนาขึ้นเพื่อดึงยอดรวม"
+                ))
+            }
+        }
+
+        // Target attainment
+        if let att = trip.targetAttainmentPct, att < 70 {
+            alerts.append(OpsTrendAlert(
+                id: "trip-below-target",
+                severity: att < 50 ? .critical : .warning,
+                area: "เที่ยวรถ",
+                title: String(format: "ถึงเป้าเที่ยวเพียง %.0f%%", att),
+                detail: "เฉลี่ย \(formatCompact(tripAvg)) จากเป้า \(formatCompact(target)) เที่ยว/วัน",
+                action: "ตั้งเป้าย่อยช่วงเช้าให้แตะ \(formatCompact(target * 0.45)) เที่ยวก่อนเที่ยง"
+            ))
+        } else if let att = trip.targetAttainmentPct, att >= 95, att < 110 {
+            alerts.append(OpsTrendAlert(
+                id: "trip-near-target",
+                severity: .opportunity,
+                area: "เที่ยวรถ",
+                title: "ใกล้เป้าแล้ว — ดันอีกนิด",
+                detail: String(format: "ตอนนี้อยู่ที่ %.0f%% ของเป้า \(formatCompact(target))", att),
+                action: "เพิ่ม 1–2 เที่ยวช่วงท้ายกะเพื่อปิดเป้าทุกวัน"
+            ))
+        }
+
+        // Pace / throughput
+        if let speed = tripAdvanced.speedChangePct, speed <= -12 {
+            alerts.append(OpsTrendAlert(
+                id: "trip-slower",
+                severity: .warning,
+                area: "เที่ยวรถ",
+                title: "จังหวะเที่ยวรถช้าลง \(Int(abs(speed.rounded())))%",
+                detail: "ช่วงห่างรอบเฉลี่ย \(formatIntervalSec(tripAdvanced.avgIntervalSec)) (ก่อน \(formatIntervalSec(tripAdvanced.prevAvgIntervalSec)))",
+                action: "ลดเวลารอคิว/เติมน้ำมันค้าง และไล่รถที่รอบห่างผิดปกติ"
+            ))
+        }
+        if let speed = sandAdvanced.speedChangePct, speed <= -12 {
+            alerts.append(OpsTrendAlert(
+                id: "sand-slower",
+                severity: .warning,
+                area: "ร่อนทราย",
+                title: "จังหวะร่อนช้าลง \(Int(abs(speed.rounded())))%",
+                detail: "ช่วงห่างรอบ \(formatIntervalSec(sandAdvanced.avgIntervalSec))",
+                action: "เช็ควัตถุดิบเข้าเครื่องและความพร้อมคนประจำจุด"
+            ))
+        }
+        if let thr = tripAdvanced.throughputChangePct, thr <= -15, tripAdvanced.throughputPerHour > 0 {
+            alerts.append(OpsTrendAlert(
+                id: "trip-throughput-down",
+                severity: .critical,
+                area: "เที่ยวรถ",
+                title: "อัตราผลิตต่อชม. ลด \(Int(abs(thr.rounded())))%",
+                detail: "ตอนนี้ \(formatPerHour(tripAdvanced.throughputPerHour)) จากเดิม \(formatPerHour(tripAdvanced.prevThroughputPerHour))",
+                action: "โฟกัสชั่วโมงพีค \(tripAdvanced.peakHourLabel ?? "ช่วงเช้า") ให้เต็มกำลัง"
+            ))
+        }
+
+        // Consistency / coverage
+        if trip.consistencyScore > 0, trip.consistencyScore < 45 {
+            alerts.append(OpsTrendAlert(
+                id: "trip-volatile",
+                severity: .warning,
+                area: "เที่ยวรถ",
+                title: "ยอดเที่ยวผันผวนสูง",
+                detail: "สูงสุด \(trip.bestLabel) \(formatCompact(trip.bestValue)) vs ต่ำสุด \(trip.worstLabel) \(formatCompact(trip.worstValue))",
+                action: "ทำให้วันอ่อนเข้าใกล้ค่าเฉลี่ย — วางแผนคิวรถล่วงหน้า"
+            ))
+        }
+        if streak == 0, daily.contains(where: { $0.tripRounds > 0 || $0.sandRounds > 0 }) {
+            alerts.append(OpsTrendAlert(
+                id: "streak-break",
+                severity: .opportunity,
+                area: "วินัย",
+                title: "สตรีคทำงานขาดช่วง",
+                detail: "วันล่าสุดยังไม่มีงาน — เสียโมเมนตัม",
+                action: "เริ่มนับรอบเช้าวันนี้เพื่อต่อสตรีคใหม่"
+            ))
+        }
+
+        // Balance ratio
+        if let ratio {
+            if ratio > 22 {
+                alerts.append(OpsTrendAlert(
+                    id: "ratio-high",
+                    severity: .opportunity,
+                    area: "สมดุล",
+                    title: String(format: "เที่ยวต่อรอบร่อนสูง (%.1f)", ratio),
+                    detail: "อาจร่อนไม่ทันเที่ยว หรือบันทึกร่อนต่ำไป",
+                    action: "เพิ่มกำลังร่อน หรือตรวจว่าบันทึกรอบครบ"
+                ))
+            } else if ratio < 4, sandAvg > 5 {
+                alerts.append(OpsTrendAlert(
+                    id: "ratio-low",
+                    severity: .opportunity,
+                    area: "สมดุล",
+                    title: String(format: "เที่ยวต่อรอบร่อนต่ำ (%.1f)", ratio),
+                    detail: "ร่อนได้แต่ขนออกน้อย — เสี่ยงกองค้าง",
+                    action: "เพิ่มเที่ยวขนช่วงที่มีร่อนหนา"
+                ))
+            }
+        }
+
+        // Score drop
+        if scorecard.scoreDelta <= -12 {
+            alerts.append(OpsTrendAlert(
+                id: "score-drop",
+                severity: .critical,
+                area: "ภาพรวม",
+                title: "คะแนน\(period.shortLabel)ตก \(abs(scorecard.scoreDelta)) แต้ม",
+                detail: "ตอนนี้ \(scorecard.score) จากก่อนหน้า \(scorecard.prevScore)",
+                action: "ไล่แก้จุดแดงด้านบนก่อน แล้วค่อยดันปริมาณ"
+            ))
+        }
+
+        // Positive opportunities when healthy
+        if alerts.filter({ $0.severity != .opportunity }).isEmpty {
+            if tripAvg >= target * 0.85, let speed = tripAdvanced.speedChangePct, speed >= 5 {
+                alerts.append(OpsTrendAlert(
+                    id: "push-more",
+                    severity: .opportunity,
+                    area: "เที่ยวรถ",
+                    title: "จังหวะดี — ดันปริมาณต่อได้",
+                    detail: "เร็วขึ้นและใกล้เป้าแล้ว",
+                    action: "เพิ่มรถช่วงพีค \(tripAdvanced.peakHourLabel ?? "เช้า") อีก 1–2 คัน"
+                ))
+            }
+            if sandAdvanced.throughputPerHour > 0, (sandAdvanced.throughputChangePct ?? 0) >= 8 {
+                alerts.append(OpsTrendAlert(
+                    id: "sand-push",
+                    severity: .opportunity,
+                    area: "ร่อนทราย",
+                    title: "อัตราร่อนดีขึ้น",
+                    detail: "\(formatPerHour(sandAdvanced.throughputPerHour))",
+                    action: "รักษากะเครื่องให้ต่อเนื่องหลังพักเที่ยง"
+                ))
+            }
+        }
+
+        // Deduplicate by id, prioritize severity
+        let severityRank: [OpsTrendAlertSeverity: Int] = [.critical: 0, .warning: 1, .opportunity: 2]
+        let unique = Dictionary(grouping: alerts, by: \.id).values.compactMap(\.first)
+        let sorted = unique.sorted {
+            (severityRank[$0.severity] ?? 9) < (severityRank[$1.severity] ?? 9)
+        }
+
+        let critical = sorted.filter { $0.severity == .critical }.count
+        let warning = sorted.filter { $0.severity == .warning }.count
+        let opportunity = sorted.filter { $0.severity == .opportunity }.count
+
+        let health: String
+        if critical > 0 {
+            health = "ต้องเร่งแก้ \(critical) จุด"
+        } else if warning > 0 {
+            health = "เฝ้าระวัง \(warning) จุด"
+        } else if opportunity > 0 {
+            health = "พร้อมเร่งผลผลิต"
+        } else if daily.isEmpty {
+            health = "ยังไม่มีข้อมูล"
+        } else {
+            health = "จังหวะปกติ"
+        }
+
+        var playbook: [String] = []
+        if critical + warning > 0 {
+            playbook.append("แก้จุดเร่งแก้ / เฝ้าระวังก่อน — อย่าโฟกัสแค่ยอดรวม")
+        }
+        playbook.append("เป้าเที่ยว \(formatCompact(target))/วัน · เช้าให้แตะ ~\(formatCompact(target * 0.45)) ก่อนเที่ยง")
+        playbook.append("ถ้าจังหวะช้า: ไล่รถ/เครื่องที่รอบห่าง แล้วอัดชั่วโมงพีค")
+        if let ratio {
+            playbook.append(String(format: "คุมอัตราเที่ยว/รอบร่อนแถว %.0f–%.0f (ตอนนี้ %.1f)", 8.0, 15.0, ratio))
+        } else {
+            playbook.append("ให้มีทั้งเที่ยวรถและร่อนทรายในวันเดียวกัน เพื่อสมดุลกองทราย")
+        }
+        playbook.append("รักษาสตรีควันทำงาน — วันว่างทำลายโมเมนตัมทั้ง\(period.shortLabel)")
+        if scorecard.grade == .a || scorecard.grade == .aPlus {
+            playbook.append("ผลงานดีแล้ว — ดันส่วนเบี่ยงเบนลง (วันอ่อนให้ใกล้ค่าเฉลี่ย)")
+        }
+
+        return OpsTrendActionPlan(
+            alerts: Array(sorted.prefix(8)),
+            playbook: playbook,
+            healthLabel: health,
+            criticalCount: critical,
+            warningCount: warning,
+            opportunityCount: opportunity
         )
     }
 }

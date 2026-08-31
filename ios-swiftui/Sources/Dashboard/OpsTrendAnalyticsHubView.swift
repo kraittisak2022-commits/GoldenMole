@@ -22,6 +22,7 @@ struct OpsTrendAnalyticsHubView: View {
                         .padding(.vertical, 40)
                 } else {
                     scoreHero
+                    actionPlanCard
                     pillarBreakdown
                     growthScoreboard
                     bucketScoreCard
@@ -62,7 +63,7 @@ struct OpsTrendAnalyticsHubView: View {
             Text("ศูนย์วัดผลปฏิบัติการ")
                 .font(.title2.weight(.bold))
                 .foregroundStyle(AppTheme.ink)
-            Text(rangeCaption)
+            Text("จับจุดผิดปกติเร็ว · แนะทางเร่งยอด · \(rangeCaption)")
                 .font(.caption)
                 .foregroundStyle(AppTheme.inkMuted)
         }
@@ -186,6 +187,124 @@ struct OpsTrendAnalyticsHubView: View {
             RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
                 .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
+    }
+
+    // MARK: - Action plan / anomaly alerts
+
+    private var actionPlanCard: some View {
+        let plan = report.actionPlan
+        return SectionCard(
+            "สัญญาณที่ควรลงมือ",
+            systemImage: "bell.badge.fill",
+            subtitle: plan.healthLabel
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    alertCountChip(count: plan.criticalCount, label: "เร่งแก้", color: Color(hex: "#dc2626"))
+                    alertCountChip(count: plan.warningCount, label: "เฝ้าระวัง", color: AppTheme.warning)
+                    alertCountChip(count: plan.opportunityCount, label: "โอกาส", color: Color(hex: "#16a34a"))
+                    Spacer(minLength: 0)
+                }
+
+                if plan.alerts.isEmpty {
+                    Text("ยังไม่พบจุดผิดปกติในช่วงนี้ — รักษาระดับและดันเป้าต่อเนื่อง")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ForEach(plan.alerts) { alert in
+                        alertRow(alert)
+                    }
+                }
+
+                if !plan.playbook.isEmpty {
+                    Divider().opacity(0.35)
+                    Text("คู่มือเร่งงาน")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    ForEach(Array(plan.playbook.enumerated()), id: \.offset) { idx, line in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("\(idx + 1).")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(AppTheme.brand)
+                                .frame(width: 16, alignment: .leading)
+                            Text(line)
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.inkMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func alertCountChip(count: Int, label: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text("\(count)")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(color)
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppTheme.inkMuted)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(color.opacity(0.12))
+        )
+    }
+
+    private func alertRow(_ alert: OpsTrendAlert) -> some View {
+        let color = severityColor(alert.severity)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: alert.severity.systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(color)
+                Text(alert.severity.label)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(color)
+                Text(alert.area)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(AppTheme.surfaceSoft))
+                Spacer(minLength: 0)
+            }
+            Text(alert.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(alert.detail)
+                .font(.caption)
+                .foregroundStyle(AppTheme.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            Label(alert.action, systemImage: "arrow.right.circle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.brand)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(color.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(color.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    private func severityColor(_ severity: OpsTrendAlertSeverity) -> Color {
+        switch severity {
+        case .critical: return Color(hex: "#dc2626")
+        case .warning: return AppTheme.warning
+        case .opportunity: return Color(hex: "#16a34a")
+        }
     }
 
     private var pillarBreakdown: some View {
