@@ -108,7 +108,7 @@ class _BootstrapSplashState extends State<BootstrapSplash>
                                 begin: _lite ? 0.30 : 0.42,
                                 end: _lite ? 0.60 : 0.68,
                                 child: Text(
-                                  'ระบบบันทึกงานก่อสร้าง',
+                                  'กำลังโหลด . . .',
                                   textAlign: TextAlign.center,
                                   // Pubspec-bundled Kanit — avoid GoogleFonts
                                   // async load during splash animation frames.
