@@ -82,4 +82,17 @@ void main() {
     expect(stamped.vehicleName, 'รถดรัมโอเว่น');
     expect(stamped.driverName, isNull);
   });
+
+  test('findByNameOrId does not map nested dump names to the wrong row', () {
+    const dumpCatalog = VehicleCatalog([
+      VehicleCatalogRow(id: 'v_short', name: 'ดั๊มพี่โก'),
+      VehicleCatalogRow(id: 'v_full', name: 'รถดั๊มพี่โก'),
+      VehicleCatalogRow(id: 'v_sak1', name: 'รถดั๊มลุงศักดิ์'),
+      VehicleCatalogRow(id: 'v_sak2', name: 'รถดั๊มลุงศักดิ์ 2'),
+    ]);
+    expect(dumpCatalog.findByNameOrId('รถดั๊มพี่โก')?.id, 'v_full');
+    expect(dumpCatalog.findByNameOrId('ดั๊มพี่โก')?.id, 'v_short');
+    expect(dumpCatalog.findByNameOrId('รถดั๊มลุงศักดิ์ 2')?.id, 'v_sak2');
+    expect(dumpCatalog.findByNameOrId('รถดั๊มลุงศักดิ์')?.id, 'v_sak1');
+  });
 }

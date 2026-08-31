@@ -206,4 +206,16 @@ void main() {
       isTrue,
     );
   });
+
+  test('vehicleIdsLikelyMatch does not conflate nested or numbered names', () {
+    expect(
+      vehicleIdsLikelyMatch('รถดั๊มลุงศักดิ์', 'รถดั๊มลุงศักดิ์ 2'),
+      isFalse,
+    );
+    expect(vehicleIdsLikelyMatch('ดั๊มพี่โก', 'รถดั๊มพี่โก'), isFalse);
+    expect(
+      vehicleIdsLikelyMatch('รถดั๊มโอเว่น', ' รถดั๊มโอเว่น '),
+      isTrue,
+    );
+  });
 }

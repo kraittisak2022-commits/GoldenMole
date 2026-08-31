@@ -23,12 +23,14 @@ String compactVehicleLabel(String raw) {
   return raw.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '');
 }
 
+/// จับคู่ชื่อ/รหัสรถแบบปลอดภัย — เทียบหลัง compact เท่านั้น
+/// (ห้ามใช้ contains: «รถดั๊มลุงศักดิ์» กับ «รถดั๊มลุงศักดิ์ 2»
+/// หรือ «ดั๊มพี่โก» กับ «รถดั๊มพี่โก» จะชนกันผิดคัน)
 bool vehicleIdsLikelyMatch(String a, String b) {
   final ca = compactVehicleLabel(a);
   final cb = compactVehicleLabel(b);
   if (ca.isEmpty || cb.isEmpty) return false;
-  if (ca == cb) return true;
-  return ca.contains(cb) || cb.contains(ca);
+  return ca == cb;
 }
 
 String? inferDriverIdFromTripHistory({

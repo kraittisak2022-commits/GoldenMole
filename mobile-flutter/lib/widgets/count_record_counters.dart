@@ -5249,17 +5249,9 @@ class _SelectDialog extends StatefulWidget {
 class _SelectDialogState extends State<_SelectDialog> {
   final List<_Pick> _rows = [_Pick()];
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_rows.length != 1 || _rows.first.vehicleId.isNotEmpty) return;
-      final available = _carsForRow(0);
-      if (available.isEmpty) return;
-      _onVehicleChanged(_rows.first, available.first);
-    });
-  }
+  /// ไม่ auto-select รถคันแรก — ต้องให้ผู้ใช้เลือกรถเองทุกคัน
+  /// (เดิมเติมคันที่ใช้บ่อยสุด + คนขับค่าเริ่มต้น ทำให้กดบันทึกแล้ว
+  /// ได้การ์ด/เที่ยวของรถที่ไม่ได้ตั้งใจเลือก)
 
   /// รถที่แถวอื่นใน dialog เลือกแล้ว (ไม่รวมแถว [rowIndex])
   Set<String> _selectedInOtherRows(int rowIndex) {
@@ -5375,6 +5367,17 @@ class _SelectDialogState extends State<_SelectDialog> {
                     icon: const Icon(Icons.close_rounded),
                   ),
                 ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  'เลือกเฉพาะรถที่ต้องการนับเที่ยว — ระบบไม่เลือกให้อัตโนมัติ',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: p.inkMuted,
+                    height: 1.35,
+                  ),
+                ),
               ),
               Flexible(
                 child: SingleChildScrollView(

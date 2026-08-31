@@ -66,6 +66,7 @@ class VehicleCatalog {
     for (final r in rows) {
       if (r.id == key || r.name == key) return r;
     }
+    // เทียบแบบไม่สนช่องว่างเท่านั้น — ไม่ใช้ contains (กันชื่อซ้อน/คันคู่)
     for (final r in rows) {
       if (vehicleIdsLikelyMatch(r.name, key) ||
           vehicleIdsLikelyMatch(r.id, key)) {
