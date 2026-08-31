@@ -1263,8 +1263,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     final isAndroid = defaultTargetPlatform == TargetPlatform.android;
     final constrained = DevicePerf.isConstrainedDevice;
     final cacheRows = constrained ? 1.0 : (isAndroid ? 3.5 : 2.0);
+    // มือถือแนวตั้ง: แสดงเมนูครบ — ไม่กันพื้นที่แถบ «เมนูเพิ่มเติม»
     final moreMenusBarH =
-        phonePortrait ? 36.0 : _kMoreMenusBarHeight;
+        phonePortrait ? 0.0 : _kMoreMenusBarHeight;
     final panelRadius = phonePortrait ? 16.0 : 20.0;
     final panelPad = phonePortrait ? 14.0 : 14.0;
 
@@ -1679,7 +1680,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                         .contains(m.category),
                   )
                   .toList(growable: false);
-              final visibleModules = _moreMenusExpanded
+              // มือถือแนวตั้ง: แสดงเมนูทั้งหมด — ไม่ซ่อนเมนูรอง
+              final visibleModules = phonePortrait || _moreMenusExpanded
                   ? <_DailyModuleDef>[
                       ...primaryModules,
                       ...secondaryModules,
@@ -1847,46 +1849,48 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       ),
                     ),
                   ),
-                  SizedBox(
-                    height: moreMenusBarH,
-                    child: Center(
-                      child: TextButton.icon(
-                        onPressed: () {
-                          AppHaptics.tap();
-                          setState(
-                            () => _moreMenusExpanded = !_moreMenusExpanded,
-                          );
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: DailyPalette.of(context).inkMuted,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: phonePortrait ? 8 : 12,
-                            vertical: phonePortrait ? 2 : 4,
+                  if (!phonePortrait)
+                    SizedBox(
+                      height: moreMenusBarH,
+                      child: Center(
+                        child: TextButton.icon(
+                          onPressed: () {
+                            AppHaptics.tap();
+                            setState(
+                              () =>
+                                  _moreMenusExpanded = !_moreMenusExpanded,
+                            );
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor:
+                                DailyPalette.of(context).inkMuted,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            minimumSize: Size.zero,
+                            tapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
                           ),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        icon: Icon(
-                          _moreMenusExpanded
-                              ? Icons.expand_less_rounded
-                              : Icons.expand_more_rounded,
-                          size: phonePortrait ? 18 : 20,
-                        ),
-                        label: Text(
-                          _moreMenusExpanded
-                              ? (phonePortrait ? 'ซ่อนเมนู' : 'ซ่อนเมนูเพิ่มเติม')
-                              : (phonePortrait
-                                  ? 'เมนูเพิ่มเติม'
-                                  : 'แสดงเมนูเพิ่มเติม'),
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: phonePortrait ? 12 : 13,
-                            height: 1.1,
+                          icon: Icon(
+                            _moreMenusExpanded
+                                ? Icons.expand_less_rounded
+                                : Icons.expand_more_rounded,
+                            size: 20,
+                          ),
+                          label: Text(
+                            _moreMenusExpanded
+                                ? 'ซ่อนเมนูเพิ่มเติม'
+                                : 'แสดงเมนูเพิ่มเติม',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              height: 1.1,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               );
             },
