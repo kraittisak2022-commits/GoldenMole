@@ -24,7 +24,7 @@ def default_release_name(version_name)
   ENV["PLAY_RELEASE_NAME"].to_s.strip.empty? ? "#{version_name} — GoldenMole for User" : ENV["PLAY_RELEASE_NAME"].strip
 end
 
-CHANGELOG_LOCALES = %w[th-TH th].freeze
+CHANGELOG_LOCALES = %w[th].freeze
 
 def changelog_paths(version_code)
   CHANGELOG_LOCALES.map do |locale|
