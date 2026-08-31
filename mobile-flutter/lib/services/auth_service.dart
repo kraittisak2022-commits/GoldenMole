@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -9,6 +10,9 @@ class AuthService {
   AuthService(this._client);
 
   final SupabaseClient _client;
+
+  static const Duration _loginQueryTimeout = Duration(seconds: 15);
+  static const Duration _lastLoginUpdateTimeout = Duration(seconds: 8);
 
   String _normalizeUsername(String value) {
     return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
@@ -61,7 +65,18 @@ class AuthService {
 
   Future<AdminUser> login(String username, String password) async {
     final normalizedInput = _normalizeUsername(username);
-    final rows = await _client.from('admin_users').select();
+    late final List<Map<String, dynamic>> rows;
+    try {
+      final result = await _client
+          .from('admin_users')
+          .select()
+          .timeout(_loginQueryTimeout);
+      rows = List<Map<String, dynamic>>.from(result as List);
+    } on TimeoutException {
+      throw const AdminLoginException(
+        'หมดเวลารอเซิร์ฟเวอร์ — ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง',
+      );
+    }
     final admins = rows.map(AdminUser.fromMap).toList();
 
     AdminUser? matchedUser;
@@ -81,10 +96,19 @@ class AuthService {
       throw const AdminLoginException('รหัสไม่ตรง');
     }
 
-    await _client
-        .from('admin_users')
-        .update({'last_login': DateTime.now().toUtc().toIso8601String()})
-        .eq('id', matchedUser.id);
+    // Best-effort; never block entering the app on last_login write.
+    final matchedId = matchedUser.id;
+    unawaited(() async {
+      try {
+        await _client
+            .from('admin_users')
+            .update({
+              'last_login': DateTime.now().toUtc().toIso8601String(),
+            })
+            .eq('id', matchedId)
+            .timeout(_lastLoginUpdateTimeout);
+      } catch (_) {}
+    }());
 
     return matchedUser;
   }

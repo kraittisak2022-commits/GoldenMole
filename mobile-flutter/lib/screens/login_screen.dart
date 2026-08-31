@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -218,13 +219,20 @@ class _LoginScreenState extends State<LoginScreen>
       final remember = fromSavedProfile ? true : _rememberSession;
       await widget.sessionService.setRememberSessionPreference(remember);
       await widget.sessionService.setLastLoginUsername(username);
+      // Enter app first — secure-storage profile write must not block navigation.
+      final enterApp = widget.onLoginSuccess(admin, remember);
       if (remember) {
-        await widget.sessionService.saveLoginProfile(
-          admin: admin,
-          password: password,
-        );
+        unawaited(() async {
+          try {
+            await widget.sessionService
+                .saveLoginProfile(admin: admin, password: password)
+                .timeout(const Duration(seconds: 8));
+          } catch (e, st) {
+            debugPrint('saveLoginProfile after login: $e\n$st');
+          }
+        }());
       }
-      await widget.onLoginSuccess(admin, remember);
+      await enterApp;
     } on AdminLoginException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {

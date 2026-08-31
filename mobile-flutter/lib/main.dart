@@ -611,21 +611,28 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
                 authService: AuthService(client),
                 sessionService: _sessionService,
                 onLoginSuccess: (admin, persistSession) async {
+                  // Persist locally first, then enter the app immediately.
+                  // Anonymous/edge session must NOT block navigation — it can hang
+                  // for a long time when Anonymous auth is slow/disabled/offline.
                   if (persistSession) {
                     await _sessionService.saveAdmin(admin);
                   } else {
                     await _sessionService.clear();
                   }
-                  try {
-                    await ensureSupabaseSessionForEdgeFunctions(
-                      Supabase.instance.client,
-                    );
-                  } catch (e, st) {
-                    debugPrint('ensureSupabaseSession after login: $e\n$st');
-                  }
                   if (!mounted) return;
                   setState(() => _currentAdmin = admin);
-                  unawaited(MobilePresenceService.instance.start(admin.username));
+                  unawaited(
+                    ensureSupabaseSessionForEdgeFunctions(
+                      Supabase.instance.client,
+                    ).catchError((Object e, StackTrace st) {
+                      debugPrint(
+                        'ensureSupabaseSession after login: $e\n$st',
+                      );
+                    }),
+                  );
+                  unawaited(
+                    MobilePresenceService.instance.start(admin.username),
+                  );
                 },
               )
             : DashboardScreen(
