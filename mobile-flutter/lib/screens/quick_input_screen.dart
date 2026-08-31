@@ -10225,8 +10225,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _isOtMode ||
                   _isLaborAdvanceMode ||
                   _isIncomeUtilitiesEntryMode ||
-                  _isVehicleTripMode ||
-                  _isDailyEventMode)
+                  _isVehicleTripMode)
               ? dailyColors.surface
               : _bg,
           body: Stack(
@@ -12458,6 +12457,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         ),
       );
     }
+    final pSaved = DailyPalette.of(context);
     final isDarkSaved = Theme.of(context).brightness == Brightness.dark ||
         (AppThemeScope.maybeOf(context)?.isDark ?? false);
     return Column(
@@ -18887,6 +18887,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       'ไฟฟ้าดับ',
       'อุบัติเหตุเล็กน้อย',
     ];
+    final p = DailyPalette.of(context);
+    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
+        Theme.of(context).brightness == Brightness.dark;
+    const accent = Color(0xFFFF9800);
+    final accentInk = isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100);
+    final accentDeep =
+        isDark ? const Color(0xFFFFCC80) : const Color(0xFFBF360C);
+    final editBannerBg =
+        isDark ? const Color(0xFF3D2E0A) : const Color(0xFFFFF3E0);
+    final editBannerBorder =
+        isDark ? const Color(0xFF8D6E2F) : const Color(0xFFFFCC80);
     final size = MediaQuery.sizeOf(context);
     final phonePortrait =
         size.shortestSide < 600 && size.height >= size.width;
@@ -18910,12 +18921,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         curve: Curves.easeOutCubic,
         padding: EdgeInsets.all(phonePortrait ? 12 : 18),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: p.card,
           borderRadius: BorderRadius.circular(phonePortrait ? 16 : 22),
-          border: Border.all(color: const Color(0xFFE3ECF7)),
+          border: Border.all(color: p.hairline),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFFF6D00).withValues(alpha: 0.07),
+              color: accent.withValues(alpha: isDark ? 0.16 : 0.07),
               blurRadius: phonePortrait ? 8 : 12,
               offset: const Offset(0, 4),
             ),
@@ -18931,16 +18942,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   vertical: phonePortrait ? 6 : 8,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF3E0),
+                  color: editBannerBg,
                   borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
-                  border: Border.all(color: const Color(0xFFFFCC80)),
+                  border: Border.all(color: editBannerBorder),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.edit_note_rounded,
                       size: phonePortrait ? 18 : 20,
-                      color: const Color(0xFFE65100),
+                      color: accentInk,
                     ),
                     SizedBox(width: phonePortrait ? 6 : 8),
                     Expanded(
@@ -18951,7 +18962,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         style: GoogleFonts.kanit(
                           fontSize: phonePortrait ? 12 : 13,
                           fontWeight: FontWeight.w600,
-                          color: const Color(0xFFBF360C),
+                          color: accentDeep,
                         ),
                       ),
                     ),
@@ -18965,7 +18976,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               style: GoogleFonts.kanit(
                 fontSize: phonePortrait ? 13 : 14,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFF475569),
+                color: p.inkSubtle,
               ),
             ),
             SizedBox(height: phonePortrait ? 4 : 6),
@@ -18980,6 +18991,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         fontSize: chipFont,
                         fontWeight: FontWeight.w600,
+                        color: p.ink,
                       ),
                     ),
                     selected: _dailyEventType == o.v,
@@ -19004,7 +19016,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               style: GoogleFonts.kanit(
                 fontSize: phonePortrait ? 13 : 14,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFF475569),
+                color: p.inkSubtle,
               ),
             ),
             SizedBox(height: phonePortrait ? 4 : 6),
@@ -19037,7 +19049,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 style: GoogleFonts.kanit(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: Colors.black45,
+                  color: p.inkMuted,
                 ),
               ),
               const SizedBox(height: 6),
@@ -19052,7 +19064,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               style: GoogleFonts.kanit(
                 fontSize: phonePortrait ? 14.5 : 16,
                 fontWeight: FontWeight.w600,
-                color: const Color(0xFF1D2A3A),
+                color: p.ink,
               ),
               decoration: InputDecoration(
                 labelText: phonePortrait ? 'รายละเอียด' : 'รายละเอียดเหตุการณ์',
@@ -19078,7 +19090,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 style: GoogleFonts.kanit(
                   fontSize: phonePortrait ? 11.5 : 12,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF64748B),
+                  color: p.inkMuted,
                 ),
               ),
               SizedBox(height: phonePortrait ? 4 : 6),
@@ -19094,6 +19106,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.kanit(
                           fontSize: phonePortrait ? 11.5 : 12,
+                          color: p.ink,
                         ),
                       ),
                       visualDensity: phonePortrait
@@ -19118,7 +19131,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               style: GoogleFonts.kanit(
                 fontSize: phonePortrait ? 11.5 : 12,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFF64748B),
+                color: p.inkMuted,
               ),
             ),
             SizedBox(height: phonePortrait ? 4 : 6),
@@ -19132,6 +19145,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       tmpl,
                       style: GoogleFonts.kanit(
                         fontSize: phonePortrait ? 11.5 : 12,
+                        color: p.ink,
                       ),
                     ),
                     visualDensity: phonePortrait
@@ -19176,7 +19190,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
                 style: FilledButton.styleFrom(
                   minimumSize: Size.fromHeight(phonePortrait ? 46 : 54),
-                  backgroundColor: const Color(0xFFFF9800),
+                  backgroundColor: accent,
                   foregroundColor: Colors.white,
                 ),
               ),
@@ -19792,6 +19806,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _dailyEventSavedDetailCard(AppTransaction t) {
+    final p = DailyPalette.of(context);
+    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
+        Theme.of(context).brightness == Brightness.dark;
     final size = MediaQuery.sizeOf(context);
     final phonePortrait =
         size.shortestSide < 600 && size.height >= size.width;
@@ -19805,14 +19822,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             : 'บันทึกในระบบ ${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}')
         : null;
     final isCurrent = t.id == _dailyEventTxId;
+    final cardBg = isCurrent
+        ? (isDark ? const Color(0xFF3D2E0A) : const Color(0xFFFFF8E1))
+        : (isDark ? p.chipSurface : const Color(0xFFFFFBF5));
+    final cardBorder = isCurrent
+        ? const Color(0xFFFFB74D)
+        : (isDark ? p.hairline : const Color(0xFFFFE0B2));
+    final metaColor =
+        isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100);
     return Container(
       padding: EdgeInsets.all(phonePortrait ? 10 : 12),
       decoration: BoxDecoration(
-        color: isCurrent ? const Color(0xFFFFF8E1) : const Color(0xFFFFFBF5),
+        color: cardBg,
         borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
-        border: Border.all(
-          color: isCurrent ? const Color(0xFFFFB74D) : const Color(0xFFFFE0B2),
-        ),
+        border: Border.all(color: cardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -19824,7 +19847,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             style: GoogleFonts.kanit(
               fontSize: phonePortrait ? 12.5 : 13.5,
               fontWeight: FontWeight.w700,
-              color: const Color(0xFFE65100),
+              color: metaColor,
             ),
           ),
           SizedBox(height: phonePortrait ? 3 : 4),
@@ -19835,7 +19858,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             style: GoogleFonts.kanit(
               fontSize: phonePortrait ? 13.5 : 15,
               fontWeight: FontWeight.w600,
-              color: const Color(0xFF1D2A3A),
+              color: p.ink,
               height: 1.3,
             ),
           ),
@@ -19845,7 +19868,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               timeHint,
               style: GoogleFonts.kanit(
                 fontSize: phonePortrait ? 11 : 12,
-                color: Colors.black45,
+                color: p.inkMuted,
               ),
             ),
           ],
@@ -19855,6 +19878,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildDailyEventSavedTodaySection() {
+    final p = DailyPalette.of(context);
+    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
+        Theme.of(context).brightness == Brightness.dark;
     final size = MediaQuery.sizeOf(context);
     final phonePortrait =
         size.shortestSide < 600 && size.height >= size.width;
@@ -19866,6 +19892,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               t.description.trim().isNotEmpty,
         )
         .toList();
+    final sectionAccent =
+        isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100);
     if (saved.isEmpty) {
       return Padding(
         padding: EdgeInsets.only(top: phonePortrait ? 8 : 10),
@@ -19876,7 +19904,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           textAlign: TextAlign.center,
           style: GoogleFonts.kanit(
             fontSize: phonePortrait ? 12.5 : 13.5,
-            color: Colors.black45,
+            color: p.inkMuted,
           ),
         ),
       );
@@ -19892,7 +19920,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           style: GoogleFonts.kanit(
             fontSize: phonePortrait ? 13.5 : 15,
             fontWeight: FontWeight.w800,
-            color: const Color(0xFFE65100),
+            color: sectionAccent,
           ),
         ),
         SizedBox(height: phonePortrait ? 6 : 8),
@@ -20223,7 +20251,7 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
       ),
     );
   }
-
+}
 
 /// แป้นตัวเลขลอย — state แยกจาก [QuickInputScreen] เพื่อลดการรีบิลด์และแลคเวลากดเลข
 class _CmNumericKeypadPanel extends StatefulWidget {
