@@ -310,6 +310,317 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
+  bool _useSplitLandscapeLayout(Size size) =>
+      size.width > size.height && size.width >= 640;
+
+  Widget _buildLandscapeBrandPanel({required bool isDark}) {
+    final goldLine = isDark
+        ? const [_goldDark, _gold]
+        : [DailyPalette.brandDeep, DailyPalette.brandGlow];
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? const [
+                  Color(0xFF050505),
+                  Color(0xFF12110E),
+                  Color(0xFF1A160F),
+                ]
+              : const [
+                  Color(0xFF0B1B2B),
+                  Color(0xFF0A3D47),
+                  Color(0xFF067A87),
+                ],
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (!isDark)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(-0.2, -0.35),
+                  radius: 1.1,
+                  colors: [
+                    _gold.withValues(alpha: 0.14),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ScaleTransition(
+                    scale: _logoEntranceScale,
+                    child: Image.asset(
+                      'assets/branding/splash_logo.png',
+                      width: 168,
+                      height: 168,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Text(
+                    'ยินดีต้อนรับ',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.kanit(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                      height: 1.12,
+                      color: Colors.white,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'เข้าสู่ระบบเพื่อบันทึกงานประจำวัน',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.kanit(
+                      fontSize: 15,
+                      height: 1.45,
+                      color: Colors.white.withValues(alpha: 0.78),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: 48,
+                    height: 3,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(99),
+                      gradient: LinearGradient(colors: goldLine),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    'GOLDEN MOLE',
+                    style: GoogleFonts.kanit(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 2.4,
+                      color: _gold.withValues(alpha: 0.85),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFormSurface({
+    required bool isDark,
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(24),
+  }) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF141414) : DailyPalette.card,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : DailyPalette.hairline,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.35)
+                : DailyPalette.brand.withValues(alpha: 0.08),
+            blurRadius: 28,
+            offset: const Offset(0, 12),
+          ),
+          BoxShadow(
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.2)
+                : const Color(0x080F172A),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(padding: padding, child: child),
+    );
+  }
+
+  Widget _buildLoginBody({
+    required BoxConstraints constraints,
+    required bool isDark,
+    required Color textPrimary,
+    required Color textSecondary,
+    required double bottomInset,
+    required bool splitLandscape,
+  }) {
+    final formSection = Form(
+      key: _formKey,
+      child: !_prefsLoaded
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: DailyPalette.brand,
+                  ),
+                ),
+              ),
+            )
+          : _savedProfiles.isNotEmpty && !_showForm
+              ? _buildProfilePicker(
+                  isDark: isDark,
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
+                  hideHeader: splitLandscape,
+                )
+              : _buildLoginFormFields(
+                  isDark: isDark,
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
+                ),
+    );
+
+    if (splitLandscape) {
+      final showProfilePicker =
+          _prefsLoaded && _savedProfiles.isNotEmpty && !_showForm;
+      final panelTitle = showProfilePicker ? 'เลือกโปรไฟล์' : 'เข้าสู่ระบบ';
+      final panelSubtitle = showProfilePicker
+          ? 'แตะเพื่อเข้าสู่ระบบ'
+          : 'กรอกข้อมูลบัญชีของคุณ';
+
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 46,
+            child: _buildLandscapeBrandPanel(isDark: isDark),
+          ),
+          Expanded(
+            flex: 54,
+            child: ColoredBox(
+              color: isDark ? const Color(0xFF0A0A0A) : DailyPalette.surface,
+              child: SafeArea(
+                left: false,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, formConstraints) {
+                          return SingleChildScrollView(
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            padding: EdgeInsets.fromLTRB(
+                              28,
+                              20,
+                              28,
+                              12 + bottomInset.clamp(0, 120),
+                            ),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                minHeight: formConstraints.maxHeight - 24,
+                              ),
+                              child: Center(
+                                child: ConstrainedBox(
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 400),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Text(
+                                        panelTitle,
+                                        style: GoogleFonts.kanit(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w800,
+                                          color: textPrimary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        panelSubtitle,
+                                        style: GoogleFonts.kanit(
+                                          fontSize: 14,
+                                          color: textSecondary,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 22),
+                                      _buildFormSurface(
+                                        isDark: isDark,
+                                        child: formSection,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: AppVersionLabel(
+                        color: textSecondary.withValues(alpha: 0.7),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(
+        24,
+        12,
+        24,
+        16 + bottomInset.clamp(0, 120),
+      ),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: constraints.maxHeight - 28,
+            maxWidth: 420,
+          ),
+          child: IntrinsicHeight(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Spacer(flex: 1),
+                _buildHero(
+                  isDark: isDark,
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
+                ),
+                const SizedBox(height: 28),
+                _buildFormSurface(isDark: isDark, child: formSection),
+                const Spacer(flex: 2),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -317,6 +628,8 @@ class _LoginScreenState extends State<LoginScreen>
     final textPrimary = isDark ? Colors.white : DailyPalette.ink;
     final textSecondary = isDark ? Colors.white70 : DailyPalette.inkMuted;
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final size = MediaQuery.sizeOf(context);
+    final splitLandscape = _useSplitLandscapeLayout(size);
 
     SystemChrome.setSystemUIOverlayStyle(
       SystemUiOverlayStyle(
@@ -334,111 +647,78 @@ class _LoginScreenState extends State<LoginScreen>
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF0A0A0A) : DailyPalette.surface,
       resizeToAvoidBottomInset: true,
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: isDark
-                ? const [
-                    Color(0xFF0A0A0A),
-                    Color(0xFF121212),
-                    Color(0xFF0A0A0A),
-                  ]
-                : [
-                    const Color(0xFFF3FBFC),
-                    DailyPalette.surface,
-                    Color.lerp(DailyPalette.surface, _gold, 0.04)!,
-                  ],
-          ),
-        ),
-        child: SafeArea(
-          child: FadeTransition(
-            opacity: CurvedAnimation(
-              parent: _entranceController,
-              curve: const Interval(0.05, 1.0, curve: Curves.easeOutCubic),
-            ),
-            child: Column(
-              children: [
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SingleChildScrollView(
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: EdgeInsets.fromLTRB(
-                          24,
-                          12,
-                          24,
-                          16 + bottomInset.clamp(0, 120),
+      body: splitLandscape
+          ? FadeTransition(
+              opacity: CurvedAnimation(
+                parent: _entranceController,
+                curve: const Interval(0.05, 1.0, curve: Curves.easeOutCubic),
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return _buildLoginBody(
+                    constraints: constraints,
+                    isDark: isDark,
+                    textPrimary: textPrimary,
+                    textSecondary: textSecondary,
+                    bottomInset: bottomInset,
+                    splitLandscape: true,
+                  );
+                },
+              ),
+            )
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: isDark
+                      ? const [
+                          Color(0xFF0A0A0A),
+                          Color(0xFF121212),
+                          Color(0xFF0A0A0A),
+                        ]
+                      : [
+                          const Color(0xFFF3FBFC),
+                          DailyPalette.surface,
+                          Color.lerp(DailyPalette.surface, _gold, 0.04)!,
+                        ],
+                ),
+              ),
+              child: SafeArea(
+                child: FadeTransition(
+                  opacity: CurvedAnimation(
+                    parent: _entranceController,
+                    curve:
+                        const Interval(0.05, 1.0, curve: Curves.easeOutCubic),
+                  ),
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return _buildLoginBody(
+                              constraints: constraints,
+                              isDark: isDark,
+                              textPrimary: textPrimary,
+                              textSecondary: textSecondary,
+                              bottomInset: bottomInset,
+                              splitLandscape: false,
+                            );
+                          },
                         ),
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minHeight: constraints.maxHeight - 28,
-                            maxWidth: 420,
-                          ),
-                          child: IntrinsicHeight(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const Spacer(flex: 1),
-                                _buildHero(
-                                  isDark: isDark,
-                                  textPrimary: textPrimary,
-                                  textSecondary: textSecondary,
-                                ),
-                                const SizedBox(height: 36),
-                                Form(
-                                  key: _formKey,
-                                  child: !_prefsLoaded
-                                      ? const Padding(
-                                          padding: EdgeInsets.symmetric(
-                                            vertical: 32,
-                                          ),
-                                          child: Center(
-                                            child: SizedBox(
-                                              width: 28,
-                                              height: 28,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2.4,
-                                                color: DailyPalette.brand,
-                                              ),
-                                            ),
-                                          ),
-                                        )
-                                      : _savedProfiles.isNotEmpty && !_showForm
-                                          ? _buildProfilePicker(
-                                              isDark: isDark,
-                                              textPrimary: textPrimary,
-                                              textSecondary: textSecondary,
-                                            )
-                                          : _buildLoginFormFields(
-                                              isDark: isDark,
-                                              textPrimary: textPrimary,
-                                              textSecondary: textSecondary,
-                                            ),
-                                ),
-                                const Spacer(flex: 2),
-                              ],
-                            ),
-                          ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: AppVersionLabel(
+                          color: textSecondary.withValues(alpha: 0.7),
+                          fontSize: 11,
                         ),
-                      );
-                    },
+                      ),
+                    ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: AppVersionLabel(
-                    color: textSecondary.withValues(alpha: 0.7),
-                    fontSize: 11,
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -496,27 +776,31 @@ class _LoginScreenState extends State<LoginScreen>
     required bool isDark,
     required Color textPrimary,
     required Color textSecondary,
+    bool hideHeader = false,
   }) {
     final busy = _submitting || _unlockingProfileId != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'เลือกโปรไฟล์',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.kanit(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: textPrimary,
+        if (!hideHeader) ...[
+          Text(
+            'เลือกโปรไฟล์',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.kanit(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: textPrimary,
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'แตะเพื่อเข้าสู่ระบบ',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.kanit(fontSize: 14, color: textSecondary),
-        ),
-        const SizedBox(height: 24),
+          const SizedBox(height: 6),
+          Text(
+            'แตะเพื่อเข้าสู่ระบบ',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.kanit(fontSize: 14, color: textSecondary),
+          ),
+          const SizedBox(height: 24),
+        ] else
+          const SizedBox(height: 4),
         Wrap(
           alignment: WrapAlignment.center,
           spacing: 16,
