@@ -762,6 +762,11 @@ void main() {
   });
 
   group('applyFuelReserveDieselAnchor', () {
+    test('fuelReserveAnchorIsActive when asOf reaches anchor', () {
+      expect(fuelReserveAnchorIsActive('2026-08-31'), isTrue);
+      expect(fuelReserveAnchorIsActive('2026-08-30'), isFalse);
+    });
+
     test('resets reserve to anchor on 2026-08-31 after heavy pre-anchor usage', () {
       final txs = <AppTransaction>[
         for (var i = 1; i <= 30; i++)

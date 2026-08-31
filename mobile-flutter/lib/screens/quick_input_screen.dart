@@ -917,7 +917,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _loadEmployees();
     if (_isFuelMode) {
       // ต้องได้ค่ายกมาก่อนคิดคงเหลือในถัง
-      unawaited(_loadAppCars().then((_) => _refreshFuelStock()));
+      unawaited(_loadAppCars().then((_) async {
+        if (_fuelReserveAnchorIsActive()) {
+          await LocalDataCache.invalidateFuelStockSnapshot();
+        }
+        await _refreshFuelStock();
+      }));
     } else {
       _loadAppCars();
     }
@@ -995,6 +1000,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final day = d.day.toString().padLeft(2, '0');
     return '$y-$m-$day';
   }
+
+  /// วันที่อ้างอิงยอดถังสำรอง (วันนี้) — ใช้จุดตรวจนับ 100 ล.
+  String _fuelStockAsOfYmd() => _quickYmd(DateTime.now());
+
+  bool _fuelReserveAnchorIsActive() =>
+      fuelReserveAnchorIsActive(_fuelStockAsOfYmd());
 
   /// «ลางาน» อ่านรายการทุกวันเพราะการลาคร่อมหลายวันได้ — เมนูอื่นดูเฉพาะวันที่เลือก
   bool get _moduleReadsAllTransactions =>
@@ -3108,7 +3119,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         openingBenzine: _fuelOpeningStock.benzine,
         openingReserveDiesel: _fuelOpeningStock.reserveDiesel,
         openingReserveBenzine: _fuelOpeningStock.reserveBenzine,
-        asOfYmd: _quickYmd(DateTime.now()),
+        asOfYmd: _fuelStockAsOfYmd(),
       );
       await _setFuelStockBalance(balance);
     } catch (_) {
@@ -3126,6 +3137,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     List<AppTransaction> savedRows, {
     List<AppTransaction> reverseFirst = const [],
   }) async {
+    if (_fuelReserveAnchorIsActive()) {
+      await _refreshFuelStock(allowNetworkFetch: false);
+      return;
+    }
     var next = _fuelStock;
     var needRecompute = false;
     for (final t in reverseFirst) {

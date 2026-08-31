@@ -52,6 +52,14 @@ export function effectiveFuelOpeningReserveDiesel(configured: number): number {
     return configured > 0 ? configured : FUEL_OPENING_RESERVE_DIESEL_LITERS;
 }
 
+export function fuelReserveAnchorIsActive(asOfYmd?: string): boolean {
+    return (
+        FUEL_RESERVE_ANCHOR_YMD.length > 0 &&
+        asOfYmd != null &&
+        asOfYmd >= FUEL_RESERVE_ANCHOR_YMD
+    );
+}
+
 function applyFuelReserveDieselAnchor(
     buckets: Map<string, FuelDayBucket>,
     openingReserveDiesel: number,
@@ -76,20 +84,20 @@ function applyFuelReserveDieselAnchor(
         return reserve;
     }
 
-    const preDays = [...byDay.keys()].filter((d) => d < anchorYmd).sort();
     const postDays = [...byDay.keys()].filter((d) => d >= anchorYmd).sort();
     const applyAnchor =
-        postDays.length > 0 ||
-        (asOfYmd != null && asOfYmd >= anchorYmd);
+        postDays.length > 0 || fuelReserveAnchorIsActive(asOfYmd);
+
+    if (applyAnchor) {
+        let reserve = anchorLiters;
+        for (const day of postDays) {
+            reserve += byDay.get(day) ?? 0;
+        }
+        return reserve;
+    }
 
     let reserve = openingReserveDiesel;
-    for (const day of preDays) {
-        reserve += byDay.get(day) ?? 0;
-    }
-    if (!applyAnchor) return reserve;
-
-    reserve = anchorLiters;
-    for (const day of postDays) {
+    for (const day of [...byDay.keys()].sort()) {
         reserve += byDay.get(day) ?? 0;
     }
     return reserve;

@@ -29,14 +29,17 @@ const String kFuelReserveAnchorYmd = '2026-08-31';
 /// ยอดถังสำรองดีเซล ณ วันตรวจนับ [kFuelReserveAnchorYmd]
 const double kFuelReserveAnchorLiters = 100;
 
+/// ใช้จุดตรวจนับถังสำรองเมื่อ [asOfYmd] ถึงวันตรวจนับแล้ว
+bool fuelReserveAnchorIsActive(String? asOfYmd) =>
+    kFuelReserveAnchorYmd.isNotEmpty &&
+    asOfYmd != null &&
+    asOfYmd.compareTo(kFuelReserveAnchorYmd) >= 0;
+
 /// ค่ายกมาถังสำรองดีเซลที่ใช้คำนวณ (ตั้งค่าเว็บ > 0 ชนะ; ไม่งั้นใช้ [kFuelOpeningReserveDieselLiters])
 double effectiveFuelOpeningReserveDiesel(double configured) =>
     configured > 0 ? configured : kFuelOpeningReserveDieselLiters;
 
-/// รวม delta ถังสำรองดีเซลรายวัน แล้วใช้จุดตรวจนับถ้ามี
-///
-/// จุดตรวจนับใช้เมื่อมีรายการตั้งแต่ [anchorYmd] ขึ้นไป
-/// หรือ [asOfYmd] (มักเป็นวันนี้) ถึง [anchorYmd] แล้ว
+/// รวม delta ถังสำรองดีเซล — หลังจุดตรวจนับนับเฉพาะรายการตั้งแต่ [anchorYmd]
 double applyFuelReserveDieselAnchor({
   required Map<String, _FuelDayBucket> buckets,
   required double openingReserveDiesel,
@@ -63,21 +66,20 @@ double applyFuelReserveDieselAnchor({
     return reserve;
   }
 
-  final preDays = byDay.keys.where((d) => d.compareTo(anchorYmd) < 0).toList()
-    ..sort();
   final postDays = byDay.keys.where((d) => d.compareTo(anchorYmd) >= 0).toList()
     ..sort();
-  final applyAnchor = postDays.isNotEmpty ||
-      (asOfYmd != null && asOfYmd.compareTo(anchorYmd) >= 0);
+  final applyAnchor = postDays.isNotEmpty || fuelReserveAnchorIsActive(asOfYmd);
+
+  if (applyAnchor) {
+    var reserve = anchorLiters;
+    for (final day in postDays) {
+      reserve += byDay[day]!;
+    }
+    return reserve;
+  }
 
   var reserve = openingReserveDiesel;
-  for (final day in preDays) {
-    reserve += byDay[day]!;
-  }
-  if (!applyAnchor) return reserve;
-
-  reserve = anchorLiters;
-  for (final day in postDays) {
+  for (final day in byDay.keys.toList()..sort()) {
     reserve += byDay[day]!;
   }
   return reserve;
@@ -691,6 +693,10 @@ FuelStockBalance computeFuelStockBalance(
 
   for (final entry in sandByDay.entries) {
     if (sandSieveDays.contains(entry.key)) continue;
+    if (fuelReserveAnchorIsActive(asOfYmd) &&
+        entry.key.compareTo(kFuelReserveAnchorYmd) < 0) {
+      continue;
+    }
     final laps = _sandLapTimes(entry.value);
     final hours =
         computeSandWorkDurationSummary(laps, entry.key)?.totalActiveHours ?? 0;
@@ -818,16 +824,16 @@ FuelStockBalance? applyFuelBalanceDelta(
   if (day.compareTo(kFuelStockCutoverYmd) < 0) return current;
   final liters = fuelTxLiters(t);
   if (liters <= 0) return current;
-  // หลังจุดตรวจนับ — ต้องคำนวณถังสำรองใหม่ทั้งก้อน
-  if (day.compareTo(kFuelReserveAnchorYmd) >= 0) {
-    final tank = fuelUsageTankOf(t);
-    if (fuelTankIsReserve(tank) && !fuelTypeIsBenzine(t.fuelType)) {
+  final tank = fuelUsageTankOf(t);
+  final benzine = fuelTypeIsBenzine(t.fuelType);
+  // หลังจุดตรวจนับ — อัปเดตถังสำรองต้องคำนวณใหม่ทั้งก้อน
+  if (fuelTankIsReserve(tank) && !benzine) {
+    if (day.compareTo(kFuelReserveAnchorYmd) >= 0 ||
+        fuelReserveAnchorIsActive(kFuelReserveAnchorYmd)) {
       return null;
     }
   }
   final signed = reverse ? -liters : liters;
-  final tank = fuelUsageTankOf(t);
-  final benzine = fuelTypeIsBenzine(t.fuelType);
 
   if (isFuelStockInRow(t)) {
     return _fuelBalanceAdd(

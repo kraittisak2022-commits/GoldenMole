@@ -385,6 +385,7 @@ class LocalDataCache {
         'reserveDiesel': balance.reserveDiesel,
         'mainBenzine': balance.mainBenzine,
         'reserveBenzine': balance.reserveBenzine,
+        'reserveAnchorYmd': kFuelReserveAnchorYmd,
       }),
     );
     await p.setInt(_kFuelStockAt, DateTime.now().millisecondsSinceEpoch);
@@ -407,6 +408,13 @@ class LocalDataCache {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
+      final anchor = decoded['reserveAnchorYmd'];
+      if (anchor is String && anchor != kFuelReserveAnchorYmd) {
+        return null;
+      }
+      if (anchor == null && kFuelReserveAnchorYmd.isNotEmpty) {
+        return null;
+      }
       return FuelStockBalance(
         mainDiesel: (decoded['mainDiesel'] as num?)?.toDouble() ?? 0,
         reserveDiesel: (decoded['reserveDiesel'] as num?)?.toDouble() ?? 0,
