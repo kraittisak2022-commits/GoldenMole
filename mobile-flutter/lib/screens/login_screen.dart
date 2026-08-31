@@ -560,7 +560,48 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _animatedFormContent({required Widget formSection}) {
+  Widget _buildLoginFormInner({
+    required bool isDark,
+    required Color textPrimary,
+    required Color textSecondary,
+    required bool splitLandscape,
+  }) {
+    if (!_prefsLoaded) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 32),
+        child: Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: DailyPalette.brand,
+            ),
+          ),
+        ),
+      );
+    }
+    if (_savedProfiles.isNotEmpty && !_showForm) {
+      return _buildProfilePicker(
+        isDark: isDark,
+        textPrimary: textPrimary,
+        textSecondary: textSecondary,
+        hideHeader: splitLandscape,
+      );
+    }
+    return _buildLoginFormFields(
+      isDark: isDark,
+      textPrimary: textPrimary,
+      textSecondary: textSecondary,
+    );
+  }
+
+  Widget _animatedFormContent({
+    required bool isDark,
+    required Color textPrimary,
+    required Color textSecondary,
+    required bool splitLandscape,
+  }) {
     final showProfilePicker =
         _prefsLoaded && _savedProfiles.isNotEmpty && !_showForm;
     final modeKey = !_prefsLoaded
@@ -588,7 +629,29 @@ class _LoginScreenState extends State<LoginScreen>
       },
       child: KeyedSubtree(
         key: ValueKey<String>(modeKey),
-        child: formSection,
+        child: _buildLoginFormInner(
+          isDark: isDark,
+          textPrimary: textPrimary,
+          textSecondary: textSecondary,
+          splitLandscape: splitLandscape,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoginForm({
+    required bool isDark,
+    required Color textPrimary,
+    required Color textSecondary,
+    required bool splitLandscape,
+  }) {
+    return Form(
+      key: _formKey,
+      child: _animatedFormContent(
+        isDark: isDark,
+        textPrimary: textPrimary,
+        textSecondary: textSecondary,
+        splitLandscape: splitLandscape,
       ),
     );
   }
@@ -601,37 +664,12 @@ class _LoginScreenState extends State<LoginScreen>
     required double bottomInset,
     required bool splitLandscape,
   }) {
-    final formSection = Form(
-      key: _formKey,
-      child: !_prefsLoaded
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 32),
-              child: Center(
-                child: SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.4,
-                    color: DailyPalette.brand,
-                  ),
-                ),
-              ),
-            )
-          : _savedProfiles.isNotEmpty && !_showForm
-              ? _buildProfilePicker(
-                  isDark: isDark,
-                  textPrimary: textPrimary,
-                  textSecondary: textSecondary,
-                  hideHeader: splitLandscape,
-                )
-              : _buildLoginFormFields(
-                  isDark: isDark,
-                  textPrimary: textPrimary,
-                  textSecondary: textSecondary,
-                ),
+    final loginForm = _buildLoginForm(
+      isDark: isDark,
+      textPrimary: textPrimary,
+      textSecondary: textSecondary,
+      splitLandscape: splitLandscape,
     );
-
-    final animatedForm = _animatedFormContent(formSection: formSection);
 
     if (splitLandscape) {
       final showProfilePicker =
@@ -725,7 +763,7 @@ class _LoginScreenState extends State<LoginScreen>
                                           scaleBegin: 0.97,
                                           child: _buildFormSurface(
                                             isDark: isDark,
-                                            child: animatedForm,
+                                            child: loginForm,
                                           ),
                                         ),
                                       ],
@@ -787,7 +825,7 @@ class _LoginScreenState extends State<LoginScreen>
                   scaleBegin: 0.97,
                   child: _buildFormSurface(
                     isDark: isDark,
-                    child: animatedForm,
+                    child: loginForm,
                   ),
                 ),
                 const Spacer(flex: 2),
