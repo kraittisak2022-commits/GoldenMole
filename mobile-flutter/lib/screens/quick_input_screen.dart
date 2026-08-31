@@ -5625,7 +5625,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _saveLaborLeaveEntry() async {
-    // เก็บค่าก่อน async — โหลดรายการวันอาจล้าง controller ระหว่างลายเซ็น/บันทึก
+    // เก็บค่าก่อน async — โหลดรายการวันอาจล้าง controller ระหว่างบันทึก
     final leaveEmpIds = _selectedLeaveEmpIds.toList();
     final reason = _leaveReasonController.text.trim();
     // จำนวนวันมาจากช่วงวันที่เลือกในปฏิทินเสมอ
@@ -5644,6 +5644,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ? 'แก้ไขลางาน'
           : 'บันทึกลางาน',
       saveButtonLabel: existingLeaveTxId != null ? 'บันทึกการแก้ไข' : 'บันทึก',
+      // ลางานไม่ต้องลงลายเซ็น — บันทึกตรงทันที
+      requireSignature: false,
       stayOnPage: true,
       onStayOnPageCleared: () {
         _selectedLeaveEmpIds.clear();
