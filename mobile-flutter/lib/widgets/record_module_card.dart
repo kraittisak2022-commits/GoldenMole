@@ -98,6 +98,32 @@ class RecordModuleCard extends StatelessWidget {
         final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
             DevicePerf.isConstrainedDevice;
 
+        List<BoxShadow> cardLiftShadows() {
+          if (useLiteChrome) {
+            return [
+              BoxShadow(
+                color: p.shadowLift.withValues(alpha: isDark ? 0.42 : 0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+                spreadRadius: -2,
+              ),
+            ];
+          }
+          return [
+            BoxShadow(
+              color: p.shadowCard,
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+            BoxShadow(
+              color: p.shadowLift,
+              blurRadius: 18,
+              offset: const Offset(0, 7),
+              spreadRadius: -3,
+            ),
+          ];
+        }
+
         Widget iconWell() {
           return SizedBox(
             width: wellSize,
@@ -211,15 +237,7 @@ class RecordModuleCard extends StatelessWidget {
                     ? p.statusIncomplete.withValues(alpha: isDark ? 0.3 : 0.22)
                     : p.hairline.withValues(alpha: isDark ? 0.85 : 1),
               ),
-              boxShadow: useLiteChrome
-                  ? null
-                  : [
-                      BoxShadow(
-                        color: p.shadowCard,
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+              boxShadow: cardLiftShadows(),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(radius),
@@ -235,8 +253,17 @@ class RecordModuleCard extends StatelessWidget {
           size: SoftPressSize.medium,
           borderRadius: radius,
           isDarkSurface: isDark,
-          liftWhenIdle: false,
-          depthShadow: null,
+          liftWhenIdle: true,
+          idleLiftY: useLiteChrome ? -1 : -1.5,
+          depthShadow: useLiteChrome
+              ? null
+              : SoftPressDepthShadow(
+                  color: p.shadowLift.withValues(alpha: isDark ? 0.5 : 0.16),
+                  blurRadius: 16,
+                  offsetY: 6,
+                  pressedBlurRadius: 5,
+                  pressedOffsetY: 2,
+                ),
           hitPadding: EdgeInsets.zero,
           child: shapedCard,
         );
