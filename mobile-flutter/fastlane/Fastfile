@@ -74,4 +74,19 @@ platform :android do
     build_aab unless ENV["SKIP_FLUTTER_BUILD"] == "1"
     closed_beta
   end
+
+  desc "Verify Google Play API credentials and closed testing track access"
+  lane :verify_play_api do
+    track = ENV.fetch("PLAY_STORE_TRACK", "alpha")
+    validate_play_store_json_key(json_key: play_json_key_path)
+    codes = google_play_track_version_codes(
+      json_key: play_json_key_path,
+      package_name: "com.goldenmole.app",
+      track: track
+    )
+    UI.success(
+      "Play API OK — package com.goldenmole.app, track '#{track}', " \
+      "version codes on track: #{codes.empty? ? '(none yet)' : codes.join(', ')}"
+    )
+  end
 end

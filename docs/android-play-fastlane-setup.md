@@ -31,12 +31,24 @@ bundle exec fastlane --version
 
 ## One-time Google Play Console setup
 
+**คู่มือภาษาไทยทีละขั้น:** [google-play-api-setup-th.md](./google-play-api-setup-th.md)
+
+สรุปสั้น:
+
 1. Open [Google Play Console](https://play.google.com/console) → **GoldenMole for User** (`com.goldenmole.app`).
 2. **Setup → API access** → Link/create Google Cloud project.
 3. **Create service account** → Grant access in Play Console with **Release manager** (or Admin).
 4. Download JSON key → store outside repo, e.g. `C:\secrets\goldenmole-play-api.json`.
 5. **Testing → Closed testing** — note the **track slug** (often `alpha` for the default closed track; custom tracks use their slug from the URL).
 6. Ensure the closed testing track has at least one release once (Play sometimes requires manual first upload).
+
+Local setup script:
+
+```powershell
+cd c:\construction-management-app\mobile-flutter
+.\scripts\setup-play-api.ps1 -JsonKeyPath "C:\secrets\goldenmole-play-api.json"
+.\scripts\verify-play-api.ps1
+```
 
 ## Configure secrets locally
 
