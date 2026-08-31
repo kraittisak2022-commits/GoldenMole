@@ -27,7 +27,7 @@ function Import-DotEnvFile {
 Write-Host "=== Verify Google Play API ===" -ForegroundColor Cyan
 
 if (-not (Import-DotEnvFile (Join-Path $FlutterRoot ".env.play"))) {
-  Write-Host "Missing .env.play — run: .\scripts\setup-play-api.ps1" -ForegroundColor Red
+  Write-Host "Missing .env.play - run: .\scripts\setup-play-api.ps1" -ForegroundColor Red
   exit 1
 }
 
@@ -54,12 +54,13 @@ if (Test-Path $rubyBin) {
 }
 
 if (-not (Get-Command ruby -ErrorAction SilentlyContinue)) {
-  Write-Host "Ruby not in PATH. Add C:\Ruby40-x64\bin or open a new terminal." -ForegroundColor Red
+  Write-Host 'Ruby not in PATH. Add C:\Ruby40-x64\bin or open a new terminal.' -ForegroundColor Red
   exit 1
 }
 
-if (-not (Test-Path (Join-Path $FlutterRoot "vendor/bundle"))) {
-  Write-Host "Fastlane gems missing — run: bundle install" -ForegroundColor Red
+$bundlePath = Join-Path $FlutterRoot "vendor\bundle"
+if (-not (Test-Path $bundlePath)) {
+  Write-Host "Fastlane gems missing - run: bundle install" -ForegroundColor Red
   exit 1
 }
 
