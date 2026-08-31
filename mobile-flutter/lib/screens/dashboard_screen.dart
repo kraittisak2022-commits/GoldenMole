@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_user.dart';
+import '../models/app_sync_snapshot.dart';
 import '../models/app_transaction.dart';
 import '../models/dashboard_summary.dart';
 import '../models/employee.dart';
@@ -41,6 +42,7 @@ import '../widgets/app_page_route.dart';
 import '../widgets/menu_panel_transition.dart';
 import '../widgets/record_module_card.dart';
 import '../widgets/soft_press_button.dart';
+import '../widgets/sync_failed_queue_sheet.dart';
 import '../widgets/weekly_off_prompt.dart';
 import 'app_settings_screen.dart';
 import 'calendar_screen.dart';
@@ -2415,24 +2417,31 @@ class _HomeHeaderCompact extends StatelessWidget {
             ),
           ),
         ),
-        if (!phonePortrait) ...[
-          SizedBox(height: phonePortrait ? 8 : 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              _HeaderStatChip(
-                icon: Icons.access_time_filled_rounded,
-                label: '${l10n.latestPrefix} $lastLabel',
-                compact: phonePortrait,
+        SizedBox(height: phonePortrait ? 8 : 10),
+        Row(
+          children: [
+            Expanded(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (!phonePortrait)
+                    _HeaderStatChip(
+                      icon: Icons.access_time_filled_rounded,
+                      label: '${l10n.latestPrefix} $lastLabel',
+                      compact: phonePortrait,
+                    ),
+                  _LiveClockChip(
+                    l10n: l10n,
+                    compact: phonePortrait,
+                  ),
+                  const _SyncStatusIcons(),
+                ],
               ),
-              _LiveClockChip(
-                l10n: l10n,
-                compact: phonePortrait,
-              ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -2480,6 +2489,228 @@ class _LiveClockChipState extends State<_LiveClockChip> {
       icon: Icons.schedule_rounded,
       label: '${widget.l10n.timePrefix} $clock',
       compact: widget.compact,
+    );
+  }
+}
+
+/// สถานะเครือข่าย / คิวอัปโหลด — ไอคอนเล็กข้างแถบเวลา
+class _SyncStatusIcons extends StatelessWidget {
+  const _SyncStatusIcons();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<AppSyncSnapshot>(
+      valueListenable: CountRecordOfflineSync.instance.syncState,
+      builder: (context, snap, _) {
+        final online = snap.isEffectivelyOnline;
+        final syncing = snap.isSyncing;
+        final pending = snap.pendingCount;
+        final failed = snap.failedCount;
+
+        final widgets = <Widget>[
+          _StatusIconPill(
+            icon: online
+                ? Icons.wifi_rounded
+                : Icons.wifi_off_rounded,
+            color: online
+                ? const Color(0xFF0D9488)
+                : const Color(0xFFB45309),
+            background: online
+                ? const Color(0xFF0D9488).withValues(alpha: 0.12)
+                : const Color(0xFFB45309).withValues(alpha: 0.12),
+            tooltip: online ? 'ออนไลน์' : 'ออฟไลน์',
+            semanticsLabel: online
+                ? 'สถานะออนไลน์'
+                : 'สถานะออฟไลน์',
+          ),
+        ];
+
+        if (syncing) {
+          widgets.add(
+            _StatusIconPill(
+              icon: Icons.sync_rounded,
+              color: DailyPalette.brandDeep,
+              background: DailyPalette.brand.withValues(alpha: 0.14),
+              tooltip: pending > 0
+                  ? 'กำลังอัปโหลด $pending รายการ'
+                  : 'กำลังซิงก์…',
+              semanticsLabel: 'กำลังซิงก์ข้อมูล',
+              spinning: true,
+            ),
+          );
+        } else if (failed > 0) {
+          widgets.add(
+            _StatusIconPill(
+              icon: Icons.error_outline_rounded,
+              color: const Color(0xFFDC2626),
+              background: const Color(0xFFDC2626).withValues(alpha: 0.12),
+              tooltip: 'ซิงก์ไม่สำเร็จ $failed รายการ — แตะเพื่อจัดการ',
+              semanticsLabel: 'มีรายการซิงก์ไม่สำเร็จ',
+              badge: failed > 9 ? '9+' : '$failed',
+              onTap: () => SyncFailedQueueSheet.show(context),
+            ),
+          );
+        } else if (pending > 0) {
+          widgets.add(
+            _StatusIconPill(
+              icon: Icons.cloud_upload_outlined,
+              color: const Color(0xFFC2410C),
+              background: const Color(0xFFEA580C).withValues(alpha: 0.12),
+              tooltip: 'ยังไม่อัปโหลด $pending รายการ — แตะเพื่อซิงก์',
+              semanticsLabel: 'มีข้อมูลรออัปโหลด $pending รายการ',
+              badge: pending > 9 ? '9+' : '$pending',
+              onTap: () {
+                AppHaptics.tap();
+                unawaited(CountRecordOfflineSync.instance.syncNow());
+              },
+            ),
+          );
+        }
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < widgets.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              widgets[i],
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _StatusIconPill extends StatefulWidget {
+  const _StatusIconPill({
+    required this.icon,
+    required this.color,
+    required this.background,
+    required this.tooltip,
+    required this.semanticsLabel,
+    this.badge,
+    this.onTap,
+    this.spinning = false,
+  });
+
+  final IconData icon;
+  final Color color;
+  final Color background;
+  final String tooltip;
+  final String semanticsLabel;
+  final String? badge;
+  final VoidCallback? onTap;
+  final bool spinning;
+
+  @override
+  State<_StatusIconPill> createState() => _StatusIconPillState();
+}
+
+class _StatusIconPillState extends State<_StatusIconPill>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _spin;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.spinning) {
+      _spin = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 900),
+      )..repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _StatusIconPill oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.spinning && _spin == null) {
+      _spin = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 900),
+      )..repeat();
+    } else if (!widget.spinning && _spin != null) {
+      _spin!.dispose();
+      _spin = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _spin?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final iconWidget = Icon(widget.icon, size: 15, color: widget.color);
+    final core = SizedBox(
+      width: 28,
+      height: 28,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: widget.background,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(
+            color: widget.color.withValues(alpha: 0.22),
+          ),
+        ),
+        child: Center(
+          child: _spin != null
+              ? RotationTransition(turns: _spin!, child: iconWidget)
+              : iconWidget,
+        ),
+      ),
+    );
+
+    Widget child = core;
+    final badge = widget.badge;
+    if (badge != null && badge.isNotEmpty) {
+      child = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          core,
+          Positioned(
+            top: -4,
+            right: -4,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              decoration: BoxDecoration(
+                color: widget.color,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.white, width: 1.2),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                badge,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  height: 1.1,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Semantics(
+      button: widget.onTap != null,
+      label: widget.semanticsLabel,
+      child: Tooltip(
+        message: widget.tooltip,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(9),
+            child: child,
+          ),
+        ),
+      ),
     );
   }
 }
