@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/daily_palette.dart';
 import '../utils/device_perf.dart';
 import 'soft_press_button.dart';
 
@@ -35,8 +36,6 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
   late final AnimationController _entrance;
   late final List<Animation<double>> _staggerAnims;
   late final bool _lite;
-
-  static const _brandTeal = Color(0xFF0D98A5);
 
   @override
   void initState() {
@@ -84,6 +83,8 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final size = MediaQuery.sizeOf(context);
     final isTablet = size.shortestSide >= 600;
     final isLandscape = size.width > size.height;
@@ -98,7 +99,9 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
       subtitle: widget.sandYardSummary,
       icon: Icons.groups_rounded,
       accent: const Color(0xFF2FB6A6),
-      iconTileColor: const Color(0xFFE0F7F4),
+      iconTileColor: isDark
+          ? const Color(0xFF1A3A38)
+          : const Color(0xFFE0F7F4),
       vertical: useColumns,
       compact: phonePortrait,
       onTap: () => widget.onSelect(AttendanceSection.sandYard),
@@ -108,7 +111,9 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
       subtitle: widget.driverSummary,
       icon: Icons.local_shipping_rounded,
       accent: const Color(0xFF00897B),
-      iconTileColor: const Color(0xFFE0F2F1),
+      iconTileColor: isDark
+          ? const Color(0xFF163832)
+          : const Color(0xFFE0F2F1),
       vertical: useColumns,
       compact: phonePortrait,
       onTap: () => widget.onSelect(AttendanceSection.driver),
@@ -127,7 +132,7 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
               fontWeight: FontWeight.w800,
               height: 1.1,
               letterSpacing: -0.5,
-              color: const Color(0xFF1A2433),
+              color: p.ink,
             ),
           ),
           SizedBox(height: phonePortrait ? 6 : 10),
@@ -136,7 +141,7 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
               width: isTablet ? 56 : 44,
               height: 4,
               decoration: BoxDecoration(
-                color: _brandTeal,
+                color: p.brand,
                 borderRadius: BorderRadius.circular(999),
               ),
             ),
@@ -150,7 +155,7 @@ class _AttendanceSubModePickerState extends State<AttendanceSubModePicker>
             style: TextStyle(
               fontSize: subtitleSize,
               fontWeight: FontWeight.w500,
-              color: const Color(0xFF64748B),
+              color: p.inkMuted,
               height: 1.35,
             ),
           ),
@@ -249,6 +254,8 @@ class _AttendanceModeOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
     final iconBox = vertical
         ? (isTablet ? 72.0 : 64.0)
@@ -292,7 +299,7 @@ class _AttendanceModeOption extends StatelessWidget {
             fontWeight: FontWeight.w800,
             height: 1.12,
             letterSpacing: -0.25,
-            color: const Color(0xFF1A2433),
+            color: p.ink,
           ),
         ),
         SizedBox(height: compact ? 3 : 6),
@@ -305,7 +312,7 @@ class _AttendanceModeOption extends StatelessWidget {
             fontSize: subtitleSize,
             fontWeight: FontWeight.w500,
             height: 1.25,
-            color: const Color(0xFF64748B),
+            color: p.inkMuted,
           ),
         ),
       ],
@@ -355,9 +362,9 @@ class _AttendanceModeOption extends StatelessWidget {
     final minH = vertical ? 0.0 : (compact ? 0.0 : (isTablet ? 88.0 : 80.0));
     final card = DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: p.card,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE7ECF3)),
+        border: Border.all(color: p.hairline),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
@@ -396,10 +403,10 @@ class _AttendanceModeOption extends StatelessWidget {
       onTap: onTap,
       size: SoftPressSize.large,
       borderRadius: 22,
-      isDarkSurface: false,
+      isDarkSurface: isDark,
       liftWhenIdle: true,
       depthShadow: SoftPressDepthShadow(
-        color: accent.withValues(alpha: 0.12),
+        color: accent.withValues(alpha: isDark ? 0.22 : 0.12),
         blurRadius: 14,
         offsetY: 4,
         pressedBlurRadius: 5,
