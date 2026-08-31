@@ -167,12 +167,7 @@ enum FuelUsageReportLogic {
     }
 
     static func fuelUsageTankOf(_ t: Transaction) -> Tank {
-        let raw = (t.fuelTank ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !raw.isEmpty { return normalizeFuelTank(raw) }
-        if subEquals(t, FuelLogic.vehicleUsageSubCategory) {
-            return .reserve
-        }
-        return .main
+        FuelLogic.fuelUsageTankOf(t) == FuelLogic.tankReserve ? .reserve : .main
     }
 
     static func normalizeVehicleId(_ raw: String) -> String {
@@ -279,8 +274,10 @@ enum FuelUsageReportLogic {
         }
 
         var out: [String: Double] = [:]
+        let skipPreAnchor = FuelLogic.reserveAnchorIsActive(asOfYmd: DashboardAggregations.todayYMD())
         for (day, sandTx) in sandByDay {
             if sandSieveDays.contains(day) { continue }
+            if skipPreAnchor, day < FuelLogic.reserveAnchorYmd { continue }
             let laps = sandLapTimes(sandTx)
             let hours = CountRecordAnalytics.computeWorkDuration(lapTimes: laps, dayKey: day)?.totalActiveHours ?? 0
             guard hours > 0 else { continue }
@@ -446,97 +443,27 @@ enum FuelUsageReportLogic {
         return Report(rows: rows, totals: totals, byVehicle: byVehicle, byDay: byDay)
     }
 
-    /// Web `computeFuelStockBalances` — remaining main/reserve through `endDate` inclusive.
+    /// Web `computeFuelStockBalances` — remaining main/reserve through ledger (Flutter parity via FuelLogic).
     static func computeStockBalances(
         transactions: [Transaction],
         opening: FuelStock?,
-        estimatedSieveByDay: [String: Double] = [:]
+        estimatedSieveByDay: [String: Double] = [:],
+        asOfYmd: String? = nil
     ) -> StockBalances {
-        struct Bucket {
-            var stockIn = 0.0
-            var withdraw = 0.0
-        }
-
-        var buckets: [String: Bucket] = [:]
-
-        var transferMachineDays = Set<String>()
-        for t in transactions {
-            guard t.category == "Fuel", t.type == .expense else { continue }
-            let day = normalizeDate(t.date)
-            guard day >= FuelLogic.stockCutoverYmd else { continue }
-            let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if sub.caseInsensitiveCompare(FuelLogic.transferSubCategory) == .orderedSame,
-               withdrawPurpose(t) == "machine" {
-                transferMachineDays.insert(day)
-            }
-        }
-
-        for t in transactions {
-            guard t.category == "Fuel", t.type == .expense else { continue }
-            let day = normalizeDate(t.date)
-            guard day >= FuelLogic.stockCutoverYmd else { continue }
-            let liters = DashboardAggregations.fuelTxToLiters(t)
-            guard liters > 0 else { continue }
-
-            let isBenzine = resolveFuelType(t) == .benzine
-            let tank = fuelUsageTankOf(t)
-            let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let purpose = withdrawPurpose(t)
-            let movement = inferFuelMovement(t)
-            let key = "\(day)|\(tank.rawValue)|\(isBenzine ? "B" : "D")"
-
-            if movement == "stock_in" {
-                buckets[key, default: Bucket()].stockIn += liters
-                continue
-            }
-
-            if sub.caseInsensitiveCompare(FuelLogic.withdrawSubCategory) == .orderedSame {
-                buckets[key, default: Bucket()].withdraw += liters
-                if purpose == "machine", !transferMachineDays.contains(day) {
-                    let reserveKey = "\(day)|\(Tank.reserve.rawValue)|\(isBenzine ? "B" : "D")"
-                    buckets[reserveKey, default: Bucket()].stockIn += liters
-                }
-                continue
-            }
-
-            if sub.caseInsensitiveCompare(FuelLogic.transferSubCategory) == .orderedSame
-                || sub.caseInsensitiveCompare(FuelLogic.sandSieveSubCategory) == .orderedSame
-                || sub.caseInsensitiveCompare(FuelLogic.vehicleUsageSubCategory) == .orderedSame {
-                buckets[key, default: Bucket()].withdraw += liters
-            }
-        }
-
-        for (dayRaw, liters) in estimatedSieveByDay {
-            let day = normalizeDate(dayRaw)
-            guard liters > 0, day >= FuelLogic.stockCutoverYmd else { continue }
-            let key = "\(day)|\(Tank.reserve.rawValue)|D"
-            buckets[key, default: Bucket()].withdraw += liters
-        }
-
-        var mainD = opening?.diesel ?? 0
-        var mainB = opening?.benzine ?? 0
-        var reserveD = opening?.dieselReserve ?? 0
-        var reserveB = opening?.benzineReserve ?? 0
-
-        for (key, bucket) in buckets {
-            let delta = bucket.stockIn - bucket.withdraw
-            let isReserve = key.contains("|\(Tank.reserve.rawValue)|")
-            let isBenzine = key.hasSuffix("|B")
-            if isReserve {
-                if isBenzine { reserveB += delta } else { reserveD += delta }
-            } else if isBenzine {
-                mainB += delta
-            } else {
-                mainD += delta
-            }
-        }
-
-        let reserveShortfall = max(0, -reserveD) + max(0, -reserveB)
+        // Prefer FuelLogic path (anchor + tank routing). Optional estimated map is for callers
+        // that already filtered sieve days; FuelLogic re-infers from sand laps when empty.
+        _ = estimatedSieveByDay
+        let bal = FuelLogic.computeBalance(
+            transactions: transactions,
+            opening: opening,
+            asOfYmd: asOfYmd ?? DashboardAggregations.todayYMD()
+        )
+        let reserveShortfall = max(0, -bal.reserveDiesel) + max(0, -bal.reserveBenzine)
         return StockBalances(
-            diesel: mainD,
-            benzine: mainB,
-            dieselReserve: reserveD,
-            benzineReserve: reserveB,
+            diesel: bal.mainDiesel,
+            benzine: bal.mainBenzine,
+            dieselReserve: bal.reserveDiesel,
+            benzineReserve: bal.reserveBenzine,
             reserveShortfallLiters: reserveShortfall
         )
     }
@@ -548,12 +475,10 @@ enum FuelUsageReportLogic {
     ) -> StockBalances {
         let end = normalizeDate(endDate)
         let through = transactions.filter { normalizeDate($0.date) <= end }
-        let estimated = estimateSieveByDay(transactions: transactions)
-            .filter { normalizeDate($0.key) <= end }
         return computeStockBalances(
             transactions: through,
             opening: opening,
-            estimatedSieveByDay: estimated
+            asOfYmd: end
         )
     }
 }

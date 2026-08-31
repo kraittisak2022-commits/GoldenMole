@@ -259,7 +259,11 @@ extension DashboardAggregations {
         transactions: [Transaction],
         opening: FuelStock?
     ) -> FuelBalances {
-        let bal = FuelLogic.computeBalance(transactions: transactions, opening: opening)
+        let bal = FuelLogic.computeBalance(
+            transactions: transactions,
+            opening: opening,
+            asOfYmd: DashboardAggregations.todayYMD()
+        )
         return FuelBalances(diesel: bal.diesel, benzine: bal.benzine)
     }
 

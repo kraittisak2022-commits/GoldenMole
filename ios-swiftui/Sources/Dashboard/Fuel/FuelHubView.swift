@@ -193,7 +193,11 @@ struct FuelHubView: View {
             row(title: "ถังหลัก (ถังหลัง)", liters: mainDiesel, capacity: FuelLogic.tankCapacityMainLiters)
             row(title: "ถังสำรอง", liters: reserveDiesel, capacity: FuelLogic.tankCapacityReserveLiters)
             if mainDiesel < 0 || reserveDiesel < 0 {
-                Text("คงเหลือติดลบ — ตรวจสอบรายการเบิก/ใช้รถ")
+                Text(
+                    reserveDiesel < 0
+                        ? "ถังสำรองติดลบ — ตรวจบันทึกโอนเติมเครื่องจักร (จุดตรวจนับ \(FuelLogic.reserveAnchorYmd) = \(FuelLogic.formatLiters(FuelLogic.reserveAnchorLiters)) L)"
+                        : "คงเหลือติดลบ — ตรวจสอบรายการเบิก/ใช้รถ"
+                )
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.expense)
             }

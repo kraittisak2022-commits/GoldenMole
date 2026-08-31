@@ -42,7 +42,9 @@ struct CategoryReportScreen: View {
                 fuelCalendarRevision: type == .fuel ? appState.transactionsRevision : 0
             )
                 .padding(.horizontal, AppTheme.spaceLG)
-                .padding(.vertical, 10)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(AppTheme.surfaceSoft.opacity(0.85))
                 .overlay(alignment: .bottom) {
                     Rectangle()

@@ -136,7 +136,8 @@ final class FuelSession {
         if needsBalance {
             let balance = FuelLogic.computeBalance(
                 transactions: appState.transactions,
-                opening: appState.settings.fuelOpeningStockLiters
+                opening: appState.settings.fuelOpeningStockLiters,
+                asOfYmd: dayKey.isEmpty ? DashboardAggregations.todayYMD() : dayKey
             )
             dieselBalance = balance.mainDiesel
             reserveDieselBalance = balance.reserveDiesel

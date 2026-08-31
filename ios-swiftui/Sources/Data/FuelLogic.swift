@@ -156,6 +156,16 @@ enum FuelLogic {
         return tankMain
     }
 
+    /// Flutter `fuelUsageTankOf` — VehicleUsage ที่ไม่ระบุถัง = สำรอง; อื่น ๆ = หลัก
+    static func fuelUsageTankOf(_ t: Transaction) -> String {
+        let raw = (t.fuelTank ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !raw.isEmpty { return normalizeTank(raw) }
+        if (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == vehicleUsageSubCategory {
+            return tankReserve
+        }
+        return tankMain
+    }
+
     static func isFuelExpense(_ t: Transaction) -> Bool {
         t.category == "Fuel" && t.type == .expense
     }
@@ -238,28 +248,77 @@ enum FuelLogic {
         return usage.liters
     }
 
+    /// แม็คโคร / การใช้น้ำมันรถ — เฉพาะ subCategory VehicleUsage (Flutter parity)
+    static func isMacroVehicleUsageRow(_ t: Transaction) -> Bool {
+        guard isFuelExpense(t) else { return false }
+        return (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == vehicleUsageSubCategory
+    }
+
     static func isVehicleUsage(_ t: Transaction) -> Bool {
-        guard isFuelExpense(t), !isStockIn(t) else { return false }
-        let vehicle = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !vehicle.isEmpty else { return false }
-        return (t.quantity ?? 0) > 0
+        isMacroVehicleUsageRow(t)
     }
 
     /// วันตัดยอด — ก่อนวันนี้ถือว่าน้ำมันเหลือ 0; ตั้งแต่วันนี้หักถังปกติ (พ.ศ. 1 ส.ค. 2569)
     static let stockCutoverYmd = "2026-08-01"
 
-    /// Dual-tank balance: each row hits only the tank stored on it.
-    /// `delta = stockIn − withdraw − vehicleUsage` (no machine-quota offset).
+    /// วันตรวจนับถังสำรองจริง — รีเซ็ตเป็น [reserveAnchorLiters] แล้วจึงนับเฉพาะรายการตั้งแต่วันนี้
+    static let reserveAnchorYmd = "2026-08-31"
+    static let reserveAnchorLiters: Double = 100
+    /// ยอดยกมาถังสำรองดีเซลเมื่อยังไม่ตั้งค่าในระบบ
+    static let openingReserveDieselDefault: Double = 100
+
+    static func reserveAnchorIsActive(asOfYmd: String?) -> Bool {
+        guard let asOfYmd, !asOfYmd.isEmpty else { return false }
+        return asOfYmd >= reserveAnchorYmd
+    }
+
+    static func effectiveOpeningReserveDiesel(_ configured: Double?) -> Double {
+        let v = configured ?? 0
+        return v > 0 ? v : openingReserveDieselDefault
+    }
+
+    /// Dual-tank balance — Flutter `computeFuelStockBalance` parity.
+    /// `delta = stockIn − withdraw` per tank; reserve diesel uses the 2026-08-31 anchor.
     static func computeBalance(
         transactions: [Transaction],
-        opening: FuelStock?
+        opening: FuelStock?,
+        asOfYmd: String? = nil
     ) -> Balance {
         struct Bucket {
             var stockIn = 0.0
             var withdraw = 0.0
-            var vehicleUsage = 0.0
         }
         var buckets: [String: Bucket] = [:]
+
+        func key(day: String, tank: String, benzine: Bool) -> String {
+            "\(day)|\(tank)|\(benzine ? "B" : "D")"
+        }
+
+        var sandSieveDays = Set<String>()
+        var transferMachineDays = Set<String>()
+        var sandByDay: [String: Transaction] = [:]
+
+        for t in transactions {
+            let day = String(t.date.prefix(10))
+            guard day >= stockCutoverYmd else { continue }
+            if isSandSieve(t) { sandSieveDays.insert(day) }
+            if isTransfer(t),
+               (t.workType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "machine" {
+                transferMachineDays.insert(day)
+            }
+            if t.category == "DailyLog",
+               (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == "Sand" {
+                let laps = CountRecordLogic.getLapTimes(t)
+                guard !laps.isEmpty else { continue }
+                if let prev = sandByDay[day] {
+                    if laps.count >= CountRecordLogic.getLapTimes(prev).count {
+                        sandByDay[day] = t
+                    }
+                } else {
+                    sandByDay[day] = t
+                }
+            }
+        }
 
         for t in transactions {
             guard isFuelExpense(t) else { continue }
@@ -268,54 +327,76 @@ enum FuelLogic {
             let lit = liters(of: t)
             guard lit > 0 else { continue }
             let isBenzine = (t.fuelType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "benzine"
-            let tank = normalizeTank(t.fuelTank)
-            let key = "\(day)|\(tank)|\(isBenzine ? "B" : "D")"
-            var b = buckets[key] ?? Bucket()
+            let tank = fuelUsageTankOf(t)
+            let bucketKey = key(day: day, tank: tank, benzine: isBenzine)
+
             if isStockIn(t) {
-                b.stockIn += lit
-            } else if isWithdraw(t) || isTransfer(t) || isSandSieve(t) {
-                b.withdraw += lit
-            } else if isVehicleUsage(t) {
-                b.vehicleUsage += lit
+                buckets[bucketKey, default: Bucket()].stockIn += lit
+                continue
             }
-            buckets[key] = b
+            if isWithdraw(t) {
+                buckets[bucketKey, default: Bucket()].withdraw += lit
+                let purpose = (t.workType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if purpose == "machine", !transferMachineDays.contains(day) {
+                    let reserveKey = key(day: day, tank: tankReserve, benzine: isBenzine)
+                    buckets[reserveKey, default: Bucket()].stockIn += lit
+                }
+                continue
+            }
+            if isTransfer(t) || isSandSieve(t) || isMacroVehicleUsageRow(t) {
+                buckets[bucketKey, default: Bucket()].withdraw += lit
+            }
         }
 
-        let persistedSieveDays = Set(
-            transactions.filter(isSandSieve).map { String($0.date.prefix(10)) }
-        )
-        var txByDay: [String: [Transaction]] = [:]
-        for t in transactions {
-            let day = String(t.date.prefix(10))
-            guard day >= stockCutoverYmd else { continue }
-            txByDay[day, default: []].append(t)
-        }
-        let candidateDays = Set(txByDay.keys).filter { !persistedSieveDays.contains($0) }
-        for date in candidateDays {
-            let inferred = inferredSandSieveLiters(on: date, transactions: txByDay[date] ?? [])
+        let asOf = asOfYmd ?? DashboardAggregations.todayYMD()
+        let skipPreAnchorSieve = reserveAnchorIsActive(asOfYmd: asOf)
+        for (day, sandTx) in sandByDay {
+            if sandSieveDays.contains(day) { continue }
+            if skipPreAnchorSieve, day < reserveAnchorYmd { continue }
+            let laps = CountRecordLogic.getLapTimes(sandTx)
+            let hours = CountRecordAnalytics.computeWorkDuration(lapTimes: laps, dayKey: day)?.totalActiveHours ?? 0
+            guard hours > 0 else { continue }
+            let inferred = ((hours * sandSieveLitersPerHour) * 100).rounded() / 100
             guard inferred > 0 else { continue }
-            let key = "\(date)|\(tankReserve)|D"
-            var b = buckets[key] ?? Bucket()
-            b.withdraw += inferred
-            buckets[key] = b
+            buckets[key(day: day, tank: tankReserve, benzine: false), default: Bucket()].withdraw += inferred
         }
 
         var mainDiesel = opening?.diesel ?? 0
         var mainBenzine = opening?.benzine ?? 0
-        var reserveDiesel = opening?.dieselReserve ?? 0
         var reserveBenzine = opening?.benzineReserve ?? 0
-        for (key, b) in buckets {
-            let delta = b.stockIn - b.withdraw - b.vehicleUsage
-            let isReserve = key.contains("|\(tankReserve)|")
-            let isBenzine = key.hasSuffix("|B")
+        let openingReserve = effectiveOpeningReserveDiesel(opening?.dieselReserve)
+
+        for (bucketKey, b) in buckets {
+            let delta = b.stockIn - b.withdraw
+            let isReserve = bucketKey.contains("|\(tankReserve)|")
+            let isBenzine = bucketKey.hasSuffix("|B")
             if isReserve {
-                if isBenzine { reserveBenzine += delta } else { reserveDiesel += delta }
+                if isBenzine { reserveBenzine += delta }
             } else if isBenzine {
                 mainBenzine += delta
             } else {
                 mainDiesel += delta
             }
         }
+
+        // Reserve diesel: Flutter applyFuelReserveDieselAnchor
+        var byDay: [String: Double] = [:]
+        for (bucketKey, b) in buckets {
+            let parts = bucketKey.split(separator: "|").map(String.init)
+            guard parts.count >= 3, parts[1] == tankReserve, !bucketKey.hasSuffix("|B") else { continue }
+            let delta = b.stockIn - b.withdraw
+            if delta == 0 { continue }
+            byDay[parts[0], default: 0] += delta
+        }
+
+        let reserveDiesel: Double
+        let postDays = byDay.keys.filter { $0 >= reserveAnchorYmd }.sorted()
+        if reserveAnchorIsActive(asOfYmd: asOf) || !postDays.isEmpty {
+            reserveDiesel = postDays.reduce(reserveAnchorLiters) { $0 + (byDay[$1] ?? 0) }
+        } else {
+            reserveDiesel = byDay.keys.sorted().reduce(openingReserve) { $0 + (byDay[$1] ?? 0) }
+        }
+
         return Balance(
             mainDiesel: mainDiesel,
             reserveDiesel: reserveDiesel,
@@ -334,14 +415,14 @@ enum FuelLogic {
         var vehicleUsage = 0.0
         for t in transactions {
             guard String(t.date.prefix(10)) == dayKey, isFuelExpense(t) else { continue }
-            if let filterTank, normalizeTank(t.fuelTank) != filterTank { continue }
             let lit = liters(of: t)
             guard lit > 0 else { continue }
             if isWithdraw(t), (t.workType ?? "").lowercased() == "machine" {
                 machineWithdraw += lit
             } else if isTransfer(t), (t.workType ?? "").lowercased() == "machine" {
-                machineWithdraw += lit
-            } else if isVehicleUsage(t) {
+                if !isStockIn(t) { machineWithdraw += lit }
+            } else if isMacroVehicleUsageRow(t) {
+                if let filterTank, fuelUsageTankOf(t) != filterTank { continue }
                 vehicleUsage += lit
             }
         }

@@ -96,27 +96,28 @@ struct FuelFocusCalendarSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 14) {
-                monthNavigation
-                legend
-                calendarGrid
-                Button {
-                    selectToday()
-                } label: {
-                    Label("วันนี้", systemImage: "sun.max.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+            ScrollView {
+                VStack(spacing: 14) {
+                    monthNavigation
+                    legend
+                    calendarGrid
+                    Button {
+                        selectToday()
+                    } label: {
+                        Label("วันนี้", systemImage: "sun.max.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Self.accent)
+                    .padding(.horizontal, 4)
                 }
-                .buttonStyle(.bordered)
-                .tint(Self.accent)
-                .padding(.horizontal, 4)
-
-                Spacer(minLength: 0)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 20)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .background(AppTheme.pageTop.ignoresSafeArea())
+            .background(AppTheme.pageTop)
             .navigationTitle("เลือกวันที่")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -130,7 +131,9 @@ struct FuelFocusCalendarSheet: View {
             .onChange(of: transactionsRevision) { _, _ in rebuildMarks() }
             .onChange(of: transactions.count) { _, _ in rebuildMarks() }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large, .fraction(0.92)])
+        .presentationDragIndicator(.visible)
+        .presentationContentInteraction(.scrolls)
     }
 
     // MARK: - Month nav

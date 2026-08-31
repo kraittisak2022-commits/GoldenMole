@@ -204,7 +204,7 @@ struct ReportDateBar: View {
     @State private var showDayPicker = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             if showsModeSwitch {
                 modeSwitch
             }
@@ -214,6 +214,7 @@ struct ReportDateBar: View {
                 rangeControls
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: Mode switch
@@ -313,18 +314,21 @@ struct ReportDateBar: View {
 
     private var dayPickerSheet: some View {
         NavigationStack {
-            DatePicker(
-                "เลือกวันที่",
-                selection: Binding(
-                    get: { scope.day },
-                    set: { scope.select(day: $0) }
-                ),
-                in: ReportDateScope.earliestDate...Date(),
-                displayedComponents: .date
-            )
-            .datePickerStyle(.graphical)
-            .environment(\.locale, Locale(identifier: "th_TH"))
-            .padding(.horizontal)
+            ScrollView {
+                DatePicker(
+                    "เลือกวันที่",
+                    selection: Binding(
+                        get: { scope.day },
+                        set: { scope.select(day: $0) }
+                    ),
+                    in: ReportDateScope.earliestDate...Date(),
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .environment(\.locale, Locale(identifier: "th_TH"))
+                .padding(.horizontal)
+                .padding(.bottom, 16)
+            }
             .navigationTitle("เลือกวันที่")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -334,7 +338,9 @@ struct ReportDateBar: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large, .fraction(0.92)])
+        .presentationDragIndicator(.visible)
+        .presentationContentInteraction(.scrolls)
     }
 
     private func stepButton(systemImage: String, enabled: Bool, action: @escaping () -> Void) -> some View {
