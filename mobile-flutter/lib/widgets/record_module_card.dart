@@ -103,58 +103,16 @@ class RecordModuleCard extends StatelessWidget {
             DevicePerf.isConstrainedDevice;
 
         List<BoxShadow> cardLiftShadows() {
-          // เงาชั้นล่าง + ไฮไลต์ขอบบน — ให้ความรู้สึกปุ่มนูน (ไม่ใช้ขอบสีสถานะ)
-          final contact = isDark
-              ? Colors.black.withValues(alpha: 0.38)
-              : Colors.black.withValues(alpha: 0.07);
-          final ambient = isDark
-              ? Colors.black.withValues(alpha: 0.5)
-              : p.shadowLift.withValues(alpha: useLiteChrome ? 0.22 : 0.3);
-          final topRim = isDark
-              ? Colors.white.withValues(alpha: 0.07)
-              : Colors.white.withValues(alpha: 0.92);
-
-          if (useLiteChrome) {
-            return [
-              BoxShadow(
-                color: topRim,
-                blurRadius: 0,
-                offset: const Offset(0, -1),
-              ),
-              BoxShadow(
-                color: contact,
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-              BoxShadow(
-                color: ambient,
-                blurRadius: 12,
-                offset: const Offset(0, 5),
-                spreadRadius: -2,
-              ),
-            ];
-          }
+          // เงาบาง — ชั้นเดียว ไม่ซ้อนกับ depthShadow ตอนกด
+          final shadow = isDark
+              ? Colors.black.withValues(alpha: 0.22)
+              : Colors.black.withValues(alpha: useLiteChrome ? 0.04 : 0.055);
           return [
             BoxShadow(
-              color: topRim,
-              blurRadius: 0,
-              offset: const Offset(0, -1),
-            ),
-            BoxShadow(
-              color: contact,
-              blurRadius: 3,
-              offset: const Offset(0, 1),
-            ),
-            BoxShadow(
-              color: p.shadowCard,
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-            BoxShadow(
-              color: ambient,
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-              spreadRadius: -4,
+              color: shadow,
+              blurRadius: useLiteChrome ? 5 : 7,
+              offset: Offset(0, useLiteChrome ? 1.5 : 2),
+              spreadRadius: -1,
             ),
           ];
         }
@@ -310,17 +268,8 @@ class RecordModuleCard extends StatelessWidget {
           size: SoftPressSize.medium,
           borderRadius: radius,
           isDarkSurface: isDark,
-          liftWhenIdle: true,
-          idleLiftY: useLiteChrome ? -0.5 : -1,
-          depthShadow: SoftPressDepthShadow(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.45)
-                : p.shadowLift.withValues(alpha: useLiteChrome ? 0.18 : 0.22),
-            blurRadius: useLiteChrome ? 10 : 18,
-            offsetY: useLiteChrome ? 5 : 7,
-            pressedBlurRadius: useLiteChrome ? 3 : 4,
-            pressedOffsetY: 1,
-          ),
+          liftWhenIdle: false,
+          depthShadow: null,
           hitPadding: EdgeInsets.zero,
           child: shapedCard,
         );

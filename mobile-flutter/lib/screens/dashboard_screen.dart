@@ -1264,7 +1264,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     final moreMenusBarH =
         phonePortrait ? 36.0 : _kMoreMenusBarHeight;
     final panelRadius = phonePortrait ? 16.0 : 20.0;
-    final panelPad = phonePortrait ? 12.0 : 14.0;
+    final panelPad = phonePortrait ? 14.0 : 14.0;
 
     final p = DailyPalette.of(context);
     final dailyMenuPanel = DecoratedBox(
@@ -1683,9 +1683,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   : primaryModules;
               final gridItemCount = visibleModules.length + 1;
               final gap = phonePortrait
-                  ? 14.0
+                  ? 12.0
                   : TouchProfile.of(context).gridGap;
-              final sideInset = phonePortrait ? 0.0 : 2.0;
+              final sideInset = phonePortrait ? 6.0 : 2.0;
               final mq = MediaQuery.sizeOf(context);
               final mqW = mq.width;
               final mqH = mq.height;
@@ -1898,9 +1898,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
         ),
         Padding(
           padding: EdgeInsets.fromLTRB(
-            phonePortrait ? 12 : 16,
+            phonePortrait ? 16 : 16,
             phonePortrait ? 8 : 12,
-            phonePortrait ? 12 : 16,
+            phonePortrait ? 16 : 16,
             phonePortrait ? 10 : 12,
           ),
           child: Column(
