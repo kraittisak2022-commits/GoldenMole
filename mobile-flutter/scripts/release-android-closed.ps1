@@ -86,7 +86,10 @@ if ($ReleaseNotesFile) {
 }
 
 if (-not $ReleaseNotes) {
-  $defaultChangelog = Join-Path $FlutterRoot "fastlane/metadata/android/th/changelogs/$versionCode.txt"
+  $defaultChangelog = Join-Path $FlutterRoot "fastlane/metadata/android/th-TH/changelogs/$versionCode.txt"
+  if (-not (Test-Path $defaultChangelog)) {
+    $defaultChangelog = Join-Path $FlutterRoot "fastlane/metadata/android/th/changelogs/$versionCode.txt"
+  }
   if (Test-Path $defaultChangelog) {
     $ReleaseNotes = Get-Content $defaultChangelog -Raw
   } else {
@@ -94,10 +97,19 @@ if (-not $ReleaseNotes) {
   }
 }
 
-$changelogDir = Join-Path $FlutterRoot "fastlane/metadata/android/th/changelogs"
-New-Item -ItemType Directory -Force -Path $changelogDir | Out-Null
-$changelogPath = Join-Path $changelogDir "$versionCode.txt"
-Set-Content -Path $changelogPath -Value $ReleaseNotes.TrimEnd() -Encoding utf8NoBOM
+if (-not $ReleaseName -and -not $env:PLAY_RELEASE_NAME) {
+  Write-Warning "No -ReleaseName: Play Console will use default '$versionName - GoldenMole for User'. Pass -ReleaseName for a meaningful release name (ชื่อรุ่น)."
+}
+
+$changelogLocales = @("th-TH", "th")
+foreach ($locale in $changelogLocales) {
+  $changelogDir = Join-Path $FlutterRoot "fastlane/metadata/android/$locale/changelogs"
+  New-Item -ItemType Directory -Force -Path $changelogDir | Out-Null
+  $changelogPath = Join-Path $changelogDir "$versionCode.txt"
+  Set-Content -Path $changelogPath -Value $ReleaseNotes.TrimEnd() -Encoding utf8NoBOM
+}
+
+$changelogPath = Join-Path $FlutterRoot "fastlane/metadata/android/th-TH/changelogs/$versionCode.txt"
 
 $effectiveReleaseName = if ($ReleaseName) { $ReleaseName } else { "$versionName - GoldenMole for User" }
 

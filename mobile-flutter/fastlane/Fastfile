@@ -24,6 +24,32 @@ def default_release_name(version_name)
   ENV["PLAY_RELEASE_NAME"].to_s.strip.empty? ? "#{version_name} — GoldenMole for User" : ENV["PLAY_RELEASE_NAME"].strip
 end
 
+CHANGELOG_LOCALES = %w[th-TH th].freeze
+
+def changelog_paths(version_code)
+  CHANGELOG_LOCALES.map do |locale|
+    File.join(METADATA_ROOT, locale, "changelogs", "#{version_code}.txt")
+  end
+end
+
+def ensure_changelog_locales!(version_code)
+  paths = changelog_paths(version_code)
+  source = paths.find { |p| File.exist?(p) }
+  unless source
+    UI.user_error!(
+      "Missing changelog for versionCode #{version_code}. " \
+      "Create #{paths.first} or run scripts/release-android-closed.ps1 with -ReleaseNotes."
+    )
+  end
+  paths.each do |path|
+    next if File.exist?(path)
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, File.read(source, encoding: "UTF-8"))
+    UI.message("Mirrored changelog to #{path}")
+  end
+  paths
+end
+
 platform :android do
   desc "Build signed release App Bundle (flutter build appbundle --release)"
   lane :build_aab do
@@ -39,19 +65,11 @@ platform :android do
     version_name, version_code = read_pubspec_version
     track = ENV.fetch("PLAY_STORE_TRACK", "alpha")
     release_name = default_release_name(version_name)
-    changelog_path = File.join(METADATA_ROOT, "th/changelogs/#{version_code}.txt")
-    changelog_path_alt = File.join(METADATA_ROOT, "th-TH/changelogs/#{version_code}.txt")
-    changelog_path = changelog_path_alt if File.exist?(changelog_path_alt)
-
-    unless File.exist?(changelog_path)
-      UI.user_error!(
-        "Missing changelog #{changelog_path}. " \
-        "Run scripts/release-android-closed.ps1 or create the file before upload."
-      )
-    end
+    changelog_paths = ensure_changelog_locales!(version_code)
 
     UI.message("Uploading #{version_name} (#{version_code}) to track '#{track}'")
-    UI.message("Release name: #{release_name}")
+    UI.message("Release name (Play Console): #{release_name}")
+    changelog_paths.each { |p| UI.message("Changelog: #{p}") }
 
     metadata_abs = File.expand_path(METADATA_ROOT)
     UI.user_error!("Metadata path not found: #{metadata_abs}") unless File.directory?(metadata_abs)
@@ -61,6 +79,7 @@ platform :android do
       package_name: "com.goldenmole.app",
       track: track,
       aab: AAB_PATH,
+      version_name: release_name,
       release_status: "completed",
       metadata_path: metadata_abs,
       skip_upload_apk: true,

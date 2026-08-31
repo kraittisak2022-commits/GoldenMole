@@ -82,11 +82,20 @@ From `mobile-flutter`:
 
 What the script does:
 
-1. Writes `fastlane/metadata/android/th-TH/changelogs/{versionCode}.txt`
-2. Writes `store/PLAY_RELEASE_{versionName}.md` (copy for records)
-3. `flutter build appbundle --release`
-4. `bundle exec fastlane android release_closed` → Play **closed testing** track
-5. `node scripts/update-android-soft-version.mjs` → `app_settings.app_defaults`
+1. Writes `fastlane/metadata/android/th-TH/changelogs/{versionCode}.txt` (and mirrors to `th/`)
+2. Sets **ชื่อรุ่น** via Fastlane `version_name` (`-ReleaseName` or `PLAY_RELEASE_NAME`)
+3. Uploads **บันทึกประจำรุ่น** from changelog files (`skip_upload_changelogs: false`)
+4. Writes `store/PLAY_RELEASE_{versionName}.md` (copy for records)
+5. `flutter build appbundle --release`
+6. `bundle exec fastlane android closed_beta` → Play **closed testing** track
+7. `node scripts/update-android-soft-version.mjs` → `app_settings.app_defaults`
+
+**Required for each release:**
+
+| Play Console field | Script parameter | Fastlane |
+|--------------------|------------------|----------|
+| ชื่อรุ่น | `-ReleaseName "1.0.4 — คำอธิบาย"` | `version_name` on upload |
+| บันทึกประจำรุ่น | `-ReleaseNotes "• ..."` | `th-TH/changelogs/{versionCode}.txt` |
 
 ### Partial runs
 
@@ -138,7 +147,8 @@ When you ask the agent to ship Android to Play closed testing, it should:
 |------|------|
 | `Gemfile` | Pins Fastlane gem |
 | `fastlane/Fastfile` | `build_aab`, `closed_beta`, `release_closed` |
-| `fastlane/metadata/android/th-TH/changelogs/` | Release notes per versionCode |
+| `fastlane/metadata/android/th-TH/changelogs/` | Release notes per versionCode (primary locale) |
+| `fastlane/metadata/android/th/changelogs/` | Mirror locale (auto-synced from th-TH) |
 | `scripts/release-android-closed.ps1` | End-to-end release |
 | `scripts/update-android-soft-version.mjs` | Supabase `app_defaults` merge |
 | `.env.play.example` | Local secrets template |

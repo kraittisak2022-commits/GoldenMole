@@ -19,18 +19,22 @@ Play Console (เว็บ)     →  เชิญ Service Account ใน Users a
 
 ---
 
+
+
 ## ขั้นที่ 1 — สร้าง Service Account ใน Google Cloud
 
 1. เปิด [Google Cloud Console](https://console.cloud.google.com/)
 2. เลือกโปรเจกต์ (สร้างใหม่ก็ได้ เช่น `goldenmole-play`)
 3. **เปิด API** — ไปที่ [Google Play Android Developer API](https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com) แล้วกด **Enable**
 4. ไป **IAM & Admin** → **Service Accounts** → **Create service account**
-   - ชื่อ เช่น `goldenmole-play-upload`
-   - กด **Create and continue** → **Done**  
-   - **ไม่ต้อง**ใส่ role ใน Cloud ตอนนี้ (สิทธิ์จริงตั้งใน Play Console)
+  - ชื่อ เช่น `goldenmole-play-upload`
+  - กด **Create and continue** → **Done**  
+  - **ไม่ต้อง**ใส่ role ใน Cloud ตอนนี้ (สิทธิ์จริงตั้งใน Play Console)
 5. คัดลอก **อีเมล** ของ service account (ลงท้าย `@....iam.gserviceaccount.com`)
 
 ---
+
+
 
 ## ขั้นที่ 2 — ดาวน์โหลด JSON key
 
@@ -50,26 +54,32 @@ Move-Item "$env:USERPROFILE\Downloads\*.json" C:\secrets\goldenmole-play-api.jso
 
 ---
 
+
+
 ## ขั้นที่ 3 — ให้สิทธิ์ใน Play Console (แทน API access)
+
+
 
 ### ไปที่เมนูไหน?
 
 1. เปิด [Google Play Console](https://play.google.com/console)
-2. **อย่าเข้าไปในแอปเดียว** — ไปที่ระดับ **บัญชีนักพัฒนา (Developer account)**  
-   - คลิกโลโก้ Play Console / ชื่อบัญชีด้านบน หรือ
-   - เมนูซ้าย **ผู้ใช้และสิทธิ์** / **Users and permissions**
+2. **อย่าเข้าไปในแอปเดียว** — ไปที่ระดับ **บัญชีนักพัฒนา (Developer account)**
+  - คลิกโลโก้ Play Console / ชื่อบัญชีด้านบน หรือ
+  - เมนูซ้าย **ผู้ใช้และสิทธิ์** / **Users and permissions**
 3. URL มักเป็นแบบ: `https://play.google.com/console/u/0/developers/XXXXXXXX/users-and-permissions`
+
+
 
 ### เชิญ Service Account
 
 1. กด **เชิญผู้ใช้ใหม่** / **Invite new users**
 2. วาง **อีเมล service account** จากขั้นที่ 1 (ไม่ใช่อีเมล Gmail ของคุณ)
 3. แท็บ **สิทธิ์ของแอป (App permissions)**:
-   - กด **Add app** → เลือก **GoldenMole for User** → **Apply**
+  - กด **Add app** → เลือก **GoldenMole for User** → **Apply**
 4. เปิดสิทธิ์อย่างน้อย:
-   - **ดูข้อมูลแอป (View app information)** — อ่านอย่างเดียว
-   - **จัดการการเผยแพร่ใน track การทดสอบ** / **Release to testing tracks**  
-     หรือเลือก preset **Release manager** (แนะนำสำหรับอัปโหลด closed test)
+  - **ดูข้อมูลแอป (View app information)** — อ่านอย่างเดียว
+  - **จัดการการเผยแพร่ใน track การทดสอบ** / **Release to testing tracks**  
+  หรือเลือก preset **Release manager** (แนะนำสำหรับอัปโหลด closed test)
 5. กด **Invite user** / **Send invite** / **Save**
 
 สถานะควรเป็น **Active** (service account ไม่ต้องกดรับ invite ใน Gmail)
@@ -78,24 +88,30 @@ Move-Item "$env:USERPROFILE\Downloads\*.json" C:\secrets\goldenmole-play-api.jso
 
 ---
 
+
+
 ## ถ้าหาเมนูไม่เจอ
 
-| ต้องการ | ไปที่ |
-|--------|--------|
-| เชิญ service account | **Users and permissions** (ระดับบัญชีนักพัฒนา ไม่ใช่ในแอปเดียว) |
+
+| ต้องการ                 | ไปที่                                                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| เชิญ service account    | **Users and permissions** (ระดับบัญชีนักพัฒนา ไม่ใช่ในแอปเดียว)                                                      |
 | เปิด Play Developer API | [Google Cloud → androidpublisher API](https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com) |
-| สร้าง / ดาวน์โหลด JSON | [Google Cloud → Service Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts) |
-| Closed testing track | ในแอป → **Testing** → **Closed testing** |
+| สร้าง / ดาวน์โหลด JSON  | [Google Cloud → Service Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts)                        |
+| Closed testing track    | ในแอป → **Testing** → **Closed testing**                                                                             |
+
 
 **ไม่มีเมนู API access แล้ว** — เป็นปกติใน UI 2024+ ไม่ใช่บัญชีผิด
 
 ---
 
+
+
 ## ขั้นที่ 4 — track การทดสอบแบบปิด
 
 1. Play Console → เลือกแอป **GoldenMole for User**
 2. **Testing** → **Closed testing**
-3. track เริ่มต้นมักใช้ slug **`alpha`**
+3. track เริ่มต้นมักใช้ slug `alpha`
 
 ใน `.env.play`:
 
@@ -104,6 +120,8 @@ PLAY_STORE_TRACK=alpha
 ```
 
 ---
+
+
 
 ## ขั้นที่ 5 — `.env.play` บนเครื่อง
 
@@ -125,6 +143,8 @@ SUPABASE_SERVICE_ROLE_KEY=...   # Supabase → Settings → API → service_role
 
 ---
 
+
+
 ## ขั้นที่ 6 — ทดสอบ
 
 ```powershell
@@ -135,6 +155,8 @@ cd c:\construction-management-app\mobile-flutter
 ผ่านแล้วจะเห็น: `Play API OK — track 'alpha' ...`
 
 ---
+
+
 
 ## Checklist สรุป
 
@@ -147,23 +169,48 @@ cd c:\construction-management-app\mobile-flutter
 
 ---
 
+
+
 ## ปัญหาที่พบบ่อย
 
-| อาการ | วิธีแก้ |
-|--------|--------|
-| ไม่มีเมนู API access | ใช้ **Users and permissions** แทน (ดูด้านบน) |
-| `403` permission denied | เชิญ service account ใหม่ + สิทธิ์ Release manager + เลือกแอป |
-| `404 Package not found` | ตรวจ `com.goldenmole.app` ใน Console |
-| API not enabled | Enable [androidpublisher API](https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com) ใน Cloud project เดียวกับ JSON key |
+
+| อาการ                   | วิธีแก้                                                                                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| ไม่มีเมนู API access    | ใช้ **Users and permissions** แทน (ดูด้านบน)                                                                                                    |
+| `403` permission denied | เชิญ service account ใหม่ + สิทธิ์ Release manager + เลือกแอป                                                                                   |
+| `404 Package not found` | ตรวจ `com.goldenmole.app` ใน Console                                                                                                            |
+| API not enabled         | Enable [androidpublisher API](https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com) ใน Cloud project เดียวกับ JSON key |
+
 
 ---
 
+
+
 ## ขั้นถัดไป
+
+ทุกครั้งที่อัปโหลด ต้องระบุ **ชื่อรุ่น** และ **บันทึกประจำรุ่น** (สคริปต์จะส่งให้ Play อัตโนมัติ):
 
 ```powershell
 .\scripts\release-android-closed.ps1 `
-  -ReleaseName "1.0.3 — คำอธิบาย" `
-  -ReleaseNotes "• รายการเปลี่ยนแปลง"
+  -ReleaseName "1.0.4 — แก้บันทึกรถดรัม" `
+  -ReleaseNotes @"
+• แก้ไขรถ/คนขับในบันทึกรถดรัมได้
+• ข้อมูลจากตัวนับเที่ยว default เป็นคิดเป็นเที่ยว
+"@
 ```
+
+| ใน Play Console | มาจาก |
+|---------------|--------|
+| **ชื่อรุ่น** | `-ReleaseName` → Fastlane `version_name` |
+| **บันทึกประจำรุ่น** | `-ReleaseNotes` → `fastlane/metadata/android/th-TH/changelogs/{versionCode}.txt` |
+
+### แก้ 1.0.3 ที่อัปโหลดแล้วแต่ยังไม่มีชื่อรุ่น/บันทึก
+
+ใน Play Console → **การทดสอบ** → **การทดสอบแบบปิด** → รุ่น **1.0.3 (4)** → แก้ไข:
+
+- **ชื่อรุ่น:** `1.0.3 - แก้บันทึกน้ำมัน`
+- **บันทึกประจำรุ่น:** ดูข้อความใน `store/PLAY_RELEASE_1.0.3.md`
+
+รอบถัดไป (1.0.4+) สคริปต์จะใส่ให้อัตโนมัติแล้ว
 
 ดู workflow เต็ม: [android-play-fastlane-setup.md](./android-play-fastlane-setup.md)
