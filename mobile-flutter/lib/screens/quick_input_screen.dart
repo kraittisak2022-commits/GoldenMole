@@ -12579,7 +12579,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     VoidCallback? onRemove,
   }) {
     final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
     final accent = isDark ? p.brand : _macroAccent;
     final accentInk = isDark ? p.brandDateInk : _macroAccentInk;
     final accentTint = isDark ? p.brandSurface : _macroAccentTint;
@@ -15504,7 +15505,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             _isLaborAdvanceMode ||
             _isIncomeUtilitiesEntryMode ||
             _isOtMode ||
-            _isVehicleTripMode) &&
+            _isVehicleTripMode ||
+            _isDailyEventMode) &&
         (AppThemeScope.maybeOf(context)?.isDark ??
             Theme.of(context).brightness == Brightness.dark);
     final shellP = shellDark ? DailyPalette.of(context) : null;
