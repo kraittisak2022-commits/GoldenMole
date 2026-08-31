@@ -123,6 +123,8 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
     const [fuelStockForm, setFuelStockForm] = useState({
         diesel: String(settings.fuelOpeningStockLiters?.Diesel ?? 0),
         benzine: String(settings.fuelOpeningStockLiters?.Benzine ?? 0),
+        dieselReserve: String(settings.fuelOpeningStockLiters?.DieselReserve ?? 0),
+        benzineReserve: String(settings.fuelOpeningStockLiters?.BenzineReserve ?? 0),
     });
     const [defaultsForm, setDefaultsForm] = useState({
         sandCubicPerTrip: String(settings.appDefaults?.sandCubicPerTrip ?? 3),
@@ -394,6 +396,8 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
         setFuelStockForm({
             diesel: String(settings.fuelOpeningStockLiters?.Diesel ?? 0),
             benzine: String(settings.fuelOpeningStockLiters?.Benzine ?? 0),
+            dieselReserve: String(settings.fuelOpeningStockLiters?.DieselReserve ?? 0),
+            benzineReserve: String(settings.fuelOpeningStockLiters?.BenzineReserve ?? 0),
         });
     }, [settings.fuelOpeningStockLiters]);
 
@@ -598,7 +602,9 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
             ...settings,
             fuelOpeningStockLiters: {
                 Diesel: Number(fuelStockForm.diesel.replace(/,/g, '')) || 0,
-                Benzine: settings.fuelOpeningStockLiters?.Benzine ?? 0,
+                Benzine: Number(fuelStockForm.benzine.replace(/,/g, '')) || 0,
+                DieselReserve: Number(fuelStockForm.dieselReserve.replace(/,/g, '')) || 0,
+                BenzineReserve: Number(fuelStockForm.benzineReserve.replace(/,/g, '')) || 0,
             },
         });
         alert('บันทึกยอดยกมาสต็อกน้ำมันแล้ว');
@@ -1231,11 +1237,37 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                 <h3 className="font-bold text-lg">ยอดยกมาสต็อกน้ำมัน (ลิตร)</h3>
                             </div>
                             <p className="text-sm text-slate-500 dark:text-slate-400">
-                                ใช้คำนวณสต็อกคงเหลือร่วมกับรายการ «รับน้ำมันเข้าสต็อก» และ «เติมรถ» ในเมนูน้ำมัน — แก้ที่นี่ได้เหมือนในหน้าน้ำมัน
+                                ยอดตั้งต้นตั้งแต่ 1 ส.ค. 2569 — ใช้คำนวณสต็อกคงเหลือร่วมกับรายการรับเข้า/เบิก/ใช้ในเมนูน้ำมัน
                             </p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <Input label="ดีเซล (ลิตร)" type="number" value={fuelStockForm.diesel} onChange={(e: any) => setFuelStockForm({ ...fuelStockForm, diesel: e.target.value })} />
+                                <Input
+                                    label="ดีเซล · ถังหลัก (ลิตร)"
+                                    type="number"
+                                    value={fuelStockForm.diesel}
+                                    onChange={(e: any) => setFuelStockForm({ ...fuelStockForm, diesel: e.target.value })}
+                                />
+                                <Input
+                                    label="ดีเซล · ถังสำรอง (ลิตร)"
+                                    type="number"
+                                    value={fuelStockForm.dieselReserve}
+                                    onChange={(e: any) => setFuelStockForm({ ...fuelStockForm, dieselReserve: e.target.value })}
+                                />
+                                <Input
+                                    label="เบนซิน · ถังหลัก (ลิตร)"
+                                    type="number"
+                                    value={fuelStockForm.benzine}
+                                    onChange={(e: any) => setFuelStockForm({ ...fuelStockForm, benzine: e.target.value })}
+                                />
+                                <Input
+                                    label="เบนซิน · ถังสำรอง (ลิตร)"
+                                    type="number"
+                                    value={fuelStockForm.benzineReserve}
+                                    onChange={(e: any) => setFuelStockForm({ ...fuelStockForm, benzineReserve: e.target.value })}
+                                />
                             </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                ถังสำรองติดลบ? ตั้งยอดยกมาสำรอง = ยอดวัดจริงวันนี้ − ยอดที่ระบบคำนวณ (ไม่รวมยอดยกมา)
+                            </p>
                             <Button onClick={saveFuelOpening}>บันทึกยอดยกมา</Button>
                         </div>
                     ) : activeTab === 'defaults' ? (

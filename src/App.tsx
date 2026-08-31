@@ -188,7 +188,7 @@ const MOCK_SETTINGS: AppSettings = {
     landGroups: ['โครงการหนองจอก', 'โครงการลาดกระบัง'],
     employeePositions: ['คนขับรถ', 'รับจ้างรายวัน'],
     versionNotes: ['เปิดใช้ Daily Wizard และซิงก์ข้อมูลกับ Supabase'],
-    fuelOpeningStockLiters: { Diesel: 0, Benzine: 0 },
+    fuelOpeningStockLiters: { Diesel: 0, Benzine: 0, DieselReserve: 0, BenzineReserve: 0 },
     orgProfile: {},
     appDefaults: { sandCubicPerTrip: 3, vehicleDefaultMachineWage: 4500 },
 };

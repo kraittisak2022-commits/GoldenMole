@@ -619,9 +619,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   // ── น้ำมัน: เมนูย่อย + สต็อกถัง ──
   /// เมนูย่อยที่เลือกอยู่ใน «น้ำมัน» (null = ยังอยู่หน้าเลือกเมนู)
   FuelSubMode? _fuelSubMode;
-  ({double diesel, double benzine}) _fuelOpeningStock = (
+  ({
+    double diesel,
+    double benzine,
+    double reserveDiesel,
+    double reserveBenzine,
+  }) _fuelOpeningStock = (
     diesel: 0.0,
     benzine: 0.0,
+    reserveDiesel: 0.0,
+    reserveBenzine: 0.0,
   );
   FuelStockBalance _fuelStock = const FuelStockBalance(
     mainDiesel: 0,
@@ -2696,7 +2703,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     Future<void> applyOpeningStock(
-      ({double diesel, double benzine}) opening,
+      ({
+        double diesel,
+        double benzine,
+        double reserveDiesel,
+        double reserveBenzine,
+      }) opening,
     ) async {
       if (!mounted) return;
       setState(() => _fuelOpeningStock = opening);
@@ -3098,6 +3110,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         rows,
         openingDiesel: _fuelOpeningStock.diesel,
         openingBenzine: _fuelOpeningStock.benzine,
+        openingReserveDiesel: _fuelOpeningStock.reserveDiesel,
+        openingReserveBenzine: _fuelOpeningStock.reserveBenzine,
       );
       await _setFuelStockBalance(balance);
     } catch (_) {

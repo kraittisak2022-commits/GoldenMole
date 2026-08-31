@@ -302,8 +302,8 @@ enum FuelLogic {
 
         var mainDiesel = opening?.diesel ?? 0
         var mainBenzine = opening?.benzine ?? 0
-        var reserveDiesel = 0.0
-        var reserveBenzine = 0.0
+        var reserveDiesel = opening?.dieselReserve ?? 0
+        var reserveBenzine = opening?.benzineReserve ?? 0
         for (key, b) in buckets {
             let delta = b.stockIn - b.withdraw - b.vehicleUsage
             let isReserve = key.contains("|\(tankReserve)|")

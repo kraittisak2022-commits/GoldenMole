@@ -368,7 +368,12 @@ export const saveSettings = async (s: AppSettings): Promise<boolean> => {
         land_groups: s.landGroups,
         employee_positions: s.employeePositions ?? [],
         version_notes: s.versionNotes ?? [],
-        fuel_opening_stock: s.fuelOpeningStockLiters ?? { Diesel: 0, Benzine: 0 },
+        fuel_opening_stock: s.fuelOpeningStockLiters ?? {
+            Diesel: 0,
+            Benzine: 0,
+            DieselReserve: 0,
+            BenzineReserve: 0,
+        },
         org_profile: s.orgProfile ?? {},
         app_defaults: appDefaults,
         updated_at: new Date().toISOString(),

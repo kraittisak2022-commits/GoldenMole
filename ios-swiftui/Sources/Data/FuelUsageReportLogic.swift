@@ -515,8 +515,8 @@ enum FuelUsageReportLogic {
 
         var mainD = opening?.diesel ?? 0
         var mainB = opening?.benzine ?? 0
-        var reserveD = 0.0
-        var reserveB = 0.0
+        var reserveD = opening?.dieselReserve ?? 0
+        var reserveB = opening?.benzineReserve ?? 0
 
         for (key, bucket) in buckets {
             let delta = bucket.stockIn - bucket.withdraw

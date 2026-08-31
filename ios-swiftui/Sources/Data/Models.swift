@@ -659,10 +659,14 @@ struct AppDefaultsBlob: Decodable, Sendable, Equatable {
 struct FuelStock: Codable, Sendable, Equatable {
     let diesel: Double?
     let benzine: Double?
+    let dieselReserve: Double?
+    let benzineReserve: Double?
 
     enum CodingKeys: String, CodingKey {
         case diesel = "Diesel"
         case benzine = "Benzine"
+        case dieselReserve = "DieselReserve"
+        case benzineReserve = "BenzineReserve"
     }
 }
 

@@ -639,34 +639,79 @@ class CountRecordOfflineSync {
 
   /// สต็อกน้ำมันยกมาจากตั้งค่าเว็บ (`app_settings.fuel_opening_stock`)
   Future<void> cacheFuelOpeningStock(
-    ({double diesel, double benzine}) opening,
+    ({
+      double diesel,
+      double benzine,
+      double reserveDiesel,
+      double reserveBenzine,
+    }) opening,
   ) async {
     final p = await _prefs();
     await p.setString(
       _kFuelOpeningStock,
-      jsonEncode({'Diesel': opening.diesel, 'Benzine': opening.benzine}),
+      jsonEncode({
+        'Diesel': opening.diesel,
+        'Benzine': opening.benzine,
+        'DieselReserve': opening.reserveDiesel,
+        'BenzineReserve': opening.reserveBenzine,
+      }),
     );
   }
 
-  Future<({double diesel, double benzine})> readCachedFuelOpeningStock() async {
+  Future<
+      ({
+        double diesel,
+        double benzine,
+        double reserveDiesel,
+        double reserveBenzine,
+      })> readCachedFuelOpeningStock() async {
     final p = await _prefs();
     final raw = p.getString(_kFuelOpeningStock);
-    if (raw == null || raw.isEmpty) return (diesel: 0.0, benzine: 0.0);
+    if (raw == null || raw.isEmpty) {
+      return (
+        diesel: 0.0,
+        benzine: 0.0,
+        reserveDiesel: 0.0,
+        reserveBenzine: 0.0,
+      );
+    }
     try {
       return parseFuelOpeningStock(jsonDecode(raw));
     } catch (_) {
-      return (diesel: 0.0, benzine: 0.0);
+      return (
+        diesel: 0.0,
+        benzine: 0.0,
+        reserveDiesel: 0.0,
+        reserveBenzine: 0.0,
+      );
     }
   }
 
-  static ({double diesel, double benzine}) parseFuelOpeningStock(dynamic raw) {
-    if (raw is! Map) return (diesel: 0.0, benzine: 0.0);
+  static ({
+    double diesel,
+    double benzine,
+    double reserveDiesel,
+    double reserveBenzine,
+  }) parseFuelOpeningStock(dynamic raw) {
+    if (raw is! Map) {
+      return (
+        diesel: 0.0,
+        benzine: 0.0,
+        reserveDiesel: 0.0,
+        reserveBenzine: 0.0,
+      );
+    }
     double num0(dynamic v) {
       if (v is num) return v.toDouble();
       return double.tryParse('$v') ?? 0;
     }
 
-    return (diesel: num0(raw['Diesel']), benzine: num0(raw['Benzine']));
+    return (
+      diesel: num0(raw['Diesel']),
+      benzine: num0(raw['Benzine']),
+      reserveDiesel: num0(raw['DieselReserve']),
+      reserveBenzine: num0(raw['BenzineReserve']),
+    );
   }
 
   static Map<String, String> parseVehicleDefaultDrivers(dynamic raw) {

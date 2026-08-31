@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     land_groups JSONB DEFAULT '[]'::jsonb,
     employee_positions JSONB DEFAULT '[]'::jsonb,
     version_notes JSONB DEFAULT '[]'::jsonb,
-    fuel_opening_stock JSONB DEFAULT '{"Diesel":0,"Benzine":0}'::jsonb,
+    fuel_opening_stock JSONB DEFAULT '{"Diesel":0,"Benzine":0,"DieselReserve":0,"BenzineReserve":0}'::jsonb,
     org_profile JSONB DEFAULT '{}'::jsonb,
     app_defaults JSONB DEFAULT '{}'::jsonb,
     updated_at TIMESTAMPTZ DEFAULT NOW()

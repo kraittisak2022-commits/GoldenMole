@@ -293,7 +293,12 @@ export interface AppSettings {
     cars: string[]; jobDescriptions: string[]; incomeTypes: string[]; expenseTypes: string[]; maintenanceTypes: string[]; locations: string[]; landGroups: string[];
     employeePositions?: string[];
     versionNotes?: string[];
-    fuelOpeningStockLiters?: { Diesel?: number; Benzine?: number };
+    fuelOpeningStockLiters?: {
+        Diesel?: number;
+        Benzine?: number;
+        DieselReserve?: number;
+        BenzineReserve?: number;
+    };
     orgProfile?: OrgProfile;
     appDefaults?: AppDefaults;
     /** Runtime overlay จากตาราง vehicles — ใช้ resolve ชื่อรถจากรหัส v_… */

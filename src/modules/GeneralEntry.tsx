@@ -36,7 +36,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
         vehicleId: '',
     });
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [openingDraft, setOpeningDraft] = useState({ d: '0', b: '0' });
+    const [openingDraft, setOpeningDraft] = useState({ d: '0', b: '0', dr: '0', br: '0' });
     /** แท็บย่อยเมนูน้ำมัน — สไตล์เดียวกับ EmployeeManager */
     const [fuelSection, setFuelSection] = useState<'overview' | 'entry' | 'history'>('overview');
     /** แท็บย่อยเมนูสาธารณูปโภค */
@@ -109,6 +109,8 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
         setOpeningDraft({
             d: String(settings.fuelOpeningStockLiters?.Diesel ?? 0),
             b: String(settings.fuelOpeningStockLiters?.Benzine ?? 0),
+            dr: String(settings.fuelOpeningStockLiters?.DieselReserve ?? 0),
+            br: String(settings.fuelOpeningStockLiters?.BenzineReserve ?? 0),
         });
     }, [settings.fuelOpeningStockLiters]);
 
@@ -140,7 +142,9 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
             ...prev,
             fuelOpeningStockLiters: {
                 Diesel: Number(openingDraft.d.replace(/,/g, '')) || 0,
-                Benzine: prev.fuelOpeningStockLiters?.Benzine ?? 0,
+                Benzine: Number(openingDraft.b.replace(/,/g, '')) || 0,
+                DieselReserve: Number(openingDraft.dr.replace(/,/g, '')) || 0,
+                BenzineReserve: Number(openingDraft.br.replace(/,/g, '')) || 0,
             },
         }));
     };
@@ -371,12 +375,18 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                             <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-3 flex items-center gap-2">
                                 <Package size={18} className="text-amber-600" /> ยอดยกมาต้นงวด (ลิตร)
                             </h4>
-                            <div className="grid grid-cols-1 gap-3 mb-3 max-w-xs">
+                            <div className="grid grid-cols-1 gap-3 mb-3 sm:grid-cols-2">
                                 <Input
-                                    label="ดีเซล (ถังหลัก)"
+                                    label="ดีเซล · ถังหลัก"
                                     type="number"
                                     value={openingDraft.d}
                                     onChange={(e: any) => setOpeningDraft(o => ({ ...o, d: e.target.value }))}
+                                />
+                                <Input
+                                    label="ดีเซล · ถังสำรอง"
+                                    type="number"
+                                    value={openingDraft.dr}
+                                    onChange={(e: any) => setOpeningDraft(o => ({ ...o, dr: e.target.value }))}
                                 />
                             </div>
                             <Button type="button" variant="outline" className="w-full" onClick={saveOpeningStock}>
