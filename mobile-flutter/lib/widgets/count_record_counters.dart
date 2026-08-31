@@ -144,7 +144,7 @@ class _Pick {
 }
 
 enum _UnitEditAction {
-  changeDriver,
+  changeVehicleAndDriver,
   changeWorkType,
   reportBroken,
   restoreNormal,
@@ -1548,17 +1548,17 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
           children: [
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.badge_outlined, color: Color(0xFF1565C0)),
+              leading: const Icon(Icons.fire_truck_outlined, color: Color(0xFF1565C0)),
               title: const Text(
-                'แก้ไขคนขับ',
+                'แก้ไขรถและคนขับ',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               subtitle: Text(
-                u.subtitle,
+                '${u.title} · ${u.subtitle.replaceFirst('คนขับ: ', '')}',
                 style: const TextStyle(fontSize: 12.5),
               ),
               onTap: () =>
-                  Navigator.pop(ctx, _UnitEditAction.changeDriver),
+                  Navigator.pop(ctx, _UnitEditAction.changeVehicleAndDriver),
             ),
             const Divider(height: 1),
             ListTile(
@@ -1629,8 +1629,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     );
     if (action == null || !mounted) return;
     switch (action) {
-      case _UnitEditAction.changeDriver:
-        await _openChangeDriverDialog(u);
+      case _UnitEditAction.changeVehicleAndDriver:
+        await _openChangeVehicleAndDriverDialog(u);
       case _UnitEditAction.changeWorkType:
         await _openChangeWorkKindDialog(u);
       case _UnitEditAction.reportBroken:
@@ -1640,42 +1640,84 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     }
   }
 
-  Future<void> _openChangeDriverDialog(_CounterUnit u) async {
+  Future<void> _openChangeVehicleAndDriverDialog(_CounterUnit u) async {
+    if (widget.mode != CounterMode.trip) return;
     final ready = await _ensureDropdownListsForDialog(
-      needCars: false,
+      needCars: true,
       needDrivers: true,
     );
     if (!ready || !mounted) {
-      if (mounted && _drivers.isEmpty) {
+      if (mounted && _cars.isEmpty) {
+        _toast('ยังไม่พบรายชื่อรถในระบบ', error: true);
+      } else if (mounted && _drivers.isEmpty) {
         _toast('ยังไม่พบพนักงานตำแหน่ง "คนขับรถ"', error: true);
       }
       return;
     }
-    final driverId = await showDialog<String>(
+
+    final alreadyAdded = _units
+        .where((x) => x != u)
+        .map((x) => (x.vehicleId ?? '').trim())
+        .where((v) => v.isNotEmpty)
+        .toSet();
+    final currentVehicle = (u.vehicleId ?? '').trim();
+
+    final pick = await showDialog<({String vehicleId, String driverId})>(
       context: context,
-      builder: (ctx) => _ChangeDriverDialog(
-        vehicleTitle: u.title,
+      builder: (ctx) => _ChangeVehicleDriverDialog(
+        initialVehicleId: currentVehicle,
         initialDriverId: u.driverId ?? '',
+        cars: availableCountRecordVehicles(
+          cars: _cars,
+          alreadyAdded: alreadyAdded,
+          currentSelection: currentVehicle.isEmpty ? null : currentVehicle,
+          tripHistory: widget.tripHistoryTransactions,
+        ),
         drivers: _drivers,
+        tripHistory: widget.tripHistoryTransactions,
+        vehicleDefaultDrivers: _vehicleDefaultDrivers,
+        hasSavedTrips: u.rounds > 0 || u.lapTimes.isNotEmpty,
       ),
     );
-    if (driverId == null || !mounted) return;
-    final did = driverId.trim();
-    if (did.isEmpty) return;
+    if (pick == null || !mounted) return;
 
+    final newVehicle = pick.vehicleId.trim();
+    final newDriver = pick.driverId.trim();
+    if (newVehicle.isEmpty || newDriver.isEmpty) return;
+
+    if (newVehicle != currentVehicle &&
+        _units.any(
+          (x) => x != u && (x.vehicleId ?? '').trim() == newVehicle,
+        )) {
+      _toast('มีการ์ดรถ "$newVehicle" อยู่แล้วในวันนี้', error: true);
+      return;
+    }
+
+    if (newVehicle == currentVehicle && newDriver == (u.driverId ?? '').trim()) {
+      return;
+    }
+
+    final prevVehicleId = u.vehicleId;
+    final prevTitle = u.title;
     final prevDriverId = u.driverId;
     final prevSubtitle = u.subtitle;
     setState(() {
       u.busy = true;
-      u.driverId = did;
-      u.subtitle = 'คนขับ: ${_driverLabel(did)}';
+      u.vehicleId = newVehicle;
+      u.title = newVehicle;
+      u.driverId = newDriver;
+      u.subtitle = 'คนขับ: ${_driverLabel(newDriver)}';
     });
     try {
       await _save(u);
-      if (mounted) _toast('แก้ไขคนขับ ${u.title} แล้ว');
+      if (mounted) {
+        _toast('แก้ไขรถและคนขับเป็น $newVehicle แล้ว');
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
+          u.vehicleId = prevVehicleId;
+          u.title = prevTitle;
           u.driverId = prevDriverId;
           u.subtitle = prevSubtitle;
         });
@@ -4906,35 +4948,103 @@ class _SandRecordButtonState extends State<_SandRecordButton>
   }
 }
 
-/// Dialog แก้ไขคนขับของคันที่มีอยู่
-class _ChangeDriverDialog extends StatefulWidget {
-  const _ChangeDriverDialog({
-    required this.vehicleTitle,
+/// Dialog แก้ไขรถและคนขับของคันที่บันทึกเที่ยวแล้ว
+class _ChangeVehicleDriverDialog extends StatefulWidget {
+  const _ChangeVehicleDriverDialog({
+    required this.initialVehicleId,
     required this.initialDriverId,
+    required this.cars,
     required this.drivers,
+    required this.tripHistory,
+    required this.vehicleDefaultDrivers,
+    required this.hasSavedTrips,
   });
 
-  final String vehicleTitle;
+  final String initialVehicleId;
   final String initialDriverId;
+  final List<String> cars;
   final List<Employee> drivers;
+  final List<AppTransaction> tripHistory;
+  final Map<String, String> vehicleDefaultDrivers;
+  final bool hasSavedTrips;
 
   @override
-  State<_ChangeDriverDialog> createState() => _ChangeDriverDialogState();
+  State<_ChangeVehicleDriverDialog> createState() =>
+      _ChangeVehicleDriverDialogState();
 }
 
-class _ChangeDriverDialogState extends State<_ChangeDriverDialog> {
+class _ChangeVehicleDriverDialogState extends State<_ChangeVehicleDriverDialog> {
+  late String _vehicleId;
   late String _driverId;
 
   @override
   void initState() {
     super.initState();
+    _vehicleId = widget.initialVehicleId.trim();
     _driverId = widget.initialDriverId.trim();
   }
 
-  bool get _canSave => _driverId.trim().isNotEmpty;
+  List<String> get _carOptions {
+    final keep = _vehicleId.trim();
+    if (keep.isNotEmpty && !widget.cars.contains(keep)) {
+      return [keep, ...widget.cars];
+    }
+    return widget.cars;
+  }
+
+  List<Employee> get _driverOptions {
+    final vehicleId = _vehicleId.trim();
+    if (vehicleId.isEmpty) return widget.drivers;
+    return orderDriversForVehicle(
+      vehicleId: vehicleId,
+      drivers: widget.drivers,
+      tripHistory: widget.tripHistory,
+      vehicleDefaultDrivers: widget.vehicleDefaultDrivers,
+    );
+  }
+
+  void _onVehicleChanged(String? vehicleId) {
+    final next = vehicleId?.trim() ?? '';
+    setState(() {
+      _vehicleId = next;
+      if (next.isEmpty) {
+        _driverId = '';
+        return;
+      }
+      final defaultId = resolveCountRecordDefaultDriverId(
+        vehicleId: next,
+        drivers: widget.drivers,
+        tripHistory: widget.tripHistory,
+        vehicleDefaultDrivers: widget.vehicleDefaultDrivers,
+      );
+      if (defaultId != null) {
+        _driverId = defaultId;
+      } else if (!widget.drivers.any((e) => e.id == _driverId)) {
+        _driverId = '';
+      }
+    });
+  }
+
+  bool get _canSave =>
+      _vehicleId.trim().isNotEmpty && _driverId.trim().isNotEmpty;
+
+  void _save() {
+    Navigator.pop(
+      context,
+      (vehicleId: _vehicleId.trim(), driverId: _driverId.trim()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final vehicleValue = (_vehicleId.isEmpty || !_carOptions.contains(_vehicleId))
+        ? null
+        : _vehicleId;
+    final driverValue = (_driverId.isEmpty ||
+            !widget.drivers.any((e) => e.id == _driverId))
+        ? null
+        : _driverId;
+
     return Dialog(
       backgroundColor: Colors.white,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -4949,12 +5059,12 @@ class _ChangeDriverDialogState extends State<_ChangeDriverDialog> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.badge_outlined, color: Color(0xFF1565C0)),
+                  const Icon(Icons.edit_road_outlined, color: Color(0xFF1565C0)),
                   const SizedBox(width: 8),
-                  Expanded(
+                  const Expanded(
                     child: Text(
-                      'แก้ไขคนขับ — ${widget.vehicleTitle}',
-                      style: const TextStyle(
+                      'แก้ไขรถและคนขับ',
+                      style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF1A2433),
@@ -4967,19 +5077,52 @@ class _ChangeDriverDialogState extends State<_ChangeDriverDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              if (widget.hasSavedTrips)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    'ยอดเที่ยวและเวลาที่บันทึกแล้วจะอยู่กับการ์ดนี้ — '
+                    'ใช้เมื่อเลือกรถหรือคนขับผิด',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF5C6B7A),
+                      height: 1.35,
+                    ),
+                  ),
+                ),
               DropdownButtonFormField<String>(
                 isExpanded: true,
-                initialValue: (_driverId.isEmpty ||
-                        !widget.drivers.any((e) => e.id == _driverId))
-                    ? null
-                    : _driverId,
+                initialValue: vehicleValue,
+                decoration: const InputDecoration(
+                  labelText: 'รถ',
+                  prefixIcon: Icon(Icons.fire_truck_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                items: _carOptions
+                    .map(
+                      (c) => DropdownMenuItem<String>(
+                        value: c,
+                        child: Text(
+                          c,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _onVehicleChanged,
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: ValueKey('driver-$_vehicleId'),
+                isExpanded: true,
+                initialValue: driverValue,
                 decoration: const InputDecoration(
                   labelText: 'คนขับ',
                   prefixIcon: Icon(Icons.badge_outlined),
                   border: OutlineInputBorder(),
                 ),
-                items: widget.drivers
+                items: _driverOptions
                     .map(
                       (e) => DropdownMenuItem<String>(
                         value: e.id,
@@ -4993,6 +5136,18 @@ class _ChangeDriverDialogState extends State<_ChangeDriverDialog> {
                     .toList(),
                 onChanged: (v) => setState(() => _driverId = v ?? ''),
               ),
+              if (widget.cars.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'ยังไม่พบรายชื่อรถในระบบ',
+                    style: TextStyle(
+                      color: Color(0xFFD14343),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ),
               if (widget.drivers.isEmpty)
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
@@ -5020,8 +5175,7 @@ class _ChangeDriverDialogState extends State<_ChangeDriverDialog> {
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF1565C0),
                       ),
-                      onPressed:
-                          _canSave ? () => Navigator.pop(context, _driverId) : null,
+                      onPressed: _canSave ? _save : null,
                       child: const Text('บันทึก'),
                     ),
                   ),
