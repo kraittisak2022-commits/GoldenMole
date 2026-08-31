@@ -103,18 +103,99 @@ class RecordModuleCard extends StatelessWidget {
             DevicePerf.isConstrainedDevice;
 
         List<BoxShadow> cardLiftShadows() {
-          // เงาบาง — ชั้นเดียว ไม่ซ้อนกับ depthShadow ตอนกด
-          final shadow = isDark
-              ? Colors.black.withValues(alpha: 0.22)
-              : Colors.black.withValues(alpha: useLiteChrome ? 0.04 : 0.055);
+          // เงาหลายชั้น — นุ่น ยกขอบ ให้ความรู้สึกปุ่ม 3D
+          if (isDark) {
+            return [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.34),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+                spreadRadius: -2,
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.16),
+                blurRadius: 5,
+                offset: const Offset(0, 1.5),
+              ),
+              BoxShadow(
+                color: accent.withValues(alpha: 0.07),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+                spreadRadius: -3,
+              ),
+            ];
+          }
+
+          final keyAlpha = useLiteChrome ? 0.065 : 0.085;
+          final ambientAlpha = useLiteChrome ? 0.038 : 0.048;
           return [
             BoxShadow(
-              color: shadow,
-              blurRadius: useLiteChrome ? 5 : 7,
-              offset: Offset(0, useLiteChrome ? 1.5 : 2),
-              spreadRadius: -1,
+              color: Colors.black.withValues(alpha: ambientAlpha),
+              blurRadius: useLiteChrome ? 14 : 18,
+              offset: Offset(0, useLiteChrome ? 5 : 6),
+              spreadRadius: -3,
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: keyAlpha),
+              blurRadius: useLiteChrome ? 7 : 9,
+              offset: Offset(0, useLiteChrome ? 2.5 : 3),
+              spreadRadius: -1.5,
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: keyAlpha * 0.42),
+              blurRadius: 2.5,
+              offset: const Offset(0, 1),
+            ),
+            BoxShadow(
+              color: accent.withValues(alpha: 0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+              spreadRadius: -2,
             ),
           ];
+        }
+
+        BoxDecoration cardDecoration() {
+          final topFace = isDark
+              ? Color.lerp(p.card, Colors.white, 0.04)!
+              : Colors.white;
+          final bottomFace = isDark
+              ? Color.lerp(p.card, Colors.black, 0.12)!
+              : Color.lerp(p.card, const Color(0xFFE2E8F0), 0.38)!;
+
+          return BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [topFace, bottomFace],
+            ),
+            borderRadius: BorderRadius.circular(radius),
+            border: Border(
+              top: BorderSide(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.11)
+                    : Colors.white.withValues(alpha: 0.92),
+              ),
+              left: BorderSide(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : Colors.white.withValues(alpha: 0.65),
+                width: 0.75,
+              ),
+              right: BorderSide(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.22)
+                    : Colors.black.withValues(alpha: 0.045),
+                width: 0.75,
+              ),
+              bottom: BorderSide(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.38)
+                    : Colors.black.withValues(alpha: 0.09),
+              ),
+            ),
+            boxShadow: cardLiftShadows(),
+          );
         }
 
         Widget iconWell() {
@@ -251,11 +332,7 @@ class RecordModuleCard extends StatelessWidget {
           width: cardW,
           height: cardH,
           child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: p.card,
-              borderRadius: BorderRadius.circular(radius),
-              boxShadow: cardLiftShadows(),
-            ),
+            decoration: cardDecoration(),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(radius),
               child: useRowLayout ? rowContent() : stackedContent(),
@@ -263,13 +340,26 @@ class RecordModuleCard extends StatelessWidget {
           ),
         );
 
+        final pressDepth = useLiteChrome
+            ? null
+            : SoftPressDepthShadow(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.24)
+                    : Colors.black.withValues(alpha: 0.06),
+                blurRadius: 8,
+                offsetY: 2.5,
+                pressedBlurRadius: 3,
+                pressedOffsetY: 0.5,
+              );
+
         return SoftPressButton(
           onTap: onTap,
           size: SoftPressSize.medium,
           borderRadius: radius,
           isDarkSurface: isDark,
-          liftWhenIdle: false,
-          depthShadow: null,
+          liftWhenIdle: !useLiteChrome,
+          idleLiftY: -1,
+          depthShadow: pressDepth,
           hitPadding: EdgeInsets.zero,
           child: shapedCard,
         );
