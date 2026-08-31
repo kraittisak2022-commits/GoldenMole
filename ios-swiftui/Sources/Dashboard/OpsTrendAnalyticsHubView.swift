@@ -21,10 +21,18 @@ struct OpsTrendAnalyticsHubView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
                 } else {
+                    scoreHero
+                    pillarBreakdown
                     growthScoreboard
+                    bucketScoreCard
                     comparisonChartCard
+                    cumulativeChartCard
+                    periodCompareCard
                     if focus == .both {
                         dualBarsCard
+                    }
+                    if focus == .trip || focus == .both {
+                        sessionSplitCard
                     }
                     detailCards
                     insightsCard
@@ -32,7 +40,7 @@ struct OpsTrendAnalyticsHubView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
-            .padding(.bottom, 28)
+            .padding(.bottom, 32)
         }
         .background(DashboardBackground())
         .navigationTitle("วิเคราะห์ข้อมูล")
@@ -46,11 +54,11 @@ struct OpsTrendAnalyticsHubView: View {
         "\(period.rawValue)|\(appState.transactionsRevision)|\(appState.employees.count)"
     }
 
-    // MARK: - Header
+    // MARK: - Header / pickers
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("วัดผลการเติบโต")
+            Text("ศูนย์วัดผลปฏิบัติการ")
                 .font(.title2.weight(.bold))
                 .foregroundStyle(AppTheme.ink)
             Text(rangeCaption)
@@ -70,8 +78,6 @@ struct OpsTrendAnalyticsHubView: View {
     private func shortDate(_ ymd: String) -> String {
         DashboardAggregations.dayLabel(ymd)
     }
-
-    // MARK: - Pickers
 
     private var periodPicker: some View {
         Picker("ช่วง", selection: $period) {
@@ -107,7 +113,126 @@ struct OpsTrendAnalyticsHubView: View {
         }
     }
 
-    // MARK: - Scoreboard
+    // MARK: - Score hero
+
+    private var scoreHero: some View {
+        let sc = report.scorecard
+        let accent = gradeColor(sc.grade)
+        return HStack(alignment: .center, spacing: 16) {
+            ZStack {
+                Circle()
+                    .stroke(AppTheme.surfaceSoft, lineWidth: 10)
+                Circle()
+                    .trim(from: 0, to: CGFloat(sc.score) / 100)
+                    .stroke(
+                        AngularGradient(colors: [accent.opacity(0.55), accent], center: .center),
+                        style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .animation(.snappy(duration: 0.45), value: sc.score)
+                VStack(spacing: 2) {
+                    Text("\(sc.score)")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+                        .contentTransition(.numericText())
+                    Text(sc.grade.rawValue)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(accent)
+                }
+            }
+            .frame(width: 108, height: 108)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(sc.headline)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(sc.subheadline)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    Label(
+                        "\(OpsTrendAnalytics.formatSignedInt(sc.scoreDelta)) vs \(period.shortLabel)ก่อน",
+                        systemImage: sc.scoreDelta >= 0 ? "arrow.up.right" : "arrow.down.right"
+                    )
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(sc.scoreDelta >= 0 ? Color(hex: "#16a34a") : Color(hex: "#dc2626"))
+
+                    Text("\(report.activeDays)/\(report.coverageDays) วัน")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.inkMuted)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(AppTheme.surfaceSoft))
+                }
+
+                if report.streakDays > 0 {
+                    Text("สตรีคทำงานต่อเนื่อง \(report.streakDays) วัน")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.brand)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .fill(AppTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
+    }
+
+    private var pillarBreakdown: some View {
+        let sc = report.scorecard
+        let pillars: [(String, Int, Color)] = [
+            ("ปริมาณ", sc.volumeScore, AppTheme.info),
+            ("เติบโต", sc.growthScore, Color(hex: "#16a34a")),
+            ("ความนิ่ง", sc.consistencyScore, AppTheme.brand),
+            ("ครอบคลุม", sc.coverageScore, AppTheme.warning),
+            ("สมดุล", sc.balanceScore, Color(hex: "#7c3aed")),
+        ]
+        return SectionCard(
+            "องค์ประกอบคะแนน",
+            systemImage: "chart.bar.doc.horizontal",
+            subtitle: "น้ำหนัก: ปริมาณ 30% · เติบโต 25% · นิ่ง 20% · ครอบคลุม 15% · สมดุล 10%"
+        ) {
+            VStack(spacing: 10) {
+                ForEach(Array(pillars.enumerated()), id: \.offset) { _, item in
+                    pillarRow(title: item.0, score: item.1, color: item.2)
+                }
+            }
+        }
+    }
+
+    private func pillarRow(title: String, score: Int, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
+                Spacer()
+                Text("\(score)")
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .foregroundStyle(AppTheme.ink)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(AppTheme.surfaceSoft)
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(6, geo.size.width * CGFloat(score) / 100))
+                }
+            }
+            .frame(height: 8)
+        }
+    }
+
+    // MARK: - Metric tiles
 
     private var growthScoreboard: some View {
         let cards = visibleCards
@@ -166,12 +291,18 @@ struct OpsTrendAnalyticsHubView: View {
                     .font(.caption2)
                     .foregroundStyle(AppTheme.inkMuted)
                 Spacer()
-                Text("คะแนน \(card.growthScore)")
+                Text("โต \(card.growthScore)")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(accent)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Capsule().fill(accent.opacity(0.14)))
+            }
+
+            if let attainment = card.targetAttainmentPct {
+                Text(String(format: "ถึงเป้า %.0f%%", attainment))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(attainment >= 100 ? Color(hex: "#16a34a") : AppTheme.warning)
             }
         }
         .padding(14)
@@ -197,6 +328,68 @@ struct OpsTrendAnalyticsHubView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(Capsule().fill(accent.opacity(0.12)))
+    }
+
+    // MARK: - Bucket scores (day or week)
+
+    private var bucketScoreCard: some View {
+        SectionCard(
+            period == .week ? "คะแนนรายวัน" : "คะแนนรายสัปดาห์ย่อย",
+            systemImage: "rosette",
+            subtitle: period == .week ? "คะแนนแต่ละวันในสัปดาห์นี้" : "คะแนน W1–W4 ในรอบ 30 วัน"
+        ) {
+            if report.bucketScores.isEmpty {
+                Text("ยังไม่มีคะแนนย่อย")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.inkMuted)
+            } else {
+                Chart(report.bucketScores) { item in
+                    BarMark(
+                        x: .value("ช่วง", item.label),
+                        y: .value("คะแนน", item.score)
+                    )
+                    .foregroundStyle(by: .value("s", "คะแนน"))
+                    .cornerRadius(4)
+                }
+                .chartForegroundStyleScale(["คะแนน": AppTheme.brand])
+                .chartLegend(.hidden)
+                .chartYScale(domain: 0...100)
+                .chartYAxis {
+                    AxisMarks(position: .leading, values: [0, 50, 100]) { _ in
+                        AxisGridLine().foregroundStyle(AppTheme.hairline)
+                        AxisValueLabel().foregroundStyle(AppTheme.inkMuted)
+                    }
+                }
+                .frame(height: 160)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(report.bucketScores) { item in
+                            VStack(spacing: 4) {
+                                Text(item.label)
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(AppTheme.inkMuted)
+                                Text("\(item.score)")
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(AppTheme.ink)
+                                Text("\(OpsTrendAnalytics.formatCompact(item.tripTotal))ท")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(AppTheme.info)
+                                Text("\(OpsTrendAnalytics.formatCompact(item.sandTotal))ร")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(AppTheme.brand)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(AppTheme.surfaceSoft)
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Charts
@@ -281,6 +474,73 @@ struct OpsTrendAnalyticsHubView: View {
         .frame(height: 200)
     }
 
+    private var cumulativeChartCard: some View {
+        let card = primaryCard
+        let accent = accent(for: card)
+        return SectionCard(
+            focus == .both ? "ผลสะสมเที่ยวรถ" : "ผลสะสม \(card.title)",
+            systemImage: "chart.line.uptrend.xyaxis",
+            subtitle: "เส้นสะสมช่วงนี้เทียบช่วงก่อน"
+        ) {
+            if card.cumulative.isEmpty {
+                Text("ยังไม่มีข้อมูลสะสม")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.inkMuted)
+            } else {
+                let cur = zip(card.labels, card.cumulative).enumerated().map {
+                    TrendPoint(id: "cc-\($0.offset)", label: $0.element.0, value: $0.element.1, series: "ช่วงนี้")
+                }
+                let prev = zip(card.labels, card.prevCumulative).enumerated().map {
+                    TrendPoint(id: "cp-\($0.offset)", label: $0.element.0, value: $0.element.1, series: "ช่วงก่อน")
+                }
+                Chart(cur + prev) { p in
+                    LineMark(x: .value("ช่วง", p.label), y: .value("สะสม", p.value), series: .value("s", p.series))
+                        .foregroundStyle(p.series == "ช่วงนี้" ? accent : AppTheme.inkMuted.opacity(0.7))
+                        .lineStyle(StrokeStyle(lineWidth: p.series == "ช่วงนี้" ? 2.6 : 1.6, dash: p.series == "ช่วงนี้" ? [] : [5, 4]))
+                        .interpolationMethod(.linear)
+                }
+                .chartLegend(position: .top, alignment: .leading)
+                .frame(height: 180)
+            }
+        }
+    }
+
+    private var periodCompareCard: some View {
+        SectionCard(
+            "เปรียบเทียบช่วงนี้ vs ก่อน",
+            systemImage: "arrow.left.arrow.right",
+            subtitle: "รวมทั้งช่วง"
+        ) {
+            let labels = ["เที่ยวรถ", "ร่อนทราย"]
+            let cur = [report.trip.total, report.sand.total]
+            let prev = [report.trip.prevTotal, report.sand.prevTotal]
+            GroupedBarChartView(
+                labels: labels,
+                seriesA: cur,
+                seriesB: prev,
+                colorA: AppTheme.brand,
+                colorB: AppTheme.inkMuted.opacity(0.55),
+                labelA: "ช่วงนี้",
+                labelB: "ช่วงก่อน"
+            )
+
+            if let ratio = report.tripSandRatio {
+                HStack {
+                    Text(String(format: "อัตราเที่ยว/รอบร่อน %.1f", ratio))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                    if let prev = report.prevTripSandRatio {
+                        Text(String(format: "(ก่อน %.1f)", prev))
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.inkMuted)
+                    }
+                    Spacer()
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+
     private var dualBarsCard: some View {
         SectionCard(
             "เปรียบเทียบต่อช่วง",
@@ -296,6 +556,40 @@ struct OpsTrendAnalyticsHubView: View {
                 labelA: "เที่ยวรถ",
                 labelB: "ร่อนทราย"
             )
+        }
+    }
+
+    private var sessionSplitCard: some View {
+        let mornings = report.dailyPoints.map { Double($0.tripMorning) }
+        let afternoons = report.dailyPoints.map { Double($0.tripAfternoon) }
+        let labels = report.dailyPoints.map(\.label)
+        let showDaily = period == .week || labels.count <= 14
+        let morningTotal = mornings.reduce(0, +)
+        let afternoonTotal = afternoons.reduce(0, +)
+        return SectionCard(
+            "จังหวะเช้า / บ่าย (เที่ยวรถ)",
+            systemImage: "sun.horizon.fill",
+            subtitle: showDaily ? "แยกช่วงเวลาทำงานรายวัน" : "สรุปรวมทั้งช่วง"
+        ) {
+            if showDaily, !labels.isEmpty {
+                GroupedBarChartView(
+                    labels: labels,
+                    seriesA: mornings,
+                    seriesB: afternoons,
+                    colorA: Color(hex: "#f59e0b"),
+                    colorB: AppTheme.info,
+                    labelA: "เช้า",
+                    labelB: "บ่าย"
+                )
+                Text("รวมเช้า \(OpsTrendAnalytics.formatCompact(morningTotal)) · บ่าย \(OpsTrendAnalytics.formatCompact(afternoonTotal)) เที่ยว")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.inkMuted)
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    miniStat("เช้าทั้งช่วง", OpsTrendAnalytics.formatCompact(morningTotal), "เที่ยว")
+                    miniStat("บ่ายทั้งช่วง", OpsTrendAnalytics.formatCompact(afternoonTotal), "เที่ยว")
+                }
+            }
         }
     }
 
@@ -315,6 +609,8 @@ struct OpsTrendAnalyticsHubView: View {
                         miniStat("เฉลี่ยก่อน", OpsTrendAnalytics.formatCompact(card.prevAverage), card.unit)
                         miniStat("สูงสุด (\(card.bestLabel))", OpsTrendAnalytics.formatCompact(card.bestValue), card.unit)
                         miniStat("ต่ำสุด (\(card.worstLabel))", OpsTrendAnalytics.formatCompact(card.worstValue), card.unit)
+                        miniStat("ความนิ่ง", "\(card.consistencyScore)", "คะแนน")
+                        miniStat("ส่วนเบี่ยงเบน", OpsTrendAnalytics.formatCompact(card.stdDev), card.unit)
                     }
                 }
             }
@@ -327,6 +623,7 @@ struct OpsTrendAnalyticsHubView: View {
                 .font(.caption2)
                 .foregroundStyle(AppTheme.inkMuted)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(value)
                     .font(.headline.weight(.bold))
@@ -346,9 +643,9 @@ struct OpsTrendAnalyticsHubView: View {
 
     private var insightsCard: some View {
         SectionCard(
-            "สรุปจังหวะ",
+            "สรุปจังหวะ & คำแนะนำ",
             systemImage: "text.badge.checkmark",
-            subtitle: "\(report.activeDays)/\(report.coverageDays) วันมีงาน"
+            subtitle: "\(report.activeDays)/\(report.coverageDays) วันมีงาน · สตรีค \(report.streakDays)"
         ) {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(report.insights.enumerated()), id: \.offset) { _, line in
@@ -371,6 +668,15 @@ struct OpsTrendAnalyticsHubView: View {
 
     private func accent(for card: OpsTrendMetricCard) -> Color {
         card.title.contains("ทราย") ? AppTheme.brand : AppTheme.info
+    }
+
+    private func gradeColor(_ grade: OpsTrendGrade) -> Color {
+        switch grade {
+        case .aPlus, .a: return Color(hex: "#16a34a")
+        case .b: return AppTheme.brand
+        case .c: return AppTheme.warning
+        case .d: return Color(hex: "#dc2626")
+        }
     }
 
     private func deltaColor(_ pct: Double?) -> Color {
