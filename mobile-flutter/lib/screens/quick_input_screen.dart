@@ -9406,7 +9406,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   ThemeData _vehicleTripFormTheme(BuildContext context) {
     final base = Theme.of(context);
     final p = DailyPalette.of(context);
-    final isDark = base.brightness == Brightness.dark;
+    final isDark = base.brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
     final primary = isDark ? p.brand : const Color(0xFF0F9EA8);
     return base.copyWith(
       colorScheme: ColorScheme.fromSeed(
@@ -9488,7 +9489,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   ThemeData _macroFormTheme(BuildContext context) {
     final base = Theme.of(context);
     final p = DailyPalette.of(context);
-    final isDark = base.brightness == Brightness.dark;
+    final isDark = base.brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
     final primary = isDark ? p.brand : _macroAccent;
     return base.copyWith(
       colorScheme: ColorScheme.fromSeed(
@@ -10191,7 +10193,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                               ? _incomeUtilitiesFormTheme(context)
                               : _isOtMode
                                   ? _otFormTheme(context)
-                                  : _quickFormTheme(context),
+                                  : _isVehicleTripMode
+                                      ? _vehicleTripFormTheme(context)
+                                      : _isDailyEventMode
+                                          ? _dailyEventFormTheme(context)
+                                          : _quickFormTheme(context),
       child: GestureDetector(
         onHorizontalDragEnd: (details) {
           if (details.primaryVelocity != null &&
@@ -10218,7 +10224,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _isLaborLeaveMode ||
                   _isOtMode ||
                   _isLaborAdvanceMode ||
-                  _isIncomeUtilitiesEntryMode)
+                  _isIncomeUtilitiesEntryMode ||
+                  _isVehicleTripMode)
               ? dailyColors.surface
               : _bg,
           body: Stack(
@@ -12336,12 +12343,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         ? 'บันทึกในระบบ ${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
         : null;
 
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
+    final cardBg = isDark ? p.chipSurface : const Color(0xFFF4FAFF);
+    final cardBorder = isDark
+        ? DailyPalette.moduleTrip.withValues(alpha: 0.45)
+        : const Color(0xFFC5DCF3);
+    final titleInk = isDark ? const Color(0xFF7DD3FC) : const Color(0xFF1A4A7A);
+    final metaInk = isDark ? p.inkSubtle : const Color(0xFF3D5A80);
+    final tripInk = isDark ? p.inkSubtle : const Color(0xFF2C4D77);
+    final cubicInk = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0F5FAF);
+    final bodyInk = isDark ? p.ink : Colors.black87;
+    final mutedInk = isDark ? p.inkMuted : Colors.black45;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4FAFF),
+        color: cardBg,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFC5DCF3)),
+        border: Border.all(color: cardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -12351,7 +12372,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             style: GoogleFonts.kanit(
               fontSize: 16,
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF1A4A7A),
+              color: titleInk,
             ),
           ),
           const SizedBox(height: 4),
@@ -12360,7 +12381,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             style: GoogleFonts.kanit(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: const Color(0xFF3D5A80),
+              color: metaInk,
             ),
           ),
           const SizedBox(height: 6),
@@ -12369,7 +12390,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             style: GoogleFonts.kanit(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: const Color(0xFF2C4D77),
+              color: tripInk,
             ),
           ),
           const SizedBox(height: 4),
@@ -12378,7 +12399,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             style: GoogleFonts.kanit(
               fontSize: 14,
               fontWeight: FontWeight.w700,
-              color: const Color(0xFF0F5FAF),
+              color: cubicInk,
             ),
           ),
           if (wd.isNotEmpty) ...[
@@ -12388,7 +12409,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               style: GoogleFonts.kanit(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w500,
-                color: Colors.black87,
+                color: bodyInk,
                 height: 1.25,
               ),
             ),
@@ -12397,7 +12418,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             const SizedBox(height: 6),
             Text(
               timeHint,
-              style: GoogleFonts.kanit(fontSize: 12, color: Colors.black45),
+              style: GoogleFonts.kanit(fontSize: 12, color: mutedInk),
             ),
           ],
         ],
@@ -12419,6 +12440,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final hasHydratedRows =
           hydratedIds.isNotEmpty ||
           _vehicleTripDrafts.any((r) => r.tripTxId != null && r.tripTxId!.isNotEmpty);
+      final pEmpty = DailyPalette.of(context);
+      final isDarkEmpty = Theme.of(context).brightness == Brightness.dark ||
+          (AppThemeScope.maybeOf(context)?.isDark ?? false);
       return Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Text(
@@ -12426,10 +12450,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ? 'กำลังแก้ไขรายการด้านบน — กดบันทึกรถคันนี้เพื่ออัปเดต'
               : 'ยังไม่มีบันทึกรถดรัมในวันที่เลือก — เลือกรถด้านบนเพื่อเพิ่ม',
           textAlign: TextAlign.center,
-          style: GoogleFonts.kanit(fontSize: 13.5, color: Colors.black45),
+          style: GoogleFonts.kanit(
+            fontSize: 13.5,
+            color: isDarkEmpty ? pEmpty.inkMuted : Colors.black45,
+          ),
         ),
       );
     }
+    final pSaved = DailyPalette.of(context);
+    final isDarkSaved = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -12439,7 +12469,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           style: GoogleFonts.kanit(
             fontSize: 16,
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF205A9A),
+            color: isDarkSaved
+                ? const Color(0xFF7DD3FC)
+                : const Color(0xFF205A9A),
           ),
         ),
         const SizedBox(height: 8),
@@ -12476,18 +12508,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (_vehicleTripDrafts.isEmpty) {
       _vehicleTripDrafts.add(_VehicleTripDraft.empty());
     }
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
     return _VehicleTripFormSection(
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? p.card : Colors.white,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE3ECF7)),
+          border: Border.all(
+            color: isDark ? p.hairline : const Color(0xFFE3ECF7),
+          ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF0F9EA8).withValues(alpha: 0.05),
+              color: isDark
+                  ? p.shadowCard
+                  : const Color(0xFF0F9EA8).withValues(alpha: 0.05),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -15464,7 +15503,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             _isLaborLeaveMode ||
             _isLaborAdvanceMode ||
             _isIncomeUtilitiesEntryMode ||
-            _isOtMode) &&
+            _isOtMode ||
+            _isVehicleTripMode) &&
         (AppThemeScope.maybeOf(context)?.isDark ??
             Theme.of(context).brightness == Brightness.dark);
     final shellP = shellDark ? DailyPalette.of(context) : null;
@@ -20696,31 +20736,42 @@ class _VehicleTripRowsBoardState extends State<_VehicleTripRowsBoard> {
         const SizedBox(height: 8),
         ValueListenableBuilder<_VehicleTripAggregate>(
           valueListenable: _summaryNotifier,
-          builder: (context, agg, _) => AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF4F8FD),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: agg.sumTrips > 0 || agg.sumCubic > 0
-                    ? const Color(0xFFBFD8F4)
-                    : const Color(0xFFE2EAF4),
-              ),
-            ),
-            child: AnimatedSwitcher(
+          builder: (context, agg, _) {
+            final p = DailyPalette.of(context);
+            final isDark = Theme.of(context).brightness == Brightness.dark ||
+                (AppThemeScope.maybeOf(context)?.isDark ?? false);
+            final active = agg.sumTrips > 0 || agg.sumCubic > 0;
+            return AnimatedContainer(
               duration: const Duration(milliseconds: 220),
-              child: Text(
-                'รวม ${agg.sumTrips.toStringAsFixed(0)} เที่ยว • ${agg.sumCubic.toStringAsFixed(0)} คิว (${agg.rowCount} คัน)',
-                key: ValueKey(
-                  '${agg.sumTrips.toStringAsFixed(0)}-${agg.sumCubic.toStringAsFixed(0)}-${agg.rowCount}',
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: isDark ? p.chipSurface : const Color(0xFFF4F8FD),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: active
+                      ? (isDark
+                          ? DailyPalette.moduleTrip.withValues(alpha: 0.5)
+                          : const Color(0xFFBFD8F4))
+                      : (isDark ? p.hairline : const Color(0xFFE2EAF4)),
                 ),
-                textAlign: TextAlign.center,
-                style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
               ),
-            ),
-          ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: Text(
+                  'รวม ${agg.sumTrips.toStringAsFixed(0)} เที่ยว • ${agg.sumCubic.toStringAsFixed(0)} คิว (${agg.rowCount} คัน)',
+                  key: ValueKey(
+                    '${agg.sumTrips.toStringAsFixed(0)}-${agg.sumCubic.toStringAsFixed(0)}-${agg.rowCount}',
+                  ),
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.kanit(
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? p.ink : null,
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -20798,13 +20849,41 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
     final summaryLine = isLump
         ? '$vLabel • $dLabel • $tripPart • เหมา ${rowCubic.toStringAsFixed(0)} คิว'
         : '$vLabel • $dLabel • $tripPart • ${rowTrips.toStringAsFixed(0)} เที่ยวรวม • ${rowCubic.toStringAsFixed(0)} คิว';
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
+    final rowCardBg = isDark ? p.chipSurface : const Color(0xFFF9FCFF);
+    final rowCardBorder =
+        isDark ? p.hairline : const Color(0xFFDCE8F5);
+    final headingInk =
+        isDark ? const Color(0xFF7DD3FC) : const Color(0xFF205A9A);
+    final badgeBg =
+        isDark ? const Color(0xFF1E3A5F) : const Color(0xFFE3F2FD);
+    final badgeInk =
+        isDark ? const Color(0xFF93C5FD) : const Color(0xFF1565C0);
+    final fieldInk = isDark ? p.ink : const Color(0xFF1D2A3A);
+    final mutedInk = isDark ? p.inkMuted : Colors.black45;
+    final mutedInk54 = isDark ? p.inkMuted : Colors.black54;
+    final workTypeBg =
+        isDark ? p.surface : const Color(0xFFF3F8FF);
+    final workTypeBorder =
+        isDark ? p.hairline : const Color(0xFFD7E6F7);
+    final billingBg =
+        isDark ? const Color(0xFF3D2E0A) : const Color(0xFFFFF8F0);
+    final billingBorder =
+        isDark ? const Color(0xFF8D6E2F) : const Color(0xFFFFE0B2);
+    final summaryInk =
+        isDark ? const Color(0xFF7DD3FC) : const Color(0xFF2C4D77);
+    final warnInk =
+        isDark ? const Color(0xFFF87171) : const Color(0xFFD14343);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FCFF),
+        color: rowCardBg,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFDCE8F5)),
+        border: Border.all(color: rowCardBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -20820,7 +20899,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF205A9A),
+                    color: headingInk,
                   ),
                 ),
               ),
@@ -20833,7 +20912,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE3F2FD),
+                      color: badgeBg,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -20841,7 +20920,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                       style: GoogleFonts.kanit(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFF1565C0),
+                        color: badgeInk,
                       ),
                     ),
                   ),
@@ -20853,7 +20932,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                     await widget.onDelete();
                   },
                   icon: const Icon(Icons.delete_outline_rounded),
-                  color: const Color(0xFFD14343),
+                  color: warnInk,
                   tooltip: 'ลบคันนี้',
                 ),
               ],
@@ -20932,7 +21011,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
               child: Text(
                 'ยังไม่พบพนักงานที่ตำแหน่งเป็น "คนขับรถ"',
                 style: GoogleFonts.kanit(
-                  color: const Color(0xFFD14343),
+                  color: warnInk,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -20941,9 +21020,9 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFFF3F8FF),
+              color: workTypeBg,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFD7E6F7)),
+              border: Border.all(color: workTypeBorder),
             ),
             child: SegmentedButton<String>(
               segments: const [
@@ -20991,7 +21070,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                 maxDecimalPlaces: 2,
               ),
               style: GoogleFonts.kanit(
-                color: const Color(0xFF1D2A3A),
+                color: fieldInk,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
@@ -21017,7 +21096,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
               hintStyle: GoogleFonts.kanit(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: Colors.black45,
+                color: mutedInk,
               ),
               prefixIcon: const Icon(Icons.description_outlined),
             ),
@@ -21028,7 +21107,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
             style: GoogleFonts.kanit(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: Colors.black54,
+              color: mutedInk54,
             ),
           ),
           const SizedBox(height: 4),
@@ -21058,7 +21137,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
               style: GoogleFonts.kanit(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Colors.black45,
+                color: mutedInk,
               ),
             ),
             const SizedBox(height: 4),
@@ -21087,9 +21166,9 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF8F0),
+              color: billingBg,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFFFE0B2)),
+              border: Border.all(color: billingBorder),
             ),
             child: SegmentedButton<String>(
               segments: const [
@@ -21136,7 +21215,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                     },
                   ),
                   style: GoogleFonts.kanit(
-                    color: const Color(0xFF1D2A3A),
+                    color: fieldInk,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
@@ -21145,7 +21224,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                     hintText: 'ไม่บังคับ · ว่าง = 0',
                     hintStyle: GoogleFonts.kanit(
                       fontSize: 13,
-                      color: Colors.black45,
+                      color: mutedInk,
                     ),
                     prefixIcon: const Icon(Icons.wb_sunny_outlined),
                   ),
@@ -21173,7 +21252,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                     },
                   ),
                   style: GoogleFonts.kanit(
-                    color: const Color(0xFF1D2A3A),
+                    color: fieldInk,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
@@ -21182,7 +21261,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                     hintText: 'ไม่บังคับ · ว่าง = 0',
                     hintStyle: GoogleFonts.kanit(
                       fontSize: 13,
-                      color: Colors.black45,
+                      color: mutedInk,
                     ),
                     prefixIcon: const Icon(Icons.nightlight_outlined),
                   ),
@@ -21210,7 +21289,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                 },
               ),
               style: GoogleFonts.kanit(
-                color: const Color(0xFF1D2A3A),
+                color: fieldInk,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
@@ -21239,7 +21318,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
                 },
               ),
               style: GoogleFonts.kanit(
-                color: const Color(0xFF1D2A3A),
+                color: fieldInk,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
@@ -21254,7 +21333,7 @@ class _VehicleTripRowItemState extends State<_VehicleTripRowItem> {
             summaryLine,
             style: GoogleFonts.kanit(
               fontWeight: FontWeight.w700,
-              color: const Color(0xFF2C4D77),
+              color: summaryInk,
             ),
           ),
         ],
