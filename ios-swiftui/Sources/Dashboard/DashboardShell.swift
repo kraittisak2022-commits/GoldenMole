@@ -4,6 +4,7 @@ enum AppMainTab: Hashable {
     case home
     case realtimeTrip
     case realtimeSand
+    case analytics
     case tasks
 }
 
@@ -61,6 +62,12 @@ struct DashboardShell: View {
                 }
                 .tabItem { Label("เที่ยวรถ", systemImage: "truck.box.fill") }
                 .tag(AppMainTab.realtimeTrip)
+
+                NavigationStack {
+                    OpsTrendAnalyticsHubView()
+                }
+                .tabItem { Label("วิเคราะห์", systemImage: "chart.line.uptrend.xyaxis") }
+                .tag(AppMainTab.analytics)
 
                 NavigationStack {
                     tasksTab
