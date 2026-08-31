@@ -43,13 +43,25 @@ private enum TaskFilterChip: String, CaseIterable, Identifiable {
     }
 }
 
+/// Client-side feed ordering (no backend change).
+private enum TaskFeedSort: String, CaseIterable, Identifiable {
+    case smart = "อัจฉริยะ"
+    case deadline = "เดดไลน์"
+    case priority = "ความสำคัญ"
+    case newest = "ล่าสุด"
+
+    var id: String { rawValue }
+}
+
 /// The "งาน" tab — community work board for posting and tracking team tasks.
 struct TasksHubView: View {
     @Environment(TaskStore.self) private var store
     @Environment(AuthService.self) private var auth
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var segment: TasksSegment = .today
     @State private var chip: TaskFilterChip = .all
+    @State private var feedSort: TaskFeedSort = .smart
     @State private var selectedDay = DashboardAggregations.todayYMD()
     @State private var editorTarget: EditorTarget?
     @State private var statusTarget: WorkTask?
@@ -120,8 +132,113 @@ struct TasksHubView: View {
             let existing = Set(items.map(\.id))
             items.append(contentsOf: carryOverTasks.filter { !existing.contains($0.id) })
         }
-        return TaskStore.sorted(items)
+        return sortFeed(items)
     }
+
+    private struct FeedGroup: Identifiable {
+        let id: String
+        let title: String
+        let systemImage: String
+        let tint: Color
+        let tasks: [WorkTask]
+    }
+
+    private var feedGroups: [FeedGroup] {
+        let items = listedTasks
+        guard !items.isEmpty else { return [] }
+
+        let overdue = items.filter { !$0.isDone && $0.isPastDeadline() }
+        let carried = items.filter { task in
+            !task.isDone && !overdue.contains(where: { $0.id == task.id })
+                && task.carryOverDays(to: today) != nil
+        }
+        let urgent = items.filter { task in
+            !task.isDone
+                && !overdue.contains(where: { $0.id == task.id })
+                && !carried.contains(where: { $0.id == task.id })
+                && (task.priority == .urgent || task.priority == .high)
+        }
+        let active = items.filter { task in
+            task.status == .inProgress
+                && !overdue.contains(where: { $0.id == task.id })
+                && !carried.contains(where: { $0.id == task.id })
+                && !urgent.contains(where: { $0.id == task.id })
+        }
+        let waiting = items.filter { task in
+            task.status == .todo
+                && !overdue.contains(where: { $0.id == task.id })
+                && !carried.contains(where: { $0.id == task.id })
+                && !urgent.contains(where: { $0.id == task.id })
+        }
+        let done = items.filter(\.isDone)
+
+        var groups: [FeedGroup] = []
+        if !overdue.isEmpty {
+            groups.append(FeedGroup(id: "overdue", title: "เลยเดดไลน์", systemImage: "exclamationmark.triangle.fill", tint: AppTheme.expense, tasks: overdue))
+        }
+        if !carried.isEmpty {
+            groups.append(FeedGroup(id: "carry", title: "ยกมาจากวันก่อน", systemImage: "arrow.uturn.forward", tint: AppTheme.warning, tasks: carried))
+        }
+        if !urgent.isEmpty {
+            groups.append(FeedGroup(id: "urgent", title: "ด่วน / สำคัญ", systemImage: "flame.fill", tint: AppTheme.warning, tasks: urgent))
+        }
+        if !active.isEmpty {
+            groups.append(FeedGroup(id: "active", title: "กำลังทำ", systemImage: "bolt.fill", tint: AppTheme.info, tasks: active))
+        }
+        if !waiting.isEmpty {
+            groups.append(FeedGroup(id: "waiting", title: "รอเริ่ม", systemImage: "circle.dashed", tint: AppTheme.brand, tasks: waiting))
+        }
+        if !done.isEmpty {
+            groups.append(FeedGroup(id: "done", title: "ปิดแล้ว", systemImage: "checkmark.seal.fill", tint: AppTheme.income, tasks: done))
+        }
+        return groups
+    }
+
+    private func sortFeed(_ items: [WorkTask]) -> [WorkTask] {
+        switch feedSort {
+        case .smart:
+            return TaskStore.sorted(items)
+        case .deadline:
+            return items.sorted { a, b in
+                let ad = a.deadlineDate?.timeIntervalSince1970 ?? Double.greatestFiniteMagnitude
+                let bd = b.deadlineDate?.timeIntervalSince1970 ?? Double.greatestFiniteMagnitude
+                if ad != bd { return ad < bd }
+                return a.dueDate < b.dueDate
+            }
+        case .priority:
+            let rank: [TaskPriority: Int] = [.urgent: 0, .high: 1, .normal: 2, .low: 3]
+            return items.sorted { a, b in
+                let ar = rank[a.priority] ?? 9
+                let br = rank[b.priority] ?? 9
+                if ar != br { return ar < br }
+                return a.dueDate < b.dueDate
+            }
+        case .newest:
+            return items.sorted { a, b in
+                let ac = a.createdAt ?? ""
+                let bc = b.createdAt ?? ""
+                if ac != bc { return ac > bc }
+                return a.title < b.title
+            }
+        }
+    }
+
+    private func chipCount(_ item: TaskFilterChip) -> Int {
+        let base = store.visible(to: adminId)
+        switch item {
+        case .all: return base.count
+        case .mine: return base.filter { $0.ownerAdminId == adminId }.count
+        case .assigned: return base.filter { $0.assigneeAdminId == adminId }.count
+        case .shared: return base.filter { $0.visibility == .shared }.count
+        case .personal: return base.filter { $0.visibility == .personal }.count
+        }
+    }
+
+    private var listedOpenCount: Int { listedTasks.filter { !$0.isDone }.count }
+    private var listedUrgentCount: Int {
+        listedTasks.filter { !$0.isDone && ($0.priority == .urgent || $0.priority == .high || $0.isPastDeadline()) }.count
+    }
+    private var listedDoneCount: Int { listedTasks.filter(\.isDone).count }
 
     private var focusTasks: [WorkTask] {
         store.focusTasks(on: today, adminId: adminId)
@@ -159,6 +276,12 @@ struct TasksHubView: View {
                 composerPrompt
                 segmentPill
 
+                if store.isLoading && store.tasks.isEmpty {
+                    ProgressView("กำลังโหลดกระดานงาน…")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                }
+
                 if let error = store.errorMessage {
                     errorBanner(error)
                 }
@@ -175,6 +298,7 @@ struct TasksHubView: View {
                     calendarSection
                 }
 
+                feedWindowKPI
                 listSection
             }
             .padding(.horizontal, AppTheme.spaceLG)
@@ -210,8 +334,9 @@ struct TasksHubView: View {
                 onSave: { saved in Task { await store.saveAll(saved, adminId: adminId) } },
                 onDelete: { removed in Task { await store.delete(removed) } }
             )
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.large, .fraction(0.92)])
             .presentationDragIndicator(.visible)
+            .presentationContentInteraction(.scrolls)
         }
         .sheet(item: $statusTarget) { target in
             TaskStatusSheet(task: target) { picked in
@@ -274,9 +399,13 @@ struct TasksHubView: View {
                                     Circle()
                                         .fill(Color(hex: "#4ADE80"))
                                         .frame(width: 6, height: 6)
-                                        .shadow(color: Color(hex: "#4ADE80").opacity(0.8), radius: 4)
+                                        .shadow(
+                                            color: reduceMotion ? .clear : Color(hex: "#4ADE80").opacity(0.8),
+                                            radius: reduceMotion ? 0 : 4
+                                        )
                                     Text("\(livePulseCount) ไลฟ์")
                                         .font(.system(size: 10, weight: .bold))
+                                        .contentTransition(.numericText())
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
@@ -409,55 +538,94 @@ struct TasksHubView: View {
     // MARK: - Composer prompt
 
     private var composerPrompt: some View {
-        Button {
-            openComposer()
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [AppTheme.brand, AppTheme.brandMid],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                openComposer()
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [AppTheme.brand, AppTheme.brandMid],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .frame(width: 40, height: 40)
-                    Text(Self.initials(from: adminName ?? "ฉัน"))
-                        .font(.system(size: 12, weight: .bold))
+                            .frame(width: 40, height: 40)
+                        Text(Self.initials(from: adminName ?? "ฉัน"))
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("แจ้งงานให้ทีม…")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.ink)
+                        Text("หลายบรรทัด · มอบหมาย · เดดไลน์ · เตือน")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.inkMuted)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "paperplane.fill")
+                        .font(.subheadline.weight(.bold))
                         .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(AppTheme.brand))
                 }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("แจ้งงานให้ทีม…")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppTheme.ink)
-                    Text("พิมพ์หลายบรรทัดได้ · มอบหมาย · ตั้งเตือน")
-                        .font(.caption2)
-                        .foregroundStyle(AppTheme.inkMuted)
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "paperplane.fill")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(AppTheme.brand))
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(AppTheme.surface)
+                        .shadow(color: AppTheme.cardShadow.opacity(0.35), radius: 8, y: 3)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(AppTheme.brand.opacity(0.22), lineWidth: 1)
+                )
             }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(AppTheme.surface)
-                    .shadow(color: AppTheme.cardShadow.opacity(0.35), radius: 8, y: 3)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(AppTheme.brand.opacity(0.22), lineWidth: 1)
-            )
+            .buttonStyle(.plain)
+            .accessibilityLabel("แจ้งงานใหม่ให้ทีม")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    composerQuickChip("ด่วนวันนี้", systemImage: "flame.fill") {
+                        openComposer(priority: .urgent, due: today)
+                    }
+                    composerQuickChip("มอบหมายถึงฉัน", systemImage: "person.fill.checkmark") {
+                        openComposer(assignSelf: true)
+                    }
+                    composerQuickChip("งานสัปดาห์", systemImage: "calendar") {
+                        openComposer(scope: .weekly)
+                    }
+                    composerQuickChip("ส่วนตัว", systemImage: "lock.fill") {
+                        openComposer(visibility: .personal)
+                    }
+                }
+            }
+        }
+    }
+
+    private func composerQuickChip(
+        _ title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .bold))
+                Text(title)
+                    .font(.caption2.weight(.bold))
+            }
+            .foregroundStyle(AppTheme.brand)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(AppTheme.brand.opacity(0.12)))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("แจ้งงานใหม่ให้ทีม")
     }
 
     // MARK: - Controls
@@ -470,49 +638,83 @@ struct TasksHubView: View {
     }
 
     private var filterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(TaskFilterChip.allCases) { item in
-                    let isActive = chip == item
-                    Button {
-                        withAnimation(.snappy(duration: 0.2)) { chip = item }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: item.systemImage)
-                                .font(.system(size: 10, weight: .bold))
-                            Text(item.rawValue)
-                                .font(.caption.weight(.semibold))
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .foregroundStyle(isActive ? .white : AppTheme.inkSecondary)
-                        .background {
-                            if isActive {
-                                Capsule()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [AppTheme.brand, AppTheme.brandMid],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(TaskFilterChip.allCases) { item in
+                        let isActive = chip == item
+                        let count = chipCount(item)
+                        Button {
+                            withAnimation(.snappy(duration: 0.2)) { chip = item }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: item.systemImage)
+                                    .font(.system(size: 10, weight: .bold))
+                                Text(item.rawValue)
+                                    .font(.caption.weight(.semibold))
+                                if count > 0 {
+                                    Text("\(count)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(
+                                            Capsule().fill(isActive ? Color.white.opacity(0.22) : AppTheme.surfaceSoft)
                                         )
-                                    )
-                            } else {
-                                Capsule().fill(AppTheme.surface)
+                                }
                             }
-                        }
-                        .overlay(
-                            Capsule().strokeBorder(
-                                isActive ? Color.clear : AppTheme.hairline,
-                                lineWidth: 1
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .foregroundStyle(isActive ? .white : AppTheme.inkSecondary)
+                            .background {
+                                if isActive {
+                                    Capsule()
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [AppTheme.brand, AppTheme.brandMid],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                } else {
+                                    Capsule().fill(AppTheme.surface)
+                                }
+                            }
+                            .overlay(
+                                Capsule().strokeBorder(
+                                    isActive ? Color.clear : AppTheme.hairline,
+                                    lineWidth: 1
+                                )
                             )
-                        )
-                        .shadow(color: isActive ? AppTheme.brand.opacity(0.28) : .clear, radius: 6, y: 2)
+                            .shadow(color: isActive ? AppTheme.brand.opacity(0.28) : .clear, radius: 6, y: 2)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 1)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    Text("เรียง")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(AppTheme.inkMuted)
+                    ForEach(TaskFeedSort.allCases) { item in
+                        let on = feedSort == item
+                        Button {
+                            withAnimation(.snappy(duration: 0.2)) { feedSort = item }
+                        } label: {
+                            Text(item.rawValue)
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(on ? .white : AppTheme.inkMuted)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Capsule().fill(on ? AppTheme.info : AppTheme.surfaceSoft))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
-            .padding(.horizontal, 2)
-            .padding(.vertical, 1)
         }
     }
 
@@ -586,36 +788,56 @@ struct TasksHubView: View {
     }
 
     private func inboxRow(_ task: WorkTask) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            personAvatar(name: task.ownerName ?? "ทีม", accent: AppTheme.info)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                personAvatar(name: task.ownerName ?? "ทีม", accent: AppTheme.info)
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(task.ownerName?.isEmpty == false ? (task.ownerName ?? "ทีม") : "ทีม")
-                        .font(.caption.weight(.bold))
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(task.ownerName?.isEmpty == false ? (task.ownerName ?? "ทีม") : "ทีม")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.ink)
+                        Text("แจ้งงานถึงคุณ")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AppTheme.info)
+                    }
+                    Text(task.title)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.ink)
-                    Text("แจ้งงานถึงคุณ")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(AppTheme.info)
+                        .lineLimit(2)
+                    Text(inboxSubtitle(task))
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.inkMuted)
                 }
-                Text(task.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-                    .lineLimit(2)
-                Text(inboxSubtitle(task))
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.inkMuted)
+
+                Spacer(minLength: 0)
             }
 
-            Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                Button {
+                    Task {
+                        await store.markAssignmentSeen([task])
+                        await store.setStatus(task, to: .inProgress)
+                    }
+                } label: {
+                    Label("รับทราบ+เริ่ม", systemImage: "play.fill")
+                        .font(.caption.weight(.bold))
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.brand)
+                .controlSize(.small)
 
-            Button("รับทราบ") {
-                Task { await store.markAssignmentSeen([task]) }
+                Button {
+                    Task { await store.markAssignmentSeen([task]) }
+                } label: {
+                    Text("รับทราบ")
+                        .font(.caption.weight(.bold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Spacer(minLength: 0)
             }
-            .font(.caption.weight(.bold))
-            .buttonStyle(.borderedProminent)
-            .tint(AppTheme.brand)
-            .controlSize(.small)
         }
         .padding(12)
         .background(
@@ -744,6 +966,17 @@ struct TasksHubView: View {
             }
 
             TaskCalendarView(tasks: scopedTasks, selectedDay: $selectedDay)
+
+            let dayItems = listedTasks
+            HStack(spacing: 8) {
+                feedKPITile("วันนี้เลือก", dayItems.count, AppTheme.ink)
+                feedKPITile("ค้าง", dayItems.filter { !$0.isDone }.count, AppTheme.warning)
+                feedKPITile(
+                    "ด่วน",
+                    dayItems.filter { !$0.isDone && ($0.priority == .urgent || $0.priority == .high || $0.isPastDeadline()) }.count,
+                    AppTheme.expense
+                )
+            }
         }
         .padding(AppTheme.spaceLG)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -759,6 +992,37 @@ struct TasksHubView: View {
     }
 
     // MARK: - Feed list
+
+    private var feedWindowKPI: some View {
+        HStack(spacing: 8) {
+            feedKPITile("ทั้งหมด", listedTasks.count, AppTheme.ink)
+            feedKPITile("ค้าง", listedOpenCount, AppTheme.warning)
+            feedKPITile("ด่วน", listedUrgentCount, AppTheme.expense)
+            feedKPITile("ปิดแล้ว", listedDoneCount, AppTheme.income)
+        }
+    }
+
+    private func feedKPITile(_ title: String, _ value: Int, _ tint: Color) -> some View {
+        VStack(spacing: 3) {
+            Text("\(value)")
+                .font(.headline.weight(.bold).monospacedDigit())
+                .foregroundStyle(tint)
+                .contentTransition(.numericText())
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(AppTheme.inkMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
+    }
 
     private var listSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -783,15 +1047,35 @@ struct TasksHubView: View {
                 EmptyStateView(
                     title: emptyTitle,
                     message: chip == .all
-                        ? "แตะ «แจ้งงาน» เพื่อโพสต์งานให้ทีม — พิมพ์หลายบรรทัดได้ถ้ามีหลายอย่าง"
+                        ? "แตะ «แจ้งงาน» หรือชิปด่วนด้านบน เพื่อโพสต์งานให้ทีม"
                         : "ลองเปลี่ยนตัวกรองเป็น «ฟีดทีม» เพื่อดูงานของทุกคน",
                     systemImage: "bubble.left.and.bubble.right"
                 )
                 .padding(.vertical, 8)
             } else {
-                LazyVStack(spacing: 12) {
-                    ForEach(listedTasks) { task in
-                        feedPost(task)
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    ForEach(feedGroups) { group in
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 6) {
+                                Image(systemName: group.systemImage)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(group.tint)
+                                Text(group.title)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppTheme.ink)
+                                Text("\(group.tasks.count)")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(group.tint))
+                                Spacer(minLength: 0)
+                            }
+
+                            ForEach(group.tasks) { task in
+                                feedPost(task)
+                            }
+                        }
                     }
                 }
                 .animation(.snappy(duration: 0.25), value: listedTasks.map(\.id))
@@ -934,6 +1218,61 @@ struct TasksHubView: View {
 
                 Spacer(minLength: 0)
                 pinButton(task)
+            }
+
+            if !task.isDone {
+                HStack(spacing: 8) {
+                    if task.status == .todo {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            Task {
+                                if task.isNewAssignment(for: adminId) {
+                                    await store.markAssignmentSeen([task])
+                                }
+                                await store.setStatus(task, to: .inProgress)
+                            }
+                        } label: {
+                            Label("เริ่มทำ", systemImage: "play.fill")
+                                .font(.caption.weight(.bold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppTheme.info)
+                        .controlSize(.small)
+                    }
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        Task { await store.setStatus(task, to: .done) }
+                    } label: {
+                        Label("ปิดงาน", systemImage: "checkmark.circle.fill")
+                            .font(.caption.weight(.bold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppTheme.income)
+                    .controlSize(.small)
+
+                    if task.isNewAssignment(for: adminId) {
+                        Button {
+                            Task { await store.markAssignmentSeen([task]) }
+                        } label: {
+                            Text("รับทราบ")
+                                .font(.caption.weight(.bold))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        statusTarget = task
+                    } label: {
+                        Text("สถานะ")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.borderless)
+                    .tint(AppTheme.inkMuted)
+                }
             }
         }
         .padding(14)
@@ -1113,9 +1452,22 @@ struct TasksHubView: View {
 
     // MARK: - Add
 
-    private func openComposer() {
-        let day = segment == .calendar ? selectedDay : today
-        let draft = WorkTask.new(ownerAdminId: adminId, ownerName: adminName, dueDate: day)
+    private func openComposer(
+        priority: TaskPriority = .normal,
+        due: String? = nil,
+        scope: TaskScope = .daily,
+        visibility: TaskVisibility = .shared,
+        assignSelf: Bool = false
+    ) {
+        let day = due ?? (segment == .calendar ? selectedDay : today)
+        var draft = WorkTask.new(ownerAdminId: adminId, ownerName: adminName, dueDate: day)
+        draft.priority = priority
+        draft.scope = scope
+        draft.visibility = visibility
+        if assignSelf {
+            draft.assigneeAdminId = adminId
+            draft.assigneeName = adminName
+        }
         editorTarget = EditorTarget(id: draft.id, task: draft, isNew: true)
     }
 
