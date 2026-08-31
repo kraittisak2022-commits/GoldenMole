@@ -10225,7 +10225,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _isOtMode ||
                   _isLaborAdvanceMode ||
                   _isIncomeUtilitiesEntryMode ||
-                  _isVehicleTripMode)
+                  _isVehicleTripMode ||
+                  _isDailyEventMode)
               ? dailyColors.surface
               : _bg,
           body: Stack(
