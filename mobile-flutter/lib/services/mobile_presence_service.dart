@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
@@ -79,10 +80,12 @@ class MobilePresenceService {
     _subscribed = false;
     if (ch == null) return;
     try {
-      await ch.untrack();
+      await ch.untrack().timeout(const Duration(seconds: 2));
     } catch (_) {}
     try {
-      await Supabase.instance.client.removeChannel(ch);
+      await Supabase.instance.client
+          .removeChannel(ch)
+          .timeout(const Duration(seconds: 2));
     } catch (e, st) {
       debugPrint('mobile-presence removeChannel: $e\n$st');
     }

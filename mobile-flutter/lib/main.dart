@@ -637,15 +637,27 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
                 currentAdmin: _currentAdmin!,
                 dashboardService: DashboardService(client),
                 onLogout: () async {
-                  await MobilePresenceService.instance.stop();
-                  try {
-                    await Supabase.instance.client.auth.signOut();
-                  } catch (e, st) {
-                    debugPrint('Supabase signOut: $e\n$st');
-                  }
+                  // Leave the app immediately — presence teardown / signOut
+                  // can hang for many seconds on weak networks.
                   await _sessionService.clear();
                   if (!mounted) return;
                   setState(() => _currentAdmin = null);
+                  unawaited(() async {
+                    try {
+                      await MobilePresenceService.instance
+                          .stop()
+                          .timeout(const Duration(seconds: 3));
+                    } catch (e, st) {
+                      debugPrint('presence stop on logout: $e\n$st');
+                    }
+                    try {
+                      await Supabase.instance.client.auth
+                          .signOut()
+                          .timeout(const Duration(seconds: 4));
+                    } catch (e, st) {
+                      debugPrint('Supabase signOut: $e\n$st');
+                    }
+                  }());
                 },
               ),
       ),
