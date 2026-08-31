@@ -170,29 +170,11 @@ class RecordModuleCard extends StatelessWidget {
               colors: [topFace, bottomFace],
             ),
             borderRadius: BorderRadius.circular(radius),
-            border: Border(
-              top: BorderSide(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.11)
-                    : Colors.white.withValues(alpha: 0.92),
-              ),
-              left: BorderSide(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.06)
-                    : Colors.white.withValues(alpha: 0.65),
-                width: 0.75,
-              ),
-              right: BorderSide(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.22)
-                    : Colors.black.withValues(alpha: 0.045),
-                width: 0.75,
-              ),
-              bottom: BorderSide(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.38)
-                    : Colors.black.withValues(alpha: 0.09),
-              ),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.09)
+                  : Colors.white.withValues(alpha: 0.82),
+              width: 1,
             ),
             boxShadow: cardLiftShadows(),
           );
