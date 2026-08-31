@@ -76,7 +76,7 @@ describe('computeFuelStockBalances', () => {
             }),
         ]);
         expect(bal.Diesel).toBe(11000);
-        expect(bal.DieselReserve).toBe(1000);
+        expect(bal.DieselReserve).toBe(1100);
         expect(bal.reserveShortfallLiters).toBe(0);
     });
 
@@ -174,8 +174,8 @@ describe('computeFuelStockBalances', () => {
         ]);
         // main: 12000 - 500 - 10 - 100 - 16 - 20 - 50 = 11304
         expect(bal.Diesel).toBe(11304);
-        // reserve: 500 - 200 - 30 = 270
-        expect(bal.DieselReserve).toBe(270);
+        // reserve: 100 (default opening) + 500 - 200 - 30 = 370
+        expect(bal.DieselReserve).toBe(370);
     });
 
     it('credits reserve for legacy machine withdraw when no Transfer that day', () => {
@@ -206,7 +206,7 @@ describe('computeFuelStockBalances', () => {
             }),
         ]);
         expect(bal.Diesel).toBe(381);
-        expect(bal.DieselReserve).toBe(519);
+        expect(bal.DieselReserve).toBe(619);
     });
 
     it('does not double-credit reserve when Transfer exists same day as legacy withdraw', () => {
@@ -248,7 +248,7 @@ describe('computeFuelStockBalances', () => {
         ]);
         // main: 2000 - 400 - 100 = 1500; reserve: 400 only (no legacy credit)
         expect(bal.Diesel).toBe(1500);
-        expect(bal.DieselReserve).toBe(400);
+        expect(bal.DieselReserve).toBe(500);
     });
 
     it('transfer + macro on reserve does not double-deduct main', () => {
@@ -282,7 +282,7 @@ describe('computeFuelStockBalances', () => {
             }),
         ]);
         expect(bal.Diesel).toBe(-580);
-        expect(bal.DieselReserve).toBe(580 - 142);
+        expect(bal.DieselReserve).toBe(538);
     });
 
     it('stock_out with vehicle but not VehicleUsage is not counted as macro', () => {
@@ -299,7 +299,7 @@ describe('computeFuelStockBalances', () => {
             }),
         ]);
         expect(bal.Diesel).toBe(-50);
-        expect(bal.DieselReserve).toBe(0);
+        expect(bal.DieselReserve).toBe(100);
     });
 
     it('allows negative reserve and reports shortfall; applies estimated sieve', () => {
@@ -334,9 +334,25 @@ describe('computeFuelStockBalances', () => {
             ],
             { estimatedSieveByDay: { '2026-08-11': 80 } }
         );
-        // reserve: 100 - 50 - 80 = -30
-        expect(bal.DieselReserve).toBe(-30);
-        expect(bal.reserveShortfallLiters).toBe(30);
+        // reserve: 100 (default opening) + 100 (transfer in) - 50 - 80 = 70
+        expect(bal.DieselReserve).toBe(70);
+        expect(bal.reserveShortfallLiters).toBe(0);
+    });
+
+    it('resets reserve to anchor on 2026-08-31 when asOf reaches anchor', () => {
+        const txs = Array.from({ length: 30 }, (_, i) => {
+            const day = String(i + 1).padStart(2, '0');
+            return fuelTx({
+                id: `vu-${day}`,
+                date: `2026-08-${day}`,
+                fuelMovement: 'stock_out',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                fuelTank: 'reserve',
+                quantity: 60,
+            });
+        });
+        const bal = computeFuelStockBalances(txs, { asOfYmd: '2026-08-31' });
+        expect(bal.DieselReserve).toBe(100);
     });
 });
 

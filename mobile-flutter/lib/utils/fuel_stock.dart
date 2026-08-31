@@ -22,9 +22,66 @@ const String kFuelStockCutoverYmd = '2026-08-01';
 /// ยอดยกมาถังสำรองดีเซลตั้งแต่วันตัดยอด — ใช้เมื่อยังไม่ตั้งค่าในระบบ
 const double kFuelOpeningReserveDieselLiters = 100;
 
+/// วันที่ตรวจนับถังสำรองจริง — ตั้งแต่ 00:00 วันนี้ใช้ [kFuelReserveAnchorLiters]
+/// แทนยอดสะสมก่อนหน้า (แก้ยอดติดลบจากบันทึกโอนไม่ครบ)
+const String kFuelReserveAnchorYmd = '2026-08-31';
+
+/// ยอดถังสำรองดีเซล ณ วันตรวจนับ [kFuelReserveAnchorYmd]
+const double kFuelReserveAnchorLiters = 100;
+
 /// ค่ายกมาถังสำรองดีเซลที่ใช้คำนวณ (ตั้งค่าเว็บ > 0 ชนะ; ไม่งั้นใช้ [kFuelOpeningReserveDieselLiters])
 double effectiveFuelOpeningReserveDiesel(double configured) =>
     configured > 0 ? configured : kFuelOpeningReserveDieselLiters;
+
+/// รวม delta ถังสำรองดีเซลรายวัน แล้วใช้จุดตรวจนับถ้ามี
+///
+/// จุดตรวจนับใช้เมื่อมีรายการตั้งแต่ [anchorYmd] ขึ้นไป
+/// หรือ [asOfYmd] (มักเป็นวันนี้) ถึง [anchorYmd] แล้ว
+double applyFuelReserveDieselAnchor({
+  required Map<String, _FuelDayBucket> buckets,
+  required double openingReserveDiesel,
+  String anchorYmd = kFuelReserveAnchorYmd,
+  double anchorLiters = kFuelReserveAnchorLiters,
+  String? asOfYmd,
+}) {
+  final byDay = <String, double>{};
+  for (final entry in buckets.entries) {
+    final parts = entry.key.split('|');
+    if (parts.length < 3) continue;
+    if (parts[1] != kFuelTankReserve) continue;
+    if (entry.key.endsWith('|B')) continue;
+    final delta = entry.value.stockIn - entry.value.withdraw;
+    if (delta == 0) continue;
+    byDay[parts[0]] = (byDay[parts[0]] ?? 0) + delta;
+  }
+
+  if (anchorYmd.isEmpty) {
+    var reserve = openingReserveDiesel;
+    for (final day in byDay.keys.toList()..sort()) {
+      reserve += byDay[day]!;
+    }
+    return reserve;
+  }
+
+  final preDays = byDay.keys.where((d) => d.compareTo(anchorYmd) < 0).toList()
+    ..sort();
+  final postDays = byDay.keys.where((d) => d.compareTo(anchorYmd) >= 0).toList()
+    ..sort();
+  final applyAnchor = postDays.isNotEmpty ||
+      (asOfYmd != null && asOfYmd.compareTo(anchorYmd) >= 0);
+
+  var reserve = openingReserveDiesel;
+  for (final day in preDays) {
+    reserve += byDay[day]!;
+  }
+  if (!applyAnchor) return reserve;
+
+  reserve = anchorLiters;
+  for (final day in postDays) {
+    reserve += byDay[day]!;
+  }
+  return reserve;
+}
 
 /// `subCategory` ของแถวรับน้ำมันเข้าถัง (รถน้ำมันมาเติม)
 const String kFuelStockInSubCategory = 'StockIn';
@@ -566,6 +623,7 @@ FuelStockBalance computeFuelStockBalance(
   double openingBenzine = 0,
   double openingReserveDiesel = 0,
   double openingReserveBenzine = 0,
+  String? asOfYmd,
 }) {
   final buckets = <String, _FuelDayBucket>{};
   _FuelDayBucket bucketFor(String date, String tank, bool benzine) =>
@@ -646,7 +704,6 @@ FuelStockBalance computeFuelStockBalance(
 
   var mainDiesel = openingDiesel;
   var mainBenzine = openingBenzine;
-  var reserveDiesel = openingReserveDiesel;
   var reserveBenzine = openingReserveBenzine;
   for (final entry in buckets.entries) {
     final b = entry.value;
@@ -657,15 +714,20 @@ FuelStockBalance computeFuelStockBalance(
     if (tank == kFuelTankReserve) {
       if (isBenzine) {
         reserveBenzine += delta;
-      } else {
-        reserveDiesel += delta;
       }
-    } else if (isBenzine) {
+      continue;
+    }
+    if (isBenzine) {
       mainBenzine += delta;
     } else {
       mainDiesel += delta;
     }
   }
+  final reserveDiesel = applyFuelReserveDieselAnchor(
+    buckets: buckets,
+    openingReserveDiesel: openingReserveDiesel,
+    asOfYmd: asOfYmd,
+  );
   return FuelStockBalance(
     mainDiesel: mainDiesel,
     reserveDiesel: reserveDiesel,
@@ -756,6 +818,13 @@ FuelStockBalance? applyFuelBalanceDelta(
   if (day.compareTo(kFuelStockCutoverYmd) < 0) return current;
   final liters = fuelTxLiters(t);
   if (liters <= 0) return current;
+  // หลังจุดตรวจนับ — ต้องคำนวณถังสำรองใหม่ทั้งก้อน
+  if (day.compareTo(kFuelReserveAnchorYmd) >= 0) {
+    final tank = fuelUsageTankOf(t);
+    if (fuelTankIsReserve(tank) && !fuelTypeIsBenzine(t.fuelType)) {
+      return null;
+    }
+  }
   final signed = reverse ? -liters : liters;
   final tank = fuelUsageTankOf(t);
   final benzine = fuelTypeIsBenzine(t.fuelType);

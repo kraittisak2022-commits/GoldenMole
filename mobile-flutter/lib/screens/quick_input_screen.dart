@@ -3108,6 +3108,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         openingBenzine: _fuelOpeningStock.benzine,
         openingReserveDiesel: _fuelOpeningStock.reserveDiesel,
         openingReserveBenzine: _fuelOpeningStock.reserveBenzine,
+        asOfYmd: _quickYmd(DateTime.now()),
       );
       await _setFuelStockBalance(balance);
     } catch (_) {

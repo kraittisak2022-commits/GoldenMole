@@ -181,6 +181,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
         return computeFuelStockBalances(throughEnd, {
             ...settings.fuelOpeningStockLiters,
             estimatedSieveByDay: sieveThroughEnd,
+            asOfYmd: range.end,
         });
     }, [transactions, range.end, settings.fuelOpeningStockLiters, estimatedSieveByDay]);
 

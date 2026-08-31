@@ -760,4 +760,51 @@ void main() {
       expect(effectiveFuelOpeningReserveDiesel(250), 250);
     });
   });
+
+  group('applyFuelReserveDieselAnchor', () {
+    test('resets reserve to anchor on 2026-08-31 after heavy pre-anchor usage', () {
+      final txs = <AppTransaction>[
+        for (var i = 1; i <= 30; i++)
+          _fuel(
+            id: 'vu$i',
+            sub: kFuelVehicleUsageSubCategory,
+            movement: 'stock_out',
+            liters: 60,
+            tank: kFuelTankReserve,
+            vehicleId: 'แม็คโคร',
+            date: '2026-08-${i.toString().padLeft(2, '0')}',
+          ),
+      ];
+      final b = computeFuelStockBalance(
+        txs,
+        openingReserveDiesel: 100,
+        asOfYmd: '2026-08-31',
+      );
+      expect(b.reserveDiesel, 100);
+    });
+
+    test('applies post-anchor deltas after reset', () {
+      final b = computeFuelStockBalance([
+        _fuel(
+          id: 'pre',
+          sub: kFuelVehicleUsageSubCategory,
+          movement: 'stock_out',
+          liters: 500,
+          tank: kFuelTankReserve,
+          vehicleId: 'แม็คโคร',
+          date: '2026-08-30',
+        ),
+        _fuel(
+          id: 'post',
+          sub: kFuelVehicleUsageSubCategory,
+          movement: 'stock_out',
+          liters: 25,
+          tank: kFuelTankReserve,
+          vehicleId: 'แม็คโคร',
+          date: '2026-08-31',
+        ),
+      ], asOfYmd: '2026-08-31');
+      expect(b.reserveDiesel, 75);
+    });
+  });
 }

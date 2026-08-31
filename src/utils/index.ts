@@ -42,8 +42,57 @@ export const FUEL_STOCK_CUTOVER_YMD = '2026-08-01';
 /** ยอดยกมาถังสำรองดีเซลตั้งแต่วันตัดยอด — ใช้เมื่อยังไม่ตั้งค่าในระบบ */
 export const FUEL_OPENING_RESERVE_DIESEL_LITERS = 100;
 
+/** วันที่ตรวจนับถังสำรองจริง — ตั้งแต่ 00:00 วันนี้ใช้ [FUEL_RESERVE_ANCHOR_LITERS] */
+export const FUEL_RESERVE_ANCHOR_YMD = '2026-08-31';
+
+/** ยอดถังสำรองดีเซล ณ วันตรวจนับ [FUEL_RESERVE_ANCHOR_YMD] */
+export const FUEL_RESERVE_ANCHOR_LITERS = 100;
+
 export function effectiveFuelOpeningReserveDiesel(configured: number): number {
     return configured > 0 ? configured : FUEL_OPENING_RESERVE_DIESEL_LITERS;
+}
+
+function applyFuelReserveDieselAnchor(
+    buckets: Map<string, FuelDayBucket>,
+    openingReserveDiesel: number,
+    anchorYmd: string = FUEL_RESERVE_ANCHOR_YMD,
+    anchorLiters: number = FUEL_RESERVE_ANCHOR_LITERS,
+    asOfYmd?: string,
+): number {
+    const byDay = new Map<string, number>();
+    for (const [key, bucket] of buckets) {
+        if (!key.includes('|reserve|') || key.endsWith('|Benzine')) continue;
+        const day = key.split('|')[0] ?? '';
+        const delta = bucket.stockIn - bucket.withdraw;
+        if (!delta) continue;
+        byDay.set(day, (byDay.get(day) ?? 0) + delta);
+    }
+
+    if (!anchorYmd) {
+        let reserve = openingReserveDiesel;
+        for (const day of [...byDay.keys()].sort()) {
+            reserve += byDay.get(day) ?? 0;
+        }
+        return reserve;
+    }
+
+    const preDays = [...byDay.keys()].filter((d) => d < anchorYmd).sort();
+    const postDays = [...byDay.keys()].filter((d) => d >= anchorYmd).sort();
+    const applyAnchor =
+        postDays.length > 0 ||
+        (asOfYmd != null && asOfYmd >= anchorYmd);
+
+    let reserve = openingReserveDiesel;
+    for (const day of preDays) {
+        reserve += byDay.get(day) ?? 0;
+    }
+    if (!applyAnchor) return reserve;
+
+    reserve = anchorLiters;
+    for (const day of postDays) {
+        reserve += byDay.get(day) ?? 0;
+    }
+    return reserve;
 }
 
 type FuelDayBucket = { stockIn: number; withdraw: number };
@@ -86,6 +135,8 @@ export type ComputeFuelStockBalancesOptions = {
     BenzineReserve?: number;
     /** ลิตรร่อนทรายประมาณรายวัน (เฉพาะวันที่ยังไม่มีแถว SandSieve) — หักจากถังสำรอง */
     estimatedSieveByDay?: Record<string, number>;
+    /** วันที่อ้างอิงยอดถังสำรอง (มักเป็นวันนี้) — ใช้จุดตรวจนับ */
+    asOfYmd?: string;
 };
 
 /**
@@ -172,7 +223,6 @@ export function computeFuelStockBalances(
 
     let mainD = opening?.Diesel ?? 0;
     let mainB = opening?.Benzine ?? 0;
-    let reserveD = effectiveFuelOpeningReserveDiesel(opening?.DieselReserve ?? 0);
     let reserveB = opening?.BenzineReserve ?? 0;
     for (const [key, bucket] of buckets) {
         const delta = bucket.stockIn - bucket.withdraw;
@@ -180,13 +230,21 @@ export function computeFuelStockBalances(
         const isBenzine = key.endsWith('|Benzine');
         if (isReserve) {
             if (isBenzine) reserveB += delta;
-            else reserveD += delta;
-        } else if (isBenzine) {
+            continue;
+        }
+        if (isBenzine) {
             mainB += delta;
         } else {
             mainD += delta;
         }
     }
+    const reserveD = applyFuelReserveDieselAnchor(
+        buckets,
+        effectiveFuelOpeningReserveDiesel(opening?.DieselReserve ?? 0),
+        FUEL_RESERVE_ANCHOR_YMD,
+        FUEL_RESERVE_ANCHOR_LITERS,
+        opening?.asOfYmd,
+    );
     const reserveShortfallLiters =
         Math.max(0, -reserveD) + Math.max(0, -reserveB);
     return {

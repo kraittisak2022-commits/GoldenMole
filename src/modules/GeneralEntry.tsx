@@ -60,6 +60,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
         return computeFuelStockBalances(transactions, {
             ...settings.fuelOpeningStockLiters,
             estimatedSieveByDay,
+            asOfYmd: getToday(),
         });
     }, [type, transactions, settings.fuelOpeningStockLiters]);
 
