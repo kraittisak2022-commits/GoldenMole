@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/daily_palette.dart';
 import '../utils/device_perf.dart';
 
 /// โครงการ์ดนับจำนวนระหว่างโหลด — ไม่เห็นหน้าว่าง/กระพริบ
@@ -48,20 +49,50 @@ class _CountRecordPanelSkeletonState extends State<CountRecordPanelSkeleton>
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: _box(_shimmer.value, radius: 22)),
+                Expanded(child: _box(context, _shimmer.value, radius: 22)),
                 const SizedBox(height: 8),
-                _box(_shimmer.value, height: 44, radius: 12),
+                _box(context, _shimmer.value, height: 44, radius: 12),
               ],
             );
           }
-          return _box(_shimmer.value, radius: 0);
+          return _box(context, _shimmer.value, radius: 0);
         },
       ),
     );
   }
 
-  Widget _box(double t, {double? height, double radius = 22}) {
+  Widget _box(
+    BuildContext context,
+    double t, {
+    double? height,
+    double radius = 22,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final p = DailyPalette.of(context);
     final sweep = (t % 1.0) * 2 - 1;
+    final colors = widget.isTripMode
+        ? (isDark
+            ? [
+                p.chipSurface,
+                p.card,
+                p.chipSurface,
+              ]
+            : const [
+                Color(0xFFBBDEFB),
+                Color(0xFFE3F2FD),
+                Color(0xFFBBDEFB),
+              ])
+        : (isDark
+            ? [
+                const Color(0xFF3A1F2C),
+                const Color(0xFF2A1520),
+                const Color(0xFF3A1F2C),
+              ]
+            : const [
+                Color(0xFFF8BBD0),
+                Color(0xFFFCE4EC),
+                Color(0xFFF8BBD0),
+              ]);
     return Container(
       height: height,
       decoration: BoxDecoration(
@@ -69,17 +100,7 @@ class _CountRecordPanelSkeletonState extends State<CountRecordPanelSkeleton>
         gradient: LinearGradient(
           begin: Alignment(sweep - 1, 0),
           end: Alignment(sweep + 1, 0),
-          colors: widget.isTripMode
-              ? const [
-                  Color(0xFFBBDEFB),
-                  Color(0xFFE3F2FD),
-                  Color(0xFFBBDEFB),
-                ]
-              : const [
-                  Color(0xFFF8BBD0),
-                  Color(0xFFFCE4EC),
-                  Color(0xFFF8BBD0),
-                ],
+          colors: colors,
         ),
       ),
     );

@@ -27,6 +27,7 @@ import '../utils/app_haptics.dart';
 import '../utils/device_perf.dart';
 import '../utils/record_feedback_sound.dart';
 import '../utils/record_success_speaker.dart';
+import '../theme/daily_palette.dart';
 import 'count_record_panel_skeleton.dart';
 import 'soft_press_button.dart';
 
@@ -1280,7 +1281,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: DailyPalette.of(context).card,
         title: Text(isTrip ? 'ลบเที่ยวล่าสุด?' : 'ลบรอบล่าสุด?'),
         content: Text(
           isTrip
@@ -1317,7 +1318,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: DailyPalette.of(context).card,
         title: Text('ลบรอบที่ $roundNo?'),
         content: Text(
           'เวลา $stamp\n\n'
@@ -1385,7 +1386,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final ok1 = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: DailyPalette.of(context).card,
         title: const Text('ลบรถออกจากรายการ?'),
         content: Text(
           'ลบ "${u.title}" และข้อมูลเที่ยวทั้งหมดของวันนี้ใช่หรือไม่?$tripInfo',
@@ -1410,7 +1411,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final ok2 = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: DailyPalette.of(context).card,
         title: const Text('ยืนยันลบอีกครั้ง?'),
         content: Text(
           'กดยืนยันอีกครั้งเพื่อลบ "${u.title}"',
@@ -1541,7 +1542,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final action = await showDialog<_UnitEditAction>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: DailyPalette.of(context).card,
         title: Text('แก้ไขข้อมูล — ${u.title}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1739,7 +1740,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: DailyPalette.of(context).card,
         title: const Text('เปลี่ยนงาน?'),
         content: Text(
           warnTrips
@@ -1791,7 +1792,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: DailyPalette.of(context).card,
         title: const Text('แจ้งรถเสีย?'),
         content: Text(
           'บันทึกสถานะรถเสียสำหรับ "${u.title}" วันนี้ใช่หรือไม่?\n'
@@ -1884,7 +1885,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: DailyPalette.of(context).card,
         title: const Text('ปรับสถานะรถปกติ?'),
         content: Text(
           'ยืนยันว่า "${u.title}" กลับมาใช้งานได้แล้วใช่หรือไม่?\n'
@@ -1972,7 +1973,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          backgroundColor: Colors.white,
+          backgroundColor: DailyPalette.of(context).card,
           title: const Text('เป้าหมายเที่ยวต่อคัน'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -2012,7 +2013,10 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                     ? 'ไม่แสดงเป้าหมายบนการ์ดรถ'
                     : 'ครบ $draft เที่ยว/คัน = ถึงเป้า มีฉลองพิเศษ',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: Color(0xFF78909C)),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: DailyPalette.of(ctx).inkMuted,
+                ),
               ),
             ],
           ),
@@ -2045,7 +2049,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
           }
 
           return AlertDialog(
-            backgroundColor: Colors.white,
+            backgroundColor: DailyPalette.of(context).card,
             title: const Text('คิวต่อเที่ยว'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -2080,10 +2084,13 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                   ],
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'ใช้ค่านี้กับทุกคันในแผง',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 13, color: Color(0xFF78909C)),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: DailyPalette.of(ctx).inkMuted,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -2146,7 +2153,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: DailyPalette.of(context).card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -2162,7 +2169,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                 textAlign: TextAlign.center,
                 style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: const Color(0xFF1A2433),
+                      color: DailyPalette.of(ctx).ink,
                     ),
               ),
               const SizedBox(height: 12),
@@ -2182,7 +2189,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
               const SizedBox(height: 14),
               FilledButton.icon(
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF0D98A5),
+                  backgroundColor: DailyPalette.of(ctx).brand,
                   padding: const EdgeInsets.symmetric(vertical: 13),
                 ),
                 onPressed: () => _shareSummaryImage(ctx),
@@ -2375,6 +2382,8 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
   }
 
   Widget _buildTripPanel() {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final totals = _panelPeriodTotals();
     final alreadyVehicleIds = _units
         .map((u) => (u.vehicleId ?? '').trim())
@@ -2423,10 +2432,15 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                   children: [
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF1565C0),
-                        backgroundColor: const Color(0xFFE3F2FD),
-                        side: const BorderSide(
-                          color: Color(0xFF90CAF9),
+                        foregroundColor: DailyPalette.countTripIcon,
+                        backgroundColor: isDark
+                            ? p.chipSurface
+                            : const Color(0xFFE3F2FD),
+                        side: BorderSide(
+                          color: isDark
+                              ? DailyPalette.countTripIcon
+                                  .withValues(alpha: 0.45)
+                              : const Color(0xFF90CAF9),
                           width: 1.5,
                         ),
                         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -2450,12 +2464,12 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
                       alignment: Alignment.center,
                       child: TextButton(
                         onPressed: _hideAddVehiclePanel,
-                        child: const Text(
+                        child: Text(
                           'ปิด',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF78909C),
+                            color: p.inkMuted,
                           ),
                         ),
                       ),
@@ -3344,7 +3358,16 @@ class _LatestTripRecordsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasLaps = _lapCount > 0;
+    final expandedBg =
+        isDark ? p.brandSurface : const Color(0xFFE8F4FD);
+    final collapsedBg = isDark ? p.chipSurface : const Color(0xFFF4F7FA);
+    final expandedBorder = isDark
+        ? DailyPalette.countTripIcon.withValues(alpha: 0.45)
+        : const Color(0xFF90CAF9);
+    final collapsedBorder = p.hairline;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -3352,12 +3375,10 @@ class _LatestTripRecordsBar extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: Ink(
           decoration: BoxDecoration(
-            color: expanded ? const Color(0xFFE8F4FD) : const Color(0xFFF4F7FA),
+            color: expanded ? expandedBg : collapsedBg,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: expanded
-                  ? const Color(0xFF90CAF9)
-                  : const Color(0xFFDCE6F2),
+              color: expanded ? expandedBorder : collapsedBorder,
               width: expanded ? 1.5 : 1,
             ),
           ),
@@ -3369,19 +3390,20 @@ class _LatestTripRecordsBar extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Text(
+                    Text(
                       'บันทึกล่าสุด',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF455A64),
+                        color: p.inkSubtle,
                       ),
                     ),
                     if (!expanded && hasLaps) ...[
                       const SizedBox(width: 6),
                       DecoratedBox(
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1565C0).withValues(alpha: 0.1),
+                          color: DailyPalette.countTripIcon
+                              .withValues(alpha: isDark ? 0.22 : 0.1),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Padding(
@@ -3391,10 +3413,12 @@ class _LatestTripRecordsBar extends StatelessWidget {
                           ),
                           child: Text(
                             '$_lapCount',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF1565C0),
+                              color: isDark
+                                  ? const Color(0xFF90CAF9)
+                                  : DailyPalette.countTripIcon,
                             ),
                           ),
                         ),
@@ -3407,8 +3431,10 @@ class _LatestTripRecordsBar extends StatelessWidget {
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: expanded
-                            ? const Color(0xFF1565C0)
-                            : const Color(0xFF78909C),
+                            ? (isDark
+                                ? const Color(0xFF90CAF9)
+                                : DailyPalette.countTripIcon)
+                            : p.inkMuted,
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -3418,8 +3444,10 @@ class _LatestTripRecordsBar extends StatelessWidget {
                         Icons.expand_more_rounded,
                         size: 22,
                         color: expanded
-                            ? const Color(0xFF1565C0)
-                            : const Color(0xFF78909C),
+                            ? (isDark
+                                ? const Color(0xFF90CAF9)
+                                : DailyPalette.countTripIcon)
+                            : p.inkMuted,
                       ),
                     ),
                   ],
@@ -3440,7 +3468,7 @@ class _LatestTripRecordsBar extends StatelessWidget {
                             'ยังไม่มีเที่ยวที่บันทึก',
                             style: TextStyle(
                               fontSize: 11.5,
-                              color: Colors.grey.shade600,
+                              color: p.inkMuted,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -3451,7 +3479,7 @@ class _LatestTripRecordsBar extends StatelessWidget {
                     children: [
                       if (hasLaps) ...[
                         const SizedBox(height: 8),
-                        _buildTimeline(),
+                        _buildTimeline(context),
                       ] else
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
@@ -3459,7 +3487,7 @@ class _LatestTripRecordsBar extends StatelessWidget {
                             'เลือกรถด้านล่าง',
                             style: TextStyle(
                               fontSize: 11.5,
-                              color: Colors.grey.shade600,
+                              color: p.inkMuted,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -3476,7 +3504,8 @@ class _LatestTripRecordsBar extends StatelessWidget {
   }
 
   /// ไทม์ไลน์เหตุการณ์ล่าสุด — chip มีจุดสีตามคันรถ เรียงล่าสุดก่อน เลื่อนแนวนอน
-  Widget _buildTimeline() {
+  Widget _buildTimeline(BuildContext context) {
+    final p = DailyPalette.of(context);
     final events = <({int unitIndex, String title, int roundNo, String stamp})>[];
     for (var i = 0; i < units.length; i++) {
       final u = units[i];
@@ -3505,12 +3534,12 @@ class _LatestTripRecordsBar extends StatelessWidget {
           final latest = i == 0;
           return DecoratedBox(
             decoration: BoxDecoration(
-              color: latest ? color.withValues(alpha: 0.1) : Colors.white,
+              color: latest ? color.withValues(alpha: 0.1) : p.card,
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
                 color: latest
                     ? color.withValues(alpha: 0.55)
-                    : const Color(0xFFDCE6F2),
+                    : p.hairline,
               ),
             ),
             child: Padding(
@@ -3532,7 +3561,7 @@ class _LatestTripRecordsBar extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10.5,
                       fontWeight: FontWeight.w700,
-                      color: latest ? color : const Color(0xFF52647B),
+                      color: latest ? color : p.inkSubtle,
                     ),
                   ),
                 ],
@@ -4423,13 +4452,14 @@ class _BrokenVehicleBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 6 : 8,
         vertical: compact ? 2 : 3,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFE0B2),
+        color: isDark ? const Color(0xFF3D2E0A) : const Color(0xFFFFE0B2),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -4446,7 +4476,7 @@ class _BrokenVehicleBadge extends StatelessWidget {
             style: TextStyle(
               fontSize: compact ? 8.5 : 10,
               fontWeight: FontWeight.w800,
-              color: const Color(0xFFE65100),
+              color: isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100),
             ),
           ),
         ],
@@ -4515,6 +4545,8 @@ class _SandLapChipState extends State<_SandLapChip> {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onLongPressStart: (_) {
         AppHaptics.confirm();
@@ -4531,15 +4563,19 @@ class _SandLapChipState extends State<_SandLapChip> {
         pressed: _pressed,
         size: SoftPressSize.small,
         borderRadius: 8,
-        isDarkSurface: false,
+        isDarkSurface: isDark,
         child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: _pressed ? const Color(0xFFFFEBEE) : Colors.white,
+          color: _pressed
+              ? (isDark ? const Color(0xFF3B1C22) : const Color(0xFFFFEBEE))
+              : p.card,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: _pressed ? const Color(0xFFEF9A9A) : const Color(0xFFDCE6F2),
+            color: _pressed
+                ? (isDark ? const Color(0xFFEF9A9A) : const Color(0xFFEF9A9A))
+                : p.hairline,
           ),
         ),
         child: Text(
@@ -4547,7 +4583,7 @@ class _SandLapChipState extends State<_SandLapChip> {
           style: TextStyle(
             fontSize: 11.5,
             fontWeight: _pressed ? FontWeight.w700 : FontWeight.w500,
-            color: _pressed ? const Color(0xFFC62828) : const Color(0xFF52647B),
+            color: _pressed ? const Color(0xFFC62828) : p.inkSubtle,
           ),
         ),
       ),
@@ -5037,6 +5073,7 @@ class _ChangeVehicleDriverDialogState extends State<_ChangeVehicleDriverDialog> 
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
     final vehicleValue = (_vehicleId.isEmpty || !_carOptions.contains(_vehicleId))
         ? null
         : _vehicleId;
@@ -5046,7 +5083,7 @@ class _ChangeVehicleDriverDialogState extends State<_ChangeVehicleDriverDialog> 
         : _driverId;
 
     return Dialog(
-      backgroundColor: Colors.white,
+      backgroundColor: p.card,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ConstrainedBox(
@@ -5061,13 +5098,13 @@ class _ChangeVehicleDriverDialogState extends State<_ChangeVehicleDriverDialog> 
                 children: [
                   const Icon(Icons.edit_road_outlined, color: Color(0xFF1565C0)),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'แก้ไขรถและคนขับ',
                       style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF1A2433),
+                        color: p.ink,
                       ),
                     ),
                   ),
@@ -5078,14 +5115,14 @@ class _ChangeVehicleDriverDialogState extends State<_ChangeVehicleDriverDialog> 
                 ],
               ),
               if (widget.hasSavedTrips)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 10),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
                   child: Text(
                     'ยอดเที่ยวและเวลาที่บันทึกแล้วจะอยู่กับการ์ดนี้ — '
                     'ใช้เมื่อเลือกรถหรือคนขับผิด',
                     style: TextStyle(
                       fontSize: 12.5,
-                      color: Color(0xFF5C6B7A),
+                      color: p.inkMuted,
                       height: 1.35,
                     ),
                   ),
@@ -5305,8 +5342,9 @@ class _SelectDialogState extends State<_SelectDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
     return Dialog(
-      backgroundColor: Colors.white,
+      backgroundColor: p.card,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: ConstrainedBox(
@@ -5322,13 +5360,13 @@ class _SelectDialogState extends State<_SelectDialog> {
                   const Icon(Icons.fire_truck_outlined,
                       color: Color(0xFF1D8FE1)),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'เลือกรถและคนขับ',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF1A2433),
+                        color: p.ink,
                       ),
                     ),
                   ),
@@ -5474,9 +5512,9 @@ class _SelectRow extends StatelessWidget {
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FCFF),
+        color: DailyPalette.of(context).brandSurface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFDCE8F5)),
+        border: Border.all(color: DailyPalette.of(context).hairline),
       ),
       child: Column(
         children: [
@@ -5484,9 +5522,11 @@ class _SelectRow extends StatelessWidget {
             children: [
               Text(
                 'คันที่ ${index + 1}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF205A9A),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF90CAF9)
+                      : const Color(0xFF205A9A),
                 ),
               ),
               const Spacer(),
@@ -5572,7 +5612,7 @@ class _SelectRow extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w700,
-                color: Colors.grey.shade700,
+                color: DailyPalette.of(context).inkSubtle,
               ),
             ),
           ),
@@ -5625,6 +5665,8 @@ class _CountStatsStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final unitLabel = isTrip ? 'เที่ยว' : 'รอบ';
     final accent =
         isTrip ? const Color(0xFF1565C0) : const Color(0xFFAD1457);
@@ -5639,9 +5681,9 @@ class _CountStatsStrip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: p.card,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE0E9F2)),
+        border: Border.all(color: p.hairline),
       ),
       child: Row(
         children: [
@@ -5683,10 +5725,10 @@ class _CountStatsStrip extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text(
                 periodText,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF52647B),
+                  color: p.inkSubtle,
                 ),
               ),
             ),
@@ -5699,10 +5741,12 @@ class _CountStatsStrip extends StatelessWidget {
               child: SoftPressButton(
                 size: SoftPressSize.small,
                 borderRadius: 10,
-                isDarkSurface: false,
+                isDarkSurface: isDark,
                 onTap: onCubicTap!,
                 child: Material(
-                  color: const Color(0xFF1565C0).withValues(alpha: 0.09),
+                  color: const Color(0xFF1565C0).withValues(
+                    alpha: isDark ? 0.2 : 0.09,
+                  ),
                   borderRadius: BorderRadius.circular(10),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -5711,10 +5755,12 @@ class _CountStatsStrip extends StatelessWidget {
                     ),
                     child: Text(
                       '×$cubicLabel คิว/เที่ยว',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF1565C0),
+                        color: isDark
+                            ? const Color(0xFF90CAF9)
+                            : const Color(0xFF1565C0),
                       ),
                     ),
                   ),
@@ -5726,7 +5772,7 @@ class _CountStatsStrip extends StatelessWidget {
             const SizedBox(width: 6),
             _StatsStripIconButton(
               icon: goal > 0 ? Icons.flag_rounded : Icons.flag_outlined,
-              color: goal > 0 ? const Color(0xFFE65100) : const Color(0xFF90A4AE),
+              color: goal > 0 ? const Color(0xFFE65100) : p.inkMuted,
               tooltip: goal > 0 ? 'เป้า $goal เที่ยว/คัน' : 'ตั้งเป้าหมาย',
               onTap: onGoalTap!,
             ),
@@ -5734,7 +5780,7 @@ class _CountStatsStrip extends StatelessWidget {
           const SizedBox(width: 6),
           _StatsStripIconButton(
             icon: Icons.ios_share_rounded,
-            color: const Color(0xFF0D98A5),
+            color: p.brand,
             tooltip: 'แชร์สรุปประจำวัน',
             onTap: onShareTap,
           ),
@@ -5759,15 +5805,16 @@ class _StatsStripIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Tooltip(
       message: tooltip,
       child: SoftPressButton(
         size: SoftPressSize.small,
         borderRadius: 10,
-        isDarkSurface: false,
+        isDarkSurface: isDark,
         onTap: onTap,
         child: Material(
-          color: color.withValues(alpha: 0.09),
+          color: color.withValues(alpha: isDark ? 0.2 : 0.09),
           borderRadius: BorderRadius.circular(10),
           child: Padding(
             padding: const EdgeInsets.all(6),
@@ -5808,8 +5855,11 @@ class _ShiftBadgeState extends State<_ShiftBadge> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = _morning ? const Color(0xFFF57F17) : const Color(0xFF4527A0);
-    final bg = _morning ? const Color(0xFFFFF8E1) : const Color(0xFFEDE7F6);
+    final bg = _morning
+        ? (isDark ? const Color(0xFF3D2E0A) : const Color(0xFFFFF8E1))
+        : (isDark ? const Color(0xFF2A2240) : const Color(0xFFEDE7F6));
     return DecoratedBox(
       decoration: BoxDecoration(
         color: bg,

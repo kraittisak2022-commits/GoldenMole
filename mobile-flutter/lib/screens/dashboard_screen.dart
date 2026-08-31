@@ -1372,14 +1372,16 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   }
 
                   final mode = _workMode!;
+                  final cardBg = p.card;
+                  final cardBorder = p.hairline;
                   if (mode == CountRecordWorkMode.trip) {
                     return counterCell(
                       modeKey: 'trip',
                       title: 'จำนวนเที่ยวรถ',
                       icon: Icons.fire_truck_outlined,
                       iconColor: DailyPalette.countTripIcon,
-                      backgroundColor: DailyPalette.card,
-                      borderColor: DailyPalette.hairline,
+                      backgroundColor: cardBg,
+                      borderColor: cardBorder,
                       counterMode: CounterMode.trip,
                     );
                   }
@@ -1389,8 +1391,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       title: 'การร่อนทราย',
                       icon: Icons.water_drop_outlined,
                       iconColor: DailyPalette.countSandIcon,
-                      backgroundColor: DailyPalette.card,
-                      borderColor: DailyPalette.hairline,
+                      backgroundColor: cardBg,
+                      borderColor: cardBorder,
                       counterMode: CounterMode.sand,
                     );
                   }
@@ -1400,8 +1402,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     title: 'จำนวนเที่ยวรถ',
                     icon: Icons.fire_truck_outlined,
                     iconColor: DailyPalette.countTripIcon,
-                    backgroundColor: DailyPalette.card,
-                    borderColor: DailyPalette.hairline,
+                    backgroundColor: cardBg,
+                    borderColor: cardBorder,
                     counterMode: CounterMode.trip,
                   );
                   final sandCell = counterCell(
@@ -1409,8 +1411,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                     title: 'การร่อนทราย',
                     icon: Icons.water_drop_outlined,
                     iconColor: DailyPalette.countSandIcon,
-                    backgroundColor: DailyPalette.card,
-                    borderColor: DailyPalette.hairline,
+                    backgroundColor: cardBg,
+                    borderColor: cardBorder,
                     counterMode: CounterMode.sand,
                   );
 
@@ -1993,33 +1995,27 @@ class _CountRecordMenuCard extends StatelessWidget {
   final bool expanded;
   final Widget? expandedChild;
 
-  static const _cardDepthShadow = SoftPressDepthShadow(
-    color: DailyPalette.shadowCard,
-    blurRadius: 12,
-    offsetY: 3,
-    pressedBlurRadius: 4,
-    pressedOffsetY: 1,
-  );
-
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final shell = DecoratedBox(
       decoration: BoxDecoration(
-        color: DailyPalette.card,
+        color: p.card,
         borderRadius: BorderRadius.circular(22),
         boxShadow: expanded
-            ? const [
+            ? [
                 BoxShadow(
-                  color: DailyPalette.shadowCard,
+                  color: p.shadowCard,
                   blurRadius: 12,
-                  offset: Offset(0, 3),
+                  offset: const Offset(0, 3),
                 ),
               ]
             : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
-        child: _buildContent(),
+        child: _buildContent(p),
       ),
     );
 
@@ -2031,14 +2027,20 @@ class _CountRecordMenuCard extends StatelessWidget {
       onTap: onTap,
       size: SoftPressSize.medium,
       borderRadius: 22,
-      isDarkSurface: false,
+      isDarkSurface: isDark,
       liftWhenIdle: true,
-      depthShadow: _cardDepthShadow,
+      depthShadow: SoftPressDepthShadow(
+        color: p.shadowCard,
+        blurRadius: 12,
+        offsetY: 3,
+        pressedBlurRadius: 4,
+        pressedOffsetY: 1,
+      ),
       child: shell,
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(DailyColors p) {
     if (expanded && expandedChild != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2046,10 +2048,10 @@ class _CountRecordMenuCard extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            decoration: const BoxDecoration(
-              color: DailyPalette.card,
+            decoration: BoxDecoration(
+              color: p.card,
               border: Border(
-                bottom: BorderSide(color: DailyPalette.hairline),
+                bottom: BorderSide(color: p.hairline),
               ),
             ),
             child: Row(
@@ -2061,10 +2063,10 @@ class _CountRecordMenuCard extends StatelessWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
-                      color: DailyPalette.ink,
+                      color: p.ink,
                     ),
                   ),
                 ),
@@ -2094,10 +2096,10 @@ class _CountRecordMenuCard extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w800,
-              color: DailyPalette.ink,
+              color: p.ink,
               height: 1.14,
             ),
           ),
@@ -2105,30 +2107,30 @@ class _CountRecordMenuCard extends StatelessWidget {
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: DailyPalette.inkMuted,
+              color: p.inkMuted,
               height: 1.25,
             ),
           ),
           const SizedBox(height: 10),
-          const Row(
+          Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.touch_app_rounded,
                 size: 14,
-                color: DailyPalette.inkMuted,
+                color: p.inkMuted,
               ),
-              SizedBox(width: 4),
+              const SizedBox(width: 4),
               Text(
                 'แตะเพื่อบันทึก',
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w700,
-                  color: DailyPalette.inkMuted,
+                  color: p.inkMuted,
                 ),
               ),
             ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/app_transaction.dart';
+import '../theme/daily_palette.dart';
 import '../utils/daily_module_transactions.dart';
 
 /// เปิดปฏิทินเลือกวันสำหรับแผง «บันทึกและนับจำนวน»
@@ -48,7 +49,6 @@ class _CountRecordDayPickerDialogState
     extends State<_CountRecordDayPickerDialog> {
   static const _tripDot = Color(0xFF1565C0);
   static const _sandDot = Color(0xFF2E7D32);
-  static const _teal = Color(0xFF0D98A5);
 
   late DateTime _month;
   late DateTime _selected;
@@ -137,6 +137,7 @@ class _CountRecordDayPickerDialogState
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
     final selectedMark = _marks[_ymd(_selected)];
     final summary = selectedMark?.label ?? 'ยังไม่มีนับเที่ยว/ร่อนทราย';
     final today = DateTime.now();
@@ -173,7 +174,7 @@ class _CountRecordDayPickerDialogState
     }
 
     return AlertDialog(
-      backgroundColor: Colors.white,
+      backgroundColor: p.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       titlePadding: const EdgeInsets.fromLTRB(20, 18, 12, 0),
       contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -183,7 +184,7 @@ class _CountRecordDayPickerDialogState
         style: GoogleFonts.kanit(
           fontWeight: FontWeight.w800,
           fontSize: 20,
-          color: const Color(0xFF1A2433),
+          color: p.ink,
         ),
       ),
       content: SizedBox(
@@ -196,7 +197,7 @@ class _CountRecordDayPickerDialogState
                 IconButton(
                   onPressed: () => _shiftMonth(-1),
                   icon: const Icon(Icons.chevron_left_rounded),
-                  color: _teal,
+                  color: p.brand,
                 ),
                 Expanded(
                   child: Text(
@@ -205,14 +206,14 @@ class _CountRecordDayPickerDialogState
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w800,
                       fontSize: 17,
-                      color: const Color(0xFF1A2433),
+                      color: p.ink,
                     ),
                   ),
                 ),
                 IconButton(
                   onPressed: () => _shiftMonth(1),
                   icon: const Icon(Icons.chevron_right_rounded),
-                  color: _teal,
+                  color: p.brand,
                 ),
               ],
             ),
@@ -227,7 +228,7 @@ class _CountRecordDayPickerDialogState
                       style: GoogleFonts.kanit(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFF64748B),
+                        color: p.inkMuted,
                       ),
                     ),
                   ),
@@ -255,9 +256,9 @@ class _CountRecordDayPickerDialogState
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFF0F9FA),
+                color: p.brandSurface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFB6E0E6)),
+                border: Border.all(color: p.brandBorder),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -267,7 +268,7 @@ class _CountRecordDayPickerDialogState
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w800,
                       fontSize: 15,
-                      color: const Color(0xFF0A7A88),
+                      color: p.brandDateInk,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -276,7 +277,7 @@ class _CountRecordDayPickerDialogState
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w700,
                       fontSize: 14.5,
-                      color: const Color(0xFF1A2433),
+                      color: p.ink,
                       height: 1.3,
                     ),
                   ),
@@ -296,7 +297,7 @@ class _CountRecordDayPickerDialogState
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_selected),
-          style: FilledButton.styleFrom(backgroundColor: _teal),
+          style: FilledButton.styleFrom(backgroundColor: p.brand),
           child: Text(
             'ตกลง',
             style: GoogleFonts.kanit(fontWeight: FontWeight.w800),
@@ -315,6 +316,7 @@ class _LegendDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -329,7 +331,7 @@ class _LegendDot extends StatelessWidget {
           style: GoogleFonts.kanit(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: const Color(0xFF4A5A70),
+            color: p.inkSubtle,
           ),
         ),
       ],
@@ -362,12 +364,13 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
     final bg = selected
-        ? const Color(0xFF0D98A5)
-        : (isToday ? const Color(0xFFE6F7F9) : Colors.transparent);
+        ? p.brand
+        : (isToday ? p.brandSurface : Colors.transparent);
     final fg = selected
         ? Colors.white
-        : (enabled ? const Color(0xFF1A2433) : const Color(0xFFB0B8C4));
+        : (enabled ? p.ink : p.inkMuted.withValues(alpha: 0.45));
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -378,7 +381,7 @@ class _DayCell extends StatelessWidget {
             color: bg,
             borderRadius: BorderRadius.circular(12),
             border: isToday && !selected
-                ? Border.all(color: const Color(0xFF0D98A5), width: 1.2)
+                ? Border.all(color: p.brand, width: 1.2)
                 : null,
           ),
           child: Column(

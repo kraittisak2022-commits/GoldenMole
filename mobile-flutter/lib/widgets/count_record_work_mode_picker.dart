@@ -24,8 +24,6 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
   late final List<Animation<double>> _staggerAnims;
   late final bool _lite;
 
-  static const _brandTeal = DailyPalette.brand;
-
   @override
   void initState() {
     super.initState();
@@ -73,6 +71,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
     final size = MediaQuery.sizeOf(context);
     final isTablet = size.shortestSide >= 600;
     final isLandscape = size.width > size.height;
@@ -81,13 +80,14 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
     final titleSize = phonePortrait ? 24.0 : (isTablet ? 34.0 : 28.0);
     final subtitleSize = phonePortrait ? 13.5 : (isTablet ? 17.0 : 15.0);
     final gap = phonePortrait ? 10.0 : (isTablet ? 16.0 : 12.0);
+    final brandTeal = p.brand;
 
     final trip = _WorkModeOption(
       title: 'ขนอย่างเดียว',
       subtitle: 'บันทึกจำนวนเที่ยวรถ',
       icon: Icons.fire_truck_rounded,
       accent: DailyPalette.countTripIcon,
-      iconTileColor: DailyPalette.chipSurface,
+      iconTileColor: p.chipSurface,
       vertical: useColumns,
       compact: phonePortrait,
       onTap: () => widget.onSelect(CountRecordWorkMode.trip),
@@ -97,7 +97,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
       subtitle: 'บันทึกการร่อนทราย',
       icon: Icons.water_drop_rounded,
       accent: DailyPalette.countSandIcon,
-      iconTileColor: DailyPalette.chipSurface,
+      iconTileColor: p.chipSurface,
       vertical: useColumns,
       compact: phonePortrait,
       onTap: () => widget.onSelect(CountRecordWorkMode.sand),
@@ -106,8 +106,8 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
       title: 'ขนและร่อนทราย',
       subtitle: 'ทั้ง 2 อย่าง — สลับการ์ดได้',
       icon: Icons.layers_rounded,
-      accent: _brandTeal,
-      iconTileColor: DailyPalette.chipSurface,
+      accent: brandTeal,
+      iconTileColor: p.chipSurface,
       vertical: useColumns,
       compact: phonePortrait,
       dualIcons: true,
@@ -126,7 +126,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
               fontWeight: FontWeight.w800,
               height: 1.1,
               letterSpacing: -0.5,
-              color: const Color(0xFF1A2433),
+              color: p.ink,
             ),
           ),
           SizedBox(height: phonePortrait ? 6 : 10),
@@ -134,7 +134,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
             width: isTablet ? 56 : 44,
             height: 4,
             decoration: BoxDecoration(
-              color: _brandTeal,
+              color: brandTeal,
               borderRadius: BorderRadius.circular(999),
             ),
           ),
@@ -146,7 +146,7 @@ class _CountRecordWorkModePickerState extends State<CountRecordWorkModePicker>
               fontSize: subtitleSize,
               fontWeight: FontWeight.w500,
               height: 1.25,
-              color: const Color(0xFF64748B),
+              color: p.inkMuted,
             ),
           ),
         ],
@@ -234,6 +234,8 @@ class _WorkModeOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
     final iconBox = vertical
         ? (isTablet ? 72.0 : 64.0)
@@ -305,7 +307,7 @@ class _WorkModeOption extends StatelessWidget {
             fontWeight: FontWeight.w800,
             height: 1.12,
             letterSpacing: -0.25,
-            color: const Color(0xFF1A2433),
+            color: p.ink,
           ),
         ),
         SizedBox(height: compact ? 3 : 6),
@@ -318,7 +320,7 @@ class _WorkModeOption extends StatelessWidget {
             fontSize: subtitleSize,
             fontWeight: FontWeight.w500,
             height: 1.25,
-            color: const Color(0xFF64748B),
+            color: p.inkMuted,
           ),
         ),
       ],
@@ -360,10 +362,10 @@ class _WorkModeOption extends StatelessWidget {
       onTap: onTap,
       size: SoftPressSize.large,
       borderRadius: 22,
-      isDarkSurface: false,
+      isDarkSurface: isDark,
       liftWhenIdle: true,
       depthShadow: SoftPressDepthShadow(
-        color: accent.withValues(alpha: 0.12),
+        color: accent.withValues(alpha: isDark ? 0.22 : 0.12),
         blurRadius: 14,
         offsetY: 4,
         pressedBlurRadius: 5,
@@ -372,9 +374,9 @@ class _WorkModeOption extends StatelessWidget {
       child: SizedBox.expand(
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: p.card,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: const Color(0xFFE7ECF3)),
+            border: Border.all(color: p.hairline),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(22),
