@@ -2403,21 +2403,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
 
     if (_isVehicleTripMode) {
-      // วันที่มีบันทึก: โหลดแถวต่อคันเข้าฟอร์มเลย — วันว่าง: แถวเปล่า 1 แถว
+      // ฟอร์มว่างทีละคัน — เลือกรถหรือแตะการ์ดด้านล่างเพื่อโหลดมาแก้ไข
       if (!_saving) {
-        final pool = dayTransactions ?? txs;
-        final latest = latestVehicleTripsByVehicle(
-          pool,
-          ymd: _quickYmd(_selectedDate),
-        );
-        if (latest.isEmpty) {
-          _replaceVehicleDrafts([_VehicleTripDraft.empty()]);
-        } else {
-          final drafts = latest
-              .map(_vehicleTripDraftFromAppTransaction)
-              .toList(growable: false);
-          _replaceVehicleDrafts(drafts);
-        }
+        _replaceVehicleDrafts([_VehicleTripDraft.empty()]);
       }
       return;
     }
@@ -3682,8 +3670,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       saveButtonLabel: 'บันทึกรถคันนี้',
       requireSignature: false,
       stayOnPage: true,
-      // คงแถวที่เพิ่งบันทึกไว้ให้ตรวจต่อ — _loadModuleTransactions จะ refill เมื่อ !_saving
-      onStayOnPageCleared: null,
+      onStayOnPageCleared: () {
+        _replaceVehicleDrafts([_VehicleTripDraft.empty()]);
+      },
       body: () async {
         final activeRows = _vehicleTripDrafts.where((row) {
           final lumpFilled =
@@ -3725,6 +3714,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           date,
           forceRefresh: true,
         );
+        final existingById = {
+          for (final t in serverDayRows) t.id: t,
+        };
         for (final row in activeRows) {
           final vehicle = row.vehicleId.trim();
           final selfId = row.tripTxId?.trim();
@@ -3768,6 +3760,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               row.tripTxId ??
               '${DateTime.now().millisecondsSinceEpoch}_trip_$i';
           row.tripTxId = tripId;
+          final existingTx = existingById[tripId];
+          final lapAssignments = existingTx?.workAssignments;
 
           if (row.tripBillingMode == 'LumpSum') {
             final lumpCubic =
@@ -3801,6 +3795,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 workType: row.workType == 'HalfDay' || row.workType == 'Hourly'
                     ? row.workType
                     : 'FullDay',
+                workAssignments: lapAssignments,
               ),
             );
             continue;
@@ -3839,6 +3834,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               workType: row.workType == 'HalfDay' || row.workType == 'Hourly'
                   ? row.workType
                   : 'FullDay',
+              workAssignments: lapAssignments,
             ),
           );
         }
@@ -3901,12 +3897,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     String vehicleId,
   ) {
     final vehicle = vehicleId.trim();
+    final editingId = row.tripTxId?.trim();
     row.vehicleId = vehicle;
     if (vehicle.isEmpty) {
-      row.tripTxId = null;
+      if (editingId == null || editingId.isEmpty) {
+        row.tripTxId = null;
+      }
       return;
     }
     _applyDefaultCubicForVehicleRow(row, vehicle);
+
+    // กำลังแก้ไขแถวที่บันทึกแล้ว — เปลี่ยนรถ/คนขับได้โดยไม่โหลดทับจากรถอื่น
+    if (editingId != null && editingId.isNotEmpty) {
+      _applyDefaultDriverForVehicleRow(row, vehicle);
+      _scheduleUiRefresh();
+      return;
+    }
+
     _applyDefaultDriverForVehicleRow(row, vehicle);
     final existing = _findLatestVehicleTripForDay(vehicle);
     if (existing == null) {
@@ -11052,9 +11059,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       d.workType = 'FullDay';
     }
 
+    final fromCount = isCountRecordVehicleTrip(t);
     final modeRaw = (t.tripBillingMode ?? '').trim();
-    final isLump =
-        modeRaw.toLowerCase() == 'lumpsum' || modeRaw == 'เหมา';
+    final isLump = !fromCount &&
+        (modeRaw.toLowerCase() == 'lumpsum' || modeRaw == 'เหมา');
     d.tripBillingMode = isLump ? 'LumpSum' : 'PerTrip';
 
     // ดึงค่าจาก "บันทึกและนับจำนวน > จำนวนเที่ยวรถ" ให้สอดคล้องกัน:
@@ -21293,7 +21301,7 @@ class _VehicleTripDraft {
   String workType = 'FullDay';
 
   /// PerTrip | LumpSum
-  String tripBillingMode = 'LumpSum';
+  String tripBillingMode = 'PerTrip';
   String hourlyHours = '';
   String workDetails = '';
   String tripMorning = '';

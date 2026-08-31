@@ -63,4 +63,43 @@ void main() {
     expect(s.morning, 5);
     expect(s.afternoon, 0);
   });
+
+  test('isCountRecordVehicleTrip detects note and lapTimes', () {
+    expect(
+      isCountRecordVehicleTrip(
+        AppTransaction(
+          id: 'c1',
+          date: '2026-06-26',
+          type: 'Expense',
+          category: 'DailyLog',
+          subCategory: 'VehicleTrip',
+          description: 'รถดรัม: 3 เที่ยว',
+          amount: 0,
+          note: 'นับเที่ยวโดย Admin',
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      isCountRecordVehicleTrip(
+        _trip(perCarTrips: 2, lapTimes: ['26/06 08:10:00']),
+      ),
+      isTrue,
+    );
+    expect(
+      isCountRecordVehicleTrip(
+        AppTransaction(
+          id: 'd1',
+          date: '2026-06-26',
+          type: 'Expense',
+          category: 'DailyLog',
+          subCategory: 'VehicleTrip',
+          description: 'รถดรัม: เหมา 30 คิว',
+          amount: 0,
+          tripBillingMode: 'LumpSum',
+        ),
+      ),
+      isFalse,
+    );
+  });
 }

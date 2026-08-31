@@ -1083,6 +1083,14 @@ int? _countRecordLapHour(String lap) {
   return (morning: total, afternoon: 0);
 }
 
+/// แถวเที่ยวรถที่มาจากเมนู «บันทึกและนับจำนวน» (กดนับเที่ยว)
+bool isCountRecordVehicleTrip(AppTransaction t) {
+  final note = (t.note ?? '').trim();
+  if (note.contains('นับเที่ยว')) return true;
+  final laps = t.workAssignments?['lapTimes'];
+  return (laps as List?)?.isNotEmpty ?? false;
+}
+
 /// ข้อความสถานะการ์ดเมนู «บันทึกและนับจำนวน»
 /// (สรุปครบทั้งเที่ยวรถและร่อนทราย — ไม่กรองตามโหมดงานที่เลือก)
 String? countRecordMenuStatusLabel(
