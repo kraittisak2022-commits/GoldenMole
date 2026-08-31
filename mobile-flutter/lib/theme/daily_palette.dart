@@ -6,14 +6,14 @@ import 'package:flutter/material.dart';
 /// For surfaces/ink that must adapt, use [DailyPalette.of] / [DailyColors].
 abstract final class DailyPalette {
   // ── Surfaces (light defaults) ─────────────────────────────────────────────
-  static const surface = Color(0xFFF7F8FA);
+  static const surface = Color(0xFFF8FAFC);
   static const card = Color(0xFFFFFFFF);
-  static const chipSurface = Color(0xFFF4F6F8);
+  static const chipSurface = Color(0xFFF1F5F9);
 
   // ── Lines & shadows ───────────────────────────────────────────────────────
   static const hairline = Color(0xFFE2E8F0);
-  static const shadowCard = Color(0x0D0F172A);
-  static const shadowLift = Color(0x140F172A);
+  static const shadowCard = Color(0x080F172A);
+  static const shadowLift = Color(0x0C0F172A);
 
   // ── Typography ────────────────────────────────────────────────────────────
   static const ink = Color(0xFF0B1B2B);

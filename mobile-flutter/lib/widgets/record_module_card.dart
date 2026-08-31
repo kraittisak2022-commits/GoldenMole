@@ -8,8 +8,7 @@ import '../utils/device_perf.dart';
 import '../utils/daily_module_transactions.dart';
 import 'soft_press_button.dart';
 
-/// การ์ดเมนูบันทึกประจำวัน — เติมเซลล์เต็มในแนวตั้ง / แถวในแนวนอน
-/// ไอคอนในบ่อสีอ่อน + ลำดับตัวอักษรชัด (Kanit) + SoftPress
+/// การ์ดเมนูบันทึกประจำวัน — มินิมอล แบน อ่านง่าย
 class RecordModuleCard extends StatelessWidget {
   const RecordModuleCard({
     super.key,
@@ -17,7 +16,7 @@ class RecordModuleCard extends StatelessWidget {
     required this.icon,
     required this.fillStatus,
     required this.onTap,
-    this.tileColor = const Color(0xFF4FC3F7),
+    this.tileColor = const Color(0xFF0D9488),
     this.completeStatusLabelOverride,
     this.statusMaxLines = 2,
   });
@@ -58,13 +57,7 @@ class RecordModuleCard extends StatelessWidget {
         : p.statusPending;
 
     final accent = tileColor;
-    final depthShadow = SoftPressDepthShadow(
-      color: p.shadowCard,
-      blurRadius: 10,
-      offsetY: 3,
-      pressedBlurRadius: 4,
-      pressedOffsetY: 1,
-    );
+    final radius = 14.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -75,9 +68,7 @@ class RecordModuleCard extends StatelessWidget {
             ? constraints.maxHeight
             : maxW;
         final isLandscapeCell = maxW > maxH * 1.08;
-        // มือถือ 2 คอลัมน์: เซลล์กว้าง ≥ ~140
         final phoneWidePortrait = !isLandscapeCell && maxW >= 140;
-        // เติมเซลล์เต็ม — ไม่หดเป็นจัตุรัสลอยกลางช่อง (รู้สึกแบบเว็บแดชบอร์ด)
         final cardW = maxW;
         final cardH = maxH;
         final scaleRef = isLandscapeCell
@@ -86,34 +77,24 @@ class RecordModuleCard extends StatelessWidget {
 
         final iconGlyph = (scaleRef *
                 (isLandscapeCell
-                    ? 0.42
+                    ? 0.38
                     : phoneWidePortrait
-                        ? 0.28
-                        : 0.36))
+                    ? 0.26
+                    : 0.32))
             .clamp(
-              isLandscapeCell ? 26.0 : (phoneWidePortrait ? 26.0 : 28.0),
-              isLandscapeCell ? 36.0 : (phoneWidePortrait ? 34.0 : 40.0),
+              isLandscapeCell ? 22.0 : (phoneWidePortrait ? 22.0 : 24.0),
+              isLandscapeCell ? 32.0 : (phoneWidePortrait ? 30.0 : 34.0),
             );
-        final wellSize = (iconGlyph * (phoneWidePortrait ? 1.9 : 1.75)).clamp(
-          isLandscapeCell ? 40.0 : (phoneWidePortrait ? 48.0 : 44.0),
-          isLandscapeCell ? 52.0 : (phoneWidePortrait ? 62.0 : 64.0),
+        final wellSize = (iconGlyph * 1.65).clamp(
+          isLandscapeCell ? 36.0 : (phoneWidePortrait ? 40.0 : 38.0),
+          isLandscapeCell ? 46.0 : (phoneWidePortrait ? 50.0 : 48.0),
         );
-        final pad = (scaleRef * (phoneWidePortrait ? 0.085 : 0.1)).clamp(
-          phoneWidePortrait ? 10.0 : 8.0,
-          phoneWidePortrait ? 14.0 : 14.0,
+        final pad = (scaleRef * 0.09).clamp(10.0, 14.0);
+        final titleSize = (scaleRef * (phoneWidePortrait ? 0.09 : 0.1)).clamp(
+          phoneWidePortrait ? 13.0 : 12.0,
+          phoneWidePortrait ? 15.0 : 14.0,
         );
-        final titleSize = (scaleRef * (phoneWidePortrait ? 0.095 : 0.11)).clamp(
-          phoneWidePortrait ? 13.0 : 11.5,
-          phoneWidePortrait ? 15.5 : 14.5,
-        );
-        final statusSize = (scaleRef * (phoneWidePortrait ? 0.078 : 0.09)).clamp(
-          phoneWidePortrait ? 11.0 : 10.0,
-          phoneWidePortrait ? 12.5 : 12.0,
-        );
-        final radius = isLandscapeCell
-            ? 16.0
-            : (phoneWidePortrait ? 18.0 : 18.0);
-        final wellRadius = phoneWidePortrait ? 14.0 : 12.0;
+        final statusSize = (scaleRef * 0.075).clamp(10.5, 12.0);
         final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
             DevicePerf.isConstrainedDevice;
 
@@ -123,45 +104,18 @@ class RecordModuleCard extends StatelessWidget {
             height: wellSize,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: accent.withValues(alpha: isDark ? 0.22 : 0.12),
-                borderRadius: BorderRadius.circular(wellRadius),
+                color: accent.withValues(alpha: isDark ? 0.14 : 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: accent.withValues(alpha: isDark ? 0.35 : 0.22),
+                ),
               ),
               child: Icon(icon, size: iconGlyph, color: accent),
             ),
           );
         }
 
-        Widget statusBlock({TextAlign align = TextAlign.center}) {
-          if (recorded) {
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: align == TextAlign.left
-                  ? MainAxisAlignment.start
-                  : MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.check_circle_rounded,
-                  size: (statusSize + 1).clamp(12.0, 14.0),
-                  color: p.statusComplete,
-                ),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    statusLabel,
-                    textAlign: align,
-                    maxLines: statusMaxLines,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.kanit(
-                      fontSize: statusSize,
-                      fontWeight: FontWeight.w600,
-                      color: p.statusComplete,
-                      height: 1.2,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          }
+        Widget statusBlock({TextAlign align = TextAlign.start}) {
           return Text(
             statusLabel,
             textAlign: align,
@@ -171,12 +125,12 @@ class RecordModuleCard extends StatelessWidget {
               fontSize: statusSize,
               fontWeight: FontWeight.w500,
               color: statusColor,
-              height: 1.2,
+              height: 1.25,
             ),
           );
         }
 
-        Widget titleText({TextAlign align = TextAlign.center}) {
+        Widget titleText({TextAlign align = TextAlign.start}) {
           return Text(
             title,
             textAlign: align,
@@ -184,91 +138,64 @@ class RecordModuleCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.kanit(
               fontSize: titleSize,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
               color: p.ink,
               height: 1.25,
-              letterSpacing: -0.15,
+              letterSpacing: -0.1,
             ),
           );
         }
 
-        Widget portraitContent() {
-          // ไอคอนบนซ้าย + สถานะมุมขวา · ชื่อ/สถานะยึดด้านล่าง — สแกนง่ายบนมือถือ
-          return Padding(
-            padding: EdgeInsets.fromLTRB(pad, pad * 0.85, pad * 0.85, pad),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    iconWell(),
-                    const Spacer(),
-                    Padding(
-                      padding: EdgeInsets.only(top: pad * 0.15),
-                      child: _StatusMark(partial: partial),
-                    ),
-                  ],
-                ),
-                const Spacer(flex: 2),
-                titleText(align: TextAlign.left),
-                SizedBox(height: pad * 0.28),
-                statusBlock(align: TextAlign.left),
-              ],
-            ),
+        Widget trailingChevron() {
+          return Icon(
+            Icons.chevron_right_rounded,
+            size: (titleSize + 4).clamp(18.0, 22.0),
+            color: p.inkMuted.withValues(alpha: 0.45),
           );
         }
 
-        Widget landscapeContent() {
+        Widget rowContent() {
           return Padding(
-            padding: EdgeInsets.symmetric(horizontal: pad * 0.75),
+            padding: EdgeInsets.symmetric(
+              horizontal: pad,
+              vertical: pad * 0.85,
+            ),
             child: Row(
               children: [
                 iconWell(),
-                SizedBox(width: pad * 0.75),
+                SizedBox(width: pad * 0.7),
                 Expanded(
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      titleText(align: TextAlign.left),
-                      SizedBox(height: pad * 0.22),
-                      statusBlock(align: TextAlign.left),
+                      titleText(),
+                      SizedBox(height: pad * 0.18),
+                      statusBlock(),
                     ],
                   ),
                 ),
-                _StatusMark(partial: partial),
+                trailingChevron(),
               ],
             ),
           );
         }
 
-        // แท็บเล็ตแนวตั้งคอลัมน์เดียวแคบ: คงสแต็กกลางแบบเดิม แต่ใส่บ่อไอคอน
-        Widget narrowPortraitContent() {
+        Widget stackedContent() {
           return Padding(
-            padding: EdgeInsets.all(pad),
+            padding: EdgeInsets.all(pad * 0.9),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 iconWell(),
-                SizedBox(height: pad * 0.55),
-                titleText(),
-                SizedBox(height: pad * 0.28),
-                statusBlock(),
+                SizedBox(height: pad * 0.45),
+                titleText(align: TextAlign.center),
+                SizedBox(height: pad * 0.2),
+                statusBlock(align: TextAlign.center),
               ],
             ),
           );
         }
-
-        final surfaceShadow = useLiteChrome
-            ? [
-                BoxShadow(
-                  color: p.shadowCard,
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ]
-            : null;
 
         final shapedCard = SizedBox(
           width: cardW,
@@ -278,28 +205,27 @@ class RecordModuleCard extends StatelessWidget {
               color: p.card,
               borderRadius: BorderRadius.circular(radius),
               border: Border.all(
-                color: p.hairline.withValues(alpha: isDark ? 0.9 : 0.85),
-                width: 1,
+                color: recorded
+                    ? p.statusComplete.withValues(alpha: isDark ? 0.35 : 0.28)
+                    : partial
+                    ? p.statusIncomplete.withValues(alpha: isDark ? 0.3 : 0.22)
+                    : p.hairline.withValues(alpha: isDark ? 0.85 : 1),
               ),
-              boxShadow: surfaceShadow,
+              boxShadow: useLiteChrome
+                  ? null
+                  : [
+                      BoxShadow(
+                        color: p.shadowCard,
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(radius),
-              child: isLandscapeCell
-                  ? landscapeContent()
-                  : (phoneWidePortrait
-                      ? portraitContent()
-                      : Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            narrowPortraitContent(),
-                            Positioned(
-                              top: pad * 0.45,
-                              right: pad * 0.45,
-                              child: _StatusMark(partial: partial),
-                            ),
-                          ],
-                        )),
+              child: isLandscapeCell || phoneWidePortrait
+                  ? rowContent()
+                  : stackedContent(),
             ),
           ),
         );
@@ -309,36 +235,12 @@ class RecordModuleCard extends StatelessWidget {
           size: SoftPressSize.medium,
           borderRadius: radius,
           isDarkSurface: isDark,
-          liftWhenIdle: !useLiteChrome,
-          depthShadow: useLiteChrome ? null : depthShadow,
-          // ห้ามให้ SoftPress หดการ์ดด้วย Align/padding นอกเซลล์
+          liftWhenIdle: false,
+          depthShadow: null,
           hitPadding: EdgeInsets.zero,
           child: shapedCard,
         );
       },
-    );
-  }
-}
-
-class _StatusMark extends StatelessWidget {
-  const _StatusMark({required this.partial});
-
-  final bool partial;
-
-  @override
-  Widget build(BuildContext context) {
-    // มุมขวา: จุดเหลืองเฉพาะสถานะค้าง — ครบแล้วใช้เช็คในบรรทัดสถานะพอ
-    if (!partial) {
-      return const SizedBox(width: 8, height: 8);
-    }
-    return Container(
-      width: 8,
-      height: 8,
-      margin: const EdgeInsets.only(top: 4, right: 2),
-      decoration: const BoxDecoration(
-        color: DailyPalette.statusIncompleteDot,
-        shape: BoxShape.circle,
-      ),
     );
   }
 }

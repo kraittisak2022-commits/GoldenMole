@@ -1263,21 +1263,19 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
     final cacheRows = constrained ? 1.0 : (isAndroid ? 3.5 : 2.0);
     final moreMenusBarH =
         phonePortrait ? 36.0 : _kMoreMenusBarHeight;
-    final panelRadius = phonePortrait ? 20.0 : 24.0;
-    final panelPad = phonePortrait ? 10.0 : 12.0;
+    final panelRadius = phonePortrait ? 16.0 : 20.0;
+    final panelPad = phonePortrait ? 12.0 : 14.0;
 
     final p = DailyPalette.of(context);
     final dailyMenuPanel = DecoratedBox(
       decoration: BoxDecoration(
         color: p.card,
         borderRadius: BorderRadius.circular(panelRadius),
-        boxShadow: [
-          BoxShadow(
-            color: p.shadowLift,
-            blurRadius: phonePortrait ? 14 : 18,
-            offset: Offset(0, phonePortrait ? 4 : 6),
+        border: Border.all(
+          color: p.hairline.withValues(
+            alpha: Theme.of(context).brightness == Brightness.dark ? 0.9 : 1,
           ),
-        ],
+        ),
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(panelPad, panelPad, panelPad, panelPad),
@@ -1685,7 +1683,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   : primaryModules;
               final gridItemCount = visibleModules.length + 1;
               final gap = phonePortrait
-                  ? 10.0
+                  ? 12.0
                   : TouchProfile.of(context).gridGap;
               final sideInset = 2.0;
               final mq = MediaQuery.sizeOf(context);
@@ -1727,10 +1725,10 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   (availH - (gap * (rows - 1))) / rows;
               // แนวตั้งมือถือ: การ์ดสูงกว่าจัตุรัสเล็กน้อย — บ่อไอคอนใหญ่ + ชื่อ + สถานะ
               final preferredCellHeight = isLandscape
-                  ? fitCellHeight.clamp(64.0, 108.0)
+                  ? fitCellHeight.clamp(60.0, 96.0)
                   : phonePortrait
-                      ? (cellWidth * 1.15).clamp(132.0, 184.0)
-                      : cellWidth.clamp(96.0, 200.0);
+                      ? (cellWidth * 1.02).clamp(112.0, 156.0)
+                      : cellWidth.clamp(88.0, 180.0);
               final totalNeeded =
                   (preferredCellHeight * rows) + (gap * (rows - 1));
               final menuScrolls = isLandscape
@@ -1848,49 +1846,38 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   SizedBox(
                     height: moreMenusBarH,
                     child: Center(
-                      child: SoftPressButton(
-                        onTap: () {
+                      child: TextButton.icon(
+                        onPressed: () {
                           AppHaptics.tap();
                           setState(
                             () => _moreMenusExpanded = !_moreMenusExpanded,
                           );
                         },
-                        size: SoftPressSize.small,
-                        borderRadius: phonePortrait ? 16 : 20,
-                        isDarkSurface: false,
-                        liftWhenIdle: true,
-                        child: Padding(
+                        style: TextButton.styleFrom(
+                          foregroundColor: DailyPalette.of(context).inkMuted,
                           padding: EdgeInsets.symmetric(
-                            horizontal: phonePortrait ? 10 : 12,
-                            vertical: phonePortrait ? 4 : 6,
+                            horizontal: phonePortrait ? 8 : 12,
+                            vertical: phonePortrait ? 2 : 4,
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _moreMenusExpanded
-                                    ? Icons.expand_less_rounded
-                                    : Icons.expand_more_rounded,
-                                size: phonePortrait ? 18 : 20,
-                                color: DailyPalette.inkMuted,
-                              ),
-                              SizedBox(width: phonePortrait ? 3 : 4),
-                              Text(
-                                _moreMenusExpanded
-                                    ? (phonePortrait
-                                        ? 'ซ่อนเมนู'
-                                        : 'ซ่อนเมนูเพิ่มเติม')
-                                    : (phonePortrait
-                                        ? 'เมนูเพิ่มเติม'
-                                        : 'แสดงเมนูเพิ่มเติม'),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: phonePortrait ? 12 : 13,
-                                  color: DailyPalette.inkMuted,
-                                  height: 1.1,
-                                ),
-                              ),
-                            ],
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: Icon(
+                          _moreMenusExpanded
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
+                          size: phonePortrait ? 18 : 20,
+                        ),
+                        label: Text(
+                          _moreMenusExpanded
+                              ? (phonePortrait ? 'ซ่อนเมนู' : 'ซ่อนเมนูเพิ่มเติม')
+                              : (phonePortrait
+                                  ? 'เมนูเพิ่มเติม'
+                                  : 'แสดงเมนูเพิ่มเติม'),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: phonePortrait ? 12 : 13,
+                            height: 1.1,
                           ),
                         ),
                       ),
@@ -1911,10 +1898,10 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
         ),
         Padding(
           padding: EdgeInsets.fromLTRB(
+            phonePortrait ? 12 : 16,
             phonePortrait ? 8 : 12,
-            phonePortrait ? 6 : 10,
-            phonePortrait ? 8 : 12,
-            phonePortrait ? 8 : 12,
+            phonePortrait ? 12 : 16,
+            phonePortrait ? 10 : 12,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1951,7 +1938,7 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             ),
                           ),
                           // เว้นช่องว่างให้เงาหัว + กันแผงเมนูทับขอบล่างส่วนหัว
-                          SizedBox(height: phonePortrait ? 8 : 14),
+                          SizedBox(height: phonePortrait ? 10 : 14),
                         ],
                       ),
               ),
@@ -2300,223 +2287,153 @@ class _HomeHeaderCompact extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     const changeDayHint = 'แตะเพื่อเปลี่ยนวัน';
     final size = MediaQuery.sizeOf(context);
     final phonePortrait =
         size.shortestSide < 600 && size.height >= size.width;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(phonePortrait ? 18 : 24),
-        boxShadow: [
-          BoxShadow(
-            color: p.shadowCard,
-            blurRadius: 12,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(phonePortrait ? 18 : 24),
-        child: ColoredBox(
-          color: p.card,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              phonePortrait ? 10 : 16,
-              phonePortrait ? 10 : 16,
-              phonePortrait ? 8 : 14,
-              phonePortrait ? 10 : 18,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: p.card,
-                        borderRadius: BorderRadius.circular(
-                          phonePortrait ? 12 : 14,
-                        ),
-                      ),
-                      child: Padding(
-                        padding: EdgeInsets.all(phonePortrait ? 5 : 10),
-                        child: AppLogo(size: phonePortrait ? 28 : 40),
-                      ),
-                    ),
-                    SizedBox(width: phonePortrait ? 8 : 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            l10n.dailyLogTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: phonePortrait ? 18 : 24,
-                              color: p.ink,
-                              letterSpacing: -0.4,
-                              height: 1.1,
-                            ),
-                          ),
-                          SizedBox(height: phonePortrait ? 1 : 4),
-                          Text(
-                            appName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: p.inkMuted,
-                              fontSize: phonePortrait ? 11.5 : 13.5,
-                              fontWeight: FontWeight.w600,
-                              height: 1.15,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SoftPressButton(
-                      onTap: () => onRefresh(),
-                      size: SoftPressSize.small,
-                      borderRadius: phonePortrait ? 10 : 12,
-                      liftWhenIdle: true,
-                      isDarkSurface: isDark,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: p.chipSurface,
-                          borderRadius: BorderRadius.circular(
-                            phonePortrait ? 10 : 12,
-                          ),
-                        ),
-                        child: Padding(
-                          padding: EdgeInsets.all(phonePortrait ? 8 : 10),
-                          child: Icon(
-                            Icons.refresh_rounded,
-                            color: p.inkSubtle,
-                            size: phonePortrait ? 20 : 22,
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: phonePortrait ? 6 : 8),
-                    _ThemeModeToggleButton(compact: phonePortrait),
-                    SizedBox(width: phonePortrait ? 6 : 8),
-                    _TopSettingsButton(
-                      onTap: onOpenSettings,
-                      compact: phonePortrait,
-                    ),
-                  ],
-                ),
-                SizedBox(height: phonePortrait ? 8 : 16),
-                SoftPressButton(
-                  onTap: onPickDay,
-                  size: SoftPressSize.medium,
-                  borderRadius: phonePortrait ? 12 : 18,
-                  isDarkSurface: isDark,
-                  liftWhenIdle: true,
-                  child: Tooltip(
-                    message: changeDayHint,
-                    child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: p.chipSurface,
-                      borderRadius: BorderRadius.circular(
-                        phonePortrait ? 12 : 18,
-                      ),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        phonePortrait ? 10 : 12,
-                        phonePortrait ? 7 : 12,
-                        phonePortrait ? 6 : 12,
-                        phonePortrait ? 7 : 12,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_month_rounded,
-                            color: p.brand,
-                            size: phonePortrait ? 20 : 28,
-                          ),
-                          SizedBox(width: phonePortrait ? 8 : 14),
-                          Expanded(
-                            child: phonePortrait
-                                ? Text(
-                                    selectedDateLabel,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 14.5,
-                                      color: p.ink,
-                                      height: 1.15,
-                                      letterSpacing: -0.2,
-                                    ),
-                                  )
-                                : Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        selectedDateLabel,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 18,
-                                          color: p.ink,
-                                          height: 1.2,
-                                          letterSpacing: -0.2,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        changeDayHint,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12.5,
-                                          color: p.inkMuted,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                          ),
-                          Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            color: p.brand,
-                            size: phonePortrait ? 22 : 28,
-                          ),
-                        ],
-                      ),
-                    ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            AppLogo(size: phonePortrait ? 30 : 36),
+            SizedBox(width: phonePortrait ? 10 : 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.dailyLogTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.kanit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: phonePortrait ? 17 : 22,
+                      color: p.ink,
+                      letterSpacing: -0.3,
+                      height: 1.15,
                     ),
                   ),
-                ),
-                SizedBox(height: phonePortrait ? 6 : 12),
-                Wrap(
-                  spacing: phonePortrait ? 6 : 8,
-                  runSpacing: phonePortrait ? 4 : 6,
-                  children: [
-                    _HeaderStatChip(
-                      icon: Icons.access_time_filled_rounded,
-                      label: '${l10n.latestPrefix} $lastLabel',
-                      compact: phonePortrait,
+                  Text(
+                    appName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.kanit(
+                      color: p.inkMuted,
+                      fontSize: phonePortrait ? 11.5 : 13,
+                      fontWeight: FontWeight.w500,
+                      height: 1.2,
                     ),
-                    _LiveClockChip(
-                      l10n: l10n,
-                      compact: phonePortrait,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: () => onRefresh(),
+              tooltip: 'โหลดข้อมูลใหม่',
+              visualDensity: VisualDensity.compact,
+              icon: Icon(
+                Icons.refresh_rounded,
+                color: p.inkMuted,
+                size: phonePortrait ? 21 : 23,
+              ),
+            ),
+            _ThemeModeToggleButton(compact: phonePortrait),
+            _TopSettingsButton(
+              onTap: onOpenSettings,
+              compact: phonePortrait,
+            ),
+          ],
+        ),
+        SizedBox(height: phonePortrait ? 10 : 14),
+        Material(
+          color: p.card,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
+            side: BorderSide(color: p.hairline),
+          ),
+          child: InkWell(
+            onTap: onPickDay,
+            borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                phonePortrait ? 12 : 14,
+                phonePortrait ? 10 : 12,
+                phonePortrait ? 10 : 12,
+                phonePortrait ? 10 : 12,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.calendar_today_rounded,
+                    color: p.brand,
+                    size: phonePortrait ? 18 : 20,
+                  ),
+                  SizedBox(width: phonePortrait ? 10 : 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          selectedDateLabel,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.kanit(
+                            fontWeight: FontWeight.w600,
+                            fontSize: phonePortrait ? 14 : 16,
+                            color: p.ink,
+                            height: 1.2,
+                            letterSpacing: -0.15,
+                          ),
+                        ),
+                        if (!phonePortrait) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            changeDayHint,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.kanit(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 12,
+                              color: p.inkMuted,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: p.inkMuted.withValues(alpha: 0.5),
+                    size: phonePortrait ? 22 : 24,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      ),
+        if (!phonePortrait) ...[
+          SizedBox(height: phonePortrait ? 8 : 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              _HeaderStatChip(
+                icon: Icons.access_time_filled_rounded,
+                label: '${l10n.latestPrefix} $lastLabel',
+                compact: phonePortrait,
+              ),
+              _LiveClockChip(
+                l10n: l10n,
+                compact: phonePortrait,
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }
@@ -2590,8 +2507,9 @@ class _HeaderStatChip extends StatelessWidget {
         final labelMax = (cap - (compact ? 36 : 44)).clamp(48.0, 260.0);
         return DecoratedBox(
           decoration: BoxDecoration(
-            color: p.chipSurface,
+            color: p.card,
             borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: p.hairline),
           ),
           child: Padding(
             padding: EdgeInsets.symmetric(
