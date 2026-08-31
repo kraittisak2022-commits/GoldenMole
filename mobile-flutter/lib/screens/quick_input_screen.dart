@@ -6658,6 +6658,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final existing = _leaveRecordsCoveringSelectedRange();
     if (existing.isEmpty) return const [];
 
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
+
     return [
       SizedBox(height: phonePortrait ? 8 : 10),
       Container(
@@ -6668,9 +6672,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           phonePortrait ? 8 : 10,
         ),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF7ED),
+          color: isDark ? const Color(0xFF3A2416) : const Color(0xFFFFF7ED),
           borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
-          border: Border.all(color: const Color(0xFFFDBA74)),
+          border: Border.all(
+            color: isDark ? const Color(0xFFB45309) : const Color(0xFFFDBA74),
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -6680,7 +6686,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 Icon(
                   Icons.person_search_rounded,
                   size: phonePortrait ? 18 : 20,
-                  color: const Color(0xFFC2410C),
+                  color: isDark ? const Color(0xFFFDBA74) : const Color(0xFFC2410C),
                 ),
                 SizedBox(width: phonePortrait ? 6 : 8),
                 Expanded(
@@ -6691,7 +6697,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     style: GoogleFonts.kanit(
                       fontSize: phonePortrait ? 12.5 : 13.5,
                       fontWeight: FontWeight.w800,
-                      color: const Color(0xFF9A3412),
+                      color: isDark ? const Color(0xFFFDBA74) : const Color(0xFF9A3412),
                       height: 1.25,
                     ),
                   ),
@@ -6708,15 +6714,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 padding: EdgeInsets.only(bottom: phonePortrait ? 6 : 8),
                 child: Material(
                   color: isEditing
-                      ? const Color(0xFFE0F2F1)
-                      : Colors.white,
+                      ? (isDark ? p.brandSurface : const Color(0xFFE0F2F1))
+                      : (isDark ? p.card : Colors.white),
                   shape: RoundedRectangleBorder(
                     borderRadius:
                         BorderRadius.circular(phonePortrait ? 10 : 12),
                     side: BorderSide(
                       color: isEditing
-                          ? const Color(0xFF0D9488)
-                          : const Color(0xFFFED7AA),
+                          ? (isDark ? p.brand : const Color(0xFF0D9488))
+                          : (isDark
+                              ? const Color(0xFFB45309)
+                              : const Color(0xFFFED7AA)),
                       width: isEditing ? 1.4 : 1,
                     ),
                   ),
@@ -6737,8 +6745,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 : Icons.event_busy_rounded,
                             size: phonePortrait ? 18 : 20,
                             color: isEditing
-                                ? const Color(0xFF0F766E)
-                                : const Color(0xFFEA580C),
+                                ? (isDark ? p.brandDateInk : const Color(0xFF0F766E))
+                                : (isDark
+                                    ? const Color(0xFFFB923C)
+                                    : const Color(0xFFEA580C)),
                           ),
                           SizedBox(width: phonePortrait ? 8 : 10),
                           Expanded(
@@ -6752,7 +6762,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   style: GoogleFonts.kanit(
                                     fontSize: phonePortrait ? 13.5 : 14.5,
                                     fontWeight: FontWeight.w800,
-                                    color: const Color(0xFF1A2433),
+                                    color: isDark ? p.ink : const Color(0xFF1A2433),
                                     height: 1.2,
                                   ),
                                 ),
@@ -6765,7 +6775,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   style: GoogleFonts.kanit(
                                     fontSize: phonePortrait ? 11.5 : 12.5,
                                     fontWeight: FontWeight.w600,
-                                    color: const Color(0xFF64748B),
+                                    color: isDark ? p.inkMuted : const Color(0xFF64748B),
                                   ),
                                 ),
                               ],
@@ -6773,7 +6783,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           ),
                           Icon(
                             Icons.chevron_right_rounded,
-                            color: const Color(0xFF94A3B8),
+                            color: isDark ? p.inkMuted : const Color(0xFF94A3B8),
                             size: phonePortrait ? 20 : 22,
                           ),
                         ],
@@ -8156,6 +8166,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w700,
                     fontSize: titleSize,
+                    color: DailyPalette.of(context).ink,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -8165,7 +8176,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       : 'รายรับ · ${(t.incomePaymentStatus ?? '').trim() == 'Unpaid' ? 'ยังไม่ได้จ่าย' : 'จ่ายแล้ว'} · ฿${_strNum(t.amount)} · ${formatTxnHistoryTime(t.createdAt)}',
                   style: GoogleFonts.kanit(
                     fontSize: metaSize,
-                    color: Colors.black54,
+                    color: DailyPalette.of(context).inkMuted,
                   ),
                 ),
                 ..._iuPartyMetaHistoryLines(t, compact: phonePortrait),
@@ -8186,7 +8197,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   icon: Icon(
                     Icons.edit_outlined,
                     size: phonePortrait ? 20 : 24,
-                    color: const Color(0xFF1565C0),
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF60A5FA)
+                        : const Color(0xFF1565C0),
                   ),
                   onPressed: () => _openSuperAdminHistoryEditor(t),
                 ),
@@ -8469,17 +8482,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         size.shortestSide < 600 && size.height >= size.width;
     final radius = phonePortrait ? 14.0 : 16.0;
     final iconBox = phonePortrait ? 36.0 : 44.0;
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
+    final tileBg = isEditingThis
+        ? (isDark ? p.brandSurface : const Color(0xFFE3F2FD))
+        : (isDark ? p.chipSurface : const Color(0xFFF5FAFF));
+    final tileBorder = isEditingThis
+        ? (isDark ? p.brand : const Color(0xFF1565C0))
+        : (isDark ? p.hairline : const Color(0xFFBBDEFB));
+    final accent = isDark ? p.brand : const Color(0xFF1565C0);
+    final titleInk = isDark ? p.ink : const Color(0xFF0D47A1);
+    final bodyInk = isDark ? p.inkSubtle : const Color(0xFF455A64);
+    final timeInk = isDark ? p.inkMuted : Colors.black45;
     return Padding(
       padding: EdgeInsets.only(bottom: phonePortrait ? 8 : 10),
       child: Material(
-        color: isEditingThis ? const Color(0xFFE3F2FD) : const Color(0xFFF5FAFF),
+        color: tileBg,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
           side: BorderSide(
-            color: isEditingThis
-                ? const Color(0xFF1565C0)
-                : const Color(0xFFBBDEFB),
+            color: tileBorder,
             width: isEditingThis ? 1.5 : 1,
           ),
         ),
@@ -8500,12 +8524,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 width: iconBox,
                 height: iconBox,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFBBDEFB).withValues(alpha: 0.55),
+                  color: accent.withValues(alpha: isDark ? 0.22 : 0.18),
                   borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
                 ),
                 child: Icon(
                   Icons.event_busy_rounded,
-                  color: const Color(0xFF1565C0),
+                  color: accent,
                   size: phonePortrait ? 20 : 24,
                 ),
               ),
@@ -8521,7 +8545,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         fontSize: phonePortrait ? 14 : 15,
                         fontWeight: FontWeight.w800,
-                        color: const Color(0xFF0D47A1),
+                        color: titleInk,
                         height: 1.25,
                       ),
                     ),
@@ -8551,7 +8575,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.kanit(
                           fontSize: phonePortrait ? 12 : 12.5,
-                          color: const Color(0xFF455A64),
+                          color: bodyInk,
                           height: 1.3,
                         ),
                       ),
@@ -8561,7 +8585,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       formatTxnHistoryTime(t.createdAt),
                       style: GoogleFonts.kanit(
                         fontSize: phonePortrait ? 10.5 : 11,
-                        color: Colors.black45,
+                        color: timeInk,
                       ),
                     ),
                   ],
@@ -8580,7 +8604,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ),
                       icon: Icon(
                         Icons.edit_outlined,
-                        color: const Color(0xFF1565C0),
+                        color: accent,
                         size: phonePortrait ? 20 : 24,
                       ),
                       onPressed: () => _openSuperAdminHistoryEditor(t),
@@ -8594,7 +8618,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ),
                       icon: Icon(
                         Icons.delete_outline,
-                        color: Colors.red.shade700,
+                        color: isDark
+                            ? const Color(0xFFF87171)
+                            : Colors.red.shade700,
                         size: phonePortrait ? 20 : 24,
                       ),
                       onPressed: () => _confirmSuperAdminHardDelete(t),
@@ -8665,27 +8691,33 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     IconData icon, {
     bool compact = false,
   }) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
+    final accent = isDark ? p.brand : const Color(0xFF1565C0);
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 6 : 8,
         vertical: compact ? 3 : 4,
       ),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? p.card : Colors.white,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFF90CAF9)),
+        border: Border.all(
+          color: isDark ? p.brandBorder : const Color(0xFF90CAF9),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: compact ? 12 : 14, color: const Color(0xFF1565C0)),
+          Icon(icon, size: compact ? 12 : 14, color: accent),
           SizedBox(width: compact ? 3 : 4),
           Text(
             text,
             style: GoogleFonts.kanit(
               fontSize: compact ? 10.5 : 11.5,
               fontWeight: FontWeight.w700,
-              color: const Color(0xFF37474F),
+              color: isDark ? p.inkSubtle : const Color(0xFF37474F),
             ),
           ),
         ],
@@ -8694,10 +8726,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _advanceHistoryListTile(AppTransaction t) {
+    final p = DailyPalette.of(context);
+    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
+        Theme.of(context).brightness == Brightness.dark;
+    final advPrimary =
+        isDark ? const Color(0xFFFB923C) : const Color(0xFFE65100);
     final names = _displayNamesForEmployeeIds(t.employeeIds);
     final namesLine = names.isEmpty ? '—' : names;
     final per = t.advanceAmount ?? t.amount;
-    final amtStr = per > 0 ? '฿${_strNum(per)}' : 'ยอด —';
+    final amtStr = per > 0 ? '฿' : 'ยอด —';
     final meta = AdvanceGmMeta.decode(t.workDetails);
     final slotTh = meta.payoutSlot == AdvanceGmMeta.evening
         ? 'รับช่วงเย็น'
@@ -8710,21 +8747,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final b = meta.bank.trim();
       final a = meta.accountNumber.trim();
       if (b.isNotEmpty && a.isNotEmpty) {
-        bankLine = ' · $b · $a';
+        bankLine = ' ·  · ';
       } else if (b.isNotEmpty) {
-        bankLine = ' · $b';
+        bankLine = ' · ';
       } else if (a.isNotEmpty) {
-        bankLine = ' · เลข $a';
+        bankLine = ' · เลข ';
       }
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
-        color: const Color(0xFFFFFBF7),
+        color: isDark ? p.chipSurface : const Color(0xFFFFFBF7),
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: Color(0xFFFFE0B2)),
+          side: BorderSide(
+            color: isDark ? const Color(0xFF5D4037) : const Color(0xFFFFE0B2),
+          ),
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -8735,12 +8774,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFE0B2).withValues(alpha: 0.65),
+                  color: (isDark
+                          ? const Color(0xFF5D4037)
+                          : const Color(0xFFFFE0B2))
+                      .withValues(alpha: isDark ? 0.55 : 0.65),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.request_quote_rounded,
-                  color: Color(0xFFE65100),
+                  color: advPrimary,
                   size: 24,
                 ),
               ),
@@ -8756,7 +8798,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
-                        color: const Color(0xFF1A237E),
+                        color: isDark
+                            ? const Color(0xFFBFDBFE)
+                            : const Color(0xFF1A237E),
                         height: 1.25,
                       ),
                     ),
@@ -8779,7 +8823,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         bankLine.trimLeft(),
                         style: GoogleFonts.kanit(
                           fontSize: 11.5,
-                          color: const Color(0xFF5C6BC0),
+                          color: isDark
+                              ? const Color(0xFFA5B4FC)
+                              : const Color(0xFF5C6BC0),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -8791,16 +8837,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.kanit(
                         fontSize: 12,
-                        color: Colors.black87,
+                        color: isDark ? p.inkSubtle : Colors.black87,
                         height: 1.3,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${formatTxnHistoryTime(t.createdAt)} · ${t.id}',
+                      ' · ',
                       style: GoogleFonts.kanit(
                         fontSize: 10.5,
-                        color: Colors.black45,
+                        color: isDark ? p.inkMuted : Colors.black45,
                       ),
                     ),
                   ],
@@ -8817,9 +8863,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         minWidth: 40,
                         minHeight: 40,
                       ),
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.edit_outlined,
-                        color: Color(0xFFE65100),
+                        color: advPrimary,
                       ),
                       onPressed: () => _openSuperAdminHistoryEditor(t),
                     ),
@@ -8832,7 +8878,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ),
                       icon: Icon(
                         Icons.delete_outline,
-                        color: Colors.red.shade700,
+                        color: isDark
+                            ? const Color(0xFFF87171)
+                            : Colors.red.shade700,
                       ),
                       onPressed: () => _confirmSuperAdminHardDelete(t),
                     ),
@@ -8846,24 +8894,31 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _advanceMetaChip(String text, IconData icon) {
+    final p = DailyPalette.of(context);
+    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
+        Theme.of(context).brightness == Brightness.dark;
+    final advPrimary =
+        isDark ? const Color(0xFFFB923C) : const Color(0xFFE65100);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? p.card : Colors.white,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFFFE0B2)),
+        border: Border.all(
+          color: isDark ? const Color(0xFF5D4037) : const Color(0xFFFFE0B2),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: const Color(0xFFE65100)),
+          Icon(icon, size: 14, color: advPrimary),
           const SizedBox(width: 4),
           Text(
             text,
             style: GoogleFonts.kanit(
               fontSize: 11.5,
               fontWeight: FontWeight.w700,
-              color: const Color(0xFF37474F),
+              color: isDark ? p.ink : const Color(0xFF37474F),
             ),
           ),
         ],
@@ -8925,9 +8980,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       side: BorderSide(
                         color: _moduleHistoryVisible
                             ? (_isLaborAdvanceMode
-                                  ? const Color(
-                                      0xFFE65100,
-                                    ).withValues(alpha: 0.55)
+                                  ? (historyDark
+                                        ? const Color(0xFFFB923C)
+                                        : const Color(0xFFE65100))
+                                      .withValues(alpha: 0.55)
                                   : theme.colorScheme.primary.withValues(
                                       alpha: 0.45,
                                     ))
@@ -8962,7 +9018,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                 : Icons.history_rounded,
                             size: compactLeaveHistory ? 20 : 22,
                             color: _isLaborAdvanceMode
-                                ? const Color(0xFFE65100)
+                                ? (historyDark
+                                    ? const Color(0xFFFB923C)
+                                    : const Color(0xFFE65100))
                                 : theme.colorScheme.primary,
                           ),
                         ),
@@ -9761,6 +9819,104 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  /// Theme สำหรับหน้า OT / ล่วงเวลา — คง brightness ของแอป
+  ThemeData _otFormTheme(BuildContext context) {
+    final base = Theme.of(context);
+    final p = DailyPalette.of(context);
+    final isDark = base.brightness == Brightness.dark;
+    final primary = isDark ? p.brand : const Color(0xFF0F9EA8);
+    return base.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: primary,
+        brightness: isDark ? Brightness.dark : Brightness.light,
+      ),
+      scaffoldBackgroundColor: isDark ? p.surface : _bg,
+      cardTheme: CardThemeData(
+        color: isDark ? p.card : Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(48),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          backgroundColor: primary,
+          foregroundColor: isDark ? const Color(0xFF0B1219) : Colors.white,
+          textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: isDark ? p.chipSurface : const Color(0xFFFBFCFF),
+        labelStyle: GoogleFonts.kanit(
+          color: p.inkMuted,
+          fontSize: 16.5,
+          fontWeight: FontWeight.w600,
+        ),
+        floatingLabelStyle: GoogleFonts.kanit(
+          color: primary,
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+        ),
+        hintStyle: GoogleFonts.kanit(
+          color: p.inkMuted.withValues(alpha: 0.85),
+          fontSize: 15.5,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 18,
+        ),
+        prefixIconColor: p.inkMuted,
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 50,
+          minHeight: 50,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: p.hairline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: primary, width: 1.5),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: isDark ? p.chipSurface : const Color(0xFFF8FAFC),
+        disabledColor: isDark ? p.chipSurface : const Color(0xFFF1F5F9),
+        selectedColor: primary.withValues(alpha: isDark ? 0.28 : 0.18),
+        side: BorderSide(color: p.hairline),
+        labelStyle: GoogleFonts.kanit(
+          fontWeight: FontWeight.w600,
+          color: p.ink,
+        ),
+        secondaryLabelStyle: GoogleFonts.kanit(
+          fontWeight: FontWeight.w600,
+          color: p.ink,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      textTheme: GoogleFonts.kanitTextTheme(base.textTheme).copyWith(
+        bodyLarge: GoogleFonts.kanit(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: p.ink,
+        ),
+        bodyMedium: GoogleFonts.kanit(
+          fontSize: 17,
+          color: p.ink,
+        ),
+        titleMedium: GoogleFonts.kanit(
+          fontSize: 19,
+          fontWeight: FontWeight.w700,
+          color: p.ink,
+        ),
+      ),
+    );
+  }
+
   ThemeData _quickFormTheme(BuildContext context) {
     final base = Theme.of(context);
     const primary = Color(0xFF0F9EA8);
@@ -9896,6 +10052,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final contentMaxWidth = isLargeTablet ? 980.0 : 760.0;
     final dailyColors = DailyPalette.of(context);
     final appIsDark = Theme.of(context).brightness == Brightness.dark;
+    final otDark = _isOtMode && appIsDark;
     final macroDark = _isMacroVehicleMode && appIsDark;
     final incomeExpenseDark = _isIncomeUtilitiesEntryMode && appIsDark;
     final advanceDark = _isLaborAdvanceMode && appIsDark;
@@ -9912,7 +10069,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                           ? _fuelFormTheme(context)
                           : _isIncomeUtilitiesEntryMode
                               ? _incomeUtilitiesFormTheme(context)
-                              : _quickFormTheme(context),
+                              : _isOtMode
+                                  ? _otFormTheme(context)
+                                  : _quickFormTheme(context),
       child: GestureDetector(
         onHorizontalDragEnd: (details) {
           if (details.primaryVelocity != null &&
@@ -9937,6 +10096,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _isMacroVehicleMode ||
                   _isFuelMode ||
                   _isLaborLeaveMode ||
+                  _isOtMode ||
                   _isLaborAdvanceMode ||
                   _isIncomeUtilitiesEntryMode)
               ? dailyColors.surface
@@ -9963,7 +10123,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         ? (incomeExpenseDark
                             ? const [Color(0xFF3730A3), Color(0xFF1E1B4B)]
                             : const [Color(0xFF5C6BC0), Color(0xFF3949AB)])
-                        : macroDark
+                        : (macroDark || otDark)
                         ? const [Color(0xFF0A5C66), Color(0xFF0D7A85)]
                         : const [Color(0xFF0D98A5), Color(0xFF1BB7C0)],
                     begin: Alignment.topLeft,
@@ -10305,10 +10465,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }) {
     final fieldSize = compact ? 14.5 : 16.0;
     final gap = compact ? 8.0 : 10.0;
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final fieldStyle = GoogleFonts.kanit(
       fontSize: fieldSize,
       fontWeight: FontWeight.w600,
-      color: const Color(0xFF1D2A3A),
+      color: isDark ? p.ink : const Color(0xFF1D2A3A),
     );
     return [
       TextField(
@@ -10356,7 +10518,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           'ชื่อ: $name',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.kanit(fontSize: fontSize, color: Colors.black54),
+          style: GoogleFonts.kanit(fontSize: fontSize, color: DailyPalette.of(context).inkMuted),
         ),
       );
     }
@@ -10366,7 +10528,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           'ที่อยู่: $addr',
           maxLines: compact ? 1 : 2,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.kanit(fontSize: fontSize, color: Colors.black54),
+          style: GoogleFonts.kanit(fontSize: fontSize, color: DailyPalette.of(context).inkMuted),
         ),
       );
     }
@@ -10376,7 +10538,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           detail,
           maxLines: compact ? 1 : 2,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.kanit(fontSize: fontSize, color: Colors.black54),
+          style: GoogleFonts.kanit(fontSize: fontSize, color: DailyPalette.of(context).inkMuted),
         ),
       );
     }
@@ -10483,9 +10645,32 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildIncomeUtilitiesEntryCard() {
-    const indigo = Color(0xFF3949AB);
-    const teal = Color(0xFF00897B);
-    const green = Color(0xFF2E7D32);
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final indigo =
+        isDark ? const Color(0xFF818CF8) : const Color(0xFF3949AB);
+    final teal =
+        isDark ? const Color(0xFF2DD4BF) : const Color(0xFF00897B);
+    final green =
+        isDark ? const Color(0xFF4ADE80) : const Color(0xFF2E7D32);
+    final titleInk = isDark ? p.ink : const Color(0xFF1A237E);
+    final bodyInk = isDark ? p.ink : const Color(0xFF1D2736);
+    final fieldInk = isDark ? p.ink : const Color(0xFF1D2A3A);
+    final mutedInk = isDark ? p.inkMuted : Colors.black54;
+    final faintInk = isDark ? p.inkMuted : Colors.black45;
+    final hintInk = isDark ? p.inkMuted : const Color(0xFF546E7A);
+    final statusLabelInk =
+        isDark ? p.inkSubtle : const Color(0xFF37474F);
+    final warnInk =
+        isDark ? p.statusIncomplete : const Color(0xFFB45309);
+    final dateBg = isDark ? p.chipSurface : const Color(0xFFF3F4FB);
+    final tileIdle = isDark ? p.chipSurface : const Color(0xFFF5F7FB);
+    final fieldBorder = isDark ? p.hairline : const Color(0xFFD7E3F0);
+    final fieldFill = isDark ? p.chipSurface : null;
+    final tealDeep =
+        isDark ? const Color(0xFF0F766E) : const Color(0xFF00695C);
+    final greenDeep =
+        isDark ? const Color(0xFF166534) : const Color(0xFF1B5E20);
 
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
@@ -10499,7 +10684,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final fieldStyle = GoogleFonts.kanit(
       fontSize: fieldSize,
       fontWeight: FontWeight.w600,
-      color: const Color(0xFF1D2A3A),
+      color: fieldInk,
     );
 
     final expenseOpts = List<String>.from(_appExpenseTypes);
@@ -10524,7 +10709,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     Widget dateRow() {
       final radius = phonePortrait ? 12.0 : 14.0;
       return Material(
-        color: const Color(0xFFF3F4FB),
+        color: dateBg,
         borderRadius: BorderRadius.circular(radius),
         child: InkWell(
           borderRadius: BorderRadius.circular(radius),
@@ -10552,14 +10737,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     style: GoogleFonts.kanit(
                       fontSize: phonePortrait ? 13.5 : 14.5,
                       fontWeight: FontWeight.w700,
-                      color: const Color(0xFF1D2736),
+                      color: bodyInk,
                     ),
                   ),
                 ),
                 Icon(
                   Icons.chevron_right_rounded,
                   size: phonePortrait ? 20 : 24,
-                  color: Colors.grey.shade600,
+                  color: mutedInk,
                 ),
               ],
             ),
@@ -10573,11 +10758,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return InputDecoration(
         labelText: label,
         isDense: phonePortrait,
+        filled: fieldFill != null,
+        fillColor: fieldFill,
         contentPadding: phonePortrait
             ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
             : null,
         labelStyle: GoogleFonts.kanit(
-          color: Colors.black54,
+          color: mutedInk,
           fontSize: phonePortrait ? 13 : null,
         ),
         prefixIcon: Icon(
@@ -10588,11 +10775,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(radius)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radius),
-          borderSide: const BorderSide(color: Color(0xFFD7E3F0)),
+          borderSide: BorderSide(color: fieldBorder),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radius),
-          borderSide: const BorderSide(color: indigo, width: 1.2),
+          borderSide: BorderSide(color: indigo, width: 1.2),
         ),
       );
     }
@@ -10607,7 +10794,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final sel = _iuEntryKind == kind;
       final radius = phonePortrait ? 12.0 : 14.0;
       return Material(
-        color: sel ? accent.withValues(alpha: 0.12) : const Color(0xFFF5F7FB),
+        color: sel
+            ? accent.withValues(alpha: isDark ? 0.22 : 0.12)
+            : tileIdle,
         borderRadius: BorderRadius.circular(radius),
         child: InkWell(
           borderRadius: BorderRadius.circular(radius),
@@ -10632,7 +10821,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         style: GoogleFonts.kanit(
                           fontSize: phonePortrait ? 14 : 15.5,
                           fontWeight: FontWeight.w800,
-                          color: const Color(0xFF1D2736),
+                          color: bodyInk,
                         ),
                       ),
                       Text(
@@ -10641,7 +10830,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.kanit(
                           fontSize: phonePortrait ? 11 : 12,
-                          color: Colors.black54,
+                          color: mutedInk,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -10690,7 +10879,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(
                 fontSize: phonePortrait ? 12.5 : 13.5,
-                color: Colors.black45,
+                color: faintInk,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -10700,7 +10889,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return [
         for (final t in list.take(14)) ...[
           _iuHistoryListRow(t),
-          const Divider(height: 1),
+          Divider(height: 1, color: p.hairline),
         ],
         if (list.length > 14)
           Padding(
@@ -10709,7 +10898,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               '… และอีก ${list.length - 14} รายการ',
               style: GoogleFonts.kanit(
                 fontSize: phonePortrait ? 11.5 : 12.5,
-                color: Colors.black45,
+                color: faintInk,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -10726,7 +10915,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           style: GoogleFonts.kanit(
             fontSize: phonePortrait ? 17 : 20,
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF1A237E),
+            color: titleInk,
           ),
         ),
         SizedBox(height: phonePortrait ? 4 : 8),
@@ -10738,7 +10927,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           style: GoogleFonts.kanit(
             fontSize: phonePortrait ? 11.5 : 12.5,
             height: 1.35,
-            color: Colors.black54,
+            color: mutedInk,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -10777,7 +10966,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             textAlign: TextAlign.center,
             style: GoogleFonts.kanit(
               fontSize: phonePortrait ? 13 : 14,
-              color: const Color(0xFF546E7A),
+              color: hintInk,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -10789,7 +10978,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             style: GoogleFonts.kanit(
               fontSize: sectionTitleSize,
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF1A237E),
+              color: titleInk,
             ),
           ),
           if (expenseOpts.isEmpty)
@@ -10804,7 +10993,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     : 'ยังไม่มีรายการประเภทในเว็บ (ตั้งค่า → สาธารณูปโภค → ประเภทค่าใช้จ่าย) — ใช้ «อื่นๆ» ด้านล่าง',
                 style: GoogleFonts.kanit(
                   fontSize: phonePortrait ? 11.5 : 12.5,
-                  color: const Color(0xFFB45309),
+                  color: warnInk,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -10816,18 +11005,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ? null
                 : expenseDropdownValue(),
             isExpanded: true,
+            dropdownColor: isDark ? p.card : null,
+            style: GoogleFonts.kanit(color: fieldInk),
             decoration: deco(
               phonePortrait ? 'ประเภท' : 'ประเภทค่าใช้จ่าย',
               Icons.category_outlined,
             ),
-            hint: Text('— เลือกประเภท —', style: GoogleFonts.kanit()),
+            hint: Text(
+              '— เลือกประเภท —',
+              style: GoogleFonts.kanit(color: mutedInk),
+            ),
             items: [
               ...expenseOpts.map(
                 (e) => DropdownMenuItem(
                   value: e,
                   child: Text(
                     e,
-                    style: GoogleFonts.kanit(),
+                    style: GoogleFonts.kanit(color: fieldInk),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -10836,7 +11030,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 value: _iuOtherSentinel,
                 child: Text(
                   phonePortrait ? 'อื่นๆ' : 'อื่นๆ (พิมพ์เอง)',
-                  style: GoogleFonts.kanit(),
+                  style: GoogleFonts.kanit(color: fieldInk),
                 ),
               ),
             ],
@@ -10873,12 +11067,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 gradient: LinearGradient(
                   colors: [
                     teal.withValues(alpha: 0.92),
-                    const Color(0xFF00695C),
+                    tealDeep,
                   ],
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: teal.withValues(alpha: 0.35),
+                    color: teal.withValues(alpha: isDark ? 0.28 : 0.35),
                     blurRadius: phonePortrait ? 12 : 16,
                     offset: const Offset(0, 5),
                   ),
@@ -10932,7 +11126,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             style: GoogleFonts.kanit(
               fontSize: sectionTitleSize,
               fontWeight: FontWeight.w800,
-              color: const Color(0xFF1A237E),
+              color: titleInk,
             ),
           ),
           if (_appIncomeTypes.isEmpty && incomeOpts.isEmpty)
@@ -10947,7 +11141,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     : 'ยังไม่มีประเภทรายรับในเว็บ — เลือก «อื่นๆ» แล้วพิมพ์ประเภท',
                 style: GoogleFonts.kanit(
                   fontSize: phonePortrait ? 11.5 : 12.5,
-                  color: const Color(0xFFB45309),
+                  color: warnInk,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -10957,10 +11151,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             // ignore: deprecated_member_use — ต้องสะท้อน state หลังบันทึก/โหลด
             value: incomeDropdownValue().isEmpty ? null : incomeDropdownValue(),
             isExpanded: true,
+            dropdownColor: isDark ? p.card : null,
+            style: GoogleFonts.kanit(color: fieldInk),
             decoration: deco('ประเภทรายรับ', Icons.label_outline_rounded),
             hint: Text(
               phonePortrait ? '— เลือกประเภท —' : '— เลือกหรือใช้จากประวัติ —',
-              style: GoogleFonts.kanit(),
+              style: GoogleFonts.kanit(color: mutedInk),
             ),
             items: [
               ...incomeOpts.map(
@@ -10968,7 +11164,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   value: e,
                   child: Text(
                     e,
-                    style: GoogleFonts.kanit(),
+                    style: GoogleFonts.kanit(color: fieldInk),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -10977,7 +11173,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 value: _iuOtherSentinel,
                 child: Text(
                   phonePortrait ? 'อื่นๆ' : 'อื่นๆ (พิมพ์เอง)',
-                  style: GoogleFonts.kanit(),
+                  style: GoogleFonts.kanit(color: fieldInk),
                 ),
               ),
             ],
@@ -11010,7 +11206,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   style: GoogleFonts.kanit(
                     fontSize: phonePortrait ? 12.5 : 13.5,
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFF37474F),
+                    color: statusLabelInk,
                   ),
                 ),
                 SizedBox(height: phonePortrait ? 6 : 8),
@@ -11132,12 +11328,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 gradient: LinearGradient(
                   colors: [
                     green.withValues(alpha: 0.95),
-                    const Color(0xFF1B5E20),
+                    greenDeep,
                   ],
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: green.withValues(alpha: 0.32),
+                    color: green.withValues(alpha: isDark ? 0.26 : 0.32),
                     blurRadius: phonePortrait ? 12 : 16,
                     offset: const Offset(0, 5),
                   ),
@@ -11190,7 +11386,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           style: GoogleFonts.kanit(
             fontSize: phonePortrait ? 14.5 : 16,
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF1A237E),
+            color: titleInk,
           ),
         ),
         SizedBox(height: phonePortrait ? 4 : 6),
@@ -12860,13 +13056,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildFuelVehicleRow({
-    final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     required _FuelVehicleDraft row,
     required String vehicleName,
     int? displayIndex,
   }) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final liters = double.tryParse(row.liters.trim()) ?? 0;
     final isFilled = liters > 0 && row.time.trim().isNotEmpty;
     final isSaved = row.txId != null && row.txId!.trim().isNotEmpty;
@@ -13365,13 +13560,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   /// แบนเนอร์คงเหลือ 2 ถัง — ใช้ร่วมทุกฟอร์มย่อยของน้ำมัน
   Widget _buildFuelStockBanner({
-    final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     double? pendingMainDelta,
     double? pendingReserveDelta,
     @Deprecated('Use pendingMainDelta') double? pendingDelta,
   }) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final mainDelta = pendingMainDelta ?? pendingDelta;
     final main = _fuelStock.mainDiesel;
     final reserve = _fuelStock.reserveDiesel;
@@ -13788,7 +13982,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 child: Material(
                   color: selected
                       ? (isDark ? const Color(0xFF1A3A24) : const Color(0xFFE8F5E9))
-                      : (isDark ? p.chipSurface : (isDark ? p.chipSurface : const Color(0xFFF8FAFD))),
+                      : (isDark ? p.chipSurface : const Color(0xFFF8FAFD)),
                   borderRadius: BorderRadius.circular(12),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(12),
@@ -13803,7 +13997,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         border: Border.all(
                           color: selected
                               ? const Color(0xFF2E7D32)
-                              : (isDark ? p.hairline : (isDark ? p.hairline : const Color(0xFFE1E8F0))),
+                              : (isDark ? p.hairline : const Color(0xFFE1E8F0)),
                           width: selected ? 1.6 : 1,
                         ),
                       ),
@@ -13850,12 +14044,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildFuelTankChoiceChips({
-    final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     required String selected,
     required ValueChanged<String> onChanged,
   }) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
@@ -13865,7 +14058,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         child: Material(
           color: on
               ? (isDark ? const Color(0xFF1A2A3A) : const Color(0xFFE3F2FD))
-              : (isDark ? p.chipSurface : (isDark ? p.chipSurface : const Color(0xFFF8FAFD))),
+              : (isDark ? p.chipSurface : const Color(0xFFF8FAFD)),
           borderRadius: BorderRadius.circular(12),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
@@ -13880,7 +14073,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 border: Border.all(
                   color: on
                       ? (isDark ? const Color(0xFF60A5FA) : const Color(0xFF1565C0))
-                      : (isDark ? p.hairline : (isDark ? p.hairline : const Color(0xFFE1E8F0))),
+                      : (isDark ? p.hairline : const Color(0xFFE1E8F0)),
                   width: on ? 1.6 : 1,
                 ),
               ),
@@ -13953,7 +14146,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return Material(
         color: isSelected
             ? (isDark ? const Color(0xFF3A2A14) : const Color(0xFFFFF3E0))
-            : (isDark ? p.chipSurface : (isDark ? p.chipSurface : const Color(0xFFF8FAFD))),
+            : (isDark ? p.chipSurface : const Color(0xFFF8FAFD)),
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -13970,7 +14163,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               border: Border.all(
                 color: isSelected
                     ? const Color(0xFFEF6C00)
-                    : (isDark ? p.hairline : (isDark ? p.hairline : const Color(0xFFE1E8F0))),
+                    : (isDark ? p.hairline : const Color(0xFFE1E8F0)),
                 width: isSelected ? 1.6 : 1,
               ),
             ),
@@ -13981,7 +14174,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   size: 20,
                   color: isSelected
                       ? const Color(0xFFEF6C00)
-                      : const Color(0xFF90A4AE),
+                      : (isDark ? p.inkMuted : const Color(0xFF90A4AE)),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -14224,7 +14417,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return Material(
         color: isSelected
             ? (isDark ? const Color(0xFF2E1A3A) : const Color(0xFFF3E5F5))
-            : (isDark ? p.chipSurface : (isDark ? p.chipSurface : const Color(0xFFF8FAFD))),
+            : (isDark ? p.chipSurface : const Color(0xFFF8FAFD)),
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -14259,7 +14452,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               border: Border.all(
                 color: isSelected
                     ? const Color(0xFF6A1B9A)
-                    : (isDark ? p.hairline : (isDark ? p.hairline : const Color(0xFFE1E8F0))),
+                    : (isDark ? p.hairline : const Color(0xFFE1E8F0)),
                 width: isSelected ? 1.6 : 1,
               ),
             ),
@@ -14270,7 +14463,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   size: 20,
                   color: isSelected
                       ? const Color(0xFF6A1B9A)
-                      : const Color(0xFF90A4AE),
+                      : (isDark ? p.inkMuted : const Color(0xFF90A4AE)),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -15150,7 +15343,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             _isFuelMode ||
             _isLaborLeaveMode ||
             _isLaborAdvanceMode ||
-            _isIncomeUtilitiesEntryMode) &&
+            _isIncomeUtilitiesEntryMode ||
+            _isOtMode) &&
         (AppThemeScope.maybeOf(context)?.isDark ??
             Theme.of(context).brightness == Brightness.dark);
     final shellP = shellDark ? DailyPalette.of(context) : null;
@@ -15343,6 +15537,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         size.shortestSide < 600 && size.height >= size.width;
     final sectionGap = phonePortrait ? 8.0 : 12.0;
     final labelSize = phonePortrait ? 12.5 : 13.0;
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
+    final titleTeal = isDark ? p.brandDateInk : const Color(0xFF00695C);
+    final tealBorder = isDark ? p.brandBorder : const Color(0xFF80CBC4);
+    final tealFill = isDark ? p.brandSurface : const Color(0xFFE0F2F1);
     final segmentStyle = ButtonStyle(
       visualDensity: phonePortrait ? VisualDensity.compact : VisualDensity.standard,
       tapTargetSize: phonePortrait
@@ -15361,7 +15561,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           style: GoogleFonts.kanit(
             fontWeight: FontWeight.w700,
             fontSize: labelSize,
-            color: const Color(0xFF314C6D),
+            color: isDark ? p.inkSubtle : const Color(0xFF314C6D),
           ),
         );
 
@@ -15370,12 +15570,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       curve: Curves.easeOutCubic,
       padding: EdgeInsets.all(phonePortrait ? 12 : 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? p.card : Colors.white,
         borderRadius: BorderRadius.circular(phonePortrait ? 16 : 18),
-        border: Border.all(color: const Color(0xFFE3ECF7)),
+        border: Border.all(color: isDark ? p.hairline : const Color(0xFFE3ECF7)),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF00897B).withValues(alpha: 0.07),
+            color: (isDark ? p.brand : const Color(0xFF00897B))
+                .withValues(alpha: isDark ? 0.12 : 0.07),
             blurRadius: phonePortrait ? 8 : 12,
             offset: const Offset(0, 4),
           ),
@@ -15389,7 +15590,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             style: GoogleFonts.kanit(
               fontSize: phonePortrait ? 18 : 22,
               fontWeight: FontWeight.w700,
-              color: const Color(0xFF00695C),
+              color: titleTeal,
               height: 1.15,
             ),
           ),
@@ -15401,16 +15602,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 vertical: phonePortrait ? 6 : 8,
               ),
               decoration: BoxDecoration(
-                color: const Color(0xFFE3F2FD),
+                color: isDark ? p.brandSurface : const Color(0xFFE3F2FD),
                 borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
-                border: Border.all(color: const Color(0xFF90CAF9)),
+                border: Border.all(
+                  color: isDark ? p.brandBorder : const Color(0xFF90CAF9),
+                ),
               ),
               child: Row(
                 children: [
                   Icon(
                     Icons.edit_note_rounded,
                     size: phonePortrait ? 18 : 20,
-                    color: const Color(0xFF1565C0),
+                    color: isDark ? p.brand : const Color(0xFF1565C0),
                   ),
                   SizedBox(width: phonePortrait ? 6 : 8),
                   Expanded(
@@ -15421,7 +15624,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         fontSize: phonePortrait ? 12 : 12.5,
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFF0D47A1),
+                        color: isDark ? p.brandDateInk : const Color(0xFF0D47A1),
                         height: 1.25,
                       ),
                     ),
@@ -15457,7 +15660,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         fontWeight: FontWeight.w700,
                         fontSize: phonePortrait ? 13 : 14,
-                        color: const Color(0xFF1565C0),
+                        color: isDark ? p.brand : const Color(0xFF1565C0),
                       ),
                     ),
                   ),
@@ -15471,7 +15674,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               'รูปแบบสอดคล้องเว็บแอพ: ค่าแรง/ลา → ลา',
               style: GoogleFonts.kanit(
                 fontSize: 13,
-                color: const Color(0xFF5B6D83),
+                color: isDark ? p.inkMuted : const Color(0xFF5B6D83),
               ),
             ),
           ],
@@ -15573,8 +15776,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               padding: EdgeInsets.symmetric(
                 horizontal: phonePortrait ? 12 : 16,
               ),
-              foregroundColor: const Color(0xFF00695C),
-              side: const BorderSide(color: Color(0xFF80CBC4), width: 1.5),
+              foregroundColor: titleTeal,
+              side: BorderSide(color: tealBorder, width: 1.5),
             ),
           ),
           SizedBox(height: phonePortrait ? 6 : 8),
@@ -15584,16 +15787,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               vertical: phonePortrait ? 8 : 10,
             ),
             decoration: BoxDecoration(
-              color: const Color(0xFFE0F2F1),
+              color: tealFill,
               borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
-              border: Border.all(color: const Color(0xFF80CBC4)),
+              border: Border.all(color: tealBorder),
             ),
             child: Row(
               children: [
                 Icon(
                   Icons.event_available_rounded,
                   size: phonePortrait ? 18 : 20,
-                  color: const Color(0xFF00695C),
+                  color: titleTeal,
                 ),
                 SizedBox(width: phonePortrait ? 6 : 8),
                 Expanded(
@@ -15608,7 +15811,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     style: GoogleFonts.kanit(
                       fontSize: phonePortrait ? 14.5 : 16,
                       fontWeight: FontWeight.w800,
-                      color: const Color(0xFF00695C),
+                      color: titleTeal,
                     ),
                   ),
                 ),
@@ -15625,7 +15828,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 : 'แสดงเฉพาะตำแหน่ง: พนักงานท่าทราย, คนขับรถแม็คโคร',
             style: GoogleFonts.kanit(
               fontSize: phonePortrait ? 11.5 : 12,
-              color: const Color(0xFF64748B),
+              color: isDark ? p.inkMuted : const Color(0xFF64748B),
               height: 1.3,
             ),
           ),
@@ -15643,7 +15846,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w600,
                       fontSize: phonePortrait ? 13 : 14,
-                      color: const Color(0xFF8A6A2C),
+                      color: isDark
+                          ? const Color(0xFFFBBF24)
+                          : const Color(0xFF8A6A2C),
                     ),
                   ),
                 )
@@ -15673,20 +15878,30 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             style: GoogleFonts.kanit(
                               fontSize: phonePortrait ? 12.5 : 13,
                               color: alreadyOnLeave && !selected
-                                  ? const Color(0xFF9A3412)
-                                  : null,
+                                  ? (isDark
+                                      ? const Color(0xFFFDBA74)
+                                      : const Color(0xFF9A3412))
+                                  : (isDark ? p.ink : null),
                             ),
                           ),
                           selected: selected,
                           showCheckmark: !phonePortrait,
-                          selectedColor:
-                              const Color(0xFF0D9488).withValues(alpha: 0.18),
+                          selectedColor: (isDark ? p.brand : const Color(0xFF0D9488))
+                              .withValues(alpha: isDark ? 0.28 : 0.18),
                           backgroundColor: alreadyOnLeave && !selected
-                              ? const Color(0xFFFFF7ED)
-                              : null,
+                              ? (isDark
+                                  ? const Color(0xFF3A2416)
+                                  : const Color(0xFFFFF7ED))
+                              : (isDark ? p.chipSurface : null),
                           side: alreadyOnLeave && !selected
-                              ? const BorderSide(color: Color(0xFFFDBA74))
-                              : null,
+                              ? BorderSide(
+                                  color: isDark
+                                      ? const Color(0xFFB45309)
+                                      : const Color(0xFFFDBA74),
+                                )
+                              : (isDark
+                                  ? BorderSide(color: p.hairline)
+                                  : null),
                           onSelected: (_) {
                             if (alreadyOnLeave && !selected) {
                               final match = _leaveRecordsCoveringSelectedRange(
@@ -15751,9 +15966,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               padding: EdgeInsets.only(top: phonePortrait ? 8 : 12),
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF8EC),
+                  color: isDark ? p.chipSurface : const Color(0xFFFFF8EC),
                   borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
-                  border: Border.all(color: const Color(0xFFF2D39D)),
+                  border: Border.all(
+                    color: isDark ? p.hairline : const Color(0xFFF2D39D),
+                  ),
                 ),
                 child: Padding(
                   padding: EdgeInsets.all(phonePortrait ? 8 : 10),
@@ -15767,7 +15984,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w700,
                       fontSize: phonePortrait ? 12.5 : 14,
-                      color: const Color(0xFF7A6A4A),
+                      color: isDark ? p.inkSubtle : const Color(0xFF7A6A4A),
                       height: 1.3,
                     ),
                   ),
@@ -15795,8 +16012,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 ),
               ),
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF00897B),
-                foregroundColor: Colors.white,
+                backgroundColor: isDark ? p.brand : const Color(0xFF00897B),
+                foregroundColor:
+                    isDark ? const Color(0xFF0B1219) : Colors.white,
                 minimumSize: Size.fromHeight(phonePortrait ? 46 : 48),
               ),
             ),
@@ -18138,14 +18356,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
+    final p = DailyPalette.of(context);
+    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
+        Theme.of(context).brightness == Brightness.dark;
     final list = _employeesForOtPicker();
     if (list.isEmpty) {
       return Container(
         padding: EdgeInsets.all(phonePortrait ? 8 : 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF5E8),
+          color: isDark ? const Color(0xFF2A2418) : const Color(0xFFFFF5E8),
           borderRadius: BorderRadius.circular(phonePortrait ? 8 : 10),
-          border: Border.all(color: const Color(0xFFF3DEB8)),
+          border: Border.all(
+            color: isDark ? const Color(0xFF5C4A28) : const Color(0xFFF3DEB8),
+          ),
         ),
         child: Text(
           phonePortrait
@@ -18154,11 +18377,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           style: GoogleFonts.kanit(
             fontWeight: FontWeight.w700,
             fontSize: phonePortrait ? 12.5 : 14,
-            color: const Color(0xFF8A6A2C),
+            color: isDark ? const Color(0xFFE8C27A) : const Color(0xFF8A6A2C),
           ),
         ),
       );
     }
+    final chipPrimary = isDark ? p.brand : const Color(0xFF0F9EA8);
     return Wrap(
       spacing: phonePortrait ? 6 : 8,
       runSpacing: phonePortrait ? 6 : 8,
@@ -18169,9 +18393,21 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         return FilterChip(
           label: Text(
             name,
-            style: GoogleFonts.kanit(fontSize: phonePortrait ? 12 : 13),
+            style: GoogleFonts.kanit(
+              fontSize: phonePortrait ? 12 : 13,
+              color: p.ink,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
           ),
           selected: selected,
+          selectedColor: chipPrimary.withValues(alpha: isDark ? 0.28 : 0.18),
+          backgroundColor: isDark ? p.chipSurface : null,
+          checkmarkColor: chipPrimary,
+          side: BorderSide(
+            color: selected
+                ? chipPrimary.withValues(alpha: isDark ? 0.7 : 0.55)
+                : p.hairline,
+          ),
           visualDensity:
               phonePortrait ? VisualDensity.compact : VisualDensity.standard,
           materialTapTargetSize: phonePortrait
@@ -18202,24 +18438,49 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
+    final p = DailyPalette.of(context);
+    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
+        Theme.of(context).brightness == Brightness.dark;
     final g = _activeOtGroup;
     final hours = double.tryParse(g.hoursController.text.trim()) ?? 0;
     final empCount = g.employeeIds.length;
     final hasValidPreview = empCount > 0 && hours > 0;
     final nextGroupNum = _otSavedGroupCountToday + 1;
     final savedToday = _otSavedGroupCountToday;
+    final cardBg = isDark ? p.card : Colors.white;
+    final cardBorder = isDark ? p.hairline : const Color(0xFFE3ECF7);
+    final panelBg = isDark ? p.chipSurface : const Color(0xFFF9FCFF);
+    final panelBorder = isDark ? p.hairline : const Color(0xFFDCE8F5);
+    final titleInk = isDark ? p.brandDateInk : const Color(0xFF205A9A);
+    final labelInk = isDark ? p.inkSubtle : const Color(0xFF314C6D);
+    final mutedInk = p.inkMuted;
+    final fieldInk = isDark ? p.ink : const Color(0xFF1D2A3A);
+    final savedBg = isDark ? const Color(0xFF163226) : const Color(0xFFE8F5E9);
+    final savedBorder =
+        isDark ? const Color(0xFF2F6B45) : const Color(0xFFA5D6A7);
+    final savedInk =
+        isDark ? const Color(0xFF86EFAC) : const Color(0xFF2E7D32);
+    final previewBg =
+        isDark ? const Color(0xFF2A2418) : const Color(0xFFFFF7E8);
+    final previewBorder = hasValidPreview
+        ? (isDark ? const Color(0xFF8A6A2C) : const Color(0xFFF2D39D))
+        : (isDark ? const Color(0xFF5C4A28) : const Color(0xFFF3E7CC));
+    final previewEmptyInk =
+        isDark ? const Color(0xFFE8C27A) : const Color(0xFF7A6A4A);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       padding: EdgeInsets.all(phonePortrait ? 12 : 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(phonePortrait ? 16 : 18),
-        border: Border.all(color: const Color(0xFFE3ECF7)),
+        border: Border.all(color: cardBorder),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F9EA8).withValues(alpha: 0.05),
+            color: isDark
+                ? p.shadowCard
+                : const Color(0xFF0F9EA8).withValues(alpha: 0.05),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -18231,9 +18492,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           if (savedToday > 0) ...[
             DecoratedBox(
               decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
+                color: savedBg,
                 borderRadius: BorderRadius.circular(phonePortrait ? 8 : 10),
-                border: Border.all(color: const Color(0xFFA5D6A7)),
+                border: Border.all(color: savedBorder),
               ),
               child: Padding(
                 padding: EdgeInsets.symmetric(
@@ -18247,7 +18508,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   style: GoogleFonts.kanit(
                     fontSize: phonePortrait ? 12 : 12.5,
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFF2E7D32),
+                    color: savedInk,
                   ),
                 ),
               ),
@@ -18259,9 +18520,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           Container(
             padding: EdgeInsets.all(phonePortrait ? 10 : 12),
             decoration: BoxDecoration(
-              color: const Color(0xFFF9FCFF),
+              color: panelBg,
               borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
-              border: Border.all(color: const Color(0xFFDCE8F5)),
+              border: Border.all(color: panelBorder),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -18271,7 +18532,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
                     fontSize: phonePortrait ? 15 : 16,
-                    color: const Color(0xFF205A9A),
+                    color: titleInk,
                   ),
                 ),
                 SizedBox(height: phonePortrait ? 4 : 6),
@@ -18280,7 +18541,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w700,
                     fontSize: phonePortrait ? 12.5 : 13,
-                    color: const Color(0xFF314C6D),
+                    color: labelInk,
                   ),
                 ),
                 SizedBox(height: phonePortrait ? 2 : 4),
@@ -18290,7 +18551,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       : 'ไม่แสดงเมื่อทุกตำแหน่งเป็นคนขับรถ / เฝ้ากลางคืน / รับจ้างรายวัน — หลายตำแหน่งยังแสดงถ้ามีตำแหน่งอื่น',
                   style: GoogleFonts.kanit(
                     fontSize: phonePortrait ? 11.5 : 12,
-                    color: const Color(0xFF64748B),
+                    color: mutedInk,
                     height: 1.3,
                   ),
                 ),
@@ -18312,7 +18573,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     maxDecimalPlaces: 2,
                   ),
                   style: GoogleFonts.kanit(
-                    color: const Color(0xFF1D2A3A),
+                    color: fieldInk,
                     fontSize: phonePortrait ? 18 : 22,
                     fontWeight: FontWeight.w700,
                   ),
@@ -18351,8 +18612,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         s,
                         style: GoogleFonts.kanit(
                           fontSize: phonePortrait ? 11.5 : 12,
+                          color: p.ink,
                         ),
                       ),
+                      backgroundColor: isDark ? p.chipSurface : null,
+                      side: BorderSide(color: p.hairline),
                       visualDensity: phonePortrait
                           ? VisualDensity.compact
                           : VisualDensity.standard,
@@ -18372,13 +18636,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             curve: Curves.easeOutCubic,
             padding: EdgeInsets.all(phonePortrait ? 8 : 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF7E8),
+              color: previewBg,
               borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
-              border: Border.all(
-                color: hasValidPreview
-                    ? const Color(0xFFF2D39D)
-                    : const Color(0xFFF3E7CC),
-              ),
+              border: Border.all(color: previewBorder),
             ),
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
@@ -18392,7 +18652,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         fontSize: phonePortrait ? 12.5 : 14,
                         fontWeight: FontWeight.w600,
-                        color: const Color(0xFF7A6A4A),
+                        color: previewEmptyInk,
                       ),
                     )
                   : Text(
@@ -18402,6 +18662,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         fontSize: phonePortrait ? 13 : 14,
                         fontWeight: FontWeight.w700,
+                        color: fieldInk,
                       ),
                     ),
             ),
