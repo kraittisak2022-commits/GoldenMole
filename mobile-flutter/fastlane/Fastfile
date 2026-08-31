@@ -1,0 +1,77 @@
+# frozen_string_literal: true
+
+default_platform(:android)
+
+FLUTTER_ROOT = File.expand_path("..", __dir__)
+AAB_PATH = File.join(FLUTTER_ROOT, "build/app/outputs/bundle/release/app-release.aab")
+METADATA_ROOT = File.join(__dir__, "metadata/android")
+
+def play_json_key_path
+  path = ENV["PLAY_STORE_JSON_KEY_PATH"].to_s.strip
+  UI.user_error!("Set PLAY_STORE_JSON_KEY_PATH to your Google Play service account JSON file.") if path.empty?
+  UI.user_error!("Play JSON key not found: #{path}") unless File.exist?(path)
+  path
+end
+
+def read_pubspec_version
+  pubspec = File.read(File.join(FLUTTER_ROOT, "pubspec.yaml"))
+  match = pubspec.match(/^version:\s*([\d.]+)\+(\d+)/)
+  UI.user_error!("Could not parse version from pubspec.yaml") unless match
+  [match[1], match[2].to_i]
+end
+
+def default_release_name(version_name)
+  ENV["PLAY_RELEASE_NAME"].to_s.strip.empty? ? "#{version_name} — GoldenMole for User" : ENV["PLAY_RELEASE_NAME"].strip
+end
+
+platform :android do
+  desc "Build signed release App Bundle (flutter build appbundle --release)"
+  lane :build_aab do
+    Dir.chdir(FLUTTER_ROOT) do
+      sh("flutter", "build", "appbundle", "--release")
+    end
+    UI.user_error!("AAB not found at #{AAB_PATH}") unless File.exist?(AAB_PATH)
+    UI.success("AAB ready: #{AAB_PATH}")
+  end
+
+  desc "Upload existing AAB to Play closed testing track with Thai release notes"
+  lane :closed_beta do
+    version_name, version_code = read_pubspec_version
+    track = ENV.fetch("PLAY_STORE_TRACK", "alpha")
+    release_name = default_release_name(version_name)
+    changelog_path = File.join(METADATA_ROOT, "th-TH/changelogs/#{version_code}.txt")
+
+    unless File.exist?(changelog_path)
+      UI.user_error!(
+        "Missing changelog #{changelog_path}. " \
+        "Run scripts/release-android-closed.ps1 or create the file before upload."
+      )
+    end
+
+    UI.message("Uploading #{version_name} (#{version_code}) to track '#{track}'")
+    UI.message("Release name: #{release_name}")
+
+    upload_to_play_store(
+      json_key: play_json_key_path,
+      package_name: "com.goldenmole.app",
+      track: track,
+      aab: AAB_PATH,
+      release_status: "completed",
+      release_name: release_name,
+      metadata_path: METADATA_ROOT,
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: false,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+
+    UI.success("Uploaded to Play closed testing track '#{track}'. Processing may take 15–30 minutes.")
+  end
+
+  desc "Build AAB then upload to Play closed testing"
+  lane :release_closed do
+    build_aab unless ENV["SKIP_FLUTTER_BUILD"] == "1"
+    closed_beta
+  end
+end

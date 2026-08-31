@@ -1,0 +1,4 @@
+source "https://rubygems.org"
+
+# Pin Fastlane for reproducible Play uploads on local Windows/macOS.
+gem "fastlane", "~> 2.227"

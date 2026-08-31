@@ -48,3 +48,12 @@ app.*.map.json
 
 # Local runtime environment values (contains credentials)
 .env
+.env.play
+
+# Play Store API keys (never commit)
+**/play-store*.json
+**/goldenmole-play*.json
+
+# Bundler / Ruby
+/vendor/bundle
+/.bundle
