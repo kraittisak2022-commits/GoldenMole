@@ -9,6 +9,7 @@ import '../models/saved_login_profile.dart';
 import '../services/auth_service.dart';
 import '../services/session_service.dart';
 import '../theme/daily_palette.dart';
+import '../utils/device_perf.dart';
 import '../utils/mobile_error_screen_tracker.dart';
 import '../utils/mobile_screen_ids.dart';
 import '../widgets/app_logo.dart';
@@ -59,6 +60,61 @@ class _LoginScreenState extends State<LoginScreen>
   List<SavedLoginProfile> _savedProfiles = const [];
   late AnimationController _entranceController;
   late Animation<double> _logoEntranceScale;
+  late bool _reduceMotion;
+  late bool _liteAnim;
+
+  double _segmentT(double start, double end) {
+    final span = (end - start).clamp(0.01, 1.0);
+    return Curves.easeOutCubic.transform(
+      ((_entranceController.value - start) / span).clamp(0.0, 1.0),
+    );
+  }
+
+  Widget _entranceReveal({
+    required Widget child,
+    required double start,
+    required double end,
+    double slideY = 14,
+    double scaleBegin = 1.0,
+  }) {
+    if (_reduceMotion) return child;
+    return AnimatedBuilder(
+      animation: _entranceController,
+      builder: (context, _) {
+        final t = _segmentT(start, end);
+        final scale = scaleBegin + (1 - scaleBegin) * t;
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, (1 - t) * slideY),
+            child: Transform.scale(scale: scale, child: child),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _entranceSlideX({
+    required Widget child,
+    required double start,
+    required double end,
+    required double fromX,
+  }) {
+    if (_reduceMotion) return child;
+    return AnimatedBuilder(
+      animation: _entranceController,
+      builder: (context, _) {
+        final t = _segmentT(start, end);
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(fromX * (1 - t), 0),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
 
   @override
   void initState() {
@@ -68,12 +124,26 @@ class _LoginScreenState extends State<LoginScreen>
       pageId: MobileScreenIds.pageLogin,
       stepId: MobileScreenIds.stepLoginForm,
     );
+    _reduceMotion = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
+    _liteAnim = _reduceMotion || DevicePerf.isConstrainedDevice;
+
+    final durationMs = _reduceMotion
+        ? 320
+        : (_liteAnim ? 820 : 1280);
+
     _entranceController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 720),
+      duration: Duration(milliseconds: durationMs),
     )..forward();
-    _logoEntranceScale = Tween<double>(begin: 0.92, end: 1.0).animate(
-      CurvedAnimation(parent: _entranceController, curve: Curves.easeOutCubic),
+    _logoEntranceScale = Tween<double>(begin: 0.86, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _entranceController,
+        curve: const Interval(0.0, 0.48, curve: Curves.easeOutCubic),
+      ),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadLoginPrefs());
   }
@@ -358,55 +428,92 @@ class _LoginScreenState extends State<LoginScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  ScaleTransition(
-                    scale: _logoEntranceScale,
-                    child: Image.asset(
-                      'assets/branding/splash_logo.png',
-                      width: 168,
-                      height: 168,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
+                  _entranceReveal(
+                    start: 0.0,
+                    end: _liteAnim ? 0.52 : 0.46,
+                    slideY: 10,
+                    scaleBegin: 0.9,
+                    child: ScaleTransition(
+                      scale: _logoEntranceScale,
+                      child: Image.asset(
+                        'assets/branding/splash_logo.png',
+                        width: 168,
+                        height: 168,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 28),
-                  Text(
-                    'ยินดีต้อนรับ',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.kanit(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      height: 1.12,
-                      color: Colors.white,
-                      letterSpacing: 0.3,
+                  _entranceReveal(
+                    start: _liteAnim ? 0.14 : 0.18,
+                    end: _liteAnim ? 0.58 : 0.54,
+                    slideY: 12,
+                    child: Text(
+                      'ยินดีต้อนรับ',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.kanit(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                        height: 1.12,
+                        color: Colors.white,
+                        letterSpacing: 0.3,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Text(
-                    'เข้าสู่ระบบเพื่อบันทึกงานประจำวัน',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.kanit(
-                      fontSize: 15,
-                      height: 1.45,
-                      color: Colors.white.withValues(alpha: 0.78),
+                  _entranceReveal(
+                    start: _liteAnim ? 0.22 : 0.28,
+                    end: _liteAnim ? 0.64 : 0.62,
+                    slideY: 10,
+                    child: Text(
+                      'เข้าสู่ระบบเพื่อบันทึกงานประจำวัน',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.kanit(
+                        fontSize: 15,
+                        height: 1.45,
+                        color: Colors.white.withValues(alpha: 0.78),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 18),
-                  Container(
-                    width: 48,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(99),
-                      gradient: LinearGradient(colors: goldLine),
+                  _entranceReveal(
+                    start: _liteAnim ? 0.3 : 0.36,
+                    end: _liteAnim ? 0.72 : 0.7,
+                    slideY: 6,
+                    child: AnimatedBuilder(
+                      animation: _entranceController,
+                      builder: (context, _) {
+                        final t = _segmentT(
+                          _liteAnim ? 0.3 : 0.36,
+                          _liteAnim ? 0.72 : 0.7,
+                        );
+                        return Align(
+                          child: Container(
+                            width: 48 * t,
+                            height: 3,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(99),
+                              gradient: LinearGradient(colors: goldLine),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(height: 22),
-                  Text(
-                    'GOLDEN MOLE',
-                    style: GoogleFonts.kanit(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 2.4,
-                      color: _gold.withValues(alpha: 0.85),
+                  _entranceReveal(
+                    start: _liteAnim ? 0.38 : 0.44,
+                    end: _liteAnim ? 0.82 : 0.78,
+                    slideY: 8,
+                    child: Text(
+                      'GOLDEN MOLE',
+                      style: GoogleFonts.kanit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 2.4,
+                        color: _gold.withValues(alpha: 0.85),
+                      ),
                     ),
                   ),
                 ],
@@ -453,6 +560,39 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
+  Widget _animatedFormContent({required Widget formSection}) {
+    final showProfilePicker =
+        _prefsLoaded && _savedProfiles.isNotEmpty && !_showForm;
+    final modeKey = !_prefsLoaded
+        ? 'loading'
+        : showProfilePicker
+            ? 'profiles'
+            : 'form';
+
+    return AnimatedSwitcher(
+      duration: Duration(milliseconds: _liteAnim ? 220 : 340),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final slide = Tween<Offset>(
+          begin: const Offset(0, 0.035),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        ));
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(position: slide, child: child),
+        );
+      },
+      child: KeyedSubtree(
+        key: ValueKey<String>(modeKey),
+        child: formSection,
+      ),
+    );
+  }
+
   Widget _buildLoginBody({
     required BoxConstraints constraints,
     required bool isDark,
@@ -491,6 +631,8 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
     );
 
+    final animatedForm = _animatedFormContent(formSection: formSection);
+
     if (splitLandscape) {
       final showProfilePicker =
           _prefsLoaded && _savedProfiles.isNotEmpty && !_showForm;
@@ -504,79 +646,106 @@ class _LoginScreenState extends State<LoginScreen>
         children: [
           Expanded(
             flex: 46,
-            child: _buildLandscapeBrandPanel(isDark: isDark),
+            child: _entranceSlideX(
+              start: 0.0,
+              end: _liteAnim ? 0.62 : 0.72,
+              fromX: -28,
+              child: _buildLandscapeBrandPanel(isDark: isDark),
+            ),
           ),
           Expanded(
             flex: 54,
-            child: ColoredBox(
-              color: isDark ? const Color(0xFF0A0A0A) : DailyPalette.surface,
-              child: SafeArea(
-                left: false,
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, formConstraints) {
-                          return SingleChildScrollView(
-                            keyboardDismissBehavior:
-                                ScrollViewKeyboardDismissBehavior.onDrag,
-                            padding: EdgeInsets.fromLTRB(
-                              28,
-                              20,
-                              28,
-                              12 + bottomInset.clamp(0, 120),
-                            ),
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                minHeight: formConstraints.maxHeight - 24,
+            child: _entranceSlideX(
+              start: _liteAnim ? 0.12 : 0.16,
+              end: _liteAnim ? 0.78 : 0.88,
+              fromX: 32,
+              child: ColoredBox(
+                color: isDark ? const Color(0xFF0A0A0A) : DailyPalette.surface,
+                child: SafeArea(
+                  left: false,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, formConstraints) {
+                            return SingleChildScrollView(
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              padding: EdgeInsets.fromLTRB(
+                                28,
+                                20,
+                                28,
+                                12 + bottomInset.clamp(0, 120),
                               ),
-                              child: Center(
-                                child: ConstrainedBox(
-                                  constraints:
-                                      const BoxConstraints(maxWidth: 400),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      Text(
-                                        panelTitle,
-                                        style: GoogleFonts.kanit(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.w800,
-                                          color: textPrimary,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minHeight: formConstraints.maxHeight - 24,
+                                ),
+                                child: Center(
+                                  child: ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 400),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        _entranceReveal(
+                                          start: _liteAnim ? 0.22 : 0.28,
+                                          end: _liteAnim ? 0.68 : 0.74,
+                                          slideY: 10,
+                                          child: Text(
+                                            panelTitle,
+                                            style: GoogleFonts.kanit(
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800,
+                                              color: textPrimary,
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        panelSubtitle,
-                                        style: GoogleFonts.kanit(
-                                          fontSize: 14,
-                                          color: textSecondary,
+                                        const SizedBox(height: 6),
+                                        _entranceReveal(
+                                          start: _liteAnim ? 0.28 : 0.34,
+                                          end: _liteAnim ? 0.72 : 0.78,
+                                          slideY: 8,
+                                          child: Text(
+                                            panelSubtitle,
+                                            style: GoogleFonts.kanit(
+                                              fontSize: 14,
+                                              color: textSecondary,
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 22),
-                                      _buildFormSurface(
-                                        isDark: isDark,
-                                        child: formSection,
-                                      ),
-                                    ],
+                                        const SizedBox(height: 22),
+                                        _entranceReveal(
+                                          start: _liteAnim ? 0.34 : 0.4,
+                                          end: _liteAnim ? 0.86 : 0.92,
+                                          slideY: 18,
+                                          scaleBegin: 0.97,
+                                          child: _buildFormSurface(
+                                            isDark: isDark,
+                                            child: animatedForm,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: AppVersionLabel(
-                        color: textSecondary.withValues(alpha: 0.7),
-                        fontSize: 11,
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: AppVersionLabel(
+                          color: textSecondary.withValues(alpha: 0.7),
+                          fontSize: 11,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -611,7 +780,16 @@ class _LoginScreenState extends State<LoginScreen>
                   textSecondary: textSecondary,
                 ),
                 const SizedBox(height: 28),
-                _buildFormSurface(isDark: isDark, child: formSection),
+                _entranceReveal(
+                  start: _liteAnim ? 0.34 : 0.4,
+                  end: _liteAnim ? 0.86 : 0.92,
+                  slideY: 20,
+                  scaleBegin: 0.97,
+                  child: _buildFormSurface(
+                    isDark: isDark,
+                    child: animatedForm,
+                  ),
+                ),
                 const Spacer(flex: 2),
               ],
             ),
@@ -648,23 +826,17 @@ class _LoginScreenState extends State<LoginScreen>
       backgroundColor: isDark ? const Color(0xFF0A0A0A) : DailyPalette.surface,
       resizeToAvoidBottomInset: true,
       body: splitLandscape
-          ? FadeTransition(
-              opacity: CurvedAnimation(
-                parent: _entranceController,
-                curve: const Interval(0.05, 1.0, curve: Curves.easeOutCubic),
-              ),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return _buildLoginBody(
-                    constraints: constraints,
-                    isDark: isDark,
-                    textPrimary: textPrimary,
-                    textSecondary: textSecondary,
-                    bottomInset: bottomInset,
-                    splitLandscape: true,
-                  );
-                },
-              ),
+          ? LayoutBuilder(
+              builder: (context, constraints) {
+                return _buildLoginBody(
+                  constraints: constraints,
+                  isDark: isDark,
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
+                  bottomInset: bottomInset,
+                  splitLandscape: true,
+                );
+              },
             )
           : DecoratedBox(
               decoration: BoxDecoration(
@@ -685,37 +857,35 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
               ),
               child: SafeArea(
-                child: FadeTransition(
-                  opacity: CurvedAnimation(
-                    parent: _entranceController,
-                    curve:
-                        const Interval(0.05, 1.0, curve: Curves.easeOutCubic),
-                  ),
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            return _buildLoginBody(
-                              constraints: constraints,
-                              isDark: isDark,
-                              textPrimary: textPrimary,
-                              textSecondary: textSecondary,
-                              bottomInset: bottomInset,
-                              splitLandscape: false,
-                            );
-                          },
-                        ),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          return _buildLoginBody(
+                            constraints: constraints,
+                            isDark: isDark,
+                            textPrimary: textPrimary,
+                            textSecondary: textSecondary,
+                            bottomInset: bottomInset,
+                            splitLandscape: false,
+                          );
+                        },
                       ),
-                      Padding(
+                    ),
+                    _entranceReveal(
+                      start: _liteAnim ? 0.5 : 0.58,
+                      end: 1.0,
+                      slideY: 6,
+                      child: Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: AppVersionLabel(
                           color: textSecondary.withValues(alpha: 0.7),
                           fontSize: 11,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -727,45 +897,75 @@ class _LoginScreenState extends State<LoginScreen>
     required Color textPrimary,
     required Color textSecondary,
   }) {
+    final goldLine = isDark
+        ? const [_goldDark, _gold]
+        : [DailyPalette.brand, DailyPalette.brandDeep];
+
     return Column(
       children: [
-        ScaleTransition(
-          scale: _logoEntranceScale,
-          child: const AppLogo(size: 112),
+        _entranceReveal(
+          start: 0.0,
+          end: _liteAnim ? 0.52 : 0.46,
+          slideY: 12,
+          scaleBegin: 0.9,
+          child: ScaleTransition(
+            scale: _logoEntranceScale,
+            child: const AppLogo(size: 112),
+          ),
         ),
         const SizedBox(height: 20),
-        Text(
-          'ยินดีต้อนรับ',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.kanit(
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            height: 1.15,
-            color: textPrimary,
-            letterSpacing: 0.2,
+        _entranceReveal(
+          start: _liteAnim ? 0.14 : 0.18,
+          end: _liteAnim ? 0.58 : 0.54,
+          slideY: 12,
+          child: Text(
+            'ยินดีต้อนรับ',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.kanit(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              height: 1.15,
+              color: textPrimary,
+              letterSpacing: 0.2,
+            ),
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          'เข้าสู่ระบบเพื่อบันทึกงานประจำวัน',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.kanit(
-            fontSize: 15,
-            height: 1.4,
-            color: textSecondary,
+        _entranceReveal(
+          start: _liteAnim ? 0.22 : 0.28,
+          end: _liteAnim ? 0.64 : 0.62,
+          slideY: 10,
+          child: Text(
+            'เข้าสู่ระบบเพื่อบันทึกงานประจำวัน',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.kanit(
+              fontSize: 15,
+              height: 1.4,
+              color: textSecondary,
+            ),
           ),
         ),
         const SizedBox(height: 14),
-        Container(
-          width: 40,
-          height: 3,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(99),
-            gradient: LinearGradient(
-              colors: isDark
-                  ? [_goldDark, _gold]
-                  : [DailyPalette.brand, DailyPalette.brandDeep],
-            ),
+        _entranceReveal(
+          start: _liteAnim ? 0.3 : 0.36,
+          end: _liteAnim ? 0.72 : 0.7,
+          slideY: 6,
+          child: AnimatedBuilder(
+            animation: _entranceController,
+            builder: (context, _) {
+              final t = _segmentT(
+                _liteAnim ? 0.3 : 0.36,
+                _liteAnim ? 0.72 : 0.7,
+              );
+              return Container(
+                width: 40 * t,
+                height: 3,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(99),
+                  gradient: LinearGradient(colors: goldLine),
+                ),
+              );
+            },
           ),
         ),
       ],
@@ -811,7 +1011,25 @@ class _LoginScreenState extends State<LoginScreen>
         ),
         if (_errorMessage != null) ...[
           const SizedBox(height: 20),
-          _errorBanner(isDark: isDark),
+          AnimatedSwitcher(
+            duration: Duration(milliseconds: _liteAnim ? 200 : 280),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SizeTransition(
+                  sizeFactor: animation,
+                  axisAlignment: -1,
+                  child: child,
+                ),
+              );
+            },
+            child: KeyedSubtree(
+              key: ValueKey<String>(_errorMessage!),
+              child: _errorBanner(isDark: isDark),
+            ),
+          ),
         ],
         const SizedBox(height: 28),
         TextButton(
@@ -1084,7 +1302,25 @@ class _LoginScreenState extends State<LoginScreen>
         ),
         if (_errorMessage != null) ...[
           const SizedBox(height: 12),
-          _errorBanner(isDark: isDark),
+          AnimatedSwitcher(
+            duration: Duration(milliseconds: _liteAnim ? 200 : 280),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SizeTransition(
+                  sizeFactor: animation,
+                  axisAlignment: -1,
+                  child: child,
+                ),
+              );
+            },
+            child: KeyedSubtree(
+              key: ValueKey<String>(_errorMessage!),
+              child: _errorBanner(isDark: isDark),
+            ),
+          ),
         ],
         const SizedBox(height: 22),
         _primarySubmitButton(isDark: isDark),
