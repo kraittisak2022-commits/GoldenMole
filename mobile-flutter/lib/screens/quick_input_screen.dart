@@ -9917,6 +9917,126 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  /// Theme สำหรับหน้าเหตุการณ์ — คง brightness ของแอป (ไม่บังคับ light)
+  ThemeData _dailyEventFormTheme(BuildContext context) {
+    final base = Theme.of(context);
+    final p = DailyPalette.of(context);
+    final isDark = base.brightness == Brightness.dark;
+    const accent = Color(0xFFFF9800);
+    final primary = isDark ? const Color(0xFFFFB74D) : accent;
+    return base.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: accent,
+        brightness: isDark ? Brightness.dark : Brightness.light,
+      ),
+      scaffoldBackgroundColor: isDark ? p.surface : _bg,
+      cardTheme: CardThemeData(
+        color: isDark ? p.card : Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(48),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          backgroundColor: accent,
+          foregroundColor: Colors.white,
+          textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primary,
+          side: BorderSide(color: primary),
+          textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+        ),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return isDark ? const Color(0xFF0B1219) : Colors.white;
+            }
+            return p.inkSubtle;
+          }),
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return accent;
+            return isDark ? p.chipSurface : const Color(0xFFF8FAFC);
+          }),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: isDark ? p.chipSurface : const Color(0xFFFBFCFF),
+        labelStyle: GoogleFonts.kanit(
+          color: p.inkMuted,
+          fontSize: 16.5,
+          fontWeight: FontWeight.w600,
+        ),
+        floatingLabelStyle: GoogleFonts.kanit(
+          color: primary,
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+        ),
+        hintStyle: GoogleFonts.kanit(
+          color: p.inkMuted.withValues(alpha: 0.85),
+          fontSize: 15.5,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 18,
+        ),
+        prefixIconColor: p.inkMuted,
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 50,
+          minHeight: 50,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: p.hairline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: primary, width: 1.5),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: isDark ? p.chipSurface : const Color(0xFFF8FAFC),
+        disabledColor: isDark ? p.chipSurface : const Color(0xFFF1F5F9),
+        selectedColor: accent.withValues(alpha: isDark ? 0.28 : 0.18),
+        side: BorderSide(color: p.hairline),
+        labelStyle: GoogleFonts.kanit(
+          fontWeight: FontWeight.w600,
+          color: p.ink,
+        ),
+        secondaryLabelStyle: GoogleFonts.kanit(
+          fontWeight: FontWeight.w600,
+          color: p.ink,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      textTheme: GoogleFonts.kanitTextTheme(base.textTheme).copyWith(
+        bodyLarge: GoogleFonts.kanit(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: p.ink,
+        ),
+        bodyMedium: GoogleFonts.kanit(
+          fontSize: 17,
+          color: p.ink,
+        ),
+        titleMedium: GoogleFonts.kanit(
+          fontSize: 19,
+          fontWeight: FontWeight.w700,
+          color: p.ink,
+        ),
+      ),
+    );
+  }
+
   ThemeData _quickFormTheme(BuildContext context) {
     final base = Theme.of(context);
     const primary = Color(0xFF0F9EA8);

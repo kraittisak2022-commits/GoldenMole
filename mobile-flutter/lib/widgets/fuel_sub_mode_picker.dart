@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../theme/daily_palette.dart';
 import '../utils/device_perf.dart';
 import '../utils/fuel_stock.dart';
+import 'app_theme_scope.dart';
 import 'soft_press_button.dart';
 
 /// เมนูย่อยของ «น้ำมัน»
@@ -47,8 +49,6 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
   late final AnimationController _entrance;
   late final List<Animation<double>> _staggerAnims;
   late final bool _lite;
-
-  static const _brandTeal = Color(0xFF0D98A5);
 
   @override
   void initState() {
@@ -101,17 +101,26 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
     required bool isTablet,
     required bool compact,
   }) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
     final cap = capacity <= 0 ? 1.0 : capacity;
     final ratio = (liters / cap).clamp(0.0, 1.0);
     final low = ratio <= 0.15;
-    final barColor = low ? const Color(0xFFD14343) : _brandTeal;
+    final barColor = low
+        ? const Color(0xFFD14343)
+        : (isDark ? p.brand : const Color(0xFF0D98A5));
     return Container(
       padding: EdgeInsets.all(compact ? 8 : (isTablet ? 14 : 12)),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F8FD),
+        color: low
+            ? (isDark ? const Color(0xFF3A1A1A) : const Color(0xFFFFF3F3))
+            : (isDark ? p.chipSurface : const Color(0xFFF4F8FD)),
         borderRadius: BorderRadius.circular(compact ? 12 : 14),
         border: Border.all(
-          color: low ? const Color(0xFFF5C2C2) : const Color(0xFFBFD8F4),
+          color: low
+              ? (isDark ? const Color(0xFF7F1D1D) : const Color(0xFFF5C2C2))
+              : (isDark ? p.hairline : const Color(0xFFBFD8F4)),
         ),
       ),
       child: Column(
@@ -133,7 +142,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
                   style: TextStyle(
                     fontSize: compact ? 12 : (isTablet ? 14.5 : 13),
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFF334155),
+                    color: p.inkSubtle,
                   ),
                 ),
               ),
@@ -158,7 +167,8 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
             child: LinearProgressIndicator(
               value: ratio,
               minHeight: compact ? 6 : (isTablet ? 10 : 8),
-              backgroundColor: const Color(0xFFDDE7F3),
+              backgroundColor:
+                  isDark ? const Color(0xFF243444) : const Color(0xFFDDE7F3),
               valueColor: AlwaysStoppedAnimation<Color>(barColor),
             ),
           ),
@@ -204,10 +214,14 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
     final size = MediaQuery.sizeOf(context);
     final isTablet = size.shortestSide >= 600;
     final phonePortrait = !isTablet && size.height >= size.width;
     final gap = phonePortrait ? 8.0 : (isTablet ? 14.0 : 10.0);
+    final brandTeal = isDark ? p.brand : const Color(0xFF0D98A5);
 
     final stockIn = _FuelModeOption(
       title: 'เพิ่มน้ำมัน',
@@ -217,7 +231,9 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       hasExisting: widget.daySummaries.stockIn.isNotEmpty,
       icon: Icons.local_shipping_rounded,
       accent: const Color(0xFF2E7D32),
-      iconTileColor: const Color(0xFFE8F5E9),
+      iconTileColor: isDark
+          ? const Color(0xFF1A3A24)
+          : const Color(0xFFE8F5E9),
       compact: phonePortrait,
       listLayout: phonePortrait,
       onTap: () => widget.onSelect(FuelSubMode.stockIn),
@@ -232,7 +248,9 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       hasExisting: widget.daySummaries.withdraw.isNotEmpty,
       icon: Icons.output_rounded,
       accent: const Color(0xFFEF6C00),
-      iconTileColor: const Color(0xFFFFF3E0),
+      iconTileColor: isDark
+          ? const Color(0xFF3A2A14)
+          : const Color(0xFFFFF3E0),
       compact: phonePortrait,
       listLayout: phonePortrait,
       onTap: () => widget.onSelect(FuelSubMode.withdraw),
@@ -245,7 +263,9 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       hasExisting: widget.daySummaries.carFill.isNotEmpty,
       icon: Icons.directions_car_filled_rounded,
       accent: const Color(0xFF6A1B9A),
-      iconTileColor: const Color(0xFFF3E5F5),
+      iconTileColor: isDark
+          ? const Color(0xFF2E1A3A)
+          : const Color(0xFFF3E5F5),
       compact: phonePortrait,
       listLayout: phonePortrait,
       onTap: () => widget.onSelect(FuelSubMode.carFill),
@@ -258,7 +278,9 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       hasExisting: widget.daySummaries.macroUsage.isNotEmpty,
       icon: Icons.local_gas_station_rounded,
       accent: const Color(0xFF1565C0),
-      iconTileColor: const Color(0xFFE3F2FD),
+      iconTileColor: isDark
+          ? const Color(0xFF1A2A3A)
+          : const Color(0xFFE3F2FD),
       compact: phonePortrait,
       listLayout: phonePortrait,
       onTap: () => widget.onSelect(FuelSubMode.macroUsage),
@@ -277,7 +299,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
               fontWeight: FontWeight.w800,
               height: 1.1,
               letterSpacing: -0.5,
-              color: const Color(0xFF1A2433),
+              color: p.ink,
             ),
           ),
           SizedBox(height: phonePortrait ? 4 : 6),
@@ -287,7 +309,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
             style: TextStyle(
               fontSize: phonePortrait ? 13.0 : (isTablet ? 16.0 : 14.5),
               fontWeight: FontWeight.w700,
-              color: const Color(0xFF546E7A),
+              color: p.inkMuted,
             ),
           ),
           SizedBox(height: phonePortrait ? 6 : 10),
@@ -296,7 +318,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
               width: isTablet ? 56 : 44,
               height: 4,
               decoration: BoxDecoration(
-                color: _brandTeal,
+                color: brandTeal,
                 borderRadius: BorderRadius.circular(999),
               ),
             ),
@@ -377,6 +399,9 @@ class _FuelModeOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
     final iconBox = listLayout
         ? (compact ? 44.0 : 48.0)
@@ -412,7 +437,7 @@ class _FuelModeOption extends StatelessWidget {
             fontWeight: FontWeight.w800,
             height: 1.12,
             letterSpacing: -0.25,
-            color: const Color(0xFF1A2433),
+            color: p.ink,
           ),
         ),
         SizedBox(height: compact ? 2 : 3),
@@ -424,7 +449,7 @@ class _FuelModeOption extends StatelessWidget {
             fontSize: subtitleSize,
             fontWeight: FontWeight.w500,
             height: 1.25,
-            color: hasExisting ? accent : const Color(0xFF64748B),
+            color: hasExisting ? accent : p.inkMuted,
           ),
         ),
       ],
@@ -459,10 +484,10 @@ class _FuelModeOption extends StatelessWidget {
       onTap: onTap,
       size: SoftPressSize.large,
       borderRadius: 20,
-      isDarkSurface: false,
+      isDarkSurface: isDark,
       liftWhenIdle: true,
       depthShadow: SoftPressDepthShadow(
-        color: accent.withValues(alpha: 0.12),
+        color: accent.withValues(alpha: isDark ? 0.22 : 0.12),
         blurRadius: 14,
         offsetY: 4,
         pressedBlurRadius: 5,
@@ -470,12 +495,12 @@ class _FuelModeOption extends StatelessWidget {
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: p.card,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: hasExisting
-                ? accent.withValues(alpha: 0.45)
-                : const Color(0xFFE7ECF3),
+                ? accent.withValues(alpha: isDark ? 0.55 : 0.45)
+                : p.hairline,
             width: hasExisting ? 1.4 : 1,
           ),
         ),

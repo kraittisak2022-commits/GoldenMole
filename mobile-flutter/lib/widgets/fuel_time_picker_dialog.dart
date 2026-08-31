@@ -2,7 +2,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../theme/daily_palette.dart';
 import '../utils/app_haptics.dart';
+import 'app_theme_scope.dart';
 
 /// เปิด dialog เลือกเวลา 24 ชม. แบบสองคอลัมน์ (ชั่วโมง | นาที)
 Future<TimeOfDay?> showFuelTimePickerDialog(
@@ -27,9 +29,8 @@ class _FuelTimePickerDialog extends StatefulWidget {
 }
 
 class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
-  static const _accent = Color(0xFF1565C0);
-  static const _ink = Color(0xFF1A2433);
-  static const _muted = Color(0xFF64748B);
+  static const _accentLight = Color(0xFF1565C0);
+  static const _accentDark = Color(0xFF60A5FA);
 
   static const _hourPeriod = 24;
   static const _minutePeriod = 60;
@@ -75,14 +76,14 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
     return '$hh:$mm';
   }
 
-  Widget _columnLabel(String text) {
+  Widget _columnLabel(String text, Color muted) {
     return Text(
       text,
       textAlign: TextAlign.center,
       style: GoogleFonts.kanit(
         fontSize: 16,
         fontWeight: FontWeight.w700,
-        color: _muted,
+        color: muted,
         letterSpacing: 0.2,
       ),
     );
@@ -94,6 +95,9 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
     required int period,
     required int selectedValue,
     required ValueChanged<int> onSelectedValue,
+    required Color accent,
+    required Color ink,
+    required Color muted,
   }) {
     return CupertinoPicker.builder(
       scrollController: controller,
@@ -102,7 +106,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
       squeeze: 1.05,
       useMagnifier: true,
       selectionOverlay: CupertinoPickerDefaultSelectionOverlay(
-        background: _accent.withValues(alpha: 0.10),
+        background: accent.withValues(alpha: 0.10),
       ),
       onSelectedItemChanged: (i) {
         AppHaptics.tap();
@@ -119,7 +123,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
             style: GoogleFonts.kanit(
               fontSize: selected ? 42 : 32,
               fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-              color: selected ? _ink : _muted.withValues(alpha: 0.5),
+              color: selected ? ink : muted.withValues(alpha: 0.5),
               height: 1,
             ),
             child: Text(label),
@@ -131,11 +135,17 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
+    final accent = isDark ? _accentDark : _accentLight;
+    final ink = p.ink;
+    final muted = p.inkMuted;
     final screenW = MediaQuery.sizeOf(context).width;
     final dialogW = (screenW - 32).clamp(320.0, 440.0);
 
     return AlertDialog(
-      backgroundColor: Colors.white,
+      backgroundColor: p.card,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       contentPadding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
       actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -146,7 +156,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
         style: GoogleFonts.kanit(
           fontSize: 26,
           fontWeight: FontWeight.w800,
-          color: _ink,
+          color: ink,
         ),
       ),
       content: SizedBox(
@@ -158,13 +168,19 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
+                gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFFE3F2FD), Color(0xFFF5FAFF)],
+                  colors: isDark
+                      ? const [Color(0xFF16324A), Color(0xFF1A2838)]
+                      : const [Color(0xFFE3F2FD), Color(0xFFF5FAFF)],
                 ),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFBBDEFB)),
+                border: Border.all(
+                  color: isDark
+                      ? const Color(0xFF2A4A6A)
+                      : const Color(0xFFBBDEFB),
+                ),
               ),
               child: Column(
                 children: [
@@ -173,7 +189,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
                     style: GoogleFonts.kanit(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: _muted,
+                      color: muted,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -182,7 +198,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
                     style: GoogleFonts.kanit(
                       fontSize: 56,
                       fontWeight: FontWeight.w800,
-                      color: _accent,
+                      color: accent,
                       height: 1.05,
                       letterSpacing: 2,
                     ),
@@ -193,31 +209,34 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
             const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(child: _columnLabel('ชั่วโมง')),
+                Expanded(child: _columnLabel('ชั่วโมง', muted)),
                 const SizedBox(width: 28),
-                Expanded(child: _columnLabel('นาที')),
+                Expanded(child: _columnLabel('นาที', muted)),
               ],
             ),
             const SizedBox(height: 6),
             Container(
               height: 300,
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: isDark ? p.chipSurface : const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: p.hairline),
               ),
               clipBehavior: Clip.antiAlias,
               child: Row(
                 children: [
                   Expanded(
                     child: ColoredBox(
-                      color: _accent.withValues(alpha: 0.04),
+                      color: accent.withValues(alpha: isDark ? 0.08 : 0.04),
                       child: _wheel(
                         controller: _hourCtrl,
                         itemCount: _hourLoopSize,
                         period: _hourPeriod,
                         selectedValue: _hour,
                         onSelectedValue: (v) => setState(() => _hour = v),
+                        accent: accent,
+                        ink: ink,
+                        muted: muted,
                       ),
                     ),
                   ),
@@ -229,7 +248,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
                         style: GoogleFonts.kanit(
                           fontSize: 40,
                           fontWeight: FontWeight.w800,
-                          color: _accent,
+                          color: accent,
                           height: 1,
                         ),
                       ),
@@ -242,6 +261,9 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
                       period: _minutePeriod,
                       selectedValue: _minute,
                       onSelectedValue: (v) => setState(() => _minute = v),
+                      accent: accent,
+                      ink: ink,
+                      muted: muted,
                     ),
                   ),
                 ],
@@ -253,7 +275,7 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
               style: GoogleFonts.kanit(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: _muted,
+                color: muted,
               ),
             ),
           ],
@@ -271,13 +293,14 @@ class _FuelTimePickerDialogState extends State<_FuelTimePickerDialog> {
             style: GoogleFonts.kanit(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: _muted,
+              color: muted,
             ),
           ),
         ),
         FilledButton(
           style: FilledButton.styleFrom(
-            backgroundColor: _accent,
+            backgroundColor: accent,
+            foregroundColor: isDark ? const Color(0xFF0B1219) : Colors.white,
             minimumSize: const Size(140, 52),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
