@@ -749,4 +749,15 @@ void main() {
       expect(summaries.carFill, '');
     });
   });
+
+  group('effectiveFuelOpeningReserveDiesel', () {
+    test('defaults to 100 when unset', () {
+      expect(effectiveFuelOpeningReserveDiesel(0), 100);
+      expect(effectiveFuelOpeningReserveDiesel(-5), 100);
+    });
+
+    test('respects configured positive value', () {
+      expect(effectiveFuelOpeningReserveDiesel(250), 250);
+    });
+  });
 }

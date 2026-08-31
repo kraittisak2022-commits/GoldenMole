@@ -39,6 +39,13 @@ export const FUEL_TANK_CAPACITY_RESERVE = 1000;
  */
 export const FUEL_STOCK_CUTOVER_YMD = '2026-08-01';
 
+/** ยอดยกมาถังสำรองดีเซลตั้งแต่วันตัดยอด — ใช้เมื่อยังไม่ตั้งค่าในระบบ */
+export const FUEL_OPENING_RESERVE_DIESEL_LITERS = 100;
+
+export function effectiveFuelOpeningReserveDiesel(configured: number): number {
+    return configured > 0 ? configured : FUEL_OPENING_RESERVE_DIESEL_LITERS;
+}
+
 type FuelDayBucket = { stockIn: number; withdraw: number };
 
 export function normalizeFuelTank(raw?: string | null): 'main' | 'reserve' {
@@ -165,7 +172,7 @@ export function computeFuelStockBalances(
 
     let mainD = opening?.Diesel ?? 0;
     let mainB = opening?.Benzine ?? 0;
-    let reserveD = opening?.DieselReserve ?? 0;
+    let reserveD = effectiveFuelOpeningReserveDiesel(opening?.DieselReserve ?? 0);
     let reserveB = opening?.BenzineReserve ?? 0;
     for (const [key, bucket] of buckets) {
         const delta = bucket.stockIn - bucket.withdraw;

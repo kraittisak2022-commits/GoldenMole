@@ -19,6 +19,13 @@ const String kFuelTankReserve = 'reserve';
 /// ตั้งแต่วันนี้หักลบจากถังปกติ · พ.ศ. 1 ส.ค. 2569 = ค.ศ. 2026-08-01
 const String kFuelStockCutoverYmd = '2026-08-01';
 
+/// ยอดยกมาถังสำรองดีเซลตั้งแต่วันตัดยอด — ใช้เมื่อยังไม่ตั้งค่าในระบบ
+const double kFuelOpeningReserveDieselLiters = 100;
+
+/// ค่ายกมาถังสำรองดีเซลที่ใช้คำนวณ (ตั้งค่าเว็บ > 0 ชนะ; ไม่งั้นใช้ [kFuelOpeningReserveDieselLiters])
+double effectiveFuelOpeningReserveDiesel(double configured) =>
+    configured > 0 ? configured : kFuelOpeningReserveDieselLiters;
+
 /// `subCategory` ของแถวรับน้ำมันเข้าถัง (รถน้ำมันมาเติม)
 const String kFuelStockInSubCategory = 'StockIn';
 

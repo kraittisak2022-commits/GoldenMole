@@ -371,7 +371,7 @@ export const saveSettings = async (s: AppSettings): Promise<boolean> => {
         fuel_opening_stock: s.fuelOpeningStockLiters ?? {
             Diesel: 0,
             Benzine: 0,
-            DieselReserve: 0,
+            DieselReserve: 100,
             BenzineReserve: 0,
         },
         org_profile: s.orgProfile ?? {},

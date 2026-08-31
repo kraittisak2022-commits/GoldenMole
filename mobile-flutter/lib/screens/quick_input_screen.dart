@@ -2699,7 +2699,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }) opening,
     ) async {
       if (!mounted) return;
-      setState(() => _fuelOpeningStock = opening);
+      setState(
+        () => _fuelOpeningStock = (
+          diesel: opening.diesel,
+          benzine: opening.benzine,
+          reserveDiesel:
+              effectiveFuelOpeningReserveDiesel(opening.reserveDiesel),
+          reserveBenzine: opening.reserveBenzine,
+        ),
+      );
     }
 
     Future<void> applyCatalog(VehicleCatalog catalog) async {
@@ -4338,34 +4346,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _applyFuelWithdrawFromTx(hit);
       return;
     }
-    if (_fuelWithdrawPurpose == FuelWithdrawPurpose.car) {
-      _fuelWithdrawTxId = null;
-      _fuelWithdrawTransferInTxId = null;
-      _fuelWithdrawLitersController.clear();
-      _fuelWithdrawTimeController.clear();
-      _fuelWithdrawOtherController.clear();
-      return;
-    }
-    // วัตถุประสงค์ปัจจุบันว่าง — สลับไปรายการล่าสุดของวันถ้ามี
-    final latest = latestFuelWithdrawForDay(
-      dayYmd: _quickYmd(_selectedDate),
-      transactions: _moduleDayAllTransactions,
-    );
-    if (latest != null) {
-      final purpose = fuelWithdrawPurposeFromCode(latest.workType) ??
-          (isFuelTransferRow(latest)
-              ? FuelWithdrawPurpose.machine
-              : FuelWithdrawPurpose.other);
-      if (purpose == FuelWithdrawPurpose.car &&
-          fuelCarFillVehicleFromId(transactionVehicleLabel(latest)) !=
-              FuelCarFillVehicle.taplien) {
-        // รถอื่น — ไม่โหลดในเมนูเบิกน้ำมัน
-      } else {
-        _fuelWithdrawPurpose = purpose;
-        _applyFuelWithdrawFromTx(latest);
-        return;
-      }
-    }
+    // วัตถุประสงค์ที่เลือกยังไม่มีรายการวันนี้ — เริ่มฟอร์มว่าง (อย่าโหลดรายการอื่นมาทับ)
     _fuelWithdrawTxId = null;
     _fuelWithdrawTransferInTxId = null;
     _fuelWithdrawLitersController.clear();
