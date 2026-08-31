@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -19,15 +20,19 @@ class FlutterSecureCredentialStore implements SecureCredentialStore {
 
   final FlutterSecureStorage _storage;
 
+  static const _timeout = Duration(seconds: 4);
+
   @override
-  Future<String?> read(String key) => _storage.read(key: key);
+  Future<String?> read(String key) =>
+      _storage.read(key: key).timeout(_timeout);
 
   @override
   Future<void> write(String key, String value) =>
-      _storage.write(key: key, value: value);
+      _storage.write(key: key, value: value).timeout(_timeout);
 
   @override
-  Future<void> delete(String key) => _storage.delete(key: key);
+  Future<void> delete(String key) =>
+      _storage.delete(key: key).timeout(_timeout);
 }
 
 class SessionService {
@@ -142,7 +147,11 @@ class SessionService {
         ? username
         : admin.displayName.trim();
 
-    await _secureStore.write(_passwordStorageKey(id), password);
+    try {
+      await _secureStore.write(_passwordStorageKey(id), password);
+    } catch (_) {
+      // Secure storage can hang/fail on some devices — still save profile meta.
+    }
 
     var profiles = await getSavedProfiles();
     profiles = profiles.where((p) => p.id != id).toList();

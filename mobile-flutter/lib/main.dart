@@ -611,23 +611,20 @@ class _MobileAppState extends State<MobileApp> with WidgetsBindingObserver {
                 authService: AuthService(client),
                 sessionService: _sessionService,
                 onLoginSuccess: (admin, persistSession) async {
-                  // Persist locally first, then enter the app immediately.
-                  // Anonymous/edge session must NOT block navigation — it can hang
-                  // for a long time when Anonymous auth is slow/disabled/offline.
                   if (persistSession) {
                     await _sessionService.saveAdmin(admin);
                   } else {
                     await _sessionService.clear();
                   }
                   if (!mounted) return;
+                  // Enter the app immediately — Edge anonymous session must not
+                  // block navigation (can take 12s+ or hang on some networks).
                   setState(() => _currentAdmin = admin);
                   unawaited(
                     ensureSupabaseSessionForEdgeFunctions(
                       Supabase.instance.client,
                     ).catchError((Object e, StackTrace st) {
-                      debugPrint(
-                        'ensureSupabaseSession after login: $e\n$st',
-                      );
+                      debugPrint('ensureSupabaseSession after login: $e\n$st');
                     }),
                   );
                   unawaited(

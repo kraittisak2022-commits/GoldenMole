@@ -65,13 +65,23 @@ class AuthService {
 
   Future<AdminUser> login(String username, String password) async {
     final normalizedInput = _normalizeUsername(username);
-    late final List<Map<String, dynamic>> rows;
+    List<Map<String, dynamic>> rows;
     try {
-      final result = await _client
+      // Prefer filtered lookup — full-table select was slow on weak networks.
+      final filtered = await _client
           .from('admin_users')
           .select()
+          .ilike('username', normalizedInput)
           .timeout(_loginQueryTimeout);
-      rows = List<Map<String, dynamic>>.from(result as List);
+      rows = List<Map<String, dynamic>>.from(filtered as List);
+      if (rows.isEmpty) {
+        // Fallback: whitespace-normalized usernames may not match ilike.
+        final all = await _client
+            .from('admin_users')
+            .select()
+            .timeout(_loginQueryTimeout);
+        rows = List<Map<String, dynamic>>.from(all as List);
+      }
     } on TimeoutException {
       throw const AdminLoginException(
         'หมดเวลารอเซิร์ฟเวอร์ — ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง',

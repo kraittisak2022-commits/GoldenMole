@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -217,22 +216,23 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       final admin = await widget.authService.login(username, password);
       final remember = fromSavedProfile ? true : _rememberSession;
-      await widget.sessionService.setRememberSessionPreference(remember);
-      await widget.sessionService.setLastLoginUsername(username);
-      // Enter app first — secure-storage profile write must not block navigation.
-      final enterApp = widget.onLoginSuccess(admin, remember);
-      if (remember) {
-        unawaited(() async {
-          try {
-            await widget.sessionService
-                .saveLoginProfile(admin: admin, password: password)
-                .timeout(const Duration(seconds: 8));
-          } catch (e, st) {
-            debugPrint('saveLoginProfile after login: $e\n$st');
-          }
-        }());
+      try {
+        await widget.sessionService
+            .setRememberSessionPreference(remember)
+            .timeout(const Duration(seconds: 3));
+        await widget.sessionService
+            .setLastLoginUsername(username)
+            .timeout(const Duration(seconds: 3));
+        if (remember) {
+          await widget.sessionService
+              .saveLoginProfile(admin: admin, password: password)
+              .timeout(const Duration(seconds: 5));
+        }
+      } catch (e) {
+        // Profile/prefs must not block entering the app.
+        debugPrint('login profile persist skipped: $e');
       }
-      await enterApp;
+      await widget.onLoginSuccess(admin, remember);
     } on AdminLoginException catch (e) {
       setState(() => _errorMessage = e.message);
     } catch (e) {
