@@ -43,6 +43,7 @@ class SessionService {
   static const _rememberSessionKey = 'mobile_login_remember_session';
   static const _lastUsernameKey = 'mobile_last_login_username';
   static const _profilesMetaKey = 'mobile_saved_login_profiles';
+  static const _profileAdminPrefix = 'mobile_saved_admin_';
 
   /// คีย์เก่า (single password) — migrate ครั้งเดียวแล้วลบ
   static const _legacySavedPasswordKey = 'mobile_saved_login_password';
@@ -153,6 +154,10 @@ class SessionService {
       // Secure storage can hang/fail on some devices — still save profile meta.
     }
 
+    try {
+      await _saveCachedAdminForProfile(id, admin);
+    } catch (_) {}
+
     var profiles = await getSavedProfiles();
     profiles = profiles.where((p) => p.id != id).toList();
     profiles.insert(
@@ -168,6 +173,7 @@ class SessionService {
     while (profiles.length > maxSavedProfiles) {
       final oldest = profiles.removeLast();
       await _deleteProfilePassword(oldest.id);
+      await _deleteCachedAdminForProfile(oldest.id);
     }
 
     await _persistProfilesMeta(profiles);
@@ -184,8 +190,40 @@ class SessionService {
     }
   }
 
+  /// สแนปชอต admin ของโปรไฟล์ — ใช้เข้าแอพเมื่อเซิร์ฟเวอร์ช้า/ออฟไลน์
+  Future<AdminUser?> getCachedAdminForProfile(String profileId) async {
+    final id = profileId.trim();
+    if (id.isEmpty) return null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('$_profileAdminPrefix$id');
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      return AdminUser.fromSessionMap(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _saveCachedAdminForProfile(String profileId, AdminUser admin) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      '$_profileAdminPrefix$profileId',
+      jsonEncode(admin.toSessionMap()),
+    );
+  }
+
+  Future<void> _deleteCachedAdminForProfile(String profileId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('$_profileAdminPrefix$profileId');
+    } catch (_) {}
+  }
+
   Future<void> removeSavedProfile(String profileId) async {
     await _deleteProfilePassword(profileId);
+    await _deleteCachedAdminForProfile(profileId);
     final profiles =
         (await getSavedProfiles()).where((p) => p.id != profileId).toList();
     await _persistProfilesMeta(profiles);

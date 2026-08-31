@@ -11,7 +11,8 @@ class AuthService {
 
   final SupabaseClient _client;
 
-  static const Duration _loginQueryTimeout = Duration(seconds: 15);
+  static const Duration _loginQueryTimeout = Duration(seconds: 8);
+  static const Duration _profileLoginQueryTimeout = Duration(seconds: 5);
   static const Duration _lastLoginUpdateTimeout = Duration(seconds: 8);
 
   String _normalizeUsername(String value) {
@@ -63,8 +64,14 @@ class AuthService {
     return s == inputPlain || s == inputPlain.trim();
   }
 
-  Future<AdminUser> login(String username, String password) async {
+  Future<AdminUser> login(
+    String username,
+    String password, {
+    Duration? queryTimeout,
+    bool allowFullTableFallback = true,
+  }) async {
     final normalizedInput = _normalizeUsername(username);
+    final timeout = queryTimeout ?? _loginQueryTimeout;
     List<Map<String, dynamic>> rows;
     try {
       // Prefer filtered lookup — full-table select was slow on weak networks.
@@ -72,14 +79,14 @@ class AuthService {
           .from('admin_users')
           .select()
           .ilike('username', normalizedInput)
-          .timeout(_loginQueryTimeout);
+          .timeout(timeout);
       rows = List<Map<String, dynamic>>.from(filtered as List);
-      if (rows.isEmpty) {
+      if (rows.isEmpty && allowFullTableFallback) {
         // Fallback: whitespace-normalized usernames may not match ilike.
         final all = await _client
             .from('admin_users')
             .select()
-            .timeout(_loginQueryTimeout);
+            .timeout(timeout);
         rows = List<Map<String, dynamic>>.from(all as List);
       }
     } on TimeoutException {
@@ -122,6 +129,9 @@ class AuthService {
 
     return matchedUser;
   }
+
+  /// Timeout สั้นสำหรับล็อกอินจากโปรไฟล์ที่บันทึกไว้
+  Duration get profileLoginQueryTimeout => _profileLoginQueryTimeout;
 }
 
 /// ข้อผิดพลาดจากการตรวจ user/รหัส (ไม่ใช่คลาส AuthException ของ Supabase GoTrue)

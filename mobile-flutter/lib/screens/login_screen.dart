@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -198,7 +199,10 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
-  Future<void> _submit({bool fromSavedProfile = false}) async {
+  Future<void> _submit({
+    bool fromSavedProfile = false,
+    String? savedProfileId,
+  }) async {
     if (_submitting) return;
     if (!fromSavedProfile && !_formKey.currentState!.validate()) return;
     final username = _usernameController.text.trim();
@@ -214,7 +218,16 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     try {
-      final admin = await widget.authService.login(username, password);
+      AdminUser admin;
+      if (fromSavedProfile) {
+        admin = await _loginFromSavedProfile(
+          username: username,
+          password: password,
+          profileId: savedProfileId,
+        );
+      } else {
+        admin = await widget.authService.login(username, password);
+      }
       final remember = fromSavedProfile ? true : _rememberSession;
       try {
         await widget.sessionService
@@ -260,6 +273,66 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  /// โปรไฟล์ที่บันทึกไว้: ลองเซิร์ฟเวอร์เร็วๆ ก่อน ถ้าช้า/ออฟไลน์ใช้แคชในเครื่อง
+  Future<AdminUser> _loginFromSavedProfile({
+    required String username,
+    required String password,
+    String? profileId,
+  }) async {
+    AdminUser? cached;
+    if (profileId != null && profileId.isNotEmpty) {
+      cached = await widget.sessionService.getCachedAdminForProfile(profileId);
+    }
+    if (cached == null) {
+      final sessionAdmin = await widget.sessionService.getSavedAdmin();
+      final sessionUser = sessionAdmin?.username.trim().toLowerCase() ?? '';
+      final want = username.trim().toLowerCase();
+      if (sessionAdmin != null &&
+          sessionUser.isNotEmpty &&
+          sessionUser == want) {
+        cached = sessionAdmin;
+      }
+    }
+
+    final hasCache =
+        cached != null && cached.username.trim().isNotEmpty;
+    final timeout = hasCache
+        ? const Duration(seconds: 2)
+        : widget.authService.profileLoginQueryTimeout;
+
+    try {
+      return await widget.authService.login(
+        username,
+        password,
+        queryTimeout: timeout,
+        allowFullTableFallback: !hasCache,
+      );
+    } on AdminLoginException catch (e) {
+      final msg = e.message;
+      final networkish = msg.contains('หมดเวลา') ||
+          msg.contains('เซิร์ฟเวอร์') ||
+          msg.contains('เชื่อมต่อ');
+      if (hasCache && networkish) {
+        debugPrint('profile login using cached admin after: $msg');
+        return cached!;
+      }
+      rethrow;
+    } catch (e) {
+      if (hasCache) {
+        final raw = e.toString();
+        if (e is SocketException ||
+            e is TimeoutException ||
+            raw.contains('SocketException') ||
+            raw.contains('Failed host lookup') ||
+            raw.contains('TimeoutException')) {
+          debugPrint('profile login using cached admin after error: $e');
+          return cached!;
+        }
+      }
+      rethrow;
+    }
+  }
+
   Future<void> _unlockProfile(SavedLoginProfile profile) async {
     if (_submitting || _unlockingProfileId != null) return;
     setState(() {
@@ -287,8 +360,8 @@ class _LoginScreenState extends State<LoginScreen>
 
     _usernameController.text = profile.username;
     _passwordController.text = password;
-    await widget.sessionService.touchSavedProfile(profile.id);
-    await _submit(fromSavedProfile: true);
+    unawaited(widget.sessionService.touchSavedProfile(profile.id));
+    await _submit(fromSavedProfile: true, savedProfileId: profile.id);
   }
 
   Future<void> _confirmRemoveProfile(SavedLoginProfile profile) async {
