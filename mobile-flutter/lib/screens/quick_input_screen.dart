@@ -10225,7 +10225,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _isOtMode ||
                   _isLaborAdvanceMode ||
                   _isIncomeUtilitiesEntryMode ||
-                  _isVehicleTripMode)
+                  _isVehicleTripMode ||
+                  _isDailyEventMode)
               ? dailyColors.surface
               : _bg,
           body: Stack(
@@ -12676,7 +12677,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Widget _macroSectionLabel(String text) {
     final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
@@ -12699,7 +12701,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required int displayIndex,
   }) {
     final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
     final accent = isDark ? p.brand : _macroAccent;
     final accentInk = isDark ? p.brandDateInk : _macroAccentInk;
     final accentTint = isDark ? p.brandSurface : _macroAccentTint;
@@ -13046,7 +13049,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Widget _buildMacroVehicleFormCard() {
     final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark ||
+        (AppThemeScope.maybeOf(context)?.isDark ?? false);
     final accent = isDark ? p.brand : _macroAccent;
     final accentInk = isDark ? p.brandDateInk : _macroAccentInk;
     final accentTint = isDark ? p.brandSurface : _macroAccentTint;
@@ -20126,6 +20130,9 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
   @override
   Widget build(BuildContext context) {
     final compact = widget.compact;
+    final p = DailyPalette.of(context);
+    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
+        Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) => setState(() => _pressedScale = 0.96),
@@ -20148,13 +20155,13 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
           ),
           decoration: BoxDecoration(
             color: widget.selected
-                ? widget.primaryColor.withValues(alpha: 0.12)
-                : const Color(0xFFF4F6F9),
+                ? widget.primaryColor.withValues(alpha: isDark ? 0.22 : 0.12)
+                : (isDark ? p.chipSurface : const Color(0xFFF4F6F9)),
             borderRadius: BorderRadius.circular(compact ? 12 : 14),
             border: Border.all(
               color: widget.selected
                   ? widget.primaryColor
-                  : const Color(0xFFE0E6ED),
+                  : (isDark ? p.hairline : const Color(0xFFE0E6ED)),
               width: widget.selected ? 2 : 1,
             ),
             boxShadow: widget.selected
@@ -20174,7 +20181,7 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
                 size: compact ? 20 : 24,
                 color: widget.selected
                     ? widget.primaryColor
-                    : const Color(0xFF78909C),
+                    : (isDark ? p.inkMuted : const Color(0xFF78909C)),
               ),
               SizedBox(width: compact ? 6 : 10),
               Expanded(
@@ -20186,8 +20193,8 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
                     fontWeight: FontWeight.w700,
                     fontSize: compact ? 13.5 : 15,
                     color: widget.selected
-                        ? const Color(0xFF1D2A3A)
-                        : const Color(0xFF546E7A),
+                        ? (isDark ? p.ink : const Color(0xFF1D2A3A))
+                        : (isDark ? p.inkSubtle : const Color(0xFF546E7A)),
                   ),
                 ),
               ),
@@ -20199,7 +20206,9 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
                     ? Icon(
                         Icons.check_circle_rounded,
                         key: ValueKey<String>('${widget.label}_on'),
-                        color: const Color(0xFF2E7D32),
+                        color: isDark
+                            ? const Color(0xFF4ADE80)
+                            : const Color(0xFF2E7D32),
                         size: compact ? 22 : 26,
                       )
                     : SizedBox(
@@ -20214,7 +20223,7 @@ class _AdvanceChoiceButtonState extends State<_AdvanceChoiceButton> {
       ),
     );
   }
-}
+
 
 /// แป้นตัวเลขลอย — state แยกจาก [QuickInputScreen] เพื่อลดการรีบิลด์และแลคเวลากดเลข
 class _CmNumericKeypadPanel extends StatefulWidget {
