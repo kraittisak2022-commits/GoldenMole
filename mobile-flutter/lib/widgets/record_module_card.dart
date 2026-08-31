@@ -8,7 +8,7 @@ import '../utils/device_perf.dart';
 import '../utils/daily_module_transactions.dart';
 import 'soft_press_button.dart';
 
-/// การ์ดเมนูบันทึกประจำวัน — มินิมอล แบน อ่านง่าย
+/// การ์ดเมนูบันทึกประจำวัน — มินิมอล อ่านง่าย รองรับแนวตั้งมือถือ
 class RecordModuleCard extends StatelessWidget {
   const RecordModuleCard({
     super.key,
@@ -57,7 +57,11 @@ class RecordModuleCard extends StatelessWidget {
         : p.statusPending;
 
     final accent = tileColor;
-    final radius = 14.0;
+    final radius = 16.0;
+    final mq = MediaQuery.sizeOf(context);
+    final phonePortrait =
+        MediaQuery.orientationOf(context) == Orientation.portrait &&
+        mq.shortestSide < 600;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -67,34 +71,34 @@ class RecordModuleCard extends StatelessWidget {
         final maxH = constraints.maxHeight.isFinite && constraints.maxHeight > 0
             ? constraints.maxHeight
             : maxW;
-        final isLandscapeCell = maxW > maxH * 1.08;
-        final phoneWidePortrait = !isLandscapeCell && maxW >= 140;
+        // แนวตั้งมือถือ 2 คอลัมน์มักกว้างกว่าสูง — ห้ามสลับเป็นแถวแนวนอน
+        final useRowLayout = !phonePortrait &&
+            (maxW >= 240 && maxH >= 76 && maxW > maxH * 1.28);
         final cardW = maxW;
         final cardH = maxH;
-        final scaleRef = isLandscapeCell
+        final scaleRef = useRowLayout
             ? (maxH < maxW ? maxH : maxW)
             : (maxW < maxH ? maxW : maxH);
 
         final iconGlyph = (scaleRef *
-                (isLandscapeCell
-                    ? 0.38
-                    : phoneWidePortrait
-                    ? 0.26
-                    : 0.32))
+                (useRowLayout ? 0.36 : (phonePortrait ? 0.34 : 0.32)))
             .clamp(
-              isLandscapeCell ? 22.0 : (phoneWidePortrait ? 22.0 : 24.0),
-              isLandscapeCell ? 32.0 : (phoneWidePortrait ? 30.0 : 34.0),
+              useRowLayout ? 22.0 : 22.0,
+              useRowLayout ? 32.0 : (phonePortrait ? 32.0 : 34.0),
             );
-        final wellSize = (iconGlyph * 1.65).clamp(
-          isLandscapeCell ? 36.0 : (phoneWidePortrait ? 40.0 : 38.0),
-          isLandscapeCell ? 46.0 : (phoneWidePortrait ? 50.0 : 48.0),
+        final wellSize = (iconGlyph * (useRowLayout ? 1.65 : 1.72)).clamp(
+          useRowLayout ? 36.0 : 40.0,
+          useRowLayout ? 46.0 : (phonePortrait ? 52.0 : 48.0),
         );
-        final pad = (scaleRef * 0.09).clamp(10.0, 14.0);
-        final titleSize = (scaleRef * (phoneWidePortrait ? 0.09 : 0.1)).clamp(
-          phoneWidePortrait ? 13.0 : 12.0,
-          phoneWidePortrait ? 15.0 : 14.0,
+        final pad = (scaleRef * (phonePortrait ? 0.085 : 0.09)).clamp(
+          phonePortrait ? 10.0 : 10.0,
+          phonePortrait ? 12.0 : 14.0,
         );
-        final statusSize = (scaleRef * 0.075).clamp(10.5, 12.0);
+        final titleSize = (scaleRef * (useRowLayout ? 0.09 : 0.105)).clamp(
+          phonePortrait ? 13.0 : 12.0,
+          useRowLayout ? 15.0 : 14.0,
+        );
+        final statusSize = (scaleRef * 0.072).clamp(10.0, 11.5);
         final useLiteChrome = defaultTargetPlatform == TargetPlatform.android ||
             DevicePerf.isConstrainedDevice;
 
@@ -130,10 +134,19 @@ class RecordModuleCard extends StatelessWidget {
             height: wellSize,
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: accent.withValues(alpha: isDark ? 0.14 : 0.08),
-                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    accent.withValues(alpha: isDark ? 0.22 : 0.14),
+                    accent.withValues(alpha: isDark ? 0.1 : 0.05),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(
+                  useRowLayout ? 12 : 14,
+                ),
                 border: Border.all(
-                  color: accent.withValues(alpha: isDark ? 0.35 : 0.22),
+                  color: accent.withValues(alpha: isDark ? 0.32 : 0.18),
                 ),
               ),
               child: Icon(icon, size: iconGlyph, color: accent),
@@ -141,17 +154,34 @@ class RecordModuleCard extends StatelessWidget {
           );
         }
 
-        Widget statusBlock({TextAlign align = TextAlign.start}) {
-          return Text(
+        Widget statusBlock({
+          TextAlign align = TextAlign.start,
+          bool pill = false,
+        }) {
+          final text = Text(
             statusLabel,
             textAlign: align,
-            maxLines: statusMaxLines,
+            maxLines: useRowLayout ? statusMaxLines : 2,
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.kanit(
               fontSize: statusSize,
-              fontWeight: FontWeight.w500,
+              fontWeight: FontWeight.w600,
               color: statusColor,
-              height: 1.25,
+              height: 1.2,
+            ),
+          );
+          if (!pill) return text;
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: isDark ? 0.14 : 0.09),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: pad * 0.55,
+                vertical: pad * 0.12,
+              ),
+              child: text,
             ),
           );
         }
@@ -160,14 +190,14 @@ class RecordModuleCard extends StatelessWidget {
           return Text(
             title,
             textAlign: align,
-            maxLines: isLandscapeCell ? 2 : (phoneWidePortrait ? 2 : 3),
+            maxLines: useRowLayout ? 2 : 2,
             overflow: TextOverflow.ellipsis,
             style: GoogleFonts.kanit(
               fontSize: titleSize,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
               color: p.ink,
-              height: 1.25,
-              letterSpacing: -0.1,
+              height: 1.2,
+              letterSpacing: -0.2,
             ),
           );
         }
@@ -209,19 +239,30 @@ class RecordModuleCard extends StatelessWidget {
 
         Widget stackedContent() {
           return Padding(
-            padding: EdgeInsets.all(pad * 0.9),
+            padding: EdgeInsets.fromLTRB(
+              pad * 0.75,
+              pad * 0.65,
+              pad * 0.75,
+              pad * 0.7,
+            ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 iconWell(),
-                SizedBox(height: pad * 0.45),
+                SizedBox(height: pad * 0.38),
                 titleText(align: TextAlign.center),
-                SizedBox(height: pad * 0.2),
-                statusBlock(align: TextAlign.center),
+                SizedBox(height: pad * 0.24),
+                statusBlock(align: TextAlign.center, pill: true),
               ],
             ),
           );
         }
+
+        final borderColor = recorded
+            ? p.statusComplete.withValues(alpha: isDark ? 0.38 : 0.32)
+            : partial
+            ? p.statusIncomplete.withValues(alpha: isDark ? 0.34 : 0.26)
+            : p.hairline.withValues(alpha: isDark ? 0.75 : 0.9);
 
         final shapedCard = SizedBox(
           width: cardW,
@@ -230,20 +271,12 @@ class RecordModuleCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: p.card,
               borderRadius: BorderRadius.circular(radius),
-              border: Border.all(
-                color: recorded
-                    ? p.statusComplete.withValues(alpha: isDark ? 0.35 : 0.28)
-                    : partial
-                    ? p.statusIncomplete.withValues(alpha: isDark ? 0.3 : 0.22)
-                    : p.hairline.withValues(alpha: isDark ? 0.85 : 1),
-              ),
+              border: Border.all(color: borderColor),
               boxShadow: cardLiftShadows(),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(radius),
-              child: isLandscapeCell || phoneWidePortrait
-                  ? rowContent()
-                  : stackedContent(),
+              child: useRowLayout ? rowContent() : stackedContent(),
             ),
           ),
         );

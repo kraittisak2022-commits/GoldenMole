@@ -1683,9 +1683,9 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   : primaryModules;
               final gridItemCount = visibleModules.length + 1;
               final gap = phonePortrait
-                  ? 12.0
+                  ? 14.0
                   : TouchProfile.of(context).gridGap;
-              final sideInset = 2.0;
+              final sideInset = phonePortrait ? 0.0 : 2.0;
               final mq = MediaQuery.sizeOf(context);
               final mqW = mq.width;
               final mqH = mq.height;
@@ -1723,11 +1723,11 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                   (usableWidth - (gap * (cross - 1))) / cross;
               final fitCellHeight =
                   (availH - (gap * (rows - 1))) / rows;
-              // แนวตั้งมือถือ: การ์ดสูงกว่าจัตุรัสเล็กน้อย — บ่อไอคอนใหญ่ + ชื่อ + สถานะ
+              // แนวตั้งมือถือ: การ์ดสูงพอดีสำหรับไอคอน + ชื่อ + สถานะแบบซ้อน
               final preferredCellHeight = isLandscape
                   ? fitCellHeight.clamp(60.0, 96.0)
                   : phonePortrait
-                      ? (cellWidth * 1.02).clamp(112.0, 156.0)
+                      ? (cellWidth * 1.08).clamp(118.0, 138.0)
                       : cellWidth.clamp(88.0, 180.0);
               final totalNeeded =
                   (preferredCellHeight * rows) + (gap * (rows - 1));
