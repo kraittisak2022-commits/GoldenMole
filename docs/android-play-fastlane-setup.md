@@ -31,16 +31,15 @@ bundle exec fastlane --version
 
 ## One-time Google Play Console setup
 
-**คู่มือภาษาไทยทีละขั้น:** [google-play-api-setup-th.md](./google-play-api-setup-th.md)
+**คู่มือภาษาไทย (UI 2024+ — ไม่มีเมนู API access แล้ว):** [google-play-api-setup-th.md](./google-play-api-setup-th.md)
 
 สรุปสั้น:
 
-1. Open [Google Play Console](https://play.google.com/console) → **GoldenMole for User** (`com.goldenmole.app`).
-2. **Setup → API access** → Link/create Google Cloud project.
-3. **Create service account** → Grant access in Play Console with **Release manager** (or Admin).
-4. Download JSON key → store outside repo, e.g. `C:\secrets\goldenmole-play-api.json`.
-5. **Testing → Closed testing** — note the **track slug** (often `alpha` for the default closed track; custom tracks use their slug from the URL).
-6. Ensure the closed testing track has at least one release once (Play sometimes requires manual first upload).
+1. [Google Cloud](https://console.cloud.google.com/) → Enable **Google Play Android Developer API** → สร้าง **Service Account** → ดาวน์โหลด JSON key
+2. [Play Console](https://play.google.com/console) → **Users and permissions** (ระดับบัญชีนักพัฒนา) → **Invite new users** → วางอีเมล service account
+3. แท็บ **App permissions** → เลือก **GoldenMole for User** → สิทธิ์ **Release manager** หรือ **Release to testing tracks**
+4. JSON เก็บนอก repo เช่น `C:\secrets\goldenmole-play-api.json`
+5. **Testing → Closed testing** — track slug มักเป็น `alpha`
 
 Local setup script:
 

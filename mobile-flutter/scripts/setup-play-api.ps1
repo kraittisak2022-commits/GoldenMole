@@ -32,10 +32,12 @@ Write-Host "Secrets folder: $SecretsDir"
 if (-not $JsonKeyPath) {
   $defaultJson = Join-Path $SecretsDir "goldenmole-play-api.json"
   Write-Host ""
-  Write-Host "Before continuing, complete Play Console steps:" -ForegroundColor Yellow
-  Write-Host "  1. Setup -> API access -> Create service account"
-  Write-Host "  2. Grant Release manager on com.goldenmole.app"
-  Write-Host "  3. Download JSON key to e.g. $defaultJson"
+Write-Host "Before continuing, complete Google Cloud + Play Console steps:" -ForegroundColor Yellow
+  Write-Host "  1. Cloud: Enable Google Play Android Developer API"
+  Write-Host "  2. Cloud: Create service account + download JSON key"
+  Write-Host "  3. Play Console -> Users and permissions -> Invite service account email"
+  Write-Host "  4. Grant Release manager (or testing track release) on com.goldenmole.app"
+  Write-Host "  Guide: docs/google-play-api-setup-th.md"
   Write-Host ""
   $JsonKeyPath = Read-Host "Path to Play JSON key file (Enter to skip for now)"
   if (-not $JsonKeyPath) {
