@@ -12457,7 +12457,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         ),
       );
     }
-    final pSaved = DailyPalette.of(context);
     final isDarkSaved = Theme.of(context).brightness == Brightness.dark ||
         (AppThemeScope.maybeOf(context)?.isDark ?? false);
     return Column(
