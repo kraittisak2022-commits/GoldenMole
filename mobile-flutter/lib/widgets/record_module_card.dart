@@ -103,27 +103,58 @@ class RecordModuleCard extends StatelessWidget {
             DevicePerf.isConstrainedDevice;
 
         List<BoxShadow> cardLiftShadows() {
+          // เงาชั้นล่าง + ไฮไลต์ขอบบน — ให้ความรู้สึกปุ่มนูน (ไม่ใช้ขอบสีสถานะ)
+          final contact = isDark
+              ? Colors.black.withValues(alpha: 0.38)
+              : Colors.black.withValues(alpha: 0.07);
+          final ambient = isDark
+              ? Colors.black.withValues(alpha: 0.5)
+              : p.shadowLift.withValues(alpha: useLiteChrome ? 0.22 : 0.3);
+          final topRim = isDark
+              ? Colors.white.withValues(alpha: 0.07)
+              : Colors.white.withValues(alpha: 0.92);
+
           if (useLiteChrome) {
             return [
               BoxShadow(
-                color: p.shadowLift.withValues(alpha: isDark ? 0.42 : 0.2),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: topRim,
+                blurRadius: 0,
+                offset: const Offset(0, -1),
+              ),
+              BoxShadow(
+                color: contact,
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+              BoxShadow(
+                color: ambient,
+                blurRadius: 12,
+                offset: const Offset(0, 5),
                 spreadRadius: -2,
               ),
             ];
           }
           return [
             BoxShadow(
+              color: topRim,
+              blurRadius: 0,
+              offset: const Offset(0, -1),
+            ),
+            BoxShadow(
+              color: contact,
+              blurRadius: 3,
+              offset: const Offset(0, 1),
+            ),
+            BoxShadow(
               color: p.shadowCard,
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
             BoxShadow(
-              color: p.shadowLift,
-              blurRadius: 18,
-              offset: const Offset(0, 7),
-              spreadRadius: -3,
+              color: ambient,
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+              spreadRadius: -4,
             ),
           ];
         }
@@ -258,12 +289,6 @@ class RecordModuleCard extends StatelessWidget {
           );
         }
 
-        final borderColor = recorded
-            ? p.statusComplete.withValues(alpha: isDark ? 0.38 : 0.32)
-            : partial
-            ? p.statusIncomplete.withValues(alpha: isDark ? 0.34 : 0.26)
-            : p.hairline.withValues(alpha: isDark ? 0.75 : 0.9);
-
         final shapedCard = SizedBox(
           width: cardW,
           height: cardH,
@@ -271,7 +296,6 @@ class RecordModuleCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: p.card,
               borderRadius: BorderRadius.circular(radius),
-              border: Border.all(color: borderColor),
               boxShadow: cardLiftShadows(),
             ),
             child: ClipRRect(
@@ -287,16 +311,16 @@ class RecordModuleCard extends StatelessWidget {
           borderRadius: radius,
           isDarkSurface: isDark,
           liftWhenIdle: true,
-          idleLiftY: useLiteChrome ? -1 : -1.5,
-          depthShadow: useLiteChrome
-              ? null
-              : SoftPressDepthShadow(
-                  color: p.shadowLift.withValues(alpha: isDark ? 0.5 : 0.16),
-                  blurRadius: 16,
-                  offsetY: 6,
-                  pressedBlurRadius: 5,
-                  pressedOffsetY: 2,
-                ),
+          idleLiftY: useLiteChrome ? -0.5 : -1,
+          depthShadow: SoftPressDepthShadow(
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.45)
+                : p.shadowLift.withValues(alpha: useLiteChrome ? 0.18 : 0.22),
+            blurRadius: useLiteChrome ? 10 : 18,
+            offsetY: useLiteChrome ? 5 : 7,
+            pressedBlurRadius: useLiteChrome ? 3 : 4,
+            pressedOffsetY: 1,
+          ),
           hitPadding: EdgeInsets.zero,
           child: shapedCard,
         );
