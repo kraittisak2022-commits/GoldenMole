@@ -86,7 +86,7 @@ if ($ReleaseNotesFile) {
 }
 
 if (-not $ReleaseNotes) {
-  $defaultChangelog = Join-Path $FlutterRoot "fastlane/metadata/android/th-TH/changelogs/$versionCode.txt"
+  $defaultChangelog = Join-Path $FlutterRoot "fastlane/metadata/android/th/changelogs/$versionCode.txt"
   if (Test-Path $defaultChangelog) {
     $ReleaseNotes = Get-Content $defaultChangelog -Raw
   } else {
@@ -94,53 +94,43 @@ if (-not $ReleaseNotes) {
   }
 }
 
-$changelogDir = Join-Path $FlutterRoot "fastlane/metadata/android/th-TH/changelogs"
+$changelogDir = Join-Path $FlutterRoot "fastlane/metadata/android/th/changelogs"
 New-Item -ItemType Directory -Force -Path $changelogDir | Out-Null
 $changelogPath = Join-Path $changelogDir "$versionCode.txt"
-Set-Content -Path $changelogPath -Value $ReleaseNotes.TrimEnd() -Encoding UTF8
+Set-Content -Path $changelogPath -Value $ReleaseNotes.TrimEnd() -Encoding utf8NoBOM
 
-$effectiveReleaseName = if ($ReleaseName) { $ReleaseName } else { "$versionName — GoldenMole for User" }
+$effectiveReleaseName = if ($ReleaseName) { $ReleaseName } else { "$versionName - GoldenMole for User" }
 
 if (-not $SkipPlayDoc) {
   $storeDir = Join-Path $FlutterRoot "store"
   New-Item -ItemType Directory -Force -Path $storeDir | Out-Null
   $docPath = Join-Path $storeDir "PLAY_RELEASE_$versionName.md"
-  $doc = @"
-# GoldenMole for User — Play Store release $versionName ($versionCode)
-
-## ไฟล์อัปโหลด
-
-| รายการ | ค่า |
-|--------|-----|
-| App Bundle | ``mobile-flutter/build/app/outputs/bundle/release/app-release.aab`` |
-| Application ID | ``com.goldenmole.app`` |
-| versionName | **$versionName** |
-| versionCode | **$versionCode** |
-
-## Play Console (ไทย)
-
-**ชื่อรุ่น**:
-
-``````
-$effectiveReleaseName
-``````
-
-**บันทึกประจำรุ่น**:
-
-``````
-$($ReleaseNotes.Trim())
-``````
-
-## Soft update (Supabase)
-
-``````json
-{
-  "androidLatestVersionCode": $versionCode,
-  "androidLatestVersionName": "$versionName"
-}
-``````
-"@
-  Set-Content -Path $docPath -Value $doc -Encoding UTF8
+  $docLines = @(
+    "# GoldenMole for User - Play Store release $versionName ($versionCode)"
+    ""
+    "## Upload"
+    ""
+    "- AAB: mobile-flutter/build/app/outputs/bundle/release/app-release.aab"
+    "- Application ID: com.goldenmole.app"
+    "- versionName: $versionName"
+    "- versionCode: $versionCode"
+    ""
+    "## Release name (TH)"
+    ""
+    $effectiveReleaseName
+    ""
+    "## Release notes (TH)"
+    ""
+    $ReleaseNotes.Trim()
+    ""
+    "## Soft update (Supabase)"
+    ""
+    "{"
+    "  `"androidLatestVersionCode`": $versionCode,"
+    "  `"androidLatestVersionName`": `"$versionName`""
+    "}"
+  )
+  Set-Content -Path $docPath -Value ($docLines -join "`n") -Encoding UTF8
   Write-Host "Wrote $docPath"
 }
 

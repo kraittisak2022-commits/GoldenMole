@@ -39,7 +39,9 @@ platform :android do
     version_name, version_code = read_pubspec_version
     track = ENV.fetch("PLAY_STORE_TRACK", "alpha")
     release_name = default_release_name(version_name)
-    changelog_path = File.join(METADATA_ROOT, "th-TH/changelogs/#{version_code}.txt")
+    changelog_path = File.join(METADATA_ROOT, "th/changelogs/#{version_code}.txt")
+    changelog_path_alt = File.join(METADATA_ROOT, "th-TH/changelogs/#{version_code}.txt")
+    changelog_path = changelog_path_alt if File.exist?(changelog_path_alt)
 
     unless File.exist?(changelog_path)
       UI.user_error!(
@@ -51,14 +53,16 @@ platform :android do
     UI.message("Uploading #{version_name} (#{version_code}) to track '#{track}'")
     UI.message("Release name: #{release_name}")
 
+    metadata_abs = File.expand_path(METADATA_ROOT)
+    UI.user_error!("Metadata path not found: #{metadata_abs}") unless File.directory?(metadata_abs)
+
     upload_to_play_store(
       json_key: play_json_key_path,
       package_name: "com.goldenmole.app",
       track: track,
       aab: AAB_PATH,
       release_status: "completed",
-      release_name: release_name,
-      metadata_path: METADATA_ROOT,
+      metadata_path: metadata_abs,
       skip_upload_apk: true,
       skip_upload_metadata: true,
       skip_upload_changelogs: false,

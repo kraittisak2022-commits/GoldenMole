@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="fastlane.lanes">
+    
+    
+    
+      
+      <testcase classname="fastlane.lanes" name="0: default_platform" time="0.0049222">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="1: validate_play_store_json_key" time="0.1954147">
+        
+      </testcase>
+    
+      
+      <testcase classname="fastlane.lanes" name="2: google_play_track_version_codes" time="2.6100013">
+        
+      </testcase>
+    
+  </testsuite>
+</testsuites>
