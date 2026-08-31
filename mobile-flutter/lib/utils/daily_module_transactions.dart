@@ -464,7 +464,7 @@ double fuelLitersTotalForDay(
   var sum = 0.0;
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
-    if (!isFuelVehicleUsageRow(t)) continue;
+    if (!isMacroFuelReportRow(t)) continue;
     sum += (t.quantity ?? 0);
   }
   return sum;
@@ -485,6 +485,52 @@ bool isFuelVehicleUsageRow(AppTransaction t) {
   final vehicle = transactionVehicleLabel(t);
   if (vehicle.isEmpty) return false;
   return (t.quantity ?? 0) > 0;
+}
+
+/// แถวที่นับเป็น «แจ้งน้ำมันแม็คโคร» — เฉพาะ VehicleUsage หรือ legacy แม็คโคร
+/// (ไม่นับรถดรัม/รถอื่นที่มี stock_out + vehicleId)
+bool isMacroFuelReportRow(AppTransaction t) {
+  if (!isFuelVehicleUsageRow(t)) return false;
+  final sub = (t.subCategory ?? '').trim();
+  if (sub == 'VehicleUsage') return true;
+  if (sub.isNotEmpty) return false;
+  return isMacroVehicleId(transactionVehicleLabel(t));
+}
+
+bool _macroFuelVehicleLabelsMatch(String a, String b) {
+  final x = a.trim();
+  final y = b.trim();
+  if (x.isEmpty || y.isEmpty) return false;
+  if (x == y) return true;
+  final stubA = AppTransaction(
+    id: '_fuel_a',
+    date: '2000-01-01',
+    type: 'Expense',
+    category: 'Fuel',
+    description: '',
+    amount: 0,
+    vehicleId: x,
+  );
+  final stubB = AppTransaction(
+    id: '_fuel_b',
+    date: '2000-01-01',
+    type: 'Expense',
+    category: 'Fuel',
+    description: '',
+    amount: 0,
+    vehicleId: y,
+  );
+  return transactionVehicleMatches(stubA, y) ||
+      transactionVehicleMatches(stubB, x);
+}
+
+void _addMacroFuelVehicleLabel(Set<String> ids, String vehicle) {
+  final v = vehicle.trim();
+  if (v.isEmpty) return;
+  for (final existing in ids) {
+    if (_macroFuelVehicleLabelsMatch(existing, v)) return;
+  }
+  ids.add(v);
 }
 
 Set<String> macroVehicleIdsUsedForDay(
@@ -540,9 +586,8 @@ Set<String> fuelVehicleIdsReportedForDay(
   final ids = <String>{};
   for (final t in transactions) {
     if (t.date.trim() != dayKey.trim()) continue;
-    if (!isFuelVehicleUsageRow(t)) continue;
-    final v = transactionVehicleLabel(t);
-    if (v.isNotEmpty) ids.add(v);
+    if (!isMacroFuelReportRow(t)) continue;
+    _addMacroFuelVehicleLabel(ids, transactionVehicleLabel(t));
   }
   return ids;
 }

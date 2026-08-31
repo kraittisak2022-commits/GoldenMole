@@ -218,6 +218,42 @@ void main() {
     );
   });
 
+  test('macro fuel count ignores non-macro vehicle stock_out rows', () {
+    final macroRows = List.generate(
+      5,
+      (i) => AppTransaction(
+        id: 'm$i',
+        date: day,
+        type: 'Expense',
+        category: 'Fuel',
+        description: 'น้ำมันแม็คโคร',
+        amount: 0,
+        quantity: 50,
+        fuelMovement: 'stock_out',
+        subCategory: 'VehicleUsage',
+        vehicleId: 'แม็คโคร 0${i + 1}',
+      ),
+    );
+    final drumFuel = AppTransaction(
+      id: 'drum_fuel',
+      date: day,
+      type: 'Expense',
+      category: 'Fuel',
+      description: 'น้ำมันรถดรัม',
+      amount: 0,
+      quantity: 40,
+      fuelMovement: 'stock_out',
+      vehicleId: 'รถดรัม 01',
+    );
+    final txs = [...macroRows, drumFuel];
+    final coverage = fuelVehicleCoverageForDay(day, txs);
+    expect(coverage.fueledCount, 5);
+    expect(
+      dailyFuelModuleStatusLabel(day, txs),
+      contains('แจ้ง 5 คัน'),
+    );
+  });
+
   test('fuel card ignores stock-in when summing liters', () {
     final txs = [
       AppTransaction(
