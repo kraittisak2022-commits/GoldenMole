@@ -1,11 +1,12 @@
 import Charts
 import SwiftUI
 
-/// Bottom-tab hub: weekly / monthly growth analytics for trips + sand sieving.
+/// Weekly / monthly growth analytics for a locked focus (combined, trip, or sand).
 struct OpsTrendAnalyticsHubView: View {
+    let focus: OpsTrendFocus
+
     @Environment(AppState.self) private var appState
     @State private var period: OpsTrendPeriod = .week
-    @State private var focus: OpsTrendFocus = .both
     @State private var report: OpsTrendReport = .empty(period: .week)
     @State private var isBuilding = false
     @State private var buildToken = 0
@@ -15,7 +16,6 @@ struct OpsTrendAnalyticsHubView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 periodPicker
-                focusPicker
                 if isBuilding && report.points.isEmpty {
                     ProgressView("กำลังวิเคราะห์…")
                         .frame(maxWidth: .infinity)
@@ -45,10 +45,18 @@ struct OpsTrendAnalyticsHubView: View {
             .padding(.bottom, 32)
         }
         .background(DashboardBackground())
-        .navigationTitle("วิเคราะห์ข้อมูล")
+        .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: rebuildKey) {
             await rebuild()
+        }
+    }
+
+    private var navigationTitle: String {
+        switch focus {
+        case .both: return "วิเคราะห์รวม"
+        case .trip: return "วิเคราะห์เที่ยวรถ"
+        case .sand: return "วิเคราะห์ร่อนทราย"
         }
     }
 
@@ -60,15 +68,35 @@ struct OpsTrendAnalyticsHubView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("ศูนย์วัดผลปฏิบัติการ")
+            Text(headerTitle)
                 .font(.title2.weight(.bold))
                 .foregroundStyle(AppTheme.ink)
-            Text("จับจุดผิดปกติเร็ว · แนะทางเร่งยอด · \(rangeCaption)")
+            Text(headerSubtitle)
                 .font(.caption)
                 .foregroundStyle(AppTheme.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 4)
+    }
+
+    private var headerTitle: String {
+        switch focus {
+        case .both: return "ศูนย์วัดผลปฏิบัติการ"
+        case .trip: return "วัดผลเที่ยวรถ"
+        case .sand: return "วัดผลร่อนทราย"
+        }
+    }
+
+    private var headerSubtitle: String {
+        switch focus {
+        case .both:
+            return "จับจุดผิดปกติเร็ว · แนะทางเร่งยอด · \(rangeCaption)"
+        case .trip:
+            return "โฟกัสเฉพาะเที่ยวรถ · \(rangeCaption)"
+        case .sand:
+            return "โฟกัสเฉพาะร่อนทราย · \(rangeCaption)"
+        }
     }
 
     private var rangeCaption: String {
@@ -93,31 +121,21 @@ struct OpsTrendAnalyticsHubView: View {
         }
     }
 
-    private var focusPicker: some View {
-        HStack(spacing: 8) {
-            ForEach(OpsTrendFocus.allCases) { item in
-                Button {
-                    withAnimation(.snappy(duration: 0.2)) { focus = item }
-                } label: {
-                    Text(item.label)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(focus == item ? Color.white : AppTheme.ink)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(focus == item ? AppTheme.brand : AppTheme.surfaceSoft)
-                        )
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer(minLength: 0)
+    // MARK: - Score hero
+
+    @ViewBuilder
+    private var scoreHero: some View {
+        switch focus {
+        case .both:
+            combinedScoreHero
+        case .trip:
+            modeScoreHero(card: report.trip, mode: report.tripAdvanced, accent: AppTheme.info)
+        case .sand:
+            modeScoreHero(card: report.sand, mode: report.sandAdvanced, accent: AppTheme.brand)
         }
     }
 
-    // MARK: - Score hero
-
-    private var scoreHero: some View {
+    private var combinedScoreHero: some View {
         let sc = report.scorecard
         let accent = gradeColor(sc.grade)
         return HStack(alignment: .center, spacing: 16) {
@@ -189,35 +207,130 @@ struct OpsTrendAnalyticsHubView: View {
         )
     }
 
+    private func modeScoreHero(
+        card: OpsTrendMetricCard,
+        mode: OpsTrendAdvancedMode,
+        accent: Color
+    ) -> some View {
+        let score = mode.combinedScore
+        let delta = mode.throughputChangePct ?? mode.volumeChangePct
+        return HStack(alignment: .center, spacing: 16) {
+            ZStack {
+                Circle()
+                    .stroke(AppTheme.surfaceSoft, lineWidth: 10)
+                Circle()
+                    .trim(from: 0, to: CGFloat(score) / 100)
+                    .stroke(
+                        AngularGradient(colors: [accent.opacity(0.55), accent], center: .center),
+                        style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .animation(.snappy(duration: 0.45), value: score)
+                VStack(spacing: 2) {
+                    Text("\(score)")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+                        .contentTransition(.numericText())
+                    Text(card.title)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+            .frame(width: 108, height: 108)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("\(card.title) · \(period.label)")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Text(
+                    "รวม \(OpsTrendAnalytics.formatCompact(card.total)) \(card.unit) · เฉลี่ย \(OpsTrendAnalytics.formatCompact(card.average))/วัน"
+                )
+                .font(.caption)
+                .foregroundStyle(AppTheme.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    Label(
+                        "\(OpsTrendAnalytics.formatSignedPct(delta)) vs \(period.shortLabel)ก่อน",
+                        systemImage: (delta ?? 0) >= 0 ? "arrow.up.right" : "arrow.down.right"
+                    )
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(deltaColor(delta))
+
+                    Text("\(report.activeDays)/\(report.coverageDays) วัน")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(AppTheme.inkMuted)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(AppTheme.surfaceSoft))
+                }
+
+                if let attainment = card.targetAttainmentPct {
+                    Text(String(format: "ถึงเป้า %.0f%%", attainment))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(attainment >= 100 ? Color(hex: "#16a34a") : AppTheme.warning)
+                } else if mode.peakHourLabel != nil {
+                    Text("ชั่วโมงพีค \(mode.peakHourLabel!)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(accent)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .fill(AppTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
+    }
+
     // MARK: - Action plan / anomaly alerts
 
     private var actionPlanCard: some View {
         let plan = report.actionPlan
+        let alerts = focusedAlerts(plan.alerts)
+        let critical = alerts.filter { $0.severity == .critical }.count
+        let warning = alerts.filter { $0.severity == .warning }.count
+        let opportunity = alerts.filter { $0.severity == .opportunity }.count
+        let health: String = {
+            if focus == .both { return plan.healthLabel }
+            if critical > 0 { return "ต้องเร่งแก้ \(critical) จุด" }
+            if warning > 0 { return "เฝ้าระวัง \(warning) จุด" }
+            if opportunity > 0 { return "พร้อมเร่งผลผลิต" }
+            return plan.alerts.isEmpty ? plan.healthLabel : "จังหวะปกติสำหรับ\(focus.label)"
+        }()
+
         return SectionCard(
             "สัญญาณที่ควรลงมือ",
             systemImage: "bell.badge.fill",
-            subtitle: plan.healthLabel
+            subtitle: health
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    alertCountChip(count: plan.criticalCount, label: "เร่งแก้", color: Color(hex: "#dc2626"))
-                    alertCountChip(count: plan.warningCount, label: "เฝ้าระวัง", color: AppTheme.warning)
-                    alertCountChip(count: plan.opportunityCount, label: "โอกาส", color: Color(hex: "#16a34a"))
+                    alertCountChip(count: critical, label: "เร่งแก้", color: Color(hex: "#dc2626"))
+                    alertCountChip(count: warning, label: "เฝ้าระวัง", color: AppTheme.warning)
+                    alertCountChip(count: opportunity, label: "โอกาส", color: Color(hex: "#16a34a"))
                     Spacer(minLength: 0)
                 }
 
-                if plan.alerts.isEmpty {
+                if alerts.isEmpty {
                     Text("ยังไม่พบจุดผิดปกติในช่วงนี้ — รักษาระดับและดันเป้าต่อเนื่อง")
                         .font(.caption)
                         .foregroundStyle(AppTheme.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    ForEach(plan.alerts) { alert in
+                    ForEach(alerts) { alert in
                         alertRow(alert)
                     }
                 }
 
-                if !plan.playbook.isEmpty {
+                if !plan.playbook.isEmpty, focus == .both {
                     Divider().opacity(0.35)
                     Text("คู่มือเร่งงาน")
                         .font(.caption.weight(.bold))
@@ -234,8 +347,57 @@ struct OpsTrendAnalyticsHubView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
+                } else if focus != .both {
+                    Divider().opacity(0.35)
+                    Text("คู่มือเร่งงาน · \(focus.label)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    ForEach(Array(focusedPlaybook.enumerated()), id: \.offset) { idx, line in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("\(idx + 1).")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(AppTheme.brand)
+                                .frame(width: 16, alignment: .leading)
+                            Text(line)
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.inkMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    private func focusedAlerts(_ alerts: [OpsTrendAlert]) -> [OpsTrendAlert] {
+        switch focus {
+        case .both:
+            return alerts
+        case .trip:
+            return alerts.filter { $0.area != "ร่อนทราย" }
+        case .sand:
+            return alerts.filter { $0.area != "เที่ยวรถ" }
+        }
+    }
+
+    private var focusedPlaybook: [String] {
+        switch focus {
+        case .both:
+            return report.actionPlan.playbook
+        case .trip:
+            return [
+                "เป้าเที่ยว \(OpsTrendAnalytics.formatCompact(period.tripDailyTarget))/วัน · เช้าให้แตะ ~\(OpsTrendAnalytics.formatCompact(period.tripDailyTarget * 0.45)) ก่อนเที่ยง",
+                "ถ้าจังหวะช้า: ไล่รถที่รอบห่าง แล้วอัดชั่วโมงพีค",
+                "รักษาสตรีควันทำงาน — วันว่างทำลายโมเมนตัมทั้ง\(period.shortLabel)",
+                "ดันวันอ่อนให้ใกล้ค่าเฉลี่ย เพื่อลดความผันผวน",
+            ]
+        case .sand:
+            return [
+                "รักษาจังหวะร่อนต่อเนื่องหลังพักเที่ยง",
+                "ถ้าอัตรา/ชม. ตก: เช็ควัตถุดิบเข้าเครื่องและความพร้อมคนประจำจุด",
+                "ให้มีรอบร่อนคู่กับเที่ยวขนออก เพื่อไม่ให้กองค้าง",
+                "รักษาสตรีควันทำงานทั้ง\(period.shortLabel)",
+            ]
         }
     }
 
@@ -307,7 +469,19 @@ struct OpsTrendAnalyticsHubView: View {
         }
     }
 
+    @ViewBuilder
     private var pillarBreakdown: some View {
+        switch focus {
+        case .both:
+            combinedPillarBreakdown
+        case .trip:
+            modePillarBreakdown(card: report.trip, mode: report.tripAdvanced, accent: AppTheme.info)
+        case .sand:
+            modePillarBreakdown(card: report.sand, mode: report.sandAdvanced, accent: AppTheme.brand)
+        }
+    }
+
+    private var combinedPillarBreakdown: some View {
         let sc = report.scorecard
         let pillars: [(String, Int, Color)] = [
             ("ปริมาณ", sc.volumeScore, AppTheme.info),
@@ -320,6 +494,32 @@ struct OpsTrendAnalyticsHubView: View {
             "องค์ประกอบคะแนน",
             systemImage: "chart.bar.doc.horizontal",
             subtitle: "น้ำหนัก: ปริมาณ 30% · เติบโต 25% · นิ่ง 20% · ครอบคลุม 15% · สมดุล 10%"
+        ) {
+            VStack(spacing: 10) {
+                ForEach(Array(pillars.enumerated()), id: \.offset) { _, item in
+                    pillarRow(title: item.0, score: item.1, color: item.2)
+                }
+            }
+        }
+    }
+
+    private func modePillarBreakdown(
+        card: OpsTrendMetricCard,
+        mode: OpsTrendAdvancedMode,
+        accent: Color
+    ) -> some View {
+        let attainment = Int((card.targetAttainmentPct ?? Double(mode.volumeScore)).rounded())
+        let pillars: [(String, Int, Color)] = [
+            ("ความเร็ว", mode.speedScore, Color(hex: "#16a34a")),
+            ("ปริมาณ", mode.volumeScore, AppTheme.warning),
+            ("เติบโต", card.growthScore, accent),
+            ("ความนิ่ง", card.consistencyScore, AppTheme.brand),
+            ("ถึงเป้า", min(100, max(0, attainment)), AppTheme.info),
+        ]
+        return SectionCard(
+            "องค์ประกอบคะแนน · \(card.title)",
+            systemImage: "chart.bar.doc.horizontal",
+            subtitle: "คะแนนเฉพาะ\(card.title)ในช่วงนี้"
         ) {
             VStack(spacing: 10) {
                 ForEach(Array(pillars.enumerated()), id: \.offset) { _, item in
@@ -492,12 +692,23 @@ struct OpsTrendAnalyticsHubView: View {
                                 Text("\(item.score)")
                                     .font(.subheadline.weight(.bold))
                                     .foregroundStyle(AppTheme.ink)
-                                Text("\(OpsTrendAnalytics.formatCompact(item.tripTotal))ท")
-                                    .font(.system(size: 9, weight: .semibold))
-                                    .foregroundStyle(AppTheme.info)
-                                Text("\(OpsTrendAnalytics.formatCompact(item.sandTotal))ร")
-                                    .font(.system(size: 9, weight: .semibold))
-                                    .foregroundStyle(AppTheme.brand)
+                                switch focus {
+                                case .both:
+                                    Text("\(OpsTrendAnalytics.formatCompact(item.tripTotal))ท")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundStyle(AppTheme.info)
+                                    Text("\(OpsTrendAnalytics.formatCompact(item.sandTotal))ร")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundStyle(AppTheme.brand)
+                                case .trip:
+                                    Text("\(OpsTrendAnalytics.formatCompact(item.tripTotal)) เที่ยว")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundStyle(AppTheme.info)
+                                case .sand:
+                                    Text("\(OpsTrendAnalytics.formatCompact(item.sandTotal)) รอบ")
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .foregroundStyle(AppTheme.brand)
+                                }
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 8)
@@ -625,37 +836,55 @@ struct OpsTrendAnalyticsHubView: View {
         }
     }
 
+    @ViewBuilder
     private var periodCompareCard: some View {
         SectionCard(
             "เปรียบเทียบช่วงนี้ vs ก่อน",
             systemImage: "arrow.left.arrow.right",
-            subtitle: "รวมทั้งช่วง"
+            subtitle: "รวมทั้งช่วง · \(focus == .both ? "เที่ยวรถ × ร่อนทราย" : focus.label)"
         ) {
-            let labels = ["เที่ยวรถ", "ร่อนทราย"]
-            let cur = [report.trip.total, report.sand.total]
-            let prev = [report.trip.prevTotal, report.sand.prevTotal]
-            GroupedBarChartView(
-                labels: labels,
-                seriesA: cur,
-                seriesB: prev,
-                colorA: AppTheme.brand,
-                colorB: AppTheme.inkMuted.opacity(0.55),
-                labelA: "ช่วงนี้",
-                labelB: "ช่วงก่อน"
-            )
+            switch focus {
+            case .both:
+                GroupedBarChartView(
+                    labels: ["เที่ยวรถ", "ร่อนทราย"],
+                    seriesA: [report.trip.total, report.sand.total],
+                    seriesB: [report.trip.prevTotal, report.sand.prevTotal],
+                    colorA: AppTheme.brand,
+                    colorB: AppTheme.inkMuted.opacity(0.55),
+                    labelA: "ช่วงนี้",
+                    labelB: "ช่วงก่อน"
+                )
 
-            if let ratio = report.tripSandRatio {
-                HStack {
-                    Text(String(format: "อัตราเที่ยว/รอบร่อน %.1f", ratio))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.ink)
-                    if let prev = report.prevTripSandRatio {
-                        Text(String(format: "(ก่อน %.1f)", prev))
-                            .font(.caption2)
-                            .foregroundStyle(AppTheme.inkMuted)
+                if let ratio = report.tripSandRatio {
+                    HStack {
+                        Text(String(format: "อัตราเที่ยว/รอบร่อน %.1f", ratio))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.ink)
+                        if let prev = report.prevTripSandRatio {
+                            Text(String(format: "(ก่อน %.1f)", prev))
+                                .font(.caption2)
+                                .foregroundStyle(AppTheme.inkMuted)
+                        }
+                        Spacer()
                     }
-                    Spacer()
+                    .padding(.top, 4)
                 }
+            case .trip, .sand:
+                let card = primaryCard
+                GroupedBarChartView(
+                    labels: [card.title],
+                    seriesA: [card.total],
+                    seriesB: [card.prevTotal],
+                    colorA: accent(for: card),
+                    colorB: AppTheme.inkMuted.opacity(0.55),
+                    labelA: "ช่วงนี้",
+                    labelB: "ช่วงก่อน"
+                )
+                Text(
+                    "ช่วงนี้ \(OpsTrendAnalytics.formatCompact(card.total)) \(card.unit) · ก่อน \(OpsTrendAnalytics.formatCompact(card.prevTotal)) (\(OpsTrendAnalytics.formatSignedPct(card.changePct)))"
+                )
+                .font(.caption)
+                .foregroundStyle(AppTheme.inkMuted)
                 .padding(.top, 4)
             }
         }
@@ -937,13 +1166,14 @@ struct OpsTrendAnalyticsHubView: View {
     }
 
     private var insightsCard: some View {
-        SectionCard(
+        let lines = focusedInsights
+        return SectionCard(
             "สรุปจังหวะ & คำแนะนำ",
             systemImage: "text.badge.checkmark",
             subtitle: "\(report.activeDays)/\(report.coverageDays) วันมีงาน · สตรีค \(report.streakDays)"
         ) {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(report.insights.enumerated()), id: \.offset) { _, line in
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.caption)
@@ -956,6 +1186,25 @@ struct OpsTrendAnalyticsHubView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var focusedInsights: [String] {
+        switch focus {
+        case .both:
+            return report.insights
+        case .trip:
+            let fromReport = report.insights.filter {
+                $0.contains("เที่ยว") || $0.contains("เป้า") || $0.contains("วันทำงาน") || $0.contains("สตรีค")
+            }
+            let advanced = Array(report.tripAdvanced.insights.prefix(3))
+            return fromReport.isEmpty ? advanced : fromReport + advanced
+        case .sand:
+            let fromReport = report.insights.filter {
+                $0.contains("ร่อน") || $0.contains("ทราย") || $0.contains("วันทำงาน") || $0.contains("สตรีค")
+            }
+            let advanced = Array(report.sandAdvanced.insights.prefix(3))
+            return fromReport.isEmpty ? advanced : fromReport + advanced
         }
     }
 
