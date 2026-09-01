@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../widgets/mobile_error_report_send_dialog.dart';
+import '../widgets/save_operation_feedback.dart';
 import 'mobile_error_report_submit_guard.dart';
 
 /// บริบทตอนผู้ใช้กดบันทึก/ส่งข้อมูล — ใช้แสดงใน SnackBar เมื่อเกิดข้อผิดพลาด
@@ -61,6 +62,20 @@ String formatSaveErrorMessage(
 /// ส่งรายงาน error ขึ้นเซิร์ฟเวอร์ — คืน `id` รายงานถ้าสำเร็จ
 typedef SaveErrorReportHandler = Future<String?> Function();
 
+String buildSaveErrorPopupSubtitle(SaveErrorReportFields fields) {
+  final parts = <String>[];
+  if (fields.field != null && fields.field!.trim().isNotEmpty) {
+    parts.add('จุดที่ผิด: ${fields.field!.trim()}');
+  }
+  if (fields.page != null && fields.page!.trim().isNotEmpty) {
+    parts.add('หน้า: ${fields.page!.trim()}');
+  }
+  if (fields.action != null && fields.action!.trim().isNotEmpty) {
+    parts.add(fields.action!.trim());
+  }
+  return parts.join(' · ');
+}
+
 void showSaveErrorSnackBar(
   BuildContext context, {
   required Object error,
@@ -68,68 +83,55 @@ void showSaveErrorSnackBar(
   SaveErrorReportHandler? onSendReport,
 }) {
   if (!context.mounted) return;
-  // หลังปิด dialog บันทึก element tree อาจยังไม่ stable — รอเฟรมถัดไป
   WidgetsBinding.instance.addPostFrameCallback((_) {
-    _presentSaveErrorSnackBar(
-      context,
-      error: error,
-      saveContext: saveContext,
-      onSendReport: onSendReport,
+    unawaited(
+      _presentSaveErrorPopup(
+        context,
+        error: error,
+        saveContext: saveContext,
+        onSendReport: onSendReport,
+      ),
     );
   });
 }
 
-void _presentSaveErrorSnackBar(
+Future<void> _presentSaveErrorPopup(
   BuildContext context, {
   required Object error,
   SaveErrorContext? saveContext,
   SaveErrorReportHandler? onSendReport,
-}) {
+}) async {
   if (!context.mounted) return;
 
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  if (messenger == null) return;
-
-  final message = formatSaveErrorMessage(error, context: saveContext);
   final fields = extractSaveErrorReportFields(error, context: saveContext);
   final previewSummary = buildSaveErrorReportSummary(fields);
 
-  messenger.showSnackBar(
-    SnackBar(
-      content: Text(
-        message,
-        style: GoogleFonts.kanit(fontSize: 14, height: 1.35),
-      ),
-      duration: const Duration(seconds: 10),
-      behavior: SnackBarBehavior.floating,
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-      action: onSendReport == null
-          ? null
-          : SnackBarAction(
-              label: 'ส่งข้อมูล',
-              textColor: Colors.amber.shade200,
-              onPressed: () {
-                _promptAndSendSaveErrorReport(
-                  context,
-                  previewSummary: previewSummary,
-                  previewDetail: fields.cause,
-                  onSendReport: onSendReport,
-                );
-              },
-            ),
-    ),
+  await SaveOperationFeedback.showError(
+    context: context,
+    title: 'บันทึกไม่สำเร็จ',
+    message: fields.cause,
+    subtitle: buildSaveErrorPopupSubtitle(fields),
+    onSendReport: onSendReport == null
+        ? null
+        : () async {
+            await _promptAndSendSaveErrorReport(
+              context,
+              previewSummary: previewSummary,
+              previewDetail: fields.cause,
+              onSendReport: onSendReport,
+            );
+          },
   );
 
-  if (onSendReport != null) {
-    unawaited(
-      _autoSendSaveErrorReport(
-        context,
-        messenger: messenger,
-        baseMessage: message,
-        onSendReport: onSendReport,
-      ),
-    );
-  }
+  if (!context.mounted || onSendReport == null) return;
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return;
+  await _autoSendSaveErrorReport(
+    context,
+    messenger: messenger,
+    baseMessage: formatSaveErrorMessage(error, context: saveContext),
+    onSendReport: onSendReport,
+  );
 }
 
 Future<void> _promptAndSendSaveErrorReport(

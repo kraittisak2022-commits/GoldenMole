@@ -3187,12 +3187,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     SaveOperationFeedback.showSaving(context);
   }
 
-  void _dismissSavingPopup() {
-    if (!mounted) return;
-    _releaseKeyboardFocus();
-    SaveOperationFeedback.dismissSaving(context);
-  }
-
   Future<void> _showSuccessPopupAndPopToHome(String message) async {
     if (!mounted) return;
     _releaseKeyboardFocus();
@@ -3227,7 +3221,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
     _releaseKeyboardFocus();
     setState(() => _saving = true);
-    var savingDialogOpen = false;
     _activeSaveErrorContext = saveCtx;
     try {
       if (requireSignature) {
@@ -3240,41 +3233,30 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (!mounted) return;
       _releaseKeyboardFocus();
       _showSavingPopup();
-      savingDialogOpen = true;
       await body();
       if (!mounted) return;
       final doneMessage = successMessageBuilder?.call() ?? successMessage;
       if (stayOnPage) {
-        _dismissSavingPopup();
-        savingDialogOpen = false;
-        await WidgetsBinding.instance.endOfFrame;
-        if (!mounted) return;
         _releaseKeyboardFocus();
-        await WidgetsBinding.instance.endOfFrame;
-        if (!mounted) return;
-        if (onStayOnPageCleared != null) {
-          setState(onStayOnPageCleared);
-          await WidgetsBinding.instance.endOfFrame;
-        }
-        if (!mounted) return;
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(
-            content: Text(doneMessage, style: GoogleFonts.kanit()),
-          ),
+        await SaveOperationFeedback.showSuccessStayOnPage(
+          context: context,
+          message: doneMessage,
+          onAfterDismiss: () {
+            if (!mounted) return;
+            if (onStayOnPageCleared != null) {
+              setState(onStayOnPageCleared);
+            }
+            unawaited(
+              _loadModuleTransactions(preserveIncomeUtilitiesForm: true),
+            );
+          },
         );
-        await _loadModuleTransactions(preserveIncomeUtilitiesForm: true);
       } else {
         // dialog เดิม morph เป็น success ต่อเนื่อง — ไม่ปิดแล้วเปิดใหม่
-        savingDialogOpen = false;
         _releaseKeyboardFocus();
         await _showSuccessPopupAndPopToHome(doneMessage);
       }
     } catch (error) {
-      if (savingDialogOpen && mounted) {
-        _dismissSavingPopup();
-        savingDialogOpen = false;
-        await WidgetsBinding.instance.endOfFrame;
-      }
       if (mounted) _showSaveError(error, context: saveCtx);
     } finally {
       _activeSaveErrorContext = null;

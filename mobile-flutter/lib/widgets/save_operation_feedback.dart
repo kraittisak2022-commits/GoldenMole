@@ -6,25 +6,39 @@ import 'package:flutter/material.dart';
 import '../utils/app_haptics.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-enum _SavePhase { saving, success }
+enum _SavePhase { saving, success, error }
 
 class _SaveDialogSession {
   _SaveDialogSession(this.navigator);
 
   final NavigatorState navigator;
   final ValueNotifier<_SavePhase> phase = ValueNotifier(_SavePhase.saving);
+  final ValueNotifier<String> title = ValueNotifier('');
   final ValueNotifier<String> message = ValueNotifier('');
+  final ValueNotifier<String> subtitle = ValueNotifier('');
   final Completer<void> closed = Completer<void>();
+  Completer<void>? dismissWait;
   bool popScheduled = false;
+  Future<void> Function()? onSendReport;
 
   void dispose() {
     phase.dispose();
+    title.dispose();
     message.dispose();
+    subtitle.dispose();
+  }
+
+  void dismiss() {
+    if (popScheduled) return;
+    popScheduled = true;
+    if (dismissWait != null && !dismissWait!.isCompleted) {
+      dismissWait!.complete();
+    }
+    if (navigator.canPop()) navigator.pop();
   }
 }
 
-/// โอเวอร์เลย์ «กำลังบันทึก» → «ทำรายการสำเร็จ» — dialog เดียว morph ต่อเนื่อง
-/// ไม่ปิดแล้วเปิดใหม่ ฉากหลังไม่กะพริบ และมีอนิเมชันเข้า/ออกนุ่มนวล
+/// โอเวอร์เลย์ «กำลังบันทึก» → «สำเร็จ» / «ไม่สำเร็จ» — dialog เดียว morph ต่อเนื่อง
 class SaveOperationFeedback {
   SaveOperationFeedback._();
 
@@ -43,7 +57,7 @@ class SaveOperationFeedback {
         context: context,
         barrierDismissible: false,
         barrierLabel: 'saving',
-        barrierColor: Colors.black.withValues(alpha: 0.4),
+        barrierColor: Colors.black.withValues(alpha: 0.42),
         useRootNavigator: true,
         transitionDuration: const Duration(milliseconds: 240),
         pageBuilder: (dialogContext, animation, secondaryAnimation) => PopScope(
@@ -59,7 +73,7 @@ class SaveOperationFeedback {
           return FadeTransition(
             opacity: curved,
             child: ScaleTransition(
-              scale: Tween<double>(begin: 0.94, end: 1).animate(curved),
+              scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
               child: child,
             ),
           );
@@ -73,47 +87,98 @@ class SaveOperationFeedback {
   }
 
   static void dismissSaving(BuildContext context) {
-    final session = _session;
-    if (session == null || session.popScheduled) return;
-    session.popScheduled = true;
-    if (session.navigator.canPop()) session.navigator.pop();
+    _session?.dismiss();
   }
 
-  /// morph dialog ที่เปิดอยู่เป็น success (หรือเปิดใหม่ถ้ายังไม่มี) แล้วปิดอัตโนมัติ
-  /// [onAfterDismiss] เรียกหลังปิด (เช่น pop กลับหน้าหลัก)
   static Future<void> showSuccessThenDismiss({
     required BuildContext context,
     required String message,
     Duration holdAfterAnimation = const Duration(milliseconds: 1200),
     required VoidCallback onAfterDismiss,
   }) async {
+    await _morphToSuccess(
+      context: context,
+      message: message,
+      holdAfterAnimation: holdAfterAnimation,
+    );
+    onAfterDismiss();
+  }
+
+  /// สำเร็จแต่ยังอยู่หน้าเดิม (เช่น น้ำมัน / นับจำนวน)
+  static Future<void> showSuccessStayOnPage({
+    required BuildContext context,
+    required String message,
+    Duration holdAfterAnimation = const Duration(milliseconds: 1300),
+    VoidCallback? onAfterDismiss,
+  }) async {
+    await _morphToSuccess(
+      context: context,
+      message: message,
+      holdAfterAnimation: holdAfterAnimation,
+    );
+    onAfterDismiss?.call();
+  }
+
+  static Future<void> _morphToSuccess({
+    required BuildContext context,
+    required String message,
+    required Duration holdAfterAnimation,
+  }) async {
     var session = _session;
     if (session == null) {
-      if (!context.mounted) {
-        onAfterDismiss();
-        return;
-      }
+      if (!context.mounted) return;
       showSaving(context);
       session = _session;
     }
-    if (session == null) {
-      onAfterDismiss();
-      return;
-    }
+    if (session == null) return;
+
     session.message.value = message;
+    session.title.value = '';
+    session.subtitle.value = '';
     session.phase.value = _SavePhase.success;
 
-    // รอ morph + อนิเมชันติ๊กถูก แล้วค้างไว้ให้ผู้ใช้เห็น
     await Future<void>.delayed(
       const Duration(milliseconds: 620) + holdAfterAnimation,
     );
 
-    if (!session.popScheduled) {
-      session.popScheduled = true;
-      if (session.navigator.canPop()) session.navigator.pop();
-    }
+    session.dismiss();
     await session.closed.future;
-    onAfterDismiss();
+  }
+
+  /// morph จากกำลังบันทึก → ไม่สำเร็จ (หรือเปิดใหม่ถ้ายังไม่มี dialog)
+  static Future<void> showError({
+    required BuildContext context,
+    required String title,
+    required String message,
+    String? subtitle,
+    Future<void> Function()? onSendReport,
+    Duration holdAfterAnimation = const Duration(milliseconds: 3400),
+  }) async {
+    var session = _session;
+    if (session == null || session.popScheduled) {
+      if (!context.mounted) return;
+      showSaving(context);
+      session = _session;
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    }
+    if (session == null || !context.mounted) return;
+
+    session.title.value = title;
+    session.message.value = message;
+    session.subtitle.value = subtitle?.trim() ?? '';
+    session.onSendReport = onSendReport;
+    session.dismissWait = Completer<void>();
+    session.phase.value = _SavePhase.error;
+
+    await Future.any<void>([
+      Future<void>.delayed(
+        const Duration(milliseconds: 520) + holdAfterAnimation,
+      ),
+      session.dismissWait!.future,
+    ]);
+
+    if (!session.popScheduled) session.dismiss();
+    await session.closed.future;
   }
 }
 
@@ -124,7 +189,7 @@ class _SaveFeedbackDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = math.min(MediaQuery.sizeOf(context).width * 0.84, 330.0);
+    final width = math.min(MediaQuery.sizeOf(context).width * 0.86, 340.0);
     return Center(
       child: Material(
         color: Colors.transparent,
@@ -132,24 +197,29 @@ class _SaveFeedbackDialog extends StatelessWidget {
           valueListenable: session.phase,
           builder: (context, phase, _) {
             final success = phase == _SavePhase.success;
+            final error = phase == _SavePhase.error;
             return AnimatedContainer(
               duration: const Duration(milliseconds: 340),
               curve: Curves.easeOutCubic,
               width: width,
-              padding: const EdgeInsets.fromLTRB(24, 28, 24, 26),
+              padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(26),
                 border: Border.all(
-                  color: success
-                      ? const Color(0xFFA5D6A7).withValues(alpha: 0.65)
-                      : Colors.white,
+                  color: error
+                      ? const Color(0xFFEF9A9A).withValues(alpha: 0.7)
+                      : success
+                          ? const Color(0xFFA5D6A7).withValues(alpha: 0.65)
+                          : Colors.white,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: success
-                        ? const Color(0xFF2E7D32).withValues(alpha: 0.22)
-                        : const Color(0xFF1565C0).withValues(alpha: 0.18),
+                    color: error
+                        ? const Color(0xFFC62828).withValues(alpha: 0.2)
+                        : success
+                            ? const Color(0xFF2E7D32).withValues(alpha: 0.22)
+                            : const Color(0xFF1565C0).withValues(alpha: 0.18),
                     blurRadius: 34,
                     offset: const Offset(0, 13),
                   ),
@@ -161,8 +231,10 @@ class _SaveFeedbackDialog extends StatelessWidget {
                 alignment: Alignment.topCenter,
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
-                  switchInCurve: const Interval(0.35, 1, curve: Curves.easeOutCubic),
-                  switchOutCurve: const Interval(0.65, 1, curve: Curves.easeInCubic),
+                  switchInCurve:
+                      const Interval(0.35, 1, curve: Curves.easeOutCubic),
+                  switchOutCurve:
+                      const Interval(0.65, 1, curve: Curves.easeInCubic),
                   layoutBuilder: (currentChild, previousChildren) {
                     return Stack(
                       alignment: Alignment.topCenter,
@@ -172,12 +244,17 @@ class _SaveFeedbackDialog extends StatelessWidget {
                       ],
                     );
                   },
-                  child: success
-                      ? _SuccessContent(
-                          key: const ValueKey('success'),
-                          messageListenable: session.message,
+                  child: error
+                      ? _ErrorContent(
+                          key: const ValueKey('error'),
+                          session: session,
                         )
-                      : const _SavingContent(key: ValueKey('saving')),
+                      : success
+                          ? _SuccessContent(
+                              key: const ValueKey('success'),
+                              messageListenable: session.message,
+                            )
+                          : const _SavingContent(key: ValueKey('saving')),
                 ),
               ),
             );
@@ -437,7 +514,7 @@ class _SuccessContentState extends State<_SuccessContent>
             child: Column(
               children: [
                 Text(
-                  'ทำรายการสำเร็จ',
+                  'บันทึกสำเร็จ',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.kanit(
                     fontSize: 21,
@@ -479,6 +556,227 @@ class _SuccessContentState extends State<_SuccessContent>
               ],
             ),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ErrorContent extends StatefulWidget {
+  const _ErrorContent({super.key, required this.session});
+
+  final _SaveDialogSession session;
+
+  @override
+  State<_ErrorContent> createState() => _ErrorContentState();
+}
+
+class _ErrorContentState extends State<_ErrorContent>
+    with TickerProviderStateMixin {
+  late final AnimationController _entrance;
+  late final AnimationController _shake;
+  late final Animation<double> _iconScale;
+  late final Animation<double> _textFade;
+
+  @override
+  void initState() {
+    super.initState();
+    _entrance = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _shake = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+    _iconScale = CurvedAnimation(
+      parent: _entrance,
+      curve: const Interval(0.05, 0.75, curve: Curves.elasticOut),
+    );
+    _textFade = CurvedAnimation(
+      parent: _entrance,
+      curve: const Interval(0.25, 1, curve: Curves.easeOutCubic),
+    );
+    _entrance.forward();
+    _shake.forward();
+    AppHaptics.warn();
+  }
+
+  @override
+  void dispose() {
+    _entrance.dispose();
+    _shake.dispose();
+    super.dispose();
+  }
+
+  double _shakeOffset(double t) {
+    if (t >= 1) return 0;
+    return math.sin(t * math.pi * 6) * 10 * (1 - t);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedBuilder(
+          animation: _shake,
+          builder: (context, child) {
+            return Transform.translate(
+              offset: Offset(_shakeOffset(_shake.value), 0),
+              child: child,
+            );
+          },
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0, end: 1).animate(_iconScale),
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFEF5350), Color(0xFFC62828)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x40C62828),
+                    blurRadius: 14,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.close_rounded,
+                color: Colors.white,
+                size: 38,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        FadeTransition(
+          opacity: _textFade,
+          child: Column(
+            children: [
+              ValueListenableBuilder<String>(
+                valueListenable: widget.session.title,
+                builder: (context, title, _) {
+                  return Text(
+                    title.trim().isEmpty ? 'บันทึกไม่สำเร็จ' : title.trim(),
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.kanit(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFFB71C1C),
+                      height: 1.2,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Could not save',
+                style: GoogleFonts.kanit(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                  color: const Color(0xFFE57373),
+                ),
+              ),
+              ValueListenableBuilder<String>(
+                valueListenable: widget.session.message,
+                builder: (context, message, _) {
+                  final trimmed = message.trim();
+                  if (trimmed.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      trimmed,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.kanit(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF37474F),
+                        height: 1.35,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              ValueListenableBuilder<String>(
+                valueListenable: widget.session.subtitle,
+                builder: (context, subtitle, _) {
+                  final trimmed = subtitle.trim();
+                  if (trimmed.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      trimmed,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.kanit(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        color: const Color(0xFF78909C),
+                        height: 1.3,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            if (widget.session.onSendReport != null)
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () async {
+                    final handler = widget.session.onSendReport;
+                    if (handler == null) return;
+                    try {
+                      await handler();
+                    } catch (_) {}
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFC62828),
+                    side: const BorderSide(color: Color(0xFFEF9A9A)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'ส่งข้อมูล',
+                    style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            if (widget.session.onSendReport != null) const SizedBox(width: 10),
+            Expanded(
+              flex: widget.session.onSendReport != null ? 1 : 0,
+              child: SizedBox(
+                width: widget.session.onSendReport == null
+                    ? double.infinity
+                    : null,
+                child: FilledButton(
+                  onPressed: widget.session.dismiss,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFC62828),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'ตกลง',
+                    style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
