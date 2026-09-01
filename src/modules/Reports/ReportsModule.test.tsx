@@ -53,6 +53,8 @@ describe('ReportsModule', () => {
             />
         );
 
+        expect(screen.getByRole('tab', { name: 'รายงานการใช้น้ำมัน' })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: 'รายงานการใช้รถ' })).toBeInTheDocument();
         expect(screen.getByRole('heading', { name: 'รายงานการใช้น้ำมัน' })).toBeInTheDocument();
         expect(screen.getAllByText('รถดรัมโอเว่น').length).toBeGreaterThan(0);
         expect(screen.getByText('เติมรถดรัม')).toBeInTheDocument();
@@ -177,5 +179,37 @@ describe('ReportsModule', () => {
 
         expect(screen.getByText('เติมเดือนสิงหาคม')).toBeInTheDocument();
         expect(screen.getByText(/01\/08\/2569 – 31\/08\/2569/)).toBeInTheDocument();
+    });
+
+    it('switches to vehicle usage report submenu', async () => {
+        const user = userEvent.setup();
+        render(
+            <ReportsModule
+                settings={settings}
+                employees={[{ id: 'e1', name: 'สมชาย', nickname: 'ชาย', type: 'Daily', positions: ['คนขับรถแม็คโคร'] }]}
+                transactions={[
+                    {
+                        id: 'm1',
+                        date: '2026-08-10',
+                        type: 'Expense',
+                        category: 'Vehicle',
+                        description: 'แม็คโคร',
+                        amount: 0,
+                        vehicleId: 'แม็คโคร 01',
+                        driverId: 'e1',
+                        workType: 'FullDay',
+                        workDetails: 'ขุดลาน',
+                    },
+                ]}
+            />
+        );
+
+        await user.click(screen.getByRole('tab', { name: 'รายงานการใช้รถ' }));
+        expect(screen.getByRole('heading', { name: 'รายงานการใช้รถ' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'รายงานการใช้รถแม็คโคร' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'รายงานเที่ยวรถดั๊ม สิบล้อ ดรัม' })).toBeInTheDocument();
+        expect(screen.getAllByText('แม็คโคร 01').length).toBeGreaterThan(0);
+        expect(screen.getByText('ขุดลาน')).toBeInTheDocument();
+        expect(screen.getByText('ชาย')).toBeInTheDocument();
     });
 });

@@ -3,7 +3,7 @@ import { FileDown, Fuel, Printer, Truck } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Select from '../../components/ui/Select';
-import type { AppSettings, Transaction } from '../../types';
+import type { AppSettings, Employee, Transaction } from '../../types';
 import {
     THAI_MONTHS,
     computeFuelStockBalances,
@@ -30,13 +30,28 @@ import {
     type FuelTypeFilter,
     type FuelUsageKind,
 } from '../../utils/fuelUsageReport';
+import {
+    buildVehicleUsageReport,
+    filterVehicleUsageReport,
+    vehicleKindLabel,
+    vehiclePrintGroupTitle,
+    vehiclePrintOverviewSections,
+    vehicleUsageToCsv,
+    vehicleUsageToPrintHtml,
+    type VehiclePrintGroup,
+    type VehicleUsageKind,
+} from '../../utils/vehicleUsageReport';
 import { transactionVehicleLabel } from '../../utils/vehicleCatalog';
 
 const PRINT_GROUPS: FuelPrintGroup[] = ['overview', 'stock_in', 'macro', 'sieve_generator', 'other_fill'];
+const VEHICLE_PRINT_GROUPS: VehiclePrintGroup[] = ['overview', 'macro', 'dump', 'hire'];
+
+type ReportMenu = 'fuel' | 'vehicle';
 
 interface ReportsModuleProps {
     transactions: Transaction[];
     settings: AppSettings;
+    employees?: Employee[];
     /** คงไว้เพื่อความเข้ากันได้กับ App — รายงานนี้ไม่แสดงยอดเงิน */
     maskAmounts?: boolean;
 }
@@ -48,6 +63,13 @@ const KIND_OPTIONS: Array<{ id: '' | FuelUsageKind; label: string }> = [
     { id: 'vehicle', label: 'ใช้แล้ว (รถ/แม็คโคร)' },
     { id: 'sand_sieve', label: 'ใช้แล้ว (ร่อนทราย)' },
     { id: 'other_out', label: 'ใช้แล้ว (อื่น ๆ)' },
+];
+
+const VEHICLE_KIND_OPTIONS: Array<{ id: '' | VehicleUsageKind; label: string }> = [
+    { id: '', label: 'ทุกรายการ' },
+    { id: 'macro', label: 'รถแม็คโคร' },
+    { id: 'dump_trip', label: 'เที่ยวรถดั๊ม / สิบล้อ / ดรัม' },
+    { id: 'hire', label: 'การใช้รถ (ค่าจ้าง)' },
 ];
 
 const selectClass = 'dark:bg-white/5 dark:text-slate-100 dark:border-white/20';
@@ -121,19 +143,37 @@ const ThaiDateSelect = ({
     );
 };
 
-const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
+const SummaryTile = ({
+    label,
+    value,
+    hint,
+}: {
+    label: string;
+    value: string;
+    hint?: string;
+}) => (
+    <div className="rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-white/[0.03] px-3.5 py-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
+        <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-50">{value}</p>
+        {hint ? <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{hint}</p> : null}
+    </div>
+);
+
+const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModuleProps) => {
     const today = getToday();
     const initial = monthBoundsFromYmd(today);
+    const [menu, setMenu] = useState<ReportMenu>('fuel');
     const [start, setStart] = useState(initial.start);
     const [end, setEnd] = useState(initial.end);
     const [vehicleId, setVehicleId] = useState('');
     const [fuelType, setFuelType] = useState<'' | FuelTypeFilter>('');
     const [kind, setKind] = useState<'' | FuelUsageKind>('');
+    const [vehicleKind, setVehicleKind] = useState<'' | VehicleUsageKind>('');
 
     const orgTitle = (settings.orgProfile?.name || settings.appName || 'Goldenmole').trim();
     const orgLine = [settings.orgProfile?.address, settings.orgProfile?.phone].filter(Boolean).join(' · ');
 
-    const vehicleOptions = useMemo(() => {
+    const fuelVehicleOptions = useMemo(() => {
         const catalog = settings.vehicleCatalog || [];
         const names = new Set<string>(settings.cars || []);
         transactions.forEach((t) => {
@@ -147,7 +187,22 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
         return Array.from(names).sort((a, b) => a.localeCompare(b, 'th'));
     }, [settings.cars, settings.vehicleCatalog, transactions]);
 
-    /** ช่วงที่ใช้คำนวณจริง — สลับถ้าตั้งแต่ > ถึง */
+    const opsVehicleOptions = useMemo(() => {
+        const catalog = settings.vehicleCatalog || [];
+        const names = new Set<string>(settings.cars || []);
+        transactions.forEach((t) => {
+            if (t.category !== 'Vehicle' && !(t.category === 'DailyLog' && String(t.subCategory ?? '').toLowerCase() === 'vehicletrip')) {
+                return;
+            }
+            const label = transactionVehicleLabel(
+                { vehicleId: t.vehicleId, vehicleName: t.vehicleName },
+                catalog,
+            );
+            if (label) names.add(label);
+        });
+        return Array.from(names).sort((a, b) => a.localeCompare(b, 'th'));
+    }, [settings.cars, settings.vehicleCatalog, transactions]);
+
     const range = useMemo(() => {
         const a = normalizeDate(start);
         const b = normalizeDate(end);
@@ -159,7 +214,7 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
         [transactions]
     );
 
-    const report = useMemo(
+    const fuelReport = useMemo(
         () => buildFuelUsageReport(transactions, {
             start: range.start,
             end: range.end,
@@ -170,6 +225,17 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
             vehicleCatalog: settings.vehicleCatalog,
         }),
         [transactions, range.start, range.end, vehicleId, fuelType, kind, estimatedSieveByDay, settings.vehicleCatalog]
+    );
+
+    const vehicleReport = useMemo(
+        () => buildVehicleUsageReport(transactions, employees, {
+            start: range.start,
+            end: range.end,
+            vehicleId,
+            kind: vehicleKind,
+            vehicleCatalog: settings.vehicleCatalog,
+        }),
+        [transactions, employees, range.start, range.end, vehicleId, vehicleKind, settings.vehicleCatalog]
     );
 
     const remainingStock = useMemo(() => {
@@ -188,16 +254,20 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
     const liters = (n: number) => `${formatDisplayNumber(n)} ลิตร`;
     const rangeLabel = `${formatDateBE(range.start)} – ${formatDateBE(range.end)}`;
 
-    const overviewSections = useMemo(() => fuelPrintOverviewSections(report), [report]);
+    const overviewSections = useMemo(() => fuelPrintOverviewSections(fuelReport), [fuelReport]);
+    const vehicleOverviewSections = useMemo(
+        () => vehiclePrintOverviewSections(vehicleReport),
+        [vehicleReport],
+    );
 
     const applyBounds = (bounds: { start: string; end: string }) => {
         setStart(bounds.start);
         setEnd(bounds.end);
     };
 
-    const exportCsv = () => {
+    const exportFuelCsv = () => {
         const csv = fuelUsageToCsv(
-            report,
+            fuelReport,
             {
                 start: range.start,
                 end: range.end,
@@ -217,17 +287,33 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
         URL.revokeObjectURL(url);
     };
 
-    const printGroupReport = (group: FuelPrintGroup, locale: FuelPrintLocale = 'th') => {
+    const exportVehicleCsv = () => {
+        const csv = vehicleUsageToCsv(vehicleReport, {
+            start: range.start,
+            end: range.end,
+            vehicleId,
+            kind: vehicleKind,
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `vehicle-usage-${range.start}-to-${range.end}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const printFuelGroupReport = (group: FuelPrintGroup, locale: FuelPrintLocale = 'th') => {
         const grouped = group === 'overview'
-            ? report
-            : filterFuelUsageReport(report, group);
+            ? fuelReport
+            : filterFuelUsageReport(fuelReport, group);
         const html = fuelUsageToPrintHtml({
             appName: orgTitle,
             orgSubtitle: orgLine || undefined,
             rangeLabel,
             report: grouped,
             group,
-            fullReport: report,
+            fullReport: fuelReport,
             formatDate: formatDateBE,
             locale,
         });
@@ -240,344 +326,706 @@ const ReportsModule = ({ transactions, settings }: ReportsModuleProps) => {
         w.print();
     };
 
+    const printVehicleGroupReport = (group: VehiclePrintGroup, locale: 'th' | 'zh' = 'th') => {
+        const grouped = group === 'overview'
+            ? vehicleReport
+            : filterVehicleUsageReport(vehicleReport, group);
+        const html = vehicleUsageToPrintHtml({
+            appName: orgTitle,
+            orgSubtitle: orgLine || undefined,
+            rangeLabel,
+            report: grouped,
+            group,
+            formatDate: formatDateBE,
+            locale,
+        });
+        const w = window.open('', '_blank');
+        if (!w) return;
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+        w.focus();
+        w.print();
+    };
+
+    const switchMenu = (next: ReportMenu) => {
+        setMenu(next);
+        setVehicleId('');
+        setKind('');
+        setVehicleKind('');
+        setFuelType('');
+    };
+
     return (
         <div className="space-y-5 print:space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between print:hidden">
-                <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">เอกสารรายงาน</p>
-                    <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50 flex items-center gap-2">
-                        <Fuel className="h-5 w-5 text-slate-700 dark:text-slate-200 shrink-0" />
-                        รายงานการใช้น้ำมัน
-                    </h3>
-                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
-                        รับเข้า = เพิ่มเข้าถังหลัก · เบิกไปถังสำรองยังไม่นับเป็นใช้ · ใช้แล้ว = รถ/แม็คโคร, รถยนต์, เครื่องปั่นไฟ, อื่นระบุ, ร่อนทราย
-                    </p>
-                </div>
-                <div className="flex flex-wrap gap-2 shrink-0">
-                    <Button type="button" variant="outline" className="px-3" onClick={exportCsv}>
-                        <FileDown className="h-4 w-4" /> Export CSV
-                    </Button>
-                    {PRINT_GROUPS.map(group => (
-                        <Button
-                            key={group}
-                            type="button"
-                            variant="outline"
-                            className="px-3 text-xs sm:text-sm"
-                            aria-label={fuelPrintGroupTitle(group)}
-                            onClick={() => printGroupReport(group)}
-                        >
-                            <Printer className="h-4 w-4 shrink-0" />
-                            <span className="max-w-[9rem] truncate sm:max-w-none">{fuelPrintGroupTitle(group)}</span>
-                        </Button>
-                    ))}
-                </div>
+            <div className="flex flex-wrap gap-2 print:hidden" role="tablist" aria-label="เมนูย่อยรายงาน">
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={menu === 'fuel'}
+                    onClick={() => switchMenu('fuel')}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold transition ${
+                        menu === 'fuel'
+                            ? 'bg-amber-500 text-white shadow-sm'
+                            : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-white/5 dark:text-slate-200 dark:ring-white/15'
+                    }`}
+                >
+                    <Fuel size={16} />
+                    รายงานการใช้น้ำมัน
+                </button>
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={menu === 'vehicle'}
+                    onClick={() => switchMenu('vehicle')}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold transition ${
+                        menu === 'vehicle'
+                            ? 'bg-sky-600 text-white shadow-sm'
+                            : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-white/5 dark:text-slate-200 dark:ring-white/15'
+                    }`}
+                >
+                    <Truck size={16} />
+                    รายงานการใช้รถ
+                </button>
             </div>
 
-            <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10 shadow-sm">
-                <div className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-white/[0.03] px-5 py-4">
-                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{orgTitle}</p>
-                    {orgLine ? <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{orgLine}</p> : null}
-                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                        ช่วง <span className="font-medium text-slate-800 dark:text-slate-100">{rangeLabel}</span>
-                        <span className="text-slate-400 mx-1.5">·</span>
-                        {report.totals.count} รายการ
-                    </p>
-                </div>
-
-                <div className="p-4 sm:p-5 space-y-4 print:hidden">
-                    <div className="grid gap-4 lg:grid-cols-2">
-                        <ThaiDateSelect label="ตั้งแต่" value={start} onChange={setStart} />
-                        <ThaiDateSelect label="ถึง" value={end} onChange={setEnd} />
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                        <Select label="รถ" value={vehicleId} onChange={e => setVehicleId(e.target.value)} className={selectClass}>
-                            <option value="">ทุกคัน</option>
-                            {vehicleOptions.map(name => (
-                                <option key={name} value={name}>{name}</option>
+            {menu === 'fuel' ? (
+                <>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between print:hidden">
+                        <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">เอกสารรายงาน</p>
+                            <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50 flex items-center gap-2">
+                                <Fuel className="h-5 w-5 text-slate-700 dark:text-slate-200 shrink-0" />
+                                รายงานการใช้น้ำมัน
+                            </h3>
+                            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
+                                รับเข้า = เพิ่มเข้าถังหลัก · เบิกไปถังสำรองยังไม่นับเป็นใช้ · ใช้แล้ว = รถ/แม็คโคร, รถยนต์, เครื่องปั่นไฟ, อื่นระบุ, ร่อนทราย
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 shrink-0">
+                            <Button type="button" variant="outline" className="px-3" onClick={exportFuelCsv}>
+                                <FileDown className="h-4 w-4" /> Export CSV
+                            </Button>
+                            {PRINT_GROUPS.map(group => (
+                                <Button
+                                    key={group}
+                                    type="button"
+                                    variant="outline"
+                                    className="px-3 text-xs sm:text-sm"
+                                    aria-label={fuelPrintGroupTitle(group)}
+                                    onClick={() => printFuelGroupReport(group)}
+                                >
+                                    <Printer className="h-4 w-4 shrink-0" />
+                                    <span className="max-w-[9rem] truncate sm:max-w-none">{fuelPrintGroupTitle(group)}</span>
+                                </Button>
                             ))}
-                        </Select>
-                        <Select label="ประเภทน้ำมัน" value={fuelType} onChange={e => setFuelType(e.target.value as '' | FuelTypeFilter)} className={selectClass}>
-                            <option value="">ทุกประเภท</option>
-                            <option value="Diesel">ดีเซล</option>
-                            <option value="Benzine">เบนซิน</option>
-                        </Select>
-                        <Select label="ประเภทการเคลื่อนไหว" value={kind} onChange={e => setKind(e.target.value as '' | FuelUsageKind)} className={selectClass}>
-                            {KIND_OPTIONS.map(opt => (
-                                <option key={opt.id || 'all'} value={opt.id}>{opt.label}</option>
-                            ))}
-                        </Select>
+                        </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(monthBoundsFromYmd(today))}>เดือนนี้</Button>
-                        <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(shiftMonthBounds(today, -1))}>เดือนที่แล้ว</Button>
-                        <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(yearBoundsFromYmd(today))}>ปีนี้</Button>
-                    </div>
-                </div>
-            </Card>
 
-            <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10 print:hidden">
-                <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
-                    <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปภาพรวมแต่ละรายงาน</h4>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
-                                <th scope="col" className="px-4 py-2.5 font-semibold">รายงาน</th>
-                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">ลิตร</th>
-                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
-                                <th scope="col" className="px-4 py-2.5 font-semibold text-right w-20">พิมพ์</th>
-                                <th scope="col" className="px-4 py-2.5 font-semibold text-right w-28">พิมพ์+ภาษาจีน</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {overviewSections.map((section) => (
-                                <Fragment key={section.id}>
-                                    <tr className="bg-slate-100/90 dark:bg-white/[0.06]">
-                                        <td colSpan={5} className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
-                                            {section.title}
-                                            <span className="ml-2 font-semibold normal-case tracking-normal text-slate-500 dark:text-slate-400">
-                                                {formatDisplayNumber(section.liters)} ลิตร · {section.count} รายการ
-                                            </span>
-                                        </td>
-                                    </tr>
-                                    {section.items.map((item, i) => (
-                                        <tr key={item.group} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                            <td className="px-4 py-2.5 pl-6 font-medium text-slate-800 dark:text-slate-100">{item.title}</td>
-                                            <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(item.liters)}</td>
-                                            <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{item.count}</td>
-                                            <td className="px-4 py-2.5 text-right">
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    className="px-2 py-1.5 text-xs inline-flex"
-                                                    aria-label={`พิมพ์${fuelPrintGroupTitle(item.group)}`}
-                                                    onClick={() => printGroupReport(item.group, 'th')}
-                                                >
-                                                    <Printer className="h-3.5 w-3.5" />
-                                                </Button>
-                                            </td>
-                                            <td className="px-4 py-2.5 text-right">
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    className="px-2 py-1.5 text-xs inline-flex gap-1"
-                                                    aria-label={`พิมพ์${fuelPrintGroupTitle(item.group, 'zh')}`}
-                                                    onClick={() => printGroupReport(item.group, 'zh')}
-                                                >
-                                                    <Printer className="h-3.5 w-3.5" />
-                                                    <span className="text-[10px] font-bold">中文</span>
-                                                </Button>
-                                            </td>
-                                        </tr>
+                    <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10 shadow-sm">
+                        <div className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-white/[0.03] px-5 py-4">
+                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{orgTitle}</p>
+                            {orgLine ? <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{orgLine}</p> : null}
+                            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                                ช่วง <span className="font-medium text-slate-800 dark:text-slate-100">{rangeLabel}</span>
+                                <span className="text-slate-400 mx-1.5">·</span>
+                                {fuelReport.totals.count} รายการ
+                            </p>
+                        </div>
+
+                        <div className="p-4 sm:p-5 space-y-4 print:hidden">
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <ThaiDateSelect label="ตั้งแต่" value={start} onChange={setStart} />
+                                <ThaiDateSelect label="ถึง" value={end} onChange={setEnd} />
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-3">
+                                <Select label="รถ" value={vehicleId} onChange={e => setVehicleId(e.target.value)} className={selectClass}>
+                                    <option value="">ทุกคัน</option>
+                                    {fuelVehicleOptions.map(name => (
+                                        <option key={name} value={name}>{name}</option>
                                     ))}
-                                    <tr className="border-b border-slate-200 font-semibold text-slate-800 dark:border-white/10 dark:text-slate-100">
-                                        <td className="px-4 py-2.5 pl-6">รวม{section.title}</td>
-                                        <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(section.liters)}</td>
-                                        <td className="px-4 py-2.5 text-right tabular-nums">{section.count}</td>
-                                        <td className="px-4 py-2.5" />
-                                        <td className="px-4 py-2.5" />
-                                    </tr>
-                                </Fragment>
-                            ))}
-                        </tbody>
-                        <tfoot>
-                            <tr className="border-t border-slate-200 dark:border-white/10 font-semibold text-slate-800 dark:text-slate-100">
-                                <td className="px-4 py-2.5">พิมพ์สรุปภาพรวม</td>
-                                <td className="px-4 py-2.5" />
-                                <td className="px-4 py-2.5" />
-                                <td className="px-4 py-2.5 text-right">
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        className="px-2 py-1.5 text-xs inline-flex"
-                                        aria-label={fuelPrintGroupTitle('overview')}
-                                        onClick={() => printGroupReport('overview', 'th')}
-                                    >
-                                        <Printer className="h-3.5 w-3.5" />
-                                    </Button>
-                                </td>
-                                <td className="px-4 py-2.5 text-right">
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        className="px-2 py-1.5 text-xs inline-flex gap-1"
-                                        aria-label={fuelPrintGroupTitle('overview', 'zh')}
-                                        onClick={() => printGroupReport('overview', 'zh')}
-                                    >
-                                        <Printer className="h-3.5 w-3.5" />
-                                        <span className="text-[10px] font-bold">中文</span>
-                                    </Button>
-                                </td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </Card>
+                                </Select>
+                                <Select label="ประเภทน้ำมัน" value={fuelType} onChange={e => setFuelType(e.target.value as '' | FuelTypeFilter)} className={selectClass}>
+                                    <option value="">ทุกประเภท</option>
+                                    <option value="Diesel">ดีเซล</option>
+                                    <option value="Benzine">เบนซิน</option>
+                                </Select>
+                                <Select label="ประเภทการเคลื่อนไหว" value={kind} onChange={e => setKind(e.target.value as '' | FuelUsageKind)} className={selectClass}>
+                                    {KIND_OPTIONS.map(opt => (
+                                        <option key={opt.id || 'all'} value={opt.id}>{opt.label}</option>
+                                    ))}
+                                </Select>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(monthBoundsFromYmd(today))}>เดือนนี้</Button>
+                                <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(shiftMonthBounds(today, -1))}>เดือนที่แล้ว</Button>
+                                <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(yearBoundsFromYmd(today))}>ปีนี้</Button>
+                            </div>
+                        </div>
+                    </Card>
 
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <SummaryTile label="รับเข้า (ถังหลัก)" value={liters(report.totals.stockInLiters)} />
-                <SummaryTile
-                    label="เบิกไปถังสำรอง"
-                    value={liters(report.totals.withdrawLiters)}
-                    hint="ยังไม่นับเป็นใช้"
-                />
-                <SummaryTile
-                    label="ใช้แล้ว"
-                    value={liters(report.totals.usageLiters)}
-                    hint={`กระทบยอด ${formatDisplayNumber(report.totals.stockInLiters - report.totals.usageLiters)} ลิตร`}
-                />
-                <SummaryTile
-                    label="คงเหลือถังหลัก"
-                    value={liters(remainingStock.Diesel)}
-                    hint={`ถังสำรอง ${formatDisplayNumber(remainingStock.DieselReserve ?? 0)} ลิตร`}
-                />
-            </div>
-            {(remainingStock.DieselReserve ?? 0) < 0 || remainingStock.reserveShortfallLiters > 0 ? (
-                <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-100">
-                    ถังสำรองติดลบ {formatDisplayNumber(Math.abs(remainingStock.DieselReserve ?? 0))} ลิตร
-                    — ขาดบันทึกเบิกเติมเครื่องจักร (โอนเข้าถังสำรอง) ประมาณ{' '}
-                    {formatDisplayNumber(remainingStock.reserveShortfallLiters || Math.abs(remainingStock.DieselReserve ?? 0))} ลิตร
-                </div>
-            ) : null}
-
-            <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
-                    <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10 flex items-center gap-2 bg-white dark:bg-transparent">
-                        <Truck size={16} className="text-slate-500" />
-                        <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปตามรถ</h4>
-                    </div>
-                    {report.byVehicle.length === 0 ? (
-                        <p className="p-6 text-sm text-slate-400 text-center">ยังไม่มีรายการใช้น้ำมันรายรถในช่วงนี้</p>
-                    ) : (
+                    <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10 print:hidden">
+                        <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
+                            <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปภาพรวมแต่ละรายงาน</h4>
+                        </div>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
-                                        <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
+                                        <th scope="col" className="px-4 py-2.5 font-semibold">รายงาน</th>
                                         <th scope="col" className="px-4 py-2.5 font-semibold text-right">ลิตร</th>
                                         <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
+                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right w-20">พิมพ์</th>
+                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right w-28">พิมพ์+ภาษาจีน</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {report.byVehicle.map((row, i) => (
-                                        <tr key={row.vehicleId} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                            <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-100">{row.vehicleId}</td>
-                                            <td className="px-4 py-2.5 text-right tabular-nums text-slate-700 dark:text-slate-200">{formatDisplayNumber(row.liters)}</td>
-                                            <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{row.count}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </Card>
-
-                <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
-                    <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
-                        <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปรายวัน</h4>
-                    </div>
-                    {report.byDay.length === 0 ? (
-                        <p className="p-6 text-sm text-slate-400 text-center">ไม่มีข้อมูลในช่วงวันที่ที่เลือก</p>
-                    ) : (
-                        <div className="overflow-x-auto max-h-80">
-                            <table className="w-full text-sm">
-                                <thead className="sticky top-0 bg-white dark:bg-slate-950 z-10">
-                                    <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
-                                        <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
-                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right">รับเข้า</th>
-                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right">ใช้ (ลิตร)</th>
-                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {report.byDay.map((row, i) => (
-                                        <tr key={row.date} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                            <td className="px-4 py-2.5 text-slate-800 dark:text-slate-100 whitespace-nowrap">{formatDateBE(row.date)}</td>
-                                            <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(row.stockInLiters)}</td>
-                                            <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(row.usageLiters)}</td>
-                                            <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{row.count}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </Card>
-            </div>
-
-            <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
-                <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
-                    <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">รายละเอียดรายการ</h4>
-                </div>
-                {report.rows.length === 0 ? (
-                    <p className="p-6 text-sm text-slate-400 text-center">ไม่พบรายการน้ำมันในช่วงนี้</p>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
-                                    <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
-                                    <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
-                                    <th scope="col" className="px-4 py-2.5 font-semibold text-right">ลิตร</th>
-                                    <th scope="col" className="px-4 py-2.5 font-semibold">รายละเอียด</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(() => {
-                                    const byDate = new Map<string, typeof report.rows>();
-                                    for (const row of report.rows) {
-                                        const list = byDate.get(row.date) || [];
-                                        list.push(row);
-                                        byDate.set(row.date, list);
-                                    }
-                                    return [...byDate.entries()].map(([date, dayRows]) => {
-                                        const dayLiters = dayRows.reduce((s, r) => s + r.liters, 0);
-                                        return (
-                                            <Fragment key={date}>
-                                                <tr className="bg-slate-100/80 dark:bg-white/[0.06]">
-                                                    <td colSpan={4} className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                                                        {formatDateBE(date)}
-                                                        <span className="ml-2 font-semibold text-slate-500 dark:text-slate-400">
-                                                            {formatDisplayNumber(dayLiters)} ลิตร · {dayRows.length} รายการ
-                                                        </span>
+                                    {overviewSections.map((section) => (
+                                        <Fragment key={section.id}>
+                                            <tr className="bg-slate-100/90 dark:bg-white/[0.06]">
+                                                <td colSpan={5} className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+                                                    {section.title}
+                                                    <span className="ml-2 font-semibold normal-case tracking-normal text-slate-500 dark:text-slate-400">
+                                                        {formatDisplayNumber(section.liters)} ลิตร · {section.count} รายการ
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            {section.items.map((item, i) => (
+                                                <tr key={item.group} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                    <td className="px-4 py-2.5 pl-6 font-medium text-slate-800 dark:text-slate-100">{item.title}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(item.liters)}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{item.count}</td>
+                                                    <td className="px-4 py-2.5 text-right">
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            className="px-2 py-1.5 text-xs inline-flex"
+                                                            aria-label={`พิมพ์${fuelPrintGroupTitle(item.group)}`}
+                                                            onClick={() => printFuelGroupReport(item.group, 'th')}
+                                                        >
+                                                            <Printer className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-right">
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            className="px-2 py-1.5 text-xs inline-flex gap-1"
+                                                            aria-label={`พิมพ์${fuelPrintGroupTitle(item.group, 'zh')}`}
+                                                            onClick={() => printFuelGroupReport(item.group, 'zh')}
+                                                        >
+                                                            <Printer className="h-3.5 w-3.5" />
+                                                            <span className="text-[10px] font-bold">中文</span>
+                                                        </Button>
                                                     </td>
                                                 </tr>
-                                                {dayRows.map((row, i) => (
-                                                    <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{formatDateBE(row.date)}</td>
-                                                        <td className="px-4 py-2.5">{row.vehicleId || '—'}</td>
-                                                        <td className="px-4 py-2.5 text-right tabular-nums font-medium">{formatDisplayNumber(row.liters)}</td>
-                                                        <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">{row.description || '—'}</td>
-                                                    </tr>
-                                                ))}
-                                            </Fragment>
-                                        );
-                                    });
-                                })()}
-                            </tbody>
-                        </table>
+                                            ))}
+                                            <tr className="border-b border-slate-200 font-semibold text-slate-800 dark:border-white/10 dark:text-slate-100">
+                                                <td className="px-4 py-2.5 pl-6">รวม{section.title}</td>
+                                                <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(section.liters)}</td>
+                                                <td className="px-4 py-2.5 text-right tabular-nums">{section.count}</td>
+                                                <td className="px-4 py-2.5" />
+                                                <td className="px-4 py-2.5" />
+                                            </tr>
+                                        </Fragment>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="border-t border-slate-200 dark:border-white/10 font-semibold text-slate-800 dark:text-slate-100">
+                                        <td className="px-4 py-2.5">พิมพ์สรุปภาพรวม</td>
+                                        <td className="px-4 py-2.5" />
+                                        <td className="px-4 py-2.5" />
+                                        <td className="px-4 py-2.5 text-right">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                className="px-2 py-1.5 text-xs inline-flex"
+                                                aria-label={fuelPrintGroupTitle('overview')}
+                                                onClick={() => printFuelGroupReport('overview', 'th')}
+                                            >
+                                                <Printer className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                className="px-2 py-1.5 text-xs inline-flex gap-1"
+                                                aria-label={fuelPrintGroupTitle('overview', 'zh')}
+                                                onClick={() => printFuelGroupReport('overview', 'zh')}
+                                            >
+                                                <Printer className="h-3.5 w-3.5" />
+                                                <span className="text-[10px] font-bold">中文</span>
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </Card>
+
+                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                        <SummaryTile label="รับเข้า (ถังหลัก)" value={liters(fuelReport.totals.stockInLiters)} />
+                        <SummaryTile
+                            label="เบิกไปถังสำรอง"
+                            value={liters(fuelReport.totals.withdrawLiters)}
+                            hint="ยังไม่นับเป็นใช้"
+                        />
+                        <SummaryTile
+                            label="ใช้แล้ว"
+                            value={liters(fuelReport.totals.usageLiters)}
+                            hint={`กระทบยอด ${formatDisplayNumber(fuelReport.totals.stockInLiters - fuelReport.totals.usageLiters)} ลิตร`}
+                        />
+                        <SummaryTile
+                            label="คงเหลือถังหลัก"
+                            value={liters(remainingStock.Diesel)}
+                            hint={`ถังสำรอง ${formatDisplayNumber(remainingStock.DieselReserve ?? 0)} ลิตร`}
+                        />
                     </div>
-                )}
-            </Card>
+                    {(remainingStock.DieselReserve ?? 0) < 0 || remainingStock.reserveShortfallLiters > 0 ? (
+                        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-100">
+                            ถังสำรองติดลบ {formatDisplayNumber(Math.abs(remainingStock.DieselReserve ?? 0))} ลิตร
+                            — ขาดบันทึกเบิกเติมเครื่องจักร (โอนเข้าถังสำรอง) ประมาณ{' '}
+                            {formatDisplayNumber(remainingStock.reserveShortfallLiters || Math.abs(remainingStock.DieselReserve ?? 0))} ลิตร
+                        </div>
+                    ) : null}
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                        <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
+                            <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10 flex items-center gap-2 bg-white dark:bg-transparent">
+                                <Truck size={16} className="text-slate-500" />
+                                <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปตามรถ</h4>
+                            </div>
+                            {fuelReport.byVehicle.length === 0 ? (
+                                <p className="p-6 text-sm text-slate-400 text-center">ยังไม่มีรายการใช้น้ำมันรายรถในช่วงนี้</p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
+                                                <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
+                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">ลิตร</th>
+                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {fuelReport.byVehicle.map((row, i) => (
+                                                <tr key={row.vehicleId} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                    <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-100">{row.vehicleId}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-700 dark:text-slate-200">{formatDisplayNumber(row.liters)}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{row.count}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </Card>
+
+                        <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
+                            <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
+                                <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปรายวัน</h4>
+                            </div>
+                            {fuelReport.byDay.length === 0 ? (
+                                <p className="p-6 text-sm text-slate-400 text-center">ไม่มีข้อมูลในช่วงวันที่ที่เลือก</p>
+                            ) : (
+                                <div className="overflow-x-auto max-h-80">
+                                    <table className="w-full text-sm">
+                                        <thead className="sticky top-0 bg-white dark:bg-slate-950 z-10">
+                                            <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
+                                                <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
+                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">รับเข้า</th>
+                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">ใช้ (ลิตร)</th>
+                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {fuelReport.byDay.map((row, i) => (
+                                                <tr key={row.date} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                    <td className="px-4 py-2.5 text-slate-800 dark:text-slate-100 whitespace-nowrap">{formatDateBE(row.date)}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(row.stockInLiters)}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(row.usageLiters)}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{row.count}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </Card>
+                    </div>
+
+                    <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
+                        <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
+                            <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">รายละเอียดรายการ</h4>
+                        </div>
+                        {fuelReport.rows.length === 0 ? (
+                            <p className="p-6 text-sm text-slate-400 text-center">ไม่พบรายการน้ำมันในช่วงนี้</p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
+                                            <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold text-right">ลิตร</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold">รายละเอียด</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(() => {
+                                            const byDate = new Map<string, typeof fuelReport.rows>();
+                                            for (const row of fuelReport.rows) {
+                                                const list = byDate.get(row.date) || [];
+                                                list.push(row);
+                                                byDate.set(row.date, list);
+                                            }
+                                            return [...byDate.entries()].map(([date, dayRows]) => {
+                                                const dayLiters = dayRows.reduce((s, r) => s + r.liters, 0);
+                                                return (
+                                                    <Fragment key={date}>
+                                                        <tr className="bg-slate-100/80 dark:bg-white/[0.06]">
+                                                            <td colSpan={4} className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                                {formatDateBE(date)}
+                                                                <span className="ml-2 font-semibold text-slate-500 dark:text-slate-400">
+                                                                    {formatDisplayNumber(dayLiters)} ลิตร · {dayRows.length} รายการ
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                        {dayRows.map((row, i) => (
+                                                            <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                                <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{formatDateBE(row.date)}</td>
+                                                                <td className="px-4 py-2.5">{row.vehicleId || '—'}</td>
+                                                                <td className="px-4 py-2.5 text-right tabular-nums font-medium">{formatDisplayNumber(row.liters)}</td>
+                                                                <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">{row.description || '—'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </Fragment>
+                                                );
+                                            });
+                                        })()}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </Card>
+                </>
+            ) : (
+                <>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between print:hidden">
+                        <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">เอกสารรายงาน</p>
+                            <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50 flex items-center gap-2">
+                                <Truck className="h-5 w-5 text-slate-700 dark:text-slate-200 shrink-0" />
+                                รายงานการใช้รถ
+                            </h3>
+                            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
+                                รวมรถแม็คโคร · เที่ยวรถดั๊ม/สิบล้อ/ดรัม · การใช้รถที่มีค่าจ้าง — กรองช่วงวันที่และพิมพ์/ส่งออกได้เหมือนรายงานน้ำมัน
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 shrink-0">
+                            <Button type="button" variant="outline" className="px-3" onClick={exportVehicleCsv}>
+                                <FileDown className="h-4 w-4" /> Export CSV
+                            </Button>
+                            {VEHICLE_PRINT_GROUPS.map(group => (
+                                <Button
+                                    key={group}
+                                    type="button"
+                                    variant="outline"
+                                    className="px-3 text-xs sm:text-sm"
+                                    aria-label={vehiclePrintGroupTitle(group)}
+                                    onClick={() => printVehicleGroupReport(group)}
+                                >
+                                    <Printer className="h-4 w-4 shrink-0" />
+                                    <span className="max-w-[9rem] truncate sm:max-w-none">{vehiclePrintGroupTitle(group)}</span>
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10 shadow-sm">
+                        <div className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-white/[0.03] px-5 py-4">
+                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{orgTitle}</p>
+                            {orgLine ? <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{orgLine}</p> : null}
+                            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                                ช่วง <span className="font-medium text-slate-800 dark:text-slate-100">{rangeLabel}</span>
+                                <span className="text-slate-400 mx-1.5">·</span>
+                                {vehicleReport.totals.count} รายการ
+                            </p>
+                        </div>
+
+                        <div className="p-4 sm:p-5 space-y-4 print:hidden">
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <ThaiDateSelect label="ตั้งแต่" value={start} onChange={setStart} />
+                                <ThaiDateSelect label="ถึง" value={end} onChange={setEnd} />
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <Select label="รถ" value={vehicleId} onChange={e => setVehicleId(e.target.value)} className={selectClass}>
+                                    <option value="">ทุกคัน</option>
+                                    {opsVehicleOptions.map(name => (
+                                        <option key={name} value={name}>{name}</option>
+                                    ))}
+                                </Select>
+                                <Select label="ประเภทการใช้รถ" value={vehicleKind} onChange={e => setVehicleKind(e.target.value as '' | VehicleUsageKind)} className={selectClass}>
+                                    {VEHICLE_KIND_OPTIONS.map(opt => (
+                                        <option key={opt.id || 'all'} value={opt.id}>{opt.label}</option>
+                                    ))}
+                                </Select>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(monthBoundsFromYmd(today))}>เดือนนี้</Button>
+                                <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(shiftMonthBounds(today, -1))}>เดือนที่แล้ว</Button>
+                                <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(yearBoundsFromYmd(today))}>ปีนี้</Button>
+                            </div>
+                        </div>
+                    </Card>
+
+                    <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10 print:hidden">
+                        <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
+                            <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปภาพรวมแต่ละรายงาน</h4>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
+                                        <th scope="col" className="px-4 py-2.5 font-semibold">รายงาน</th>
+                                        <th scope="col" className="px-4 py-2.5 font-semibold">สรุป</th>
+                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
+                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right w-20">พิมพ์</th>
+                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right w-28">พิมพ์+ภาษาจีน</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {vehicleOverviewSections.map((section) => (
+                                        <Fragment key={section.id}>
+                                            <tr className="bg-slate-100/90 dark:bg-white/[0.06]">
+                                                <td colSpan={5} className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
+                                                    {section.title}
+                                                    <span className="ml-2 font-semibold normal-case tracking-normal text-slate-500 dark:text-slate-400">
+                                                        {section.count} รายการ · {vehicleReport.totals.vehicleCount} คัน
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                            {section.items.map((item, i) => (
+                                                <tr key={item.group} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                    <td className="px-4 py-2.5 pl-6 font-medium text-slate-800 dark:text-slate-100">{item.title}</td>
+                                                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{item.metric}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{item.count}</td>
+                                                    <td className="px-4 py-2.5 text-right">
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            className="px-2 py-1.5 text-xs inline-flex"
+                                                            aria-label={`พิมพ์${vehiclePrintGroupTitle(item.group)}`}
+                                                            onClick={() => printVehicleGroupReport(item.group, 'th')}
+                                                        >
+                                                            <Printer className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-right">
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            className="px-2 py-1.5 text-xs inline-flex gap-1"
+                                                            aria-label={`พิมพ์${vehiclePrintGroupTitle(item.group, 'zh')}`}
+                                                            onClick={() => printVehicleGroupReport(item.group, 'zh')}
+                                                        >
+                                                            <Printer className="h-3.5 w-3.5" />
+                                                            <span className="text-[10px] font-bold">中文</span>
+                                                        </Button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </Fragment>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="border-t border-slate-200 dark:border-white/10 font-semibold text-slate-800 dark:text-slate-100">
+                                        <td className="px-4 py-2.5">พิมพ์สรุปภาพรวม</td>
+                                        <td className="px-4 py-2.5" />
+                                        <td className="px-4 py-2.5" />
+                                        <td className="px-4 py-2.5 text-right">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                className="px-2 py-1.5 text-xs inline-flex"
+                                                aria-label={vehiclePrintGroupTitle('overview')}
+                                                onClick={() => printVehicleGroupReport('overview', 'th')}
+                                            >
+                                                <Printer className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                className="px-2 py-1.5 text-xs inline-flex gap-1"
+                                                aria-label={vehiclePrintGroupTitle('overview', 'zh')}
+                                                onClick={() => printVehicleGroupReport('overview', 'zh')}
+                                            >
+                                                <Printer className="h-3.5 w-3.5" />
+                                                <span className="text-[10px] font-bold">中文</span>
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </Card>
+
+                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                        <SummaryTile
+                            label="แม็คโคร"
+                            value={`${formatDisplayNumber(vehicleReport.totals.macroCount)} รายการ`}
+                            hint={`${vehicleReport.totals.macroFullDays} เต็มวัน · ${vehicleReport.totals.macroHalfDays} ครึ่งวัน`}
+                        />
+                        <SummaryTile
+                            label="เที่ยวรถดั๊ม"
+                            value={`${formatDisplayNumber(vehicleReport.totals.dumpTrips)} เที่ยว`}
+                            hint={`${formatDisplayNumber(vehicleReport.totals.dumpCubic)} คิว · ${vehicleReport.totals.dumpTripCount} รายการ`}
+                        />
+                        <SummaryTile
+                            label="การใช้รถ (ค่าจ้าง)"
+                            value={`${formatDisplayNumber(vehicleReport.totals.hireCount)} รายการ`}
+                        />
+                        <SummaryTile
+                            label="รวมรถในช่วง"
+                            value={`${formatDisplayNumber(vehicleReport.totals.vehicleCount)} คัน`}
+                            hint={`${vehicleReport.totals.count} รายการทั้งหมด`}
+                        />
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                        <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
+                            <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10 flex items-center gap-2">
+                                <Truck size={16} className="text-slate-500" />
+                                <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปตามรถ</h4>
+                            </div>
+                            {vehicleReport.byVehicle.length === 0 ? (
+                                <p className="p-6 text-sm text-slate-400 text-center">ยังไม่มีรายการใช้รถในช่วงนี้</p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
+                                                <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
+                                                <th scope="col" className="px-4 py-2.5 font-semibold">ประเภท</th>
+                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {vehicleReport.byVehicle.map((row, i) => (
+                                                <tr key={`${row.kind}-${row.vehicleId}`} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                    <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-100">{row.vehicleId}</td>
+                                                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{vehicleKindLabel(row.kind)}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{row.count}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </Card>
+
+                        <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
+                            <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
+                                <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปรายวัน</h4>
+                            </div>
+                            {vehicleReport.byDay.length === 0 ? (
+                                <p className="p-6 text-sm text-slate-400 text-center">ไม่มีข้อมูลในช่วงวันที่ที่เลือก</p>
+                            ) : (
+                                <div className="overflow-x-auto max-h-80">
+                                    <table className="w-full text-sm">
+                                        <thead className="sticky top-0 bg-white dark:bg-slate-950 z-10">
+                                            <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
+                                                <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
+                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">แม็คโคร</th>
+                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">เที่ยว</th>
+                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {vehicleReport.byDay.map((row, i) => (
+                                                <tr key={row.date} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                    <td className="px-4 py-2.5 text-slate-800 dark:text-slate-100 whitespace-nowrap">{formatDateBE(row.date)}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums">{row.macroCount}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(row.dumpTrips)}</td>
+                                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{row.count}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </Card>
+                    </div>
+
+                    <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
+                        <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
+                            <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">รายละเอียดรายการ</h4>
+                        </div>
+                        {vehicleReport.rows.length === 0 ? (
+                            <p className="p-6 text-sm text-slate-400 text-center">ไม่พบรายการใช้รถในช่วงนี้</p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
+                                            <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold">ประเภท</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold">คนขับ</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold">สรุป</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold">รายละเอียด</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(() => {
+                                            const byDate = new Map<string, typeof vehicleReport.rows>();
+                                            for (const row of vehicleReport.rows) {
+                                                const list = byDate.get(row.date) || [];
+                                                list.push(row);
+                                                byDate.set(row.date, list);
+                                            }
+                                            return [...byDate.entries()].map(([date, dayRows]) => (
+                                                <Fragment key={date}>
+                                                    <tr className="bg-slate-100/80 dark:bg-white/[0.06]">
+                                                        <td colSpan={6} className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                            {formatDateBE(date)}
+                                                            <span className="ml-2 font-semibold text-slate-500 dark:text-slate-400">
+                                                                {dayRows.length} รายการ
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                    {dayRows.map((row, i) => {
+                                                        const summary = row.kind === 'macro'
+                                                            ? (row.workType === 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน')
+                                                            : row.kind === 'dump_trip'
+                                                                ? `${formatDisplayNumber(row.trips)} เที่ยว · ${formatDisplayNumber(row.cubic)} คิว`
+                                                                : 'ค่าจ้าง';
+                                                        return (
+                                                            <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                                <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{formatDateBE(row.date)}</td>
+                                                                <td className="px-4 py-2.5">{vehicleKindLabel(row.kind)}</td>
+                                                                <td className="px-4 py-2.5 font-medium">{row.vehicleId}</td>
+                                                                <td className="px-4 py-2.5">{row.driverLabel}</td>
+                                                                <td className="px-4 py-2.5 tabular-nums">{summary}</td>
+                                                                <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">{row.description || '—'}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </Fragment>
+                                            ));
+                                        })()}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </Card>
+                </>
+            )}
         </div>
     );
 };
-
-const SummaryTile = ({
-    label,
-    value,
-    hint,
-}: {
-    label: string;
-    value: string;
-    hint?: string;
-}) => (
-    <div className="rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-white/[0.03] px-3.5 py-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
-        <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-50">{value}</p>
-        {hint ? <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{hint}</p> : null}
-    </div>
-);
 
 export default ReportsModule;

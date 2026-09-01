@@ -1637,6 +1637,7 @@ function App() {
                     <ReportsModule
                         transactions={visibleTransactions}
                         settings={settings}
+                        employees={employees}
                         maskAmounts={isFinancialMaskEnabled}
                     />
             );
