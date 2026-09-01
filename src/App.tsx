@@ -200,6 +200,7 @@ const MOCK_TRANSACTIONS: Transaction[] = [
 
 const MENU_ITEMS = [
     { id: 'Dashboard', icon: LayoutDashboard, l: 'ภาพรวม' },
+    { id: 'Reports', icon: BarChart3, l: 'รายงาน' },
     { id: 'DailyWizard', icon: ClipboardList, l: 'บันทึกงานประจำวัน (Daily Wizard)' },
     { id: 'MonthDataAudit', icon: CalendarDays, l: 'ตรวจสอบ' },
     { id: 'Employees', icon: UserCheck, l: 'พนักงาน' },
@@ -212,7 +213,6 @@ const MENU_ITEMS = [
     { id: 'Income', icon: Wallet, l: 'รายรับ' },
     { id: 'Payroll', icon: Banknote, l: 'เงินเดือน' },
     { id: 'DataList', icon: List, l: 'รายการบันทึก' },
-    { id: 'Reports', icon: BarChart3, l: 'รายงาน' },
     { id: 'AdminManagement', icon: Shield, l: 'จัดการแอดมิน' },
     { id: 'Settings', icon: Settings, l: 'ตั้งค่า' },
 ];

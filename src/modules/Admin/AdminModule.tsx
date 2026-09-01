@@ -18,6 +18,7 @@ interface AdminModuleProps {
 
 const MENU_PERMISSION_OPTIONS = [
     { id: 'Dashboard', label: 'ภาพรวม' },
+    { id: 'Reports', label: 'รายงาน' },
     { id: 'DailyWizard', label: 'บันทึกงานประจำวัน' },
     { id: 'MonthDataAudit', label: 'ตรวจสอบข้อมูล' },
     { id: 'Employees', label: 'พนักงาน' },
@@ -30,7 +31,6 @@ const MENU_PERMISSION_OPTIONS = [
     { id: 'Income', label: 'รายรับ' },
     { id: 'Payroll', label: 'เงินเดือน' },
     { id: 'DataList', label: 'รายการบันทึก' },
-    { id: 'Reports', label: 'รายงาน' },
     { id: 'Settings', label: 'ตั้งค่า' },
 ];
 
