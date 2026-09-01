@@ -76,7 +76,7 @@ describe('buildVehicleUsageReport', () => {
         expect(filterVehicleUsageByDate(macroOnly, '2026-08-11').rows).toHaveLength(0);
     });
 
-    it('excludes zero-trip support VehicleTrip rows from dump report', () => {
+    it('includes zero-trip logged VehicleTrip rows in dump report', () => {
         const transactions: Transaction[] = [
             {
                 id: 'd1',
@@ -87,6 +87,7 @@ describe('buildVehicleUsageReport', () => {
                 description: 'รถดั๊มโอเว่น: 43 เที่ยว',
                 amount: 0,
                 vehicleId: 'รถดั๊มโอเว่น',
+                driverId: 'e1',
                 perCarTrips: 43,
             },
             {
@@ -98,7 +99,9 @@ describe('buildVehicleUsageReport', () => {
                 description: 'รถสิบล้อนายกพนม: ชัพพอต',
                 amount: 0,
                 vehicleId: 'รถสิบล้อนายกพนม',
+                driverId: 'e2',
                 perCarTrips: 0,
+                workDetails: 'งาน: ชัพพอต',
             },
         ];
 
@@ -108,7 +111,10 @@ describe('buildVehicleUsageReport', () => {
             kind: 'dump_trip',
         });
 
-        expect(report.byVehicle).toHaveLength(1);
-        expect(report.byVehicle[0]?.vehicleId).toBe('รถดั๊มโอเว่น');
+        expect(report.byVehicle).toHaveLength(2);
+        expect(report.byVehicle.map((v) => v.vehicleId)).toEqual(
+            expect.arrayContaining(['รถดั๊มโอเว่น', 'รถสิบล้อนายกพนม']),
+        );
+        expect(report.rows.find((r) => r.vehicleId === 'รถสิบล้อนายกพนม')?.trips).toBe(0);
     });
 });

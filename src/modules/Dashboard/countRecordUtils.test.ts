@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../../types';
 import {
     buildCountRecordTripUnits,
-    countActiveCountRecordTripUnits,
     countRecordLapPeriods,
+    countRecordMenuStatusLabel,
     diffCountRecordIncrements,
     isCountRecordSandTapRow,
     vehicleTripPeriodSplit,
@@ -233,17 +233,17 @@ describe('buildCountRecordTripUnits vehicle labels', () => {
     });
 });
 
-describe('countActiveCountRecordTripUnits', () => {
-    it('counts only vehicles with trip rounds for summaries', () => {
-        const units = buildCountRecordTripUnits(
+describe('countRecordMenuStatusLabel', () => {
+    it('counts logged zero-trip vehicles in vehicle total', () => {
+        const label = countRecordMenuStatusLabel(
             '2026-08-20',
             [
-                trip({ id: 'd1', date: '2026-08-20', vehicleId: 'รถดั๊มโอเว่น', perCarTrips: 43, lapTimes: ['20/08 13:50:01'] }),
+                trip({ id: 'd1', date: '2026-08-20', vehicleId: 'รถดั๊มโอเว่น', perCarTrips: 43 }),
                 trip({ id: 's1', date: '2026-08-20', vehicleId: 'รถสิบล้อนายกพนม', perCarTrips: 0 }),
             ],
-            [],
+            'th',
         );
-        expect(units).toHaveLength(2);
-        expect(countActiveCountRecordTripUnits(units)).toBe(1);
+        expect(label).toContain('2 คัน');
+        expect(label).toContain('43 เที่ยว');
     });
 });

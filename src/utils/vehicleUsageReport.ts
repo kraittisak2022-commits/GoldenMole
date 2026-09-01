@@ -2,7 +2,6 @@ import type { Employee, Transaction } from '../types';
 import { normalizeDate } from './index';
 import { transactionVehicleLabel, type VehicleCatalogRow } from './vehicleCatalog';
 import {
-    countRecordRowHasSavedData,
     driverDisplayName,
     isCountRecordVehicleRow,
 } from '../modules/Dashboard/countRecordUtils';
@@ -136,7 +135,8 @@ function classifyVehicleRow(
     }
     if (isCountRecordVehicleRow(t)) {
         if (isMacroVehicleId(label || t.vehicleId)) return null;
-        if (!countRecordRowHasSavedData(t)) return null;
+        const hasVehicleOrDriver = Boolean((t.vehicleId ?? '').trim() || (t.driverId ?? '').trim());
+        if (!hasVehicleOrDriver) return null;
         return 'dump_trip';
     }
     if (transactionCountsAsVehicleTripMenu(t)) return 'dump_trip';

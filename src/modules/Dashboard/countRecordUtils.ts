@@ -191,11 +191,6 @@ function sandRowIsEmpty(t: Transaction): boolean {
     return laps.length === 0 && drums <= 0;
 }
 
-export function countActiveCountRecordTripUnits(units: CountRecordTripUnit[]): number {
-    const active = units.filter((u) => u.rounds > 0);
-    return active.length > 0 ? active.length : units.length;
-}
-
 export function buildCountRecordTripUnits(
     dayKey: string,
     transactions: Transaction[],
@@ -271,12 +266,16 @@ export function countRecordMenuStatusLabel(
 
     for (const t of transactions) {
         if (String(t.date ?? '').trim().slice(0, 10) !== dayKey.trim()) continue;
-        if (!countRecordRowHasSavedData(t)) continue;
         if (isCountRecordVehicleRow(t)) {
             const vid = transactionVehicleLabel(t, catalog);
             if (vid && !isMacroVehicleId(vid)) vehicles.add(vid);
-            tripTotal += Number((t as { perCarTrips?: number; tripCount?: number }).perCarTrips ?? (t as { tripCount?: number }).tripCount ?? 0);
-        } else if (isCountRecordSandTapRow(t)) {
+            if (countRecordRowHasSavedData(t)) {
+                tripTotal += Number((t as { perCarTrips?: number; tripCount?: number }).perCarTrips ?? (t as { tripCount?: number }).tripCount ?? 0);
+            }
+            continue;
+        }
+        if (!countRecordRowHasSavedData(t)) continue;
+        if (isCountRecordSandTapRow(t)) {
             sandRounds += Number((t as { drumsObtained?: number }).drumsObtained ?? 0);
             const p = countRecordLapPeriods(t);
             sandMorning += p.morning;

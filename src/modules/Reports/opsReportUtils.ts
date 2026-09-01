@@ -5,7 +5,7 @@ import {
     isVehicleTripDrumCarName,
     transactionCountsAsVehicleTripMenu,
 } from '../Dashboard/dailyStepRecorderUtils';
-import { countRecordRowHasSavedData, driverDisplayName, isCountRecordVehicleRow } from '../Dashboard/countRecordUtils';
+import { driverDisplayName, isCountRecordVehicleRow } from '../Dashboard/countRecordUtils';
 import {
     buildAttendanceSummary,
     buildMacroUsageSummary,
@@ -115,10 +115,7 @@ export function buildDumpTripUsageReport(
     const map = new Map<string, DumpTripUsageRow>();
 
     for (const t of transactions) {
-        const isDumpTripRow = isCountRecordVehicleRow(t)
-            ? countRecordRowHasSavedData(t)
-            : transactionCountsAsVehicleTripMenu(t);
-        if (!isDumpTripRow) continue;
+        if (!isCountRecordVehicleRow(t) && !transactionCountsAsVehicleTripMenu(t)) continue;
         const date = normalizeDate(t.date);
         if (date < from || date > to) continue;
         const label = transactionVehicleLabel(
