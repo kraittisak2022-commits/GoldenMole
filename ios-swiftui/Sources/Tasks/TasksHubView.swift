@@ -65,6 +65,8 @@ struct TasksHubView: View {
     @State private var selectedDay = DashboardAggregations.todayYMD()
     @State private var editorTarget: EditorTarget?
     @State private var statusTarget: WorkTask?
+    @State private var celebrateToken = 0
+    @State private var heroGlow = false
 
     private struct EditorTarget: Identifiable {
         let id: String
@@ -320,7 +322,10 @@ struct TasksHubView: View {
         }
         .refreshable { await store.load() }
         .overlay(alignment: .bottomTrailing) { addButton }
-        .navigationTitle("กระดานงาน")
+        .overlay {
+            TasksCelebrateBurst(token: celebrateToken, reduceMotion: reduceMotion)
+        }
+        .navigationTitle("งาน")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             store.currentAdminId = adminId
@@ -342,7 +347,7 @@ struct TasksHubView: View {
             TaskStatusSheet(task: target) { picked in
                 Task { await store.setStatus(target, to: picked) }
             }
-            .presentationDetents([.height(340)])
+            .presentationDetents([.height(400)])
             .presentationDragIndicator(.visible)
         }
         .alert("ปักโฟกัสไม่ได้", isPresented: noticeBinding) {
@@ -364,26 +369,25 @@ struct TasksHubView: View {
     private var communityHero: some View {
         ZStack(alignment: .topLeading) {
             LinearGradient(
-                colors: [
-                    Color(hex: "#042F36"),
-                    AppTheme.brandDark,
-                    AppTheme.brandMid,
-                    Color(hex: "#0E7490")
-                ],
+                colors: heroGlow
+                    ? [
+                        Color(hex: "#042F36"),
+                        AppTheme.brandDark,
+                        Color(hex: "#0D9488"),
+                        Color(hex: "#0E7490"),
+                    ]
+                    : [
+                        Color(hex: "#042F36"),
+                        AppTheme.brandDark,
+                        AppTheme.brandMid,
+                        Color(hex: "#0E7490"),
+                    ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+            .animation(reduceMotion ? nil : .easeInOut(duration: 4).repeatForever(autoreverses: true), value: heroGlow)
 
-            Circle()
-                .fill(Color.white.opacity(0.10))
-                .frame(width: 200, height: 200)
-                .blur(radius: 28)
-                .offset(x: 210, y: -70)
-            Circle()
-                .fill(AppTheme.cyan.opacity(0.28))
-                .frame(width: 120, height: 120)
-                .blur(radius: 22)
-                .offset(x: -40, y: 130)
+            TasksHeroOrbs(reduceMotion: reduceMotion)
 
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top, spacing: 12) {
@@ -391,19 +395,13 @@ struct TasksHubView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "person.3.fill")
                                 .font(.system(size: 11, weight: .bold))
-                            Text("COMMUNITY BOARD")
+                            Text("กระดานงานทีม")
                                 .font(.system(size: 10, weight: .bold))
-                                .tracking(1.6)
+                                .tracking(0.8)
                             if livePulseCount > 0 {
-                                HStack(spacing: 4) {
-                                    Circle()
-                                        .fill(Color(hex: "#4ADE80"))
-                                        .frame(width: 6, height: 6)
-                                        .shadow(
-                                            color: reduceMotion ? .clear : Color(hex: "#4ADE80").opacity(0.8),
-                                            radius: reduceMotion ? 0 : 4
-                                        )
-                                    Text("\(livePulseCount) ไลฟ์")
+                                HStack(spacing: 6) {
+                                    TasksLivePulse(reduceMotion: reduceMotion)
+                                    Text("\(livePulseCount) กำลังเคลื่อนไหว")
                                         .font(.system(size: 10, weight: .bold))
                                         .contentTransition(.numericText())
                                 }
@@ -465,9 +463,13 @@ struct TasksHubView: View {
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
         )
-        .shadow(color: AppTheme.brand.opacity(0.22), radius: 12, y: 6)
+        .shadow(color: AppTheme.brand.opacity(heroGlow ? 0.32 : 0.22), radius: heroGlow ? 18 : 12, y: 6)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("กระดานงานวันนี้ ทั้งหมด \(todayTasks.count) เสร็จแล้ว \(doneToday)")
+        .onAppear {
+            guard !reduceMotion else { return }
+            heroGlow = true
+        }
     }
 
     private var heroHeadline: String {
@@ -487,32 +489,12 @@ struct TasksHubView: View {
     }
 
     private var progressRing: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.white.opacity(0.18), lineWidth: 8)
-            Circle()
-                .trim(from: 0, to: CGFloat(max(0.02, todayProgress)))
-                .stroke(
-                    AngularGradient(
-                        colors: [.white.opacity(0.55), .white, AppTheme.cyan],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 1) {
-                Text(todayTasks.isEmpty ? "—" : "\(Int(round(todayProgress * 100)))%")
-                    .font(.subheadline.weight(.heavy))
-                    .foregroundStyle(.white)
-                    .contentTransition(.numericText())
-                Text(todayTasks.isEmpty ? "ว่าง" : "\(doneToday)/\(todayTasks.count)")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.72))
-            }
-            .minimumScaleFactor(0.6)
-        }
-        .frame(width: 70, height: 70)
-        .animation(.snappy(duration: 0.35), value: todayProgress)
+        TasksAnimatedProgressRing(
+            progress: todayProgress,
+            centerTitle: todayTasks.isEmpty ? "—" : "\(Int(round(todayProgress * 100)))%",
+            centerSubtitle: todayTasks.isEmpty ? "ว่าง" : "\(doneToday)/\(todayTasks.count)",
+            reduceMotion: reduceMotion
+        )
         .accessibilityHidden(true)
     }
 
@@ -574,6 +556,7 @@ struct TasksHubView: View {
                         .foregroundStyle(.white)
                         .frame(width: 36, height: 36)
                         .background(Circle().fill(AppTheme.brand))
+                        .tasksShimmer(!reduceMotion)
                 }
                 .padding(12)
                 .background(
@@ -613,7 +596,10 @@ struct TasksHubView: View {
         systemImage: String,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
             HStack(spacing: 5) {
                 Image(systemName: systemImage)
                     .font(.system(size: 10, weight: .bold))
@@ -623,7 +609,11 @@ struct TasksHubView: View {
             .foregroundStyle(AppTheme.brand)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(Capsule().fill(AppTheme.brand.opacity(0.12)))
+            .background(
+                Capsule()
+                    .fill(AppTheme.brand.opacity(0.12))
+                    .overlay(Capsule().strokeBorder(AppTheme.brand.opacity(0.18), lineWidth: 1))
+            )
         }
         .buttonStyle(.plain)
     }
@@ -645,7 +635,8 @@ struct TasksHubView: View {
                         let isActive = chip == item
                         let count = chipCount(item)
                         Button {
-                            withAnimation(.snappy(duration: 0.2)) { chip = item }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) { chip = item }
                         } label: {
                             HStack(spacing: 5) {
                                 Image(systemName: item.systemImage)
@@ -702,7 +693,8 @@ struct TasksHubView: View {
                     ForEach(TaskFeedSort.allCases) { item in
                         let on = feedSort == item
                         Button {
-                            withAnimation(.snappy(duration: 0.2)) { feedSort = item }
+                            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) { feedSort = item }
                         } label: {
                             Text(item.rawValue)
                                 .font(.caption2.weight(.bold))
@@ -740,9 +732,14 @@ struct TasksHubView: View {
     private var inboxSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("แจ้งเตือนถึงคุณ", systemImage: "bell.badge.fill")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
+                Label {
+                    Text("แจ้งเตือนถึงคุณ")
+                } icon: {
+                    Image(systemName: "bell.badge.fill")
+                        .tasksBellWiggle(active: !inboxTasks.isEmpty, reduceMotion: reduceMotion)
+                }
+                .font(.headline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
                 Spacer(minLength: 0)
                 Text("\(inboxTasks.count) ใหม่")
                     .font(.caption.weight(.bold))
@@ -770,8 +767,9 @@ struct TasksHubView: View {
             }
 
             VStack(spacing: 10) {
-                ForEach(inboxTasks) { task in
+                ForEach(Array(inboxTasks.enumerated()), id: \.element.id) { index, task in
                     inboxRow(task)
+                        .tasksStaggeredAppear(index: index, baseDelay: 0.05)
                 }
             }
         }
@@ -861,23 +859,18 @@ struct TasksHubView: View {
 
     private var focusSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("ปักหมุดสำคัญ", systemImage: "pin.fill")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-                Spacer(minLength: 0)
-                PillBadge(
-                    text: "\(focusTasks.count)/\(TaskStore.focusLimit)",
-                    color: focusTasks.count >= TaskStore.focusLimit ? AppTheme.warning : AppTheme.brand
-                )
-            }
-            Text("งานด่วนที่ทีมควรโฟกัสก่อน")
-                .font(.caption)
-                .foregroundStyle(AppTheme.inkMuted)
+            TasksProSectionHeader(
+                title: "ปักหมุดสำคัญ",
+                subtitle: "งานด่วนที่ทีมควรโฟกัสก่อน",
+                systemImage: "pin.fill",
+                tint: AppTheme.brand,
+                badge: "\(focusTasks.count)/\(TaskStore.focusLimit)"
+            )
 
             VStack(spacing: 8) {
                 ForEach(Array(focusTasks.enumerated()), id: \.element.id) { index, task in
                     focusRow(index: index, task: task)
+                        .tasksStaggeredAppear(index: index)
                 }
             }
         }
@@ -969,12 +962,13 @@ struct TasksHubView: View {
 
             let dayItems = listedTasks
             HStack(spacing: 8) {
-                feedKPITile("วันนี้เลือก", dayItems.count, AppTheme.ink)
-                feedKPITile("ค้าง", dayItems.filter { !$0.isDone }.count, AppTheme.warning)
-                feedKPITile(
-                    "ด่วน",
-                    dayItems.filter { !$0.isDone && ($0.priority == .urgent || $0.priority == .high || $0.isPastDeadline()) }.count,
-                    AppTheme.expense
+                TasksGlassKPITile(title: "วันนี้เลือก", value: dayItems.count, tint: AppTheme.ink, icon: "calendar")
+                TasksGlassKPITile(title: "ค้าง", value: dayItems.filter { !$0.isDone }.count, tint: AppTheme.warning, icon: "hourglass")
+                TasksGlassKPITile(
+                    title: "ด่วน",
+                    value: dayItems.filter { !$0.isDone && ($0.priority == .urgent || $0.priority == .high || $0.isPastDeadline()) }.count,
+                    tint: AppTheme.expense,
+                    icon: "flame.fill"
                 )
             }
         }
@@ -995,33 +989,11 @@ struct TasksHubView: View {
 
     private var feedWindowKPI: some View {
         HStack(spacing: 8) {
-            feedKPITile("ทั้งหมด", listedTasks.count, AppTheme.ink)
-            feedKPITile("ค้าง", listedOpenCount, AppTheme.warning)
-            feedKPITile("ด่วน", listedUrgentCount, AppTheme.expense)
-            feedKPITile("ปิดแล้ว", listedDoneCount, AppTheme.income)
+            TasksGlassKPITile(title: "ทั้งหมด", value: listedTasks.count, tint: AppTheme.ink, icon: "tray.full.fill")
+            TasksGlassKPITile(title: "ค้าง", value: listedOpenCount, tint: AppTheme.warning, icon: "clock.badge.exclamationmark")
+            TasksGlassKPITile(title: "ด่วน", value: listedUrgentCount, tint: AppTheme.expense, icon: "flame.fill")
+            TasksGlassKPITile(title: "ปิดแล้ว", value: listedDoneCount, tint: AppTheme.income, icon: "checkmark.seal.fill")
         }
-    }
-
-    private func feedKPITile(_ title: String, _ value: Int, _ tint: Color) -> some View {
-        VStack(spacing: 3) {
-            Text("\(value)")
-                .font(.headline.weight(.bold).monospacedDigit())
-                .foregroundStyle(tint)
-                .contentTransition(.numericText())
-            Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(AppTheme.inkMuted)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AppTheme.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(AppTheme.hairline, lineWidth: 1)
-        )
     }
 
     private var listSection: some View {
@@ -1054,12 +1026,13 @@ struct TasksHubView: View {
                 .padding(.vertical, 8)
             } else {
                 LazyVStack(alignment: .leading, spacing: 16) {
-                    ForEach(feedGroups) { group in
+                    ForEach(Array(feedGroups.enumerated()), id: \.element.id) { groupIndex, group in
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(spacing: 6) {
                                 Image(systemName: group.systemImage)
                                     .font(.caption.weight(.bold))
                                     .foregroundStyle(group.tint)
+                                    .symbolEffect(.bounce, value: group.tasks.count)
                                 Text(group.title)
                                     .font(.caption.weight(.bold))
                                     .foregroundStyle(AppTheme.ink)
@@ -1072,13 +1045,13 @@ struct TasksHubView: View {
                                 Spacer(minLength: 0)
                             }
 
-                            ForEach(group.tasks) { task in
-                                feedPost(task)
+                            ForEach(Array(group.tasks.enumerated()), id: \.element.id) { taskIndex, task in
+                                feedPost(task, staggerIndex: groupIndex * 20 + taskIndex)
                             }
                         }
                     }
                 }
-                .animation(.snappy(duration: 0.25), value: listedTasks.map(\.id))
+                .animation(.spring(response: 0.38, dampingFraction: 0.82), value: listedTasks.map(\.id))
             }
         }
         .padding(16)
@@ -1125,7 +1098,7 @@ struct TasksHubView: View {
         return "\(listedTasks.count) โพสต์ · ค้าง \(open)"
     }
 
-    private func feedPost(_ task: WorkTask) -> some View {
+    private func feedPost(_ task: WorkTask, staggerIndex: Int = 0) -> some View {
         let poster = posterName(for: task)
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
@@ -1241,8 +1214,7 @@ struct TasksHubView: View {
                     }
 
                     Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        Task { await store.setStatus(task, to: .done) }
+                        completeTask(task)
                     } label: {
                         Label("ปิดงาน", systemImage: "checkmark.circle.fill")
                             .font(.caption.weight(.bold))
@@ -1288,6 +1260,17 @@ struct TasksHubView: View {
                     lineWidth: 1
                 )
         )
+        .shadow(
+            color: task.isDone ? .clear : task.priority.color.opacity(task.priority == .urgent ? 0.14 : 0.06),
+            radius: task.priority == .urgent ? 10 : 4,
+            y: 2
+        )
+        .tasksStaggeredAppear(index: staggerIndex)
+        .scrollTransition(.animated(.spring(response: 0.4, dampingFraction: 0.85))) { content, phase in
+            content
+                .opacity(phase.isIdentity ? 1 : 0.88)
+                .scaleEffect(phase.isIdentity ? 1 : 0.97)
+        }
         .overlay(alignment: .leading) {
             UnevenRoundedRectangle(
                 topLeadingRadius: 18,
@@ -1320,6 +1303,17 @@ struct TasksHubView: View {
                 Task { await store.delete(task) }
             } label: {
                 Label("ลบงาน", systemImage: "trash")
+            }
+        }
+    }
+
+    private func completeTask(_ task: WorkTask) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task {
+            await store.setStatus(task, to: .done)
+            if !reduceMotion {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                celebrateToken += 1
             }
         }
     }
@@ -1501,6 +1495,7 @@ struct TasksHubView: View {
             .shadow(color: AppTheme.brand.opacity(0.42), radius: 14, y: 6)
         }
         .buttonStyle(.plain)
+        .tasksBreathingPulse(!reduceMotion)
         .padding(.trailing, AppTheme.spaceLG)
         .padding(.bottom, AppTheme.spaceLG)
         .accessibilityLabel("แจ้งงานใหม่")
@@ -1519,7 +1514,8 @@ private struct TasksSegmentPill: View {
                 ForEach(TasksSegment.allCases) { option in
                     let isOn = selection == option
                     Button {
-                        withAnimation(.snappy(duration: 0.28)) { selection = option }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) { selection = option }
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: option.systemImage)
