@@ -51,7 +51,6 @@ type ReportMenu = 'fuel' | 'vehicle';
 const VEHICLE_REPORT_TABS: Array<{ id: VehicleUsageKind; label: string; printGroup: Exclude<VehiclePrintGroup, 'overview'> }> = [
     { id: 'macro', label: 'รายงานรถแม็คโคร', printGroup: 'macro' },
     { id: 'dump_trip', label: 'รายงานรถดั๊ม / สิบล้อ / ดรัม', printGroup: 'dump' },
-    { id: 'hire', label: 'รายงานการใช้รถ (ค่าจ้าง)', printGroup: 'hire' },
 ];
 
 interface ReportsModuleProps {
