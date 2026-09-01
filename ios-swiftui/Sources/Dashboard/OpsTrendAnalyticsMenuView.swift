@@ -20,14 +20,14 @@ struct OpsTrendAnalyticsMenuView: View {
                     menuLink(
                         focus: .trip,
                         title: "วิเคราะห์เที่ยวรถ",
-                        subtitle: "รายสัปดาห์ / รายเดือน · Pro มืออาชีพ · อันดับรถ",
+                        subtitle: "Pro มืออาชีพ · แตะดูรายละเอียด · ปัดเปลี่ยนสัปดาห์",
                         systemImage: "truck.box.fill",
                         accent: AppTheme.info
                     )
                     menuLink(
                         focus: .sand,
                         title: "วิเคราะห์ร่อนทราย",
-                        subtitle: "รายสัปดาห์ / รายเดือน · Pro มืออาชีพ · ชั่วโมงพีค",
+                        subtitle: "Pro มืออาชีพ · แตะดูรายละเอียด · ปัดเปลี่ยนสัปดาห์",
                         systemImage: "drop.fill",
                         accent: AppTheme.brand
                     )

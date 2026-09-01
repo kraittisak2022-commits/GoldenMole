@@ -154,7 +154,7 @@ struct OpsTrendAnalyticsHubView: View {
                 Text("\(shortDate(report.filter.start)) – \(shortDate(report.filter.end))")
                     .font(.caption2)
                     .foregroundStyle(AppTheme.inkMuted)
-                if focus == .both {
+                if focus == .both || focus == .trip || focus == .sand {
                     Text("ปัดซ้าย/ขวาเพื่อเปลี่ยน\(period.shortLabel)")
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(AppTheme.inkMuted)
@@ -243,7 +243,7 @@ struct OpsTrendAnalyticsHubView: View {
         let mode = focus == .sand ? report.sandAdvanced : report.tripAdvanced
         let accent = focus == .sand ? AppTheme.brand : AppTheme.info
         return NavigationLink {
-            OpsTrendProAnalysisView(focus: focus, report: report, proBundle: proBundle)
+            OpsTrendProAnalysisView(focus: focus)
         } label: {
             HStack(spacing: 14) {
                 ZStack {
