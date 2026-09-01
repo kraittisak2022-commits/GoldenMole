@@ -2,7 +2,7 @@ import type { Employee, Transaction } from '../../types';
 import { normalizeDate } from '../../utils';
 import {
     classifyAttendancePositionGroup,
-    isSandYardOrDriverEmployee,
+    isSandYardOrMacroDriverEmployee,
     type AttendancePositionGroup,
 } from '../../utils/advanceEmployeeFilter';
 import { buildFuelUsageReport, filterFuelUsageReport } from '../../utils/fuelUsageReport';
@@ -129,7 +129,7 @@ export function buildAttendanceSummary(
     const byId = new Map(employees.map((e) => [e.id, e]));
     const rosterIds = new Set(
         employees
-            .filter((e) => !e.inactive && isSandYardOrDriverEmployee(e))
+            .filter((e) => !e.inactive && isSandYardOrMacroDriverEmployee(e))
             .map((e) => e.id),
     );
     const presentIds = new Set<string>();
@@ -141,7 +141,7 @@ export function buildAttendanceSummary(
         if (t.laborStatus !== 'Work' && t.laborStatus !== 'OT') continue;
         for (const id of t.employeeIds ?? []) {
             const eid = String(id).trim();
-            if (!eid) continue;
+            if (!eid || !rosterIds.has(eid)) continue;
             presentIds.add(eid);
             if (t.laborStatus === 'OT') otIds.add(eid);
         }

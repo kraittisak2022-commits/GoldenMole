@@ -84,7 +84,7 @@ const CountRecordPaceDetailModal = ({
             <button
                 type="button"
                 className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
-                aria-label="ปิด"
+                aria-label={t('close')}
                 onClick={onClose}
             />
             <div
@@ -107,7 +107,7 @@ const CountRecordPaceDetailModal = ({
                         type="button"
                         onClick={onClose}
                         className="rounded-xl bg-white/10 p-2 text-white ring-1 ring-white/20 transition hover:bg-white/15"
-                        aria-label="ปิด"
+                        aria-label={t('close')}
                     >
                         <X size={18} />
                     </button>

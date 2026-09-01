@@ -133,6 +133,16 @@ export const isDriverPositionToken = (token: string): boolean => {
     return compact !== '' && DRIVER_POSITION_TITLES.has(compact);
 };
 
+const MACRO_DRIVER_POSITION_TITLES = new Set([
+    'คนขับรถแม็คโคร',
+    'คนขับรถแมคโคร',
+]);
+
+export const isMacroDriverPositionToken = (token: string): boolean => {
+    const compact = compactPosition(token);
+    return compact !== '' && MACRO_DRIVER_POSITION_TITLES.has(compact);
+};
+
 /** เทียบตำแหน่งกับบัญชีขาวโดยไม่สนใจช่องว่าง (เช่น «พนักงาน ท่าทราย») */
 export const isSandYardOrMacroDriverPositionToken = (token: string): boolean => {
     const compact = compactPosition(token);
@@ -145,10 +155,10 @@ export const isSandYardOrMacroDriverEmployee = (e: Employee): boolean =>
 
 export type AttendancePositionGroup = 'sandYard' | 'driver' | 'other';
 
-/** จัดกลุ่มตำแหน่ง: คนขับมาก่อน แล้วท่าทราย แล้วอื่นๆ */
+/** จัดกลุ่มตำแหน่ง: คนขับแม็คโครมาก่อน แล้วท่าทราย แล้วอื่นๆ */
 export const classifyAttendancePositionGroup = (e: Employee): AttendancePositionGroup => {
     const tokens = collectEmployeePositionTokens(e);
-    if (tokens.some(isDriverPositionToken)) return 'driver';
+    if (tokens.some(isMacroDriverPositionToken)) return 'driver';
     if (tokens.some(isSandYardPositionToken)) return 'sandYard';
     return 'other';
 };

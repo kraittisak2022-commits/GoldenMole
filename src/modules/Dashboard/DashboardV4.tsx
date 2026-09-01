@@ -313,7 +313,7 @@ const DashboardV4 = ({
                                     className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500/15 px-2.5 py-1.5 text-xs font-bold text-amber-100 ring-1 ring-amber-400/30 transition hover:bg-amber-500/25"
                                 >
                                     <Settings2 size={13} className="text-amber-300" />
-                                    จัดการรอบ
+                                    {t('manageRounds')}
                                 </button>
                             )}
                             <span className="inline-flex items-center gap-1.5 rounded-xl bg-blue-500/15 px-2.5 py-1.5 text-xs font-bold text-blue-100 ring-1 ring-blue-400/25">

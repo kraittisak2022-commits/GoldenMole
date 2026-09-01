@@ -669,7 +669,7 @@ const CountRecordOverview = ({
                                         </p>
                                         <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700 ring-1 ring-blue-200/80 transition group-hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 dark:ring-blue-800/60 dark:group-hover:bg-blue-900/50">
                                             <Pencil size={10} />
-                                            จัดการ
+                                            {t('manage')}
                                         </span>
                                     </button>
                                 ) : (
@@ -824,7 +824,7 @@ const CountRecordOverview = ({
                                             </p>
                                             <span className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-pink-50 px-2 py-1 text-[10px] font-bold text-pink-700 ring-1 ring-pink-200/80 transition group-hover:bg-pink-100 dark:bg-pink-950/50 dark:text-pink-300 dark:ring-pink-800/60 dark:group-hover:bg-pink-900/50">
                                                 <Pencil size={10} />
-                                                จัดการ
+                                                {t('manage')}
                                             </span>
                                         </button>
                                     ) : (

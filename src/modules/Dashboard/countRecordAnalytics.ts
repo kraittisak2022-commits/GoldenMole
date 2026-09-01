@@ -92,7 +92,11 @@ export interface LapIntervalResult {
     labels: string[];
 }
 
-export function computeLapIntervals(lapTimes: string[], dayKey: string): LapIntervalResult {
+export function computeLapIntervals(
+    lapTimes: string[],
+    dayKey: string,
+    locale: 'th' | 'zh' = 'th',
+): LapIntervalResult {
     const intervalsSec: number[] = [];
     const labels: string[] = [];
 
@@ -103,7 +107,9 @@ export function computeLapIntervals(lapTimes: string[], dayKey: string): LapInte
         const sec = activeDurationSec(prev, curr);
         if (sec <= 0) continue;
         intervalsSec.push(sec);
-        labels.push(`รอบ ${i}→${i + 1}`);
+        labels.push(
+            locale === 'zh' ? `第 ${i}→${i + 1} 轮` : `รอบ ${i}→${i + 1}`,
+        );
     }
 
     return { intervalsSec, labels };
