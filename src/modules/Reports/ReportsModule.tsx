@@ -33,6 +33,7 @@ import {
 import {
     buildVehicleUsageReport,
     filterVehicleUsageByVehicle,
+    filterVehicleUsageByDate,
     filterVehicleUsageReport,
     vehicleKindLabel,
     vehiclePrintGroupTitle,
@@ -323,7 +324,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
     const printVehicleGroupReport = (
         group: VehiclePrintGroup,
         locale: 'th' | 'zh' = 'th',
-        opts?: { vehicleId?: string },
+        opts?: { vehicleId?: string; date?: string },
     ) => {
         let grouped = group === 'overview'
             ? vehicleReport
@@ -331,15 +332,19 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
         if (opts?.vehicleId) {
             grouped = filterVehicleUsageByVehicle(grouped, opts.vehicleId);
         }
+        if (opts?.date) {
+            grouped = filterVehicleUsageByDate(grouped, opts.date);
+        }
         const html = vehicleUsageToPrintHtml({
             appName: orgTitle,
             orgSubtitle: orgLine || undefined,
-            rangeLabel,
+            rangeLabel: opts?.date ? formatDateBE(opts.date) : rangeLabel,
             report: grouped,
             group,
             formatDate: formatDateBE,
             locale,
             vehicleTitle: opts?.vehicleId,
+            dayTitle: opts?.date ? formatDateBE(opts.date) : undefined,
         });
         const w = window.open('', '_blank');
         if (!w) return;
@@ -888,9 +893,21 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                                 <h5 className="text-sm font-bold text-slate-900 dark:text-slate-50">
                                                     {formatDateBE(date)}
                                                 </h5>
-                                                <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-white/15">
-                                                    {dayRows.length} รายการ
-                                                </span>
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-white/15">
+                                                        {dayRows.length} รายการ
+                                                    </span>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        className="h-8 px-2.5 py-1 text-xs inline-flex items-center gap-1.5 bg-white ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-white/15"
+                                                        aria-label={`พิมพ์รายวัน${formatDateBE(date)}`}
+                                                        onClick={() => printVehicleGroupReport(vehiclePrintGroup, 'th', { date })}
+                                                    >
+                                                        <Printer className="h-3.5 w-3.5" />
+                                                        พิมพ์
+                                                    </Button>
+                                                </div>
                                             </div>
                                             <div className="overflow-x-auto">
                                                 <table className="w-full text-sm">

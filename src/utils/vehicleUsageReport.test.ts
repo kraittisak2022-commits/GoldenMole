@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Employee, Transaction } from '../types';
 import {
     buildVehicleUsageReport,
+    filterVehicleUsageByDate,
     filterVehicleUsageReport,
     vehiclePrintGroupTitle,
 } from './vehicleUsageReport';
@@ -69,5 +70,9 @@ describe('buildVehicleUsageReport', () => {
         expect(macroOnly.rows).toHaveLength(1);
         expect(macroOnly.rows[0].driverLabel).toBe('ชาย');
         expect(vehiclePrintGroupTitle('overview')).toContain('การใช้รถ');
+
+        const macroDay = filterVehicleUsageByDate(macroOnly, '2026-08-10');
+        expect(macroDay.rows).toHaveLength(1);
+        expect(filterVehicleUsageByDate(macroOnly, '2026-08-11').rows).toHaveLength(0);
     });
 });

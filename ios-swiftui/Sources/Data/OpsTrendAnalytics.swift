@@ -426,17 +426,57 @@ struct OpsTrendReport: Sendable {
     }
 }
 
+struct OpsTrendVehicleRank: Identifiable, Sendable {
+    let id: String
+    let name: String
+    let rounds: Int
+    let avgIntervalSec: Double?
+    let perHour: Double
+    let sharePct: Double
+}
+
+struct OpsTrendDayPerformance: Identifiable, Sendable {
+    let id: String
+    let label: String
+    let dateKey: String
+    let rounds: Int
+    let perHour: Double
+    let intervalSec: Double?
+    let cubic: Double
+    let score: Int
+}
+
+struct OpsTrendHourlyBucket: Identifiable, Sendable {
+    let id: String
+    let label: String
+    let count: Int
+}
+
+struct OpsTrendProBundle: Sendable {
+    let vehicleRanks: [OpsTrendVehicleRank]
+    let dayPerformance: [OpsTrendDayPerformance]
+    let hourlyBuckets: [OpsTrendHourlyBucket]
+    let proInsights: [String]
+
+    static let empty = OpsTrendProBundle(
+        vehicleRanks: [],
+        dayPerformance: [],
+        hourlyBuckets: [],
+        proInsights: []
+    )
+}
+
 enum OpsTrendAnalytics {
     nonisolated static func build(
         period: OpsTrendPeriod,
+        periodOffset: Int = 0,
         transactions: [Transaction],
         employees: [Employee],
         byDay: [String: [Transaction]] = [:]
     ) -> OpsTrendReport {
-        let filter = DashboardAggregations.dateFilter(
-            preset: period == .week ? .days7 : .days30,
-            customStart: nil,
-            customEnd: nil
+        let filter = DashboardAggregations.shiftedPeriodFilter(
+            dayCount: period.dayCount,
+            offset: periodOffset
         )
         let prevFilter = DashboardAggregations.previousPeriodFilter(filter)
         let dayKeys = DashboardAggregations.enumerateDates(in: filter)
@@ -1663,6 +1703,136 @@ enum OpsTrendAnalytics {
             criticalCount: critical,
             warningCount: warning,
             opportunityCount: opportunity
+        )
+    }
+
+    // MARK: - Pro analytics bundle
+
+    nonisolated static func buildProBundle(
+        focus: OpsTrendFocus,
+        period: OpsTrendPeriod,
+        filter: DateFilter,
+        pacePoints: [OpsTrendPacePoint],
+        daily: [OpsTrendPoint],
+        mode: OpsTrendAdvancedMode,
+        transactions: [Transaction],
+        employees: [Employee],
+        byDay: [String: [Transaction]]
+    ) -> OpsTrendProBundle {
+        let dayKeys = DashboardAggregations.enumerateDates(in: filter)
+        let isTrip = focus == .trip
+
+        let dayPerformance: [OpsTrendDayPerformance] = pacePoints.compactMap { p in
+            guard !p.startKey.isEmpty else { return nil }
+            let rounds = isTrip ? p.tripRounds : p.sandRounds
+            let interval = isTrip ? p.tripAvgIntervalSec : p.sandAvgIntervalSec
+            let perHour = isTrip ? p.tripPerHour : p.sandPerHour
+            let cubic = isTrip ? p.tripCubic : p.sandCubic
+            let target = isTrip ? period.tripDailyTarget : 40.0
+            let volumePart = min(100.0, (Double(rounds) / max(target, 1)) * 100)
+            let speedPart: Double = {
+                guard let interval, interval > 0 else { return 40 }
+                let ideal = isTrip ? 150.0 : 240.0
+                return min(100, max(10, (ideal / interval) * 70))
+            }()
+            let score = Int((volumePart * 0.55 + speedPart * 0.45).rounded())
+            return OpsTrendDayPerformance(
+                id: p.id,
+                label: p.label,
+                dateKey: p.startKey,
+                rounds: rounds,
+                perHour: perHour,
+                intervalSec: interval,
+                cubic: cubic,
+                score: score
+            )
+        }
+
+        var hourlyMap: [Int: Int] = [:]
+        for key in dayKeys {
+            let dayTx = byDay[key] ?? transactions.filter { String($0.date.prefix(10)) == key }
+            let laps: [String]
+            if isTrip {
+                laps = CountRecordLogic.buildTripUnits(dayKey: key, transactions: dayTx, employees: employees)
+                    .flatMap(\.lapTimes)
+            } else if let sand = CountRecordLogic.buildSandUnit(dayKey: key, transactions: dayTx) {
+                laps = sand.lapTimes
+            } else {
+                laps = []
+            }
+            let heat = CountRecordAnalytics.computeHourlyHeatmap(lapTimes: laps, dayKey: key)
+            for cell in heat where cell.count > 0 {
+                hourlyMap[cell.hour, default: 0] += cell.count
+            }
+        }
+        let hourlyBuckets = hourlyMap.keys.sorted().map { h in
+            OpsTrendHourlyBucket(
+                id: "h\(h)",
+                label: String(format: "%02d:00", h),
+                count: hourlyMap[h] ?? 0
+            )
+        }
+
+        let vehicleRanks: [OpsTrendVehicleRank] = {
+            guard isTrip else { return [] }
+            var totals: [String: (name: String, rounds: Int, intervals: [Double], hours: Double)] = [:]
+            for key in dayKeys {
+                let dayTx = byDay[key] ?? transactions.filter { String($0.date.prefix(10)) == key }
+                let units = CountRecordLogic.buildTripUnits(dayKey: key, transactions: dayTx, employees: employees)
+                for unit in units {
+                    let name = unit.vehicleId
+                    var row = totals[name] ?? (name: name, rounds: 0, intervals: [], hours: 0)
+                    row.rounds += unit.rounds
+                    let intervals = CountRecordAnalytics.computeLapIntervals(lapTimes: unit.lapTimes, dayKey: key)
+                    row.intervals.append(contentsOf: intervals)
+                    if let dur = CountRecordAnalytics.computeWorkDuration(lapTimes: unit.lapTimes, dayKey: key) {
+                        row.hours += dur.totalActiveHours
+                    }
+                    totals[name] = row
+                }
+            }
+            let grand = totals.values.reduce(0) { $0 + $1.rounds }
+            return totals.values
+                .sorted { $0.rounds > $1.rounds }
+                .prefix(8)
+                .map { row in
+                    let avg: Double? = {
+                        guard !row.intervals.isEmpty else { return nil }
+                        return row.intervals.reduce(0, +) / Double(row.intervals.count)
+                    }()
+                    let perHour = row.hours > 0 ? Double(row.rounds) / row.hours : 0
+                    let share = grand > 0 ? Double(row.rounds) / Double(grand) * 100 : 0
+                    return OpsTrendVehicleRank(
+                        id: row.name,
+                        name: row.name,
+                        rounds: row.rounds,
+                        avgIntervalSec: avg,
+                        perHour: perHour,
+                        sharePct: share
+                    )
+                }
+        }()
+
+        var proInsights: [String] = mode.insights
+        if let best = dayPerformance.max(by: { $0.score < $1.score }), best.rounds > 0 {
+            proInsights.insert("วันที่ดีที่สุด \(best.label) — \(best.rounds) \(mode.unit) (คะแนน \(best.score))", at: 0)
+        }
+        if let weak = dayPerformance.filter({ $0.rounds > 0 }).min(by: { $0.score < $1.score }) {
+            proInsights.append("วันอ่อนสุด \(weak.label) — โฟกัสดึงให้ใกล้ค่าเฉลี่ย")
+        }
+        if let top = vehicleRanks.first {
+            proInsights.append("รถนำ \(top.name) \(top.rounds) เที่ยว (\(Int(top.sharePct.rounded()))% ของช่วง)")
+        }
+        if let peak = hourlyBuckets.max(by: { $0.count < $1.count }), peak.count > 0 {
+            proInsights.append("ชั่วโมงหนาแน่นสุด \(peak.label) (\(peak.count) รอบ)")
+        }
+        proInsights.append("คะแนน Pro รวม \(mode.combinedScore) — ความเร็ว \(mode.speedScore) · ปริมาณ \(mode.volumeScore)")
+
+        return OpsTrendProBundle(
+            vehicleRanks: vehicleRanks,
+            dayPerformance: dayPerformance,
+            hourlyBuckets: hourlyBuckets,
+            proInsights: Array(proInsights.prefix(10))
         )
     }
 }

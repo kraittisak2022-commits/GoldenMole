@@ -7,21 +7,32 @@ struct OpsTrendAnalyticsHubView: View {
 
     @Environment(AppState.self) private var appState
     @State private var period: OpsTrendPeriod = .week
+    @State private var periodOffset = 0
     @State private var report: OpsTrendReport = .empty(period: .week)
+    @State private var proBundle: OpsTrendProBundle = .empty
     @State private var isBuilding = false
     @State private var buildToken = 0
+
+    private var maxPeriodOffset: Int { period == .week ? 26 : 12 }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 periodPicker
+                periodNavigator
+                if focus == .both {
+                    combinedDetailLink
+                }
                 if isBuilding && report.points.isEmpty {
                     ProgressView("กำลังวิเคราะห์…")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
                 } else {
                     scoreHero
+                    if focus == .trip || focus == .sand {
+                        proEntryBanner
+                    }
                     actionPlanCard
                     pillarBreakdown
                     growthScoreboard
@@ -61,7 +72,7 @@ struct OpsTrendAnalyticsHubView: View {
     }
 
     private var rebuildKey: String {
-        "\(period.rawValue)|\(appState.transactionsRevision)|\(appState.employees.count)"
+        "\(period.rawValue)|\(periodOffset)|\(appState.transactionsRevision)|\(appState.employees.count)"
     }
 
     // MARK: - Header / pickers
@@ -117,8 +128,169 @@ struct OpsTrendAnalyticsHubView: View {
         }
         .pickerStyle(.segmented)
         .onChange(of: period) { _, _ in
+            periodOffset = 0
             report = .empty(period: period)
         }
+    }
+
+    private var periodNavigator: some View {
+        HStack(spacing: 12) {
+            Button {
+                periodOffset = min(maxPeriodOffset, periodOffset + 1)
+                report = .empty(period: period)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .disabled(periodOffset >= maxPeriodOffset)
+            .opacity(periodOffset >= maxPeriodOffset ? 0.35 : 1)
+
+            VStack(spacing: 3) {
+                Text(periodOffsetLabel)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Text("\(shortDate(report.filter.start)) – \(shortDate(report.filter.end))")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.inkMuted)
+                if focus == .both {
+                    Text("ปัดซ้าย/ขวาเพื่อเปลี่ยน\(period.shortLabel)")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            Button {
+                periodOffset = max(0, periodOffset - 1)
+                report = .empty(period: period)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .disabled(periodOffset == 0)
+            .opacity(periodOffset == 0 ? 0.35 : 1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(AppTheme.surfaceSoft)
+        )
+        .gesture(periodSwipeGesture)
+    }
+
+    private var periodOffsetLabel: String {
+        if periodOffset == 0 {
+            return period == .week ? "สัปดาห์ล่าสุด" : "เดือนล่าสุด"
+        }
+        return period == .week
+            ? "สัปดาห์ย้อนหลัง \(periodOffset)"
+            : "เดือนย้อนหลัง \(periodOffset)"
+    }
+
+    private var periodSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 36)
+            .onEnded { value in
+                if value.translation.width < -36, periodOffset < maxPeriodOffset {
+                    periodOffset += 1
+                    report = .empty(period: period)
+                } else if value.translation.width > 36, periodOffset > 0 {
+                    periodOffset -= 1
+                    report = .empty(period: period)
+                }
+            }
+    }
+
+    private var combinedDetailLink: some View {
+        NavigationLink {
+            OpsTrendCombinedDetailView(report: report)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(AppTheme.brand)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ดูรายละเอียดทั้งหมด")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("คะแนน · เที่ยวรถ · ร่อนทราย · ราย\(period == .week ? "วัน" : "สัปดาห์")")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                    .fill(AppTheme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                    .strokeBorder(AppTheme.brand.opacity(0.25), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var proEntryBanner: some View {
+        let mode = focus == .sand ? report.sandAdvanced : report.tripAdvanced
+        let accent = focus == .sand ? AppTheme.brand : AppTheme.info
+        return NavigationLink {
+            OpsTrendProAnalysisView(focus: focus, report: report, proBundle: proBundle)
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(accent.opacity(0.14))
+                    Image(systemName: "speedometer")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(accent)
+                }
+                .frame(width: 48, height: 48)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("วิเคราะห์ Pro มืออาชีพ")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("ความเร็ว × ปริมาณ · กราฟเชิงลึก · \(focus == .trip ? "อันดับรถ" : "ชั่วโมงพีค")")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+
+                Spacer(minLength: 0)
+
+                VStack(spacing: 2) {
+                    Text("\(mode.combinedScore)")
+                        .font(.title3.weight(.bold).monospacedDigit())
+                        .foregroundStyle(accent)
+                    Text("Pro")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                    .fill(AppTheme.surface)
+                    .shadow(color: AppTheme.cardShadow, radius: 12, y: 4)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                    .strokeBorder(accent.opacity(0.22), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Score hero
@@ -136,6 +308,16 @@ struct OpsTrendAnalyticsHubView: View {
     }
 
     private var combinedScoreHero: some View {
+        NavigationLink {
+            OpsTrendScoreDetailView(report: report)
+        } label: {
+            combinedScoreHeroContent
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("แตะเพื่อดูรายละเอียดคะแนน")
+    }
+
+    private var combinedScoreHeroContent: some View {
         let sc = report.scorecard
         let accent = gradeColor(sc.grade)
         return HStack(alignment: .center, spacing: 16) {
@@ -193,8 +375,16 @@ struct OpsTrendAnalyticsHubView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(AppTheme.brand)
                 }
+
+                Text("แตะดูรายละเอียดคะแนน")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
             }
             Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppTheme.inkMuted)
         }
         .padding(16)
         .background(
@@ -561,7 +751,21 @@ struct OpsTrendAnalyticsHubView: View {
             : [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
         return LazyVGrid(columns: columns, spacing: 10) {
             ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
-                growthTile(card)
+                if focus == .both {
+                    NavigationLink {
+                        OpsTrendMetricDetailView(
+                            card: card,
+                            advanced: card.title.contains("ทราย") ? report.sandAdvanced : report.tripAdvanced,
+                            period: period,
+                            accent: accent(for: card)
+                        )
+                    } label: {
+                        growthTile(card)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    growthTile(card)
+                }
             }
         }
     }
@@ -656,7 +860,9 @@ struct OpsTrendAnalyticsHubView: View {
         SectionCard(
             period == .week ? "คะแนนรายวัน" : "คะแนนรายสัปดาห์ย่อย",
             systemImage: "rosette",
-            subtitle: period == .week ? "คะแนนแต่ละวันในสัปดาห์นี้" : "คะแนน W1–W4 ในรอบ 30 วัน"
+            subtitle: focus == .both
+                ? (period == .week ? "แตะวันเพื่อดูรายละเอียด" : "แตะสัปดาห์เพื่อดูรายละเอียด")
+                : (period == .week ? "คะแนนแต่ละวันในสัปดาห์นี้" : "คะแนน W1–W4 ในรอบ 30 วัน")
         ) {
             if report.bucketScores.isEmpty {
                 Text("ยังไม่มีคะแนนย่อย")
@@ -685,42 +891,59 @@ struct OpsTrendAnalyticsHubView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(report.bucketScores) { item in
-                            VStack(spacing: 4) {
-                                Text(item.label)
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(AppTheme.inkMuted)
-                                Text("\(item.score)")
-                                    .font(.subheadline.weight(.bold))
-                                    .foregroundStyle(AppTheme.ink)
-                                switch focus {
-                                case .both:
-                                    Text("\(OpsTrendAnalytics.formatCompact(item.tripTotal))ท")
-                                        .font(.system(size: 9, weight: .semibold))
-                                        .foregroundStyle(AppTheme.info)
-                                    Text("\(OpsTrendAnalytics.formatCompact(item.sandTotal))ร")
-                                        .font(.system(size: 9, weight: .semibold))
-                                        .foregroundStyle(AppTheme.brand)
-                                case .trip:
-                                    Text("\(OpsTrendAnalytics.formatCompact(item.tripTotal)) เที่ยว")
-                                        .font(.system(size: 9, weight: .semibold))
-                                        .foregroundStyle(AppTheme.info)
-                                case .sand:
-                                    Text("\(OpsTrendAnalytics.formatCompact(item.sandTotal)) รอบ")
-                                        .font(.system(size: 9, weight: .semibold))
-                                        .foregroundStyle(AppTheme.brand)
+                            if focus == .both {
+                                NavigationLink {
+                                    OpsTrendBucketDetailView(
+                                        bucket: item,
+                                        period: period,
+                                        dailyPoints: report.dailyPoints
+                                    )
+                                } label: {
+                                    bucketChip(item)
                                 }
+                                .buttonStyle(.plain)
+                            } else {
+                                bucketChip(item)
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(AppTheme.surfaceSoft)
-                            )
                         }
                     }
                 }
             }
         }
+    }
+
+    private func bucketChip(_ item: OpsTrendBucketScore) -> some View {
+        VStack(spacing: 4) {
+            Text(item.label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.inkMuted)
+            Text("\(item.score)")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+            switch focus {
+            case .both:
+                Text("\(OpsTrendAnalytics.formatCompact(item.tripTotal))ท")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(AppTheme.info)
+                Text("\(OpsTrendAnalytics.formatCompact(item.sandTotal))ร")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(AppTheme.brand)
+            case .trip:
+                Text("\(OpsTrendAnalytics.formatCompact(item.tripTotal)) เที่ยว")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(AppTheme.info)
+            case .sand:
+                Text("\(OpsTrendAnalytics.formatCompact(item.sandTotal)) รอบ")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(AppTheme.brand)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(AppTheme.surfaceSoft)
+        )
     }
 
     // MARK: - Charts
@@ -1236,6 +1459,8 @@ struct OpsTrendAnalyticsHubView: View {
         let token = buildToken
         isBuilding = true
         let period = self.period
+        let periodOffset = self.periodOffset
+        let focus = self.focus
         let txs = appState.transactions
         let byDay = appState.transactionsByDay
         let emps = appState.employees
@@ -1243,6 +1468,23 @@ struct OpsTrendAnalyticsHubView: View {
         let built = await Task.detached(priority: .userInitiated) {
             OpsTrendAnalytics.build(
                 period: period,
+                periodOffset: periodOffset,
+                transactions: txs,
+                employees: emps,
+                byDay: byDay
+            )
+        }.value
+
+        let bundle = await Task.detached(priority: .userInitiated) {
+            guard focus == .trip || focus == .sand else { return OpsTrendProBundle.empty }
+            let mode = focus == .sand ? built.sandAdvanced : built.tripAdvanced
+            return OpsTrendAnalytics.buildProBundle(
+                focus: focus,
+                period: period,
+                filter: built.filter,
+                pacePoints: built.pacePoints,
+                daily: built.dailyPoints,
+                mode: mode,
                 transactions: txs,
                 employees: emps,
                 byDay: byDay
@@ -1252,6 +1494,7 @@ struct OpsTrendAnalyticsHubView: View {
         guard token == buildToken else { return }
         withAnimation(.snappy(duration: 0.25)) {
             report = built
+            proBundle = bundle
             isBuilding = false
         }
     }

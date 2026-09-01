@@ -297,6 +297,15 @@ export function filterVehicleUsageByVehicle(
     return { rows, ...aggregateVehicleUsageRows(rows) };
 }
 
+export function filterVehicleUsageByDate(
+    report: VehicleUsageReport,
+    date: string,
+): VehicleUsageReport {
+    const want = normalizeDate(date);
+    const rows = want ? report.rows.filter((r) => r.date === want) : report.rows;
+    return { rows, ...aggregateVehicleUsageRows(rows) };
+}
+
 export function vehiclePrintOverviewSections(report: VehicleUsageReport): Array<{
     id: string;
     title: string;
@@ -393,12 +402,11 @@ export function vehicleUsageToPrintHtml(opts: {
     formatDate: (ymd: string) => string;
     locale?: 'th' | 'zh';
     vehicleTitle?: string;
+    dayTitle?: string;
 }): string {
     const locale = opts.locale || 'th';
     const baseTitle = vehiclePrintGroupTitle(opts.group, locale);
-    const title = opts.vehicleTitle
-        ? `${baseTitle} · ${opts.vehicleTitle}`
-        : baseTitle;
+    const title = [baseTitle, opts.vehicleTitle, opts.dayTitle].filter(Boolean).join(' · ');
     const th = locale === 'zh'
         ? {
             date: '日期',

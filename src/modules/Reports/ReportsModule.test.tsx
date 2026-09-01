@@ -209,6 +209,7 @@ describe('ReportsModule', () => {
         expect(screen.getByRole('tab', { name: 'รายงานรถดั๊ม / สิบล้อ / ดรัม' })).toBeInTheDocument();
         expect(screen.getByRole('heading', { name: 'รายงานรถแม็คโคร' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'พิมพ์แม็คโคร 01' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'พิมพ์รายวัน10/08/2569' })).toBeInTheDocument();
         expect(screen.getAllByText('แม็คโคร 01').length).toBeGreaterThan(0);
         expect(screen.getByText('ขุดลาน')).toBeInTheDocument();
         expect(screen.getByText('ชาย')).toBeInTheDocument();

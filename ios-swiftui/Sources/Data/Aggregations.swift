@@ -67,6 +67,15 @@ enum DashboardAggregations {
         return DateFilter(start: prevStart, end: prevEnd)
     }
 
+    /// Sliding window ending `offset` periods before the current window (0 = latest).
+    static func shiftedPeriodFilter(dayCount: Int, offset: Int) -> DateFilter {
+        let days = max(1, dayCount)
+        let shift = max(0, offset) * days
+        let end = gregorian.date(byAdding: .day, value: -shift, to: Date()) ?? Date()
+        let start = gregorian.date(byAdding: .day, value: -(days - 1), to: end) ?? end
+        return DateFilter(start: formatYMD(start), end: formatYMD(end))
+    }
+
     static func filterByRange(_ transactions: [Transaction], range: DateFilter) -> [Transaction] {
         transactions.filter { tx in
             let d = String(tx.date.prefix(10))
