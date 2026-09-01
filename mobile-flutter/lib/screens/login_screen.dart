@@ -314,7 +314,7 @@ class _LoginScreenState extends State<LoginScreen>
           msg.contains('เชื่อมต่อ');
       if (hasCache && networkish) {
         debugPrint('profile login using cached admin after: $msg');
-        return cached!;
+        return cached;
       }
       rethrow;
     } catch (e) {
@@ -326,7 +326,7 @@ class _LoginScreenState extends State<LoginScreen>
             raw.contains('Failed host lookup') ||
             raw.contains('TimeoutException')) {
           debugPrint('profile login using cached admin after error: $e');
-          return cached!;
+          return cached;
         }
       }
       rethrow;

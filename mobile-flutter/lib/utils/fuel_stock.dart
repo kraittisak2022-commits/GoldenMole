@@ -41,7 +41,7 @@ double effectiveFuelOpeningReserveDiesel(double configured) =>
 
 /// รวม delta ถังสำรองดีเซล — หลังจุดตรวจนับนับเฉพาะรายการตั้งแต่ [anchorYmd]
 double applyFuelReserveDieselAnchor({
-  required Map<String, _FuelDayBucket> buckets,
+  required Map<String, FuelDayBucket> buckets,
   required double openingReserveDiesel,
   String anchorYmd = kFuelReserveAnchorYmd,
   double anchorLiters = kFuelReserveAnchorLiters,
@@ -595,7 +595,7 @@ class FuelStockBalance {
       (reserveBenzine < 0 ? -reserveBenzine : 0);
 }
 
-class _FuelDayBucket {
+class FuelDayBucket {
   double stockIn = 0;
   double withdraw = 0;
 }
@@ -627,11 +627,11 @@ FuelStockBalance computeFuelStockBalance(
   double openingReserveBenzine = 0,
   String? asOfYmd,
 }) {
-  final buckets = <String, _FuelDayBucket>{};
-  _FuelDayBucket bucketFor(String date, String tank, bool benzine) =>
+  final buckets = <String, FuelDayBucket>{};
+  FuelDayBucket bucketFor(String date, String tank, bool benzine) =>
       buckets.putIfAbsent(
         '$date|$tank|${benzine ? 'B' : 'D'}',
-        () => _FuelDayBucket(),
+        () => FuelDayBucket(),
       );
 
   final sandSieveDays = <String>{};
