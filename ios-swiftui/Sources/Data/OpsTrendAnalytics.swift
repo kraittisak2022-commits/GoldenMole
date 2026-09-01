@@ -170,7 +170,7 @@ struct OpsTrendScorecard: Sendable {
     let subheadline: String
 }
 
-struct OpsTrendBucketScore: Identifiable, Sendable {
+struct OpsTrendBucketScore: Identifiable, Hashable, Sendable {
     let id: String
     let label: String
     let score: Int
