@@ -125,14 +125,6 @@ String _normalizeSandDayKey(String raw) {
   return s;
 }
 
-/// รถแม็คโครหลักบนหน้าบันทึกน้ำมัน — จับคู่ชื่อเล่น (รุ่นเปลี่ยนได้จากการตั้งค่า)
-const _kFuelPinnedVehicleNicknames = <String>[
-  'น้องโกลเด้น',
-  'พี่ยักษ์ใหญ่',
-  'พี่เดอะฮัก',
-];
-const _kFuelPinnedVehicleCap = 3;
-
 /// เลือกบันทึกรายจ่ายสาธารณูปโภคหรือรายรับประจำวัน
 enum _IuEntryKind { expense, income }
 
@@ -613,10 +605,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   bool get _isHomeSandMode =>
       (widget.initialCategory ?? '').contains('ทรายที่ล้างที่บ้าน');
   final List<_FuelVehicleDraft> _fuelVehicleDrafts = [];
-  bool _fuelExtraVehiclesExpanded = false;
-
-  /// วัน (ymd) ที่เคยเด้ง popup เตือนให้ไปบันทึกการใช้รถแม็คโครแล้ว
-  String? _fuelMacroPromptDayKey;
 
   // ── น้ำมัน: เมนูย่อย + สต็อกถัง ──
   /// เมนูย่อยที่เลือกอยู่ใน «น้ำมัน» (null = ยังอยู่หน้าเลือกเมนู)
@@ -1623,64 +1611,36 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return out;
   }
 
-  /// รถที่แสดงในฟอร์มน้ำมันแม็คโคร = คันที่มีบันทึกการใช้รถวันนั้น
-  /// + คันที่เคยบันทึกน้ำมันของวันนั้นไว้แล้ว (กันข้อมูลเดิมหาย/แก้ไม่ได้)
-  List<String> _fuelMacroCarsForDay() {
+  /// รถแม็คโครทั้งหมดจากตั้งค่าแอพ — แสดงครบในฟอร์มน้ำมัน (ไม่ซ่อนตามการใช้รถ)
+  /// คันที่ใช้งานวันนี้แล้วยังไม่เติมน้ำมัน (ตรวจจากบันทึกการใช้รถ + ฟอร์ม/รายการเติม)
+  List<String> _fuelMacroUsedMissingFuelLabels() {
     final dayKey = _quickYmd(_selectedDate);
-    final out = <String>[];
+    final missing = <String>[];
     for (final car in _fuelMacroCars()) {
-      final worked = macroVehicleWorkedForDay(
+      if (!macroVehicleWorkedForDay(
         dayKey,
         car,
         _moduleDayAllTransactions,
-      );
-      if (worked) {
-        out.add(car);
+      )) {
         continue;
       }
       final row = _fuelDraftForVehicle(car);
-      if (row == null) continue;
-      final saved = row.txId != null && row.txId!.trim().isNotEmpty;
-      final liters = double.tryParse(row.liters.trim()) ?? 0;
-      if (saved || liters > 0 || row.time.trim().isNotEmpty) {
-        out.add(car);
-      }
-    }
-    return out;
-  }
-
-  bool _fuelVehicleMatchesPinned(String car, String nickname) {
-    return car.contains(nickname);
-  }
-
-  List<String> _fuelPinnedMacroCars(List<String> allCars) {
-    final pinned = <String>[];
-    final used = <String>{};
-    for (final nickname in _kFuelPinnedVehicleNicknames) {
-      if (pinned.length >= _kFuelPinnedVehicleCap) break;
-      String? hit;
-      for (final car in allCars) {
-        if (used.contains(car)) continue;
-        if (_fuelVehicleMatchesPinned(car, nickname)) {
-          hit = car;
+      final draftLiters = double.tryParse(row?.liters.trim() ?? '') ?? 0;
+      final draftSaved =
+          row?.txId != null && (row!.txId!.trim().isNotEmpty);
+      if (draftLiters > 0 || draftSaved) continue;
+      var fueledInDb = false;
+      for (final t in _moduleDayAllTransactions) {
+        if (t.date.trim() != dayKey) continue;
+        if (!isMacroFuelReportRow(t)) continue;
+        if (transactionVehicleMatches(t, car)) {
+          fueledInDb = true;
           break;
         }
       }
-      if (hit != null) {
-        pinned.add(hit);
-        used.add(hit);
-      }
+      if (!fueledInDb) missing.add(car);
     }
-    for (final car in allCars) {
-      if (pinned.length >= _kFuelPinnedVehicleCap) break;
-      if (used.add(car)) pinned.add(car);
-    }
-    return pinned;
-  }
-
-  List<String> _fuelExtraMacroCars(List<String> allCars) {
-    final pinned = _fuelPinnedMacroCars(allCars).toSet();
-    return allCars.where((c) => !pinned.contains(c)).toList();
+    return missing;
   }
 
   Set<String> _macroDriverIdsFromVehicleUsageToday() {
@@ -1760,82 +1720,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (row.vehicleId.trim() == v) return row;
     }
     return null;
-  }
-
-  /// เปิดกลุ่มรถแม็คโครเพิ่มเติมถ้ามีข้อมูลบันทึกแล้ว (กันซ่อนคันที่มีค่า)
-  void _expandFuelExtraIfNeeded() {
-    final fuelCars = _fuelMacroCarsForDay();
-    final extra = _fuelExtraMacroCars(fuelCars);
-    for (final car in extra) {
-      final row = _fuelDraftForVehicle(car);
-      if (row == null) continue;
-      final saved = row.txId != null && row.txId!.trim().isNotEmpty;
-      final liters = double.tryParse(row.liters.trim()) ?? 0;
-      if (saved || liters > 0 || row.time.trim().isNotEmpty) {
-        _fuelExtraVehiclesExpanded = true;
-        return;
-      }
-    }
-  }
-
-  /// เด้ง popup เมื่อยังไม่มีบันทึกการใช้รถแม็คโครของวันนี้
-  Future<void> _maybePromptMacroUsageForFuel() async {
-    if (!mounted) return;
-    if (!_isFuelMode) return;
-    if (_fuelSubMode != FuelSubMode.macroUsage) return;
-    if (_moduleDayLoading) return;
-    if (_fuelMacroCars().isEmpty) return;
-    if (_fuelMacroCarsForDay().isNotEmpty) return;
-    final dayKey = _quickYmd(_selectedDate);
-    if (_fuelMacroPromptDayKey == dayKey) return;
-    _fuelMacroPromptDayKey = dayKey;
-
-    final go = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: const Icon(
-          Icons.warning_amber_rounded,
-          size: 36,
-          color: Color(0xFFF08A24),
-        ),
-        title: Text(
-          'ยังไม่มีบันทึกการใช้รถแม็คโคร',
-          style: GoogleFonts.kanit(fontWeight: FontWeight.w800),
-        ),
-        content: Text(
-          'ต้องบันทึกการทำงานรถแม็คโครในเมนู «บันทึกการใช้รถแม็คโคร» ก่อน '
-          'จึงจะกรอกการใช้น้ำมันรายคันได้',
-          style: GoogleFonts.kanit(fontSize: 15.5, height: 1.35),
-        ),
-        actionsOverflowButtonSpacing: 8,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              'ปิด',
-              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-            ),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF0F5FAF),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'ไปบันทึกการใช้รถแม็คโคร',
-              style: GoogleFonts.kanit(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (!mounted) return;
-    if (go == true) {
-      await _openMacroVehicleUsageFromFuel();
-    }
   }
 
   /// เปิดหน้าบันทึกการใช้รถแม็คโครจากฟอร์มน้ำมัน แล้วรีเฟรชรายการเมื่อกลับมา
@@ -2417,12 +2301,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _hydrateFuelCarFillForSelectedVehicle();
       } else if (_fuelSubMode == FuelSubMode.withdraw) {
         _hydrateFuelWithdrawForSelectedPurpose();
-      }
-      if (_fuelSubMode == FuelSubMode.macroUsage) {
-        _expandFuelExtraIfNeeded();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          unawaited(_maybePromptMacroUsageForFuel());
-        });
       }
       return;
     }
@@ -4349,6 +4227,89 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return parts.join(' · ');
   }
 
+  void _clearFuelCarFillFormFields({bool clearVehicle = false}) {
+    _fuelCarFillTxId = null;
+    _fuelCarFillLitersController.clear();
+    _fuelCarFillTimeController.clear();
+    if (clearVehicle) {
+      _fuelCarFillVehicle = null;
+      _fuelCarFillOtherController.clear();
+    }
+  }
+
+  /// ปัดซ้ายแถวเลือกรถ — ลบรายการที่บันทึกแล้ว / เคลียร์การเลือกผิดเป็น 0
+  Future<void> _handleFuelCarFillVehicleRowDelete(
+    FuelCarFillVehicle vehicle,
+  ) async {
+    final lookupId = vehicle == FuelCarFillVehicle.other
+        ? ''
+        : fuelCarFillVehicleIdOf(vehicle);
+    final prior = _dayFuelCarFillLatest(vehicleId: lookupId);
+    final isSelected = _fuelCarFillVehicle == vehicle;
+    final hasFormData = isSelected &&
+        ((_fuelCarFillTxId != null && _fuelCarFillTxId!.trim().isNotEmpty) ||
+            (double.tryParse(_fuelCarFillLitersController.text.trim()) ?? 0) >
+                0 ||
+            _fuelCarFillTimeController.text.trim().isNotEmpty ||
+            (vehicle == FuelCarFillVehicle.other &&
+                _fuelCarFillOtherController.text.trim().isNotEmpty));
+
+    if (prior != null) {
+      try {
+        await _deleteTransactionOfflineAware(prior.id);
+        if (!mounted) return;
+        await _applyLocalFuelStockAfterSave(const [], reverseFirst: [prior]);
+        if (!mounted) return;
+        await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
+        if (!mounted) return;
+        setState(() {
+          if (isSelected) {
+            _clearFuelCarFillFormFields(clearVehicle: true);
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'ลบรายการเติมน้ำมันรถยนต์แล้ว',
+              style: GoogleFonts.kanit(),
+            ),
+          ),
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('ลบไม่สำเร็จ: $e', style: GoogleFonts.kanit()),
+            ),
+          );
+        }
+      }
+      return;
+    }
+
+    if (!hasFormData && !isSelected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'ยังไม่มีข้อมูลของคันนี้ให้ลบ',
+            style: GoogleFonts.kanit(),
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _clearFuelCarFillFormFields(clearVehicle: true));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'เคลียร์การเลือกรถแล้ว',
+          style: GoogleFonts.kanit(),
+        ),
+      ),
+    );
+  }
+
   AppTransaction? _dayFuelWithdrawLatest(FuelWithdrawPurpose purpose) {
     if (purpose == FuelWithdrawPurpose.car) {
       return latestFuelTaplienFillForDay(
@@ -5003,15 +4964,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       requireSignature: false,
       stayOnPage: true,
       body: () async {
-        final fuelCars = _fuelMacroCarsForDay();
+        final fuelCars = _fuelMacroCars();
         if (fuelCars.isEmpty) {
-          if (_fuelMacroCars().isEmpty) {
-            _failSave('ยังไม่พบรถแม็คโครในตั้งค่าแอพ');
-          }
-          _failSave(
-            'ยังไม่มีบันทึกการใช้รถแม็คโครของวันนี้ — '
-            'บันทึกการทำงานที่เมนู «บันทึกการใช้รถแม็คโคร» ก่อน',
-          );
+          _failSave('ยังไม่พบรถแม็คโครในตั้งค่าแอพ');
         }
         final allowed = fuelCars.toSet();
         final rowsToSave = <_FuelVehicleDraft>[];
@@ -5111,6 +5066,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           saved,
           reverseFirst: reverseFirst,
         );
+        final missingAfter = _fuelMacroUsedMissingFuelLabels();
         if (saved.isEmpty && rowsToDelete.isNotEmpty) {
           doneMessage = 'ลบรายการน้ำมันที่เคลียร์แล้ว ${rowsToDelete.length} คัน';
         } else if (saved.isNotEmpty && rowsToDelete.isNotEmpty) {
@@ -5118,6 +5074,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               'บันทึก ${saved.length} คัน · ลบที่เคลียร์ ${rowsToDelete.length} คัน';
         } else {
           doneMessage = 'บันทึกการใช้น้ำมันรายรถสำเร็จ';
+        }
+        if (missingAfter.isNotEmpty) {
+          doneMessage =
+              '$doneMessage — ยังมีคันที่ใช้รถวันนี้ยังไม่เติม ${missingAfter.length} คัน';
         }
       },
     );
@@ -6896,7 +6856,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (picked != null) {
       setState(() {
         _selectedDate = DateTime(picked.year, picked.month, picked.day);
-        _fuelMacroPromptDayKey = null;
         _moduleDayHydrated = false;
         if (_isMaintenanceMode) {
           _maintenanceTxId = null;
@@ -13303,6 +13262,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required _FuelVehicleDraft row,
     required String vehicleName,
     int? displayIndex,
+    bool workedToday = false,
+    bool missingFuelAfterWork = false,
   }) {
     final p = DailyPalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -13322,13 +13283,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       decoration: BoxDecoration(
         color: isFilled || isSaved
             ? (isDark ? const Color(0xFF16324A) : const Color(0xFFF3FAFF))
-            : (isDark ? p.chipSurface : const Color(0xFFFAFCFE)),
+            : missingFuelAfterWork
+                ? (isDark ? const Color(0xFF3A2A14) : const Color(0xFFFFF8E8))
+                : (isDark ? p.chipSurface : const Color(0xFFFAFCFE)),
         borderRadius: BorderRadius.circular(phonePortrait ? 14 : 16),
         border: Border.all(
           color: isFilled || isSaved
               ? (isDark ? const Color(0xFF3B82F6) : const Color(0xFF90CAF9))
-              : (isDark ? p.hairline : const Color(0xFFDCE8F5)),
-          width: isFilled || isSaved ? 1.4 : 1,
+              : missingFuelAfterWork
+                  ? (isDark ? const Color(0xFFB45309) : const Color(0xFFFFCC80))
+                  : (isDark ? p.hairline : const Color(0xFFDCE8F5)),
+          width: isFilled || isSaved || missingFuelAfterWork ? 1.4 : 1,
         ),
       ),
       child: Column(
@@ -13404,35 +13369,97 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         ],
                       ),
                     ],
-                    if (phonePortrait && isSaved) ...[
+                    if (workedToday || missingFuelAfterWork || isSaved) ...[
                       const SizedBox(height: 6),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF1A3A24) : const Color(0xFFE8F5E9),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: isDark
-                                  ? const Color(0xFF2E7D32)
-                                  : const Color(0xFFA5D6A7),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          if (workedToday)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? const Color(0xFF1A2F4A)
+                                    : const Color(0xFFE3F2FD),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: isDark
+                                      ? const Color(0xFF2563EB)
+                                      : const Color(0xFF90CAF9),
+                                ),
+                              ),
+                              child: Text(
+                                'ใช้รถวันนี้',
+                                style: GoogleFonts.kanit(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark
+                                      ? const Color(0xFF93C5FD)
+                                      : const Color(0xFF1565C0),
+                                ),
+                              ),
                             ),
-                          ),
-                          child: Text(
-                            'บันทึกแล้ว',
-                            style: GoogleFonts.kanit(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: isDark
-                                  ? const Color(0xFF81C784)
-                                  : const Color(0xFF2E7D32),
+                          if (missingFuelAfterWork)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? const Color(0xFF3A2A14)
+                                    : const Color(0xFFFFF3E0),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: isDark
+                                      ? const Color(0xFFB45309)
+                                      : const Color(0xFFFFB74D),
+                                ),
+                              ),
+                              child: Text(
+                                'ยังไม่เติม',
+                                style: GoogleFonts.kanit(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark
+                                      ? const Color(0xFFFBBF24)
+                                      : const Color(0xFFE65100),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
+                          if (isSaved)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? const Color(0xFF1A3A24)
+                                    : const Color(0xFFE8F5E9),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: isDark
+                                      ? const Color(0xFF2E7D32)
+                                      : const Color(0xFFA5D6A7),
+                                ),
+                              ),
+                              child: Text(
+                                'บันทึกแล้ว',
+                                style: GoogleFonts.kanit(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark
+                                      ? const Color(0xFF81C784)
+                                      : const Color(0xFF2E7D32),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                     if (phonePortrait && hasDeletableData) ...[
@@ -13449,32 +13476,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ],
                 ),
               ),
-              if (!phonePortrait && isSaved)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1A3A24) : const Color(0xFFE8F5E9),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: isDark
-                          ? const Color(0xFF2E7D32)
-                          : const Color(0xFFA5D6A7),
-                    ),
-                  ),
-                  child: Text(
-                    'บันทึกแล้ว',
-                    style: GoogleFonts.kanit(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: isDark
-                          ? const Color(0xFF81C784)
-                          : const Color(0xFF2E7D32),
-                    ),
-                  ),
-                ),
             ],
           ),
           SizedBox(height: phonePortrait ? 8 : 10),
@@ -13823,15 +13824,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _hydrateFuelWithdrawForSelectedPurpose();
                 } else if (selected == FuelSubMode.carFill) {
                   _hydrateFuelCarFillForSelectedVehicle();
-                } else if (selected == FuelSubMode.macroUsage) {
-                  _expandFuelExtraIfNeeded();
                 }
               });
-              if (selected == FuelSubMode.macroUsage) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  unawaited(_maybePromptMacroUsageForFuel());
-                });
-              }
             },
           )
         : switch (mode) {
@@ -14711,7 +14705,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ? 'อื่นๆ (ระบุ)'
           : fuelCarFillVehicleLabelOf(vehicle);
       final summary = _fuelCarFillSummaryForVehicle(vehicle);
-      return Material(
+      final hasSavedOrForm = summary.isNotEmpty ||
+          (isSelected &&
+              ((_fuelCarFillTxId != null &&
+                      _fuelCarFillTxId!.trim().isNotEmpty) ||
+                  (double.tryParse(_fuelCarFillLitersController.text.trim()) ??
+                          0) >
+                      0 ||
+                  _fuelCarFillTimeController.text.trim().isNotEmpty ||
+                  (vehicle == FuelCarFillVehicle.other &&
+                      _fuelCarFillOtherController.text.trim().isNotEmpty)));
+      final tile = Material(
         color: isSelected
             ? (isDark ? const Color(0xFF2E1A3A) : const Color(0xFFF3E5F5))
             : (isDark ? p.chipSurface : const Color(0xFFF8FAFD)),
@@ -14788,6 +14792,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                             color: p.inkMuted,
                           ),
                         ),
+                      if (hasSavedOrForm)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            'ปัดซ้ายเพื่อลบ / เคลียร์เป็น 0',
+                            style: GoogleFonts.kanit(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: p.inkMuted,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -14801,6 +14817,41 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
         ),
+      );
+
+      if (!hasSavedOrForm && !isSelected) return tile;
+
+      return Dismissible(
+        key: ValueKey('fuel_car_fill_${vehicle.name}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (_) async {
+          await _handleFuelCarFillVehicleRowDelete(vehicle);
+          return false;
+        },
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF7F1D1D) : const Color(0xFFD14343),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text(
+                'ลบ',
+                style: GoogleFonts.kanit(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.delete_outline_rounded, color: Colors.white),
+            ],
+          ),
+        ),
+        child: tile,
       );
     }
 
@@ -14827,9 +14878,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           SizedBox(height: phonePortrait ? 4 : 6),
           Text(
             phonePortrait
-                ? 'หักจากถังหลัก — เลือกรถ ใส่ลิตรและเวลา'
+                ? 'หักจากถังหลัก — เลือกรถ ใส่ลิตรและเวลา · ปัดซ้ายลบ'
                     '${editing ? ' · โหลดแล้ว กดอัปเดต' : ''}'
-                : 'หักจากถังหลัก — เลือกรถแล้วระบุจำนวนลิตรและเวลา'
+                : 'หักจากถังหลัก — เลือกรถแล้วระบุจำนวนลิตรและเวลา · '
+                    'ปัดซ้ายที่แถวรถเพื่อลบ/เคลียร์เป็น 0 เมื่อเลือกรถผิด'
                     '${editing ? ' · โหลดของวันนี้แล้ว กดบันทึกเพื่ออัปเดต' : ''}',
             style: GoogleFonts.kanit(
               fontSize: phonePortrait ? 12.5 : 13,
@@ -14969,12 +15021,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final p = DailyPalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final allMacroCars = _fuelMacroCars();
-    final fuelCars = _fuelMacroCarsForDay();
-    _expandFuelExtraIfNeeded();
-    final pinnedCars = _fuelPinnedMacroCars(fuelCars);
-    final extraCars = _fuelExtraMacroCars(fuelCars);
+    final fuelCars = _fuelMacroCars();
     final dayKey = _quickYmd(_selectedDate);
+    final usedTodayCount = macroVehicleIdsUsedForDay(
+      dayKey,
+      _moduleDayAllTransactions,
+    ).length;
+    final missingFuel = _fuelMacroUsedMissingFuelLabels();
+    final missingFuelSet = missingFuel.toSet();
     final coverage = fuelVehicleCoverageForDay(dayKey, _moduleDayAllTransactions);
     final litersLabel = coverage.liters % 1 == 0
         ? coverage.liters.toStringAsFixed(0)
@@ -15017,6 +15071,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -15048,9 +15103,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           SizedBox(height: phonePortrait ? 4 : 6),
           Text(
             phonePortrait
-                ? 'เฉพาะคันที่มีบันทึกการใช้รถวันนี้ — กรอกคันที่เติม · ปัดซ้ายลบ'
-                : 'แสดงเฉพาะคันที่มีบันทึกการใช้รถแม็คโครของวันนี้ — '
-                    'กรอกเฉพาะคันที่เติมน้ำมัน · ปัดซ้ายเพื่อลบรายการผิด · '
+                ? 'แสดงรถแม็คโครทั้งหมด · กรอกคันที่เติม · ปัดซ้ายลบ'
+                : 'แสดงรถแม็คโครทั้งหมดจากตั้งค่าแอพ — กรอกเฉพาะคันที่เติมน้ำมัน · '
+                    'ปัดซ้ายเพื่อลบรายการผิด · ไม่บังคับบันทึกการใช้รถก่อน · '
                     'ถังสำรองหักเฉพาะสำรอง · ถังหลัก (พล่าม) หักเฉพาะหลัก',
             style: GoogleFonts.kanit(
               fontSize: phonePortrait ? 12.5 : 13,
@@ -15075,86 +15130,130 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   color: isDark ? const Color(0xFF7F1D1D) : const Color(0xFFF5C2C2),
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    allMacroCars.isEmpty
-                        ? 'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ'
-                        : 'ยังไม่มีบันทึกการใช้รถแม็คโครของวันนี้ — '
-                            'บันทึกการทำงานที่เมนู «บันทึกการใช้รถแม็คโคร» ก่อน',
-                    style: GoogleFonts.kanit(
-                      color: const Color(0xFFD14343),
-                      fontWeight: FontWeight.w700,
-                      height: 1.35,
-                    ),
+              child: Text(
+                'ยังไม่พบรายการรถแม็คโครในตั้งค่าแอพ',
+                style: GoogleFonts.kanit(
+                  color: const Color(0xFFD14343),
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ] else ...[
+            if (missingFuel.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF3A2A14) : const Color(0xFFFFF8E8),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isDark
+                        ? const Color(0xFFB45309)
+                        : const Color(0xFFFFCC80),
                   ),
-                  if (allMacroCars.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    FilledButton.icon(
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      phonePortrait
+                          ? 'คันที่ใช้รถวันนี้ยังไม่เติม ${missingFuel.length} คัน '
+                              '(บันทึกได้ — เป็นคำเตือน)'
+                          : 'ตรวจจากบันทึกการใช้รถแม็คโคร: มี ${missingFuel.length} คัน '
+                              'ที่ใช้งานวันนี้แล้วยังไม่เติมน้ำมัน — บันทึกได้ตามปกติ '
+                              '(คำเตือนเท่านั้น ไม่บังคับ)',
+                      style: GoogleFonts.kanit(
+                        color: isDark
+                            ? const Color(0xFFFBBF24)
+                            : const Color(0xFFE65100),
+                        fontWeight: FontWeight.w700,
+                        height: 1.35,
+                        fontSize: phonePortrait ? 13 : 14,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      missingFuel.join(' · '),
+                      style: GoogleFonts.kanit(
+                        color: p.inkSubtle,
+                        fontWeight: FontWeight.w600,
+                        fontSize: phonePortrait ? 12.5 : 13.5,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
                       onPressed: _openMacroVehicleUsageFromFuel,
-                      icon: const Icon(Icons.front_loader, size: 20),
+                      icon: const Icon(Icons.front_loader, size: 18),
+                      label: Text(
+                        phonePortrait
+                            ? 'ดูบันทึกการใช้รถ'
+                            : 'เปิดเมนูบันทึกการใช้รถแม็คโคร',
+                        style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (usedTodayCount == 0) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? p.chipSurface : const Color(0xFFF4F8FD),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isDark ? p.hairline : const Color(0xFFD6E4F5),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      phonePortrait
+                          ? 'ยังไม่มีบันทึกการใช้รถวันนี้ — กรอกน้ำมันได้เลย'
+                          : 'ยังไม่มีบันทึกการใช้รถแม็คโครของวันนี้ — '
+                              'กรอกและบันทึกน้ำมันได้เลย '
+                              '(เมนูการใช้รถใช้ตรวจว่าคันไหนทำงานครบ)',
+                      style: GoogleFonts.kanit(
+                        color: p.inkSubtle,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                        fontSize: phonePortrait ? 12.5 : 13.5,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton.icon(
+                      onPressed: _openMacroVehicleUsageFromFuel,
+                      icon: const Icon(Icons.front_loader, size: 18),
                       label: Text(
                         'ไปบันทึกการใช้รถแม็คโคร',
                         style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
                       ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F5FAF),
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(44),
-                      ),
                     ),
-                  ],
-                ],
-              ),
-            ),
-          ] else ...[
-            const SizedBox(height: 12),
-            ...List.generate(pinnedCars.length, (index) {
-              final car = pinnedCars[index];
-              final row = _fuelDraftForVehicle(car);
-              if (row == null) return const SizedBox.shrink();
-              return _buildFuelVehicleRow(
-                row: row,
-                vehicleName: car,
-                displayIndex: index + 1,
-              );
-            }),
-            if (extraCars.isNotEmpty) ...[
-              Theme(
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  key: ValueKey('fuel_extra_$_fuelExtraVehiclesExpanded'),
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: EdgeInsets.zero,
-                  initiallyExpanded: _fuelExtraVehiclesExpanded,
-                  onExpansionChanged: (expanded) {
-                    setState(() => _fuelExtraVehiclesExpanded = expanded);
-                  },
-                  title: Text(
-                    'เพิ่มเติม (${extraCars.length} คัน)',
-                    style: GoogleFonts.kanit(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF1565C0),
-                    ),
-                  ),
-                  children: [
-                    for (final car in extraCars)
-                      Builder(
-                        builder: (context) {
-                          final row = _fuelDraftForVehicle(car);
-                          if (row == null) return const SizedBox.shrink();
-                          return _buildFuelVehicleRow(
-                            row: row,
-                            vehicleName: car,
-                          );
-                        },
-                      ),
                   ],
                 ),
               ),
             ],
+            const SizedBox(height: 12),
+            ...List.generate(fuelCars.length, (index) {
+              final car = fuelCars[index];
+              final row = _fuelDraftForVehicle(car);
+              if (row == null) return const SizedBox.shrink();
+              final worked = macroVehicleWorkedForDay(
+                dayKey,
+                car,
+                _moduleDayAllTransactions,
+              );
+              return _buildFuelVehicleRow(
+                row: row,
+                vehicleName: car,
+                displayIndex: index + 1,
+                workedToday: worked,
+                missingFuelAfterWork: missingFuelSet.contains(car),
+              );
+            }),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.all(12),
@@ -15162,15 +15261,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 color: isDark ? p.chipSurface : const Color(0xFFF4F8FD),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: coverage.liters > 0 || coverage.usedCount > 0
-                      ? (isDark ? const Color(0xFF2A4A6A) : const Color(0xFFBFD8F4))
-                      : (isDark ? p.hairline : const Color(0xFFE2EAF4)),
+                  color: missingFuel.isNotEmpty
+                      ? (isDark
+                          ? const Color(0xFFB45309)
+                          : const Color(0xFFFFCC80))
+                      : coverage.liters > 0 || coverage.usedCount > 0
+                          ? (isDark
+                              ? const Color(0xFF2A4A6A)
+                              : const Color(0xFFBFD8F4))
+                          : (isDark ? p.hairline : const Color(0xFFE2EAF4)),
                 ),
               ),
               child: Text(
                 phonePortrait
-                    ? 'ใช้รถ ${coverage.usedCount} · เติม ${coverage.fueledCount} · $litersLabel ล.'
-                    : 'วันนี้ใช้รถ ${coverage.usedCount} คัน · เติมน้ำมัน ${coverage.fueledCount} คัน · รวม $litersLabel ลิตร',
+                    ? 'ใช้รถ ${coverage.usedCount} · เติม ${coverage.fueledCount}'
+                        '${missingFuel.isNotEmpty ? ' · ค้าง ${missingFuel.length}' : ''}'
+                        ' · $litersLabel ล.'
+                    : 'วันนี้ใช้รถ ${coverage.usedCount} คัน · เติมน้ำมัน ${coverage.fueledCount} คัน'
+                        '${missingFuel.isNotEmpty ? ' · ยังไม่เติม ${missingFuel.length} คัน' : ''}'
+                        ' · รวม $litersLabel ลิตร',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w700,
