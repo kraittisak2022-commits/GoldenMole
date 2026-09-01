@@ -1,9 +1,9 @@
 import Charts
 import SwiftUI
 
-/// Weekly / monthly growth analytics for a locked focus (combined, trip, or sand).
+/// Unified weekly / monthly analytics — switch รวม / เที่ยวรถ / ร่อนทราย on one page.
 struct OpsTrendAnalyticsHubView: View {
-    let focus: OpsTrendFocus
+    @State private var focus: OpsTrendFocus
 
     @Environment(AppState.self) private var appState
     @State private var period: OpsTrendPeriod = .week
@@ -12,6 +12,14 @@ struct OpsTrendAnalyticsHubView: View {
     @State private var proBundle: OpsTrendProBundle = .empty
     @State private var isBuilding = false
     @State private var buildToken = 0
+    @State private var selectedBucket: OpsTrendBucketScore?
+    @State private var selectedBucketLabel: String?
+    @State private var selectedTrendLabel: String?
+    @State private var chartPointSheet: OpsTrendChartSheetData?
+
+    init(focus: OpsTrendFocus = .both) {
+        _focus = State(initialValue: focus)
+    }
 
     private var maxPeriodOffset: Int { period == .week ? 26 : 12 }
 
@@ -19,20 +27,15 @@ struct OpsTrendAnalyticsHubView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
+                focusPicker
                 periodPicker
                 periodNavigator
-                if focus == .both {
-                    combinedDetailLink
-                }
                 if isBuilding && report.points.isEmpty {
                     ProgressView("กำลังวิเคราะห์…")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
                 } else {
                     scoreHero
-                    if focus == .trip || focus == .sand {
-                        proEntryBanner
-                    }
                     actionPlanCard
                     pillarBreakdown
                     growthScoreboard
@@ -47,6 +50,9 @@ struct OpsTrendAnalyticsHubView: View {
                         sessionSplitCard
                     }
                     advancedSection
+                    if focus == .trip || focus == .sand {
+                        OpsTrendProFocusSections(focus: focus, report: report, proBundle: proBundle)
+                    }
                     detailCards
                     insightsCard
                 }
@@ -56,23 +62,39 @@ struct OpsTrendAnalyticsHubView: View {
             .padding(.bottom, 32)
         }
         .background(DashboardBackground())
-        .navigationTitle(navigationTitle)
+        .navigationTitle("วิเคราะห์")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $selectedBucket) { bucket in
+            OpsTrendBucketDetailView(bucket: bucket, period: period, dailyPoints: report.dailyPoints)
+        }
+        .sheet(item: $chartPointSheet) { data in
+            NavigationStack {
+                OpsTrendChartPointSheet(title: data.title, subtitle: data.subtitle, rows: data.rows)
+            }
+            .presentationDetents([.medium])
+        }
         .task(id: rebuildKey) {
             await rebuild()
         }
-    }
-
-    private var navigationTitle: String {
-        switch focus {
-        case .both: return "วิเคราะห์รวม"
-        case .trip: return "วิเคราะห์เที่ยวรถ"
-        case .sand: return "วิเคราะห์ร่อนทราย"
+        .onChange(of: selectedBucketLabel) { _, label in
+            guard let label,
+                  let bucket = report.bucketScores.first(where: { $0.label == label }) else { return }
+            if focus == .both {
+                selectedBucket = bucket
+            } else {
+                chartPointSheet = bucketChartData(bucket)
+            }
+            selectedBucketLabel = nil
+        }
+        .onChange(of: selectedTrendLabel) { _, label in
+            guard let label else { return }
+            presentTrendSheet(label: label)
+            selectedTrendLabel = nil
         }
     }
 
     private var rebuildKey: String {
-        "\(period.rawValue)|\(periodOffset)|\(appState.transactionsRevision)|\(appState.employees.count)"
+        "\(focus.rawValue)|\(period.rawValue)|\(periodOffset)|\(appState.transactionsRevision)|\(appState.employees.count)"
     }
 
     // MARK: - Header / pickers
@@ -118,6 +140,19 @@ struct OpsTrendAnalyticsHubView: View {
 
     private func shortDate(_ ymd: String) -> String {
         DashboardAggregations.dayLabel(ymd)
+    }
+
+    private var focusPicker: some View {
+        Picker("โฟกัส", selection: $focus) {
+            Text("รวม").tag(OpsTrendFocus.both)
+            Text("เที่ยวรถ").tag(OpsTrendFocus.trip)
+            Text("ร่อนทราย").tag(OpsTrendFocus.sand)
+        }
+        .pickerStyle(.segmented)
+        .onChange(of: focus) { _, _ in
+            report = .empty(period: period)
+            proBundle = .empty
+        }
     }
 
     private var periodPicker: some View {
@@ -301,9 +336,31 @@ struct OpsTrendAnalyticsHubView: View {
         case .both:
             combinedScoreHero
         case .trip:
-            modeScoreHero(card: report.trip, mode: report.tripAdvanced, accent: AppTheme.info)
+            NavigationLink {
+                OpsTrendMetricDetailView(
+                    card: report.trip,
+                    advanced: report.tripAdvanced,
+                    period: period,
+                    accent: AppTheme.info
+                )
+            } label: {
+                modeScoreHero(card: report.trip, mode: report.tripAdvanced, accent: AppTheme.info)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("แตะเพื่อดูรายละเอียดตัวชี้วัดหลัก")
         case .sand:
-            modeScoreHero(card: report.sand, mode: report.sandAdvanced, accent: AppTheme.brand)
+            NavigationLink {
+                OpsTrendMetricDetailView(
+                    card: report.sand,
+                    advanced: report.sandAdvanced,
+                    period: period,
+                    accent: AppTheme.brand
+                )
+            } label: {
+                modeScoreHero(card: report.sand, mode: report.sandAdvanced, accent: AppTheme.brand)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("แตะเพื่อดูรายละเอียดตัวชี้วัดหลัก")
         }
     }
 
@@ -356,7 +413,7 @@ struct OpsTrendAnalyticsHubView: View {
 
                 HStack(spacing: 8) {
                     Label(
-                        "\(OpsTrendAnalytics.formatSignedInt(sc.scoreDelta)) vs \(period.shortLabel)ก่อน",
+                        "\(OpsTrendAnalytics.formatSignedInt(sc.scoreDelta)) เทียบ \(period.shortLabel)ก่อน",
                         systemImage: sc.scoreDelta >= 0 ? "arrow.up.right" : "arrow.down.right"
                     )
                     .font(.caption2.weight(.bold))
@@ -443,7 +500,7 @@ struct OpsTrendAnalyticsHubView: View {
 
                 HStack(spacing: 8) {
                     Label(
-                        "\(OpsTrendAnalytics.formatSignedPct(delta)) vs \(period.shortLabel)ก่อน",
+                        "\(OpsTrendAnalytics.formatSignedPct(delta)) เทียบ \(period.shortLabel)ก่อน",
                         systemImage: (delta ?? 0) >= 0 ? "arrow.up.right" : "arrow.down.right"
                     )
                     .font(.caption2.weight(.bold))
@@ -466,8 +523,16 @@ struct OpsTrendAnalyticsHubView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(accent)
                 }
+
+                Text("แตะดูรายละเอียดตัวชี้วัดหลัก")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
             }
             Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppTheme.inkMuted)
         }
         .padding(16)
         .background(
@@ -751,21 +816,17 @@ struct OpsTrendAnalyticsHubView: View {
             : [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
         return LazyVGrid(columns: columns, spacing: 10) {
             ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
-                if focus == .both {
-                    NavigationLink {
-                        OpsTrendMetricDetailView(
-                            card: card,
-                            advanced: card.title.contains("ทราย") ? report.sandAdvanced : report.tripAdvanced,
-                            period: period,
-                            accent: accent(for: card)
-                        )
-                    } label: {
-                        growthTile(card)
-                    }
-                    .buttonStyle(.plain)
-                } else {
+                NavigationLink {
+                    OpsTrendMetricDetailView(
+                        card: card,
+                        advanced: card.title.contains("ทราย") ? report.sandAdvanced : report.tripAdvanced,
+                        period: period,
+                        accent: accent(for: card)
+                    )
+                } label: {
                     growthTile(card)
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -811,7 +872,7 @@ struct OpsTrendAnalyticsHubView: View {
                 Text(OpsTrendAnalytics.formatSignedPct(card.changePct))
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(deltaColor(card.changePct))
-                Text("vs \(period.shortLabel)ก่อน")
+                Text("เทียบ \(period.shortLabel)ก่อน")
                     .font(.caption2)
                     .foregroundStyle(AppTheme.inkMuted)
                 Spacer()
@@ -862,7 +923,7 @@ struct OpsTrendAnalyticsHubView: View {
             systemImage: "rosette",
             subtitle: focus == .both
                 ? (period == .week ? "แตะวันเพื่อดูรายละเอียด" : "แตะสัปดาห์เพื่อดูรายละเอียด")
-                : (period == .week ? "คะแนนแต่ละวันในสัปดาห์นี้" : "คะแนน W1–W4 ในรอบ 30 วัน")
+                : (period == .week ? "แตะวันเพื่อดูรายละเอียด" : "แตะสัปดาห์เพื่อดูรายละเอียด")
         ) {
             if report.bucketScores.isEmpty {
                 Text("ยังไม่มีคะแนนย่อย")
@@ -886,25 +947,22 @@ struct OpsTrendAnalyticsHubView: View {
                         AxisValueLabel().foregroundStyle(AppTheme.inkMuted)
                     }
                 }
+                .chartXSelection(value: $selectedBucketLabel)
                 .frame(height: 160)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(report.bucketScores) { item in
-                            if focus == .both {
-                                NavigationLink {
-                                    OpsTrendBucketDetailView(
-                                        bucket: item,
-                                        period: period,
-                                        dailyPoints: report.dailyPoints
-                                    )
-                                } label: {
-                                    bucketChip(item)
-                                }
-                                .buttonStyle(.plain)
-                            } else {
+                            NavigationLink {
+                                OpsTrendBucketDetailView(
+                                    bucket: item,
+                                    period: period,
+                                    dailyPoints: report.dailyPoints
+                                )
+                            } label: {
                                 bucketChip(item)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -949,7 +1007,7 @@ struct OpsTrendAnalyticsHubView: View {
     // MARK: - Charts
 
     private var comparisonChartCard: some View {
-        SectionCard(chartTitle, systemImage: "chart.xyaxis.line", subtitle: "เส้นทึบ = ช่วงนี้ · เส้นประ = ช่วงก่อน") {
+        SectionCard(chartTitle, systemImage: "chart.xyaxis.line", subtitle: "แตะจุดบนกราฟเพื่อดูค่า · เส้นทึบ = ช่วงนี้ · เส้นประ = ช่วงก่อน") {
             if primaryCard.series.isEmpty {
                 Text("ยังไม่มีข้อมูลในช่วงนี้")
                     .font(.caption)
@@ -964,7 +1022,8 @@ struct OpsTrendAnalyticsHubView: View {
                     secondaryValues: report.sand.series,
                     secondaryColor: AppTheme.brand,
                     primaryLabel: "เที่ยวรถ",
-                    secondaryLabel: "ร่อนทราย"
+                    secondaryLabel: "ร่อนทราย",
+                    selectedLabel: $selectedTrendLabel
                 )
             } else {
                 trendVsPrevChart(card: primaryCard)
@@ -1025,6 +1084,7 @@ struct OpsTrendAnalyticsHubView: View {
                 AxisValueLabel().foregroundStyle(AppTheme.inkMuted)
             }
         }
+        .chartXSelection(value: $selectedTrendLabel)
         .frame(height: 200)
     }
 
@@ -1054,6 +1114,7 @@ struct OpsTrendAnalyticsHubView: View {
                         .interpolationMethod(.linear)
                 }
                 .chartLegend(position: .top, alignment: .leading)
+                .chartXSelection(value: $selectedTrendLabel)
                 .frame(height: 180)
             }
         }
@@ -1062,7 +1123,7 @@ struct OpsTrendAnalyticsHubView: View {
     @ViewBuilder
     private var periodCompareCard: some View {
         SectionCard(
-            "เปรียบเทียบช่วงนี้ vs ก่อน",
+            "เปรียบเทียบช่วงนี้กับก่อน",
             systemImage: "arrow.left.arrow.right",
             subtitle: "รวมทั้งช่วง · \(focus == .both ? "เที่ยวรถ × ร่อนทราย" : focus.label)"
         ) {
@@ -1075,7 +1136,20 @@ struct OpsTrendAnalyticsHubView: View {
                     colorA: AppTheme.brand,
                     colorB: AppTheme.inkMuted.opacity(0.55),
                     labelA: "ช่วงนี้",
-                    labelB: "ช่วงก่อน"
+                    labelB: "ช่วงก่อน",
+                    onSelect: { idx, label in
+                        let card = idx == 0 ? report.trip : report.sand
+                        chartPointSheet = OpsTrendChartSheetData(
+                            id: "compare-\(label)",
+                            title: label,
+                            subtitle: "เปรียบเทียบช่วง",
+                            rows: [
+                                ("ช่วงนี้", "\(OpsTrendAnalytics.formatCompact(card.total)) \(card.unit)"),
+                                ("ช่วงก่อน", "\(OpsTrendAnalytics.formatCompact(card.prevTotal)) \(card.unit)"),
+                                ("ต่าง", OpsTrendAnalytics.formatSignedPct(card.changePct)),
+                            ]
+                        )
+                    }
                 )
 
                 if let ratio = report.tripSandRatio {
@@ -1101,7 +1175,19 @@ struct OpsTrendAnalyticsHubView: View {
                     colorA: accent(for: card),
                     colorB: AppTheme.inkMuted.opacity(0.55),
                     labelA: "ช่วงนี้",
-                    labelB: "ช่วงก่อน"
+                    labelB: "ช่วงก่อน",
+                    onSelect: { _, label in
+                        chartPointSheet = OpsTrendChartSheetData(
+                            id: "compare-\(label)",
+                            title: label,
+                            subtitle: "เปรียบเทียบช่วง",
+                            rows: [
+                                ("ช่วงนี้", "\(OpsTrendAnalytics.formatCompact(card.total)) \(card.unit)"),
+                                ("ช่วงก่อน", "\(OpsTrendAnalytics.formatCompact(card.prevTotal)) \(card.unit)"),
+                                ("ต่าง", OpsTrendAnalytics.formatSignedPct(card.changePct)),
+                            ]
+                        )
+                    }
                 )
                 Text(
                     "ช่วงนี้ \(OpsTrendAnalytics.formatCompact(card.total)) \(card.unit) · ก่อน \(OpsTrendAnalytics.formatCompact(card.prevTotal)) (\(OpsTrendAnalytics.formatSignedPct(card.changePct)))"
@@ -1126,7 +1212,8 @@ struct OpsTrendAnalyticsHubView: View {
                 colorA: AppTheme.info,
                 colorB: AppTheme.brand,
                 labelA: "เที่ยวรถ",
-                labelB: "ร่อนทราย"
+                labelB: "ร่อนทราย",
+                onSelect: { _, label in presentTrendSheet(label: label) }
             )
         }
     }
@@ -1151,7 +1238,21 @@ struct OpsTrendAnalyticsHubView: View {
                     colorA: Color(hex: "#f59e0b"),
                     colorB: AppTheme.info,
                     labelA: "เช้า",
-                    labelB: "บ่าย"
+                    labelB: "บ่าย",
+                    onSelect: { idx, label in
+                        guard idx < report.dailyPoints.count else { return }
+                        let point = report.dailyPoints[idx]
+                        chartPointSheet = OpsTrendChartSheetData(
+                            id: "session-\(label)",
+                            title: label,
+                            subtitle: "เช้า / บ่าย",
+                            rows: [
+                                ("เช้า", "\(point.tripMorning) เที่ยว"),
+                                ("บ่าย", "\(point.tripAfternoon) เที่ยว"),
+                                ("รวมวัน", "\(point.tripRounds) เที่ยว"),
+                            ]
+                        )
+                    }
                 )
                 Text("รวมเช้า \(OpsTrendAnalytics.formatCompact(morningTotal)) · บ่าย \(OpsTrendAnalytics.formatCompact(afternoonTotal)) เที่ยว")
                     .font(.caption)
@@ -1197,7 +1298,7 @@ struct OpsTrendAnalyticsHubView: View {
     private func advancedModeCard(_ mode: OpsTrendAdvancedMode) -> some View {
         let accent = mode.title.contains("ทราย") ? AppTheme.brand : AppTheme.info
         return SectionCard(
-            "\(mode.title) · Pro",
+            "\(mode.title) · มืออาชีพ",
             systemImage: "speedometer",
             subtitle: "คะแนนรวม \(mode.combinedScore) · ความเร็ว \(mode.speedScore) · ปริมาณ \(mode.volumeScore)"
         ) {
@@ -1241,12 +1342,31 @@ struct OpsTrendAnalyticsHubView: View {
                     }
                 }
                 .frame(height: 140)
+                .chartXSelection(value: $selectedTrendLabel)
                 .chartYAxis {
                     AxisMarks(position: .leading) { _ in
                         AxisGridLine().foregroundStyle(AppTheme.hairline)
                         AxisValueLabel().foregroundStyle(AppTheme.inkMuted)
                     }
                 }
+
+                Text("ปริมาณต่อช่วง")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.inkMuted)
+                    .padding(.top, 8)
+                Chart {
+                    ForEach(Array(mode.seriesLabels.enumerated()), id: \.offset) { i, label in
+                        let v = i < mode.volumeSeries.count ? mode.volumeSeries[i] : 0
+                        LineMark(x: .value("ช่วง", label), y: .value(mode.unit, v))
+                            .foregroundStyle(accent)
+                            .interpolationMethod(.catmullRom)
+                        AreaMark(x: .value("ช่วง", label), y: .value(mode.unit, v))
+                            .foregroundStyle(accent.opacity(0.14))
+                            .interpolationMethod(.catmullRom)
+                    }
+                }
+                .frame(height: 130)
+                .chartXSelection(value: $selectedTrendLabel)
 
                 Text("จังหวะเฉลี่ย (วินาที) — ยิ่งต่ำยิ่งเร็ว")
                     .font(.caption.weight(.semibold))
@@ -1265,6 +1385,7 @@ struct OpsTrendAnalyticsHubView: View {
                     }
                 }
                 .frame(height: 130)
+                .chartXSelection(value: $selectedTrendLabel)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -1335,7 +1456,32 @@ struct OpsTrendAnalyticsHubView: View {
                 colorA: AppTheme.info,
                 colorB: AppTheme.brand,
                 labelA: "เที่ยวรถ",
-                labelB: "ร่อนทราย"
+                labelB: "ร่อนทราย",
+                onSelect: { idx, label in
+                    let tripVal: Int = {
+                        switch idx {
+                        case 0: return report.tripAdvanced.speedScore
+                        case 1: return report.tripAdvanced.volumeScore
+                        default: return report.tripAdvanced.combinedScore
+                        }
+                    }()
+                    let sandVal: Int = {
+                        switch idx {
+                        case 0: return report.sandAdvanced.speedScore
+                        case 1: return report.sandAdvanced.volumeScore
+                        default: return report.sandAdvanced.combinedScore
+                        }
+                    }()
+                    chartPointSheet = OpsTrendChartSheetData(
+                        id: "h2h-\(label)",
+                        title: label,
+                        subtitle: "เทียบคะแนนขั้นสูง",
+                        rows: [
+                            ("เที่ยวรถ", "\(tripVal)"),
+                            ("ร่อนทราย", "\(sandVal)"),
+                        ]
+                    )
+                }
             )
         }
     }
@@ -1498,6 +1644,64 @@ struct OpsTrendAnalyticsHubView: View {
             isBuilding = false
         }
     }
+
+    private func presentTrendSheet(label: String) {
+        if focus == .both {
+            let tripIdx = report.trip.labels.firstIndex(of: label)
+            let sandIdx = report.sand.labels.firstIndex(of: label)
+            let tripVal = tripIdx.map { report.trip.series[$0] } ?? 0
+            let sandVal = sandIdx.map { report.sand.series[$0] } ?? 0
+            chartPointSheet = OpsTrendChartSheetData(
+                id: "trend-\(label)",
+                title: label,
+                subtitle: "แนวโน้มเที่ยวรถ × ร่อนทราย",
+                rows: [
+                    ("เที่ยวรถ", "\(OpsTrendAnalytics.formatCompact(tripVal)) เที่ยว"),
+                    ("ร่อนทราย", "\(OpsTrendAnalytics.formatCompact(sandVal)) รอบ"),
+                ]
+            )
+            return
+        }
+
+        let card = primaryCard
+        guard let idx = card.labels.firstIndex(of: label) else { return }
+        let current = card.series[idx]
+        let previous = card.prevSeries[idx]
+        let delta = previous > 0 ? ((current - previous) / previous) * 100 : nil
+        chartPointSheet = OpsTrendChartSheetData(
+            id: "trend-\(label)",
+            title: label,
+            subtitle: card.title,
+            rows: [
+                ("ช่วงนี้", "\(OpsTrendAnalytics.formatCompact(current)) \(card.unit)"),
+                ("ช่วงก่อน", "\(OpsTrendAnalytics.formatCompact(previous)) \(card.unit)"),
+                ("ต่าง", OpsTrendAnalytics.formatSignedPct(delta)),
+            ]
+        )
+    }
+
+    private func bucketChartData(_ bucket: OpsTrendBucketScore) -> OpsTrendChartSheetData {
+        var rows: [(String, String)] = [("คะแนน", "\(bucket.score)")]
+        if focus != .sand {
+            rows.append(("เที่ยวรถ", "\(OpsTrendAnalytics.formatCompact(bucket.tripTotal)) เที่ยว"))
+        }
+        if focus != .trip {
+            rows.append(("ร่อนทราย", "\(OpsTrendAnalytics.formatCompact(bucket.sandTotal)) รอบ"))
+        }
+        return OpsTrendChartSheetData(
+            id: "bucket-\(bucket.id)",
+            title: bucket.label,
+            subtitle: focus.label,
+            rows: rows
+        )
+    }
+}
+
+struct OpsTrendChartSheetData: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String?
+    let rows: [(String, String)]
 }
 
 private struct TrendPoint: Identifiable {

@@ -64,7 +64,7 @@ struct DashboardShell: View {
                 .tag(AppMainTab.realtimeTrip)
 
                 NavigationStack {
-                    OpsTrendAnalyticsMenuView()
+                    OpsTrendAnalyticsHubView()
                 }
                 .tabItem { Label("วิเคราะห์", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(AppMainTab.analytics)

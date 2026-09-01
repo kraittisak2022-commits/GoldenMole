@@ -714,7 +714,7 @@ enum OpsTrendAnalytics {
                     id: "w\(week)-\(start)",
                     startKey: start,
                     endKey: finish,
-                    label: "W\(week)",
+                    label: "ส.\(week)",
                     tripRounds: slice.reduce(0) { $0 + $1.tripRounds },
                     sandRounds: slice.reduce(0) { $0 + $1.sandRounds },
                     tripCubic: slice.reduce(0) { $0 + $1.tripCubic },
@@ -1173,7 +1173,7 @@ enum OpsTrendAnalytics {
         while i < daily.count {
             let end = min(i + 7, daily.count)
             let slice = Array(daily[i..<end])
-            out.append(mergePacePoints(slice, id: "pw\(week)-\(slice.first!.startKey)", label: "W\(week)"))
+            out.append(mergePacePoints(slice, id: "pw\(week)-\(slice.first!.startKey)", label: "ส.\(week)"))
             week += 1
             i = end
         }

@@ -82,6 +82,27 @@ struct LineChartView: View {
     var secondaryColor: Color = AppTheme.purple
     var primaryLabel: String = ""
     var secondaryLabel: String = ""
+    @Binding var selectedLabel: String?
+
+    init(
+        labels: [String],
+        values: [Double],
+        lineColor: Color = AppTheme.info,
+        secondaryValues: [Double]? = nil,
+        secondaryColor: Color = AppTheme.purple,
+        primaryLabel: String = "",
+        secondaryLabel: String = "",
+        selectedLabel: Binding<String?> = .constant(nil)
+    ) {
+        self.labels = labels
+        self.values = values
+        self.lineColor = lineColor
+        self.secondaryValues = secondaryValues
+        self.secondaryColor = secondaryColor
+        self.primaryLabel = primaryLabel
+        self.secondaryLabel = secondaryLabel
+        _selectedLabel = selectedLabel
+    }
 
     private struct Point: Identifiable {
         let id: String
@@ -138,6 +159,7 @@ struct LineChartView: View {
                     AxisValueLabel().foregroundStyle(AppTheme.inkMuted)
                 }
             }
+            .chartXSelection(value: $selectedLabel)
             .frame(height: 180)
         }
     }
@@ -161,6 +183,7 @@ struct GroupedBarChartView: View {
     var colorB: Color = AppTheme.warning
     var labelA: String = "A"
     var labelB: String = "B"
+    var onSelect: ((Int, String) -> Void)? = nil
 
     private var maxValue: Double {
         max((seriesA + seriesB).max() ?? 1, 1)
@@ -193,6 +216,10 @@ struct GroupedBarChartView: View {
                             .minimumScaleFactor(0.6)
                     }
                     .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onSelect?(i, label)
+                    }
                 }
             }
             .frame(height: 130)
