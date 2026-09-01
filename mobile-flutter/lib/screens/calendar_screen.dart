@@ -20,6 +20,8 @@ String _calendarFirstGlyph(String text) {
   if (t.isEmpty) return '?';
   return String.fromCharCode(t.runes.first);
 }
+
+String _stripRecorderSuffix(String raw) =>
     raw.replaceAll(RegExp(r'\s*\(ผู้กรอก:[^)]+\)\s*$'), '').trim();
 
 String _dailyEventTypeIcon(String? type) {
