@@ -69,5 +69,9 @@
 	<!-- HTTPS + standard crypto only — set true if you add custom encryption -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>ถ่ายรูปประกอบบันทึกบำรุงรักษา</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>เลือกรูปจากแกลเลอรีสำหรับบันทึกบำรุงรักษา</string>
 </dict>
 </plist>

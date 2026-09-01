@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' show ImageFilter;
 
+import 'package:image_picker/image_picker.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -33,6 +35,9 @@ import '../utils/daily_module_transactions.dart';
 import '../theme/daily_palette.dart';
 import '../utils/fuel_stock.dart';
 import '../utils/maintenance_catalog.dart';
+import '../utils/maintenance_work_details.dart';
+import '../services/maintenance_photo_store.dart';
+import '../widgets/maintenance_photo_strip.dart';
 import '../utils/count_record_vehicle_defaults.dart';
 import '../utils/labor_canvas_keys.dart';
 import '../utils/device_perf.dart';
@@ -202,6 +207,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// normal | urgent — ใช้เฉพาะโหมดแจ้งซ่อม
   String _maintenanceUrgency = 'normal';
   String? _maintenanceTxId;
+  final List<String> _maintenancePhotoLocals = [];
+  final List<String> _maintenancePhotoRemotes = [];
+  static const int _kMaintenancePhotoMax = 10;
+  final ImagePicker _maintenanceImagePicker = ImagePicker();
 
   final _leaveReasonController = TextEditingController();
   final _leaveDaysController = TextEditingController(text: '1');
@@ -6166,7 +6175,151 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _maintenanceUrgency = 'normal';
     _maintenanceDetailController.clear();
     _maintenanceAmountController.clear();
+    _maintenancePhotoLocals.clear();
+    _maintenancePhotoRemotes.clear();
     _ensureMaintenanceSelectionValid();
+  }
+
+  bool _isAbsolutePhotoPath(String path) {
+    final p = path.trim();
+    if (p.isEmpty) return false;
+    return p.startsWith('/') || RegExp(r'^[a-zA-Z]:\\').hasMatch(p);
+  }
+
+  void _loadMaintenancePhotosFromTransaction(AppTransaction t) {
+    _maintenancePhotoLocals.clear();
+    _maintenancePhotoRemotes.clear();
+    final meta = MaintenancePhotoMeta.decode(t.workDetails);
+    _maintenancePhotoLocals.addAll(meta.localPaths);
+    _maintenancePhotoRemotes.addAll(meta.remoteUrls);
+  }
+
+  Future<void> _pickMaintenancePhoto(ImageSource source) async {
+    if (_maintenancePhotoLocals.length >= _kMaintenancePhotoMax) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'เพิ่มรูปได้สูงสุด $_kMaintenancePhotoMax รูป',
+            style: GoogleFonts.kanit(),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    try {
+      final picked = await _maintenanceImagePicker.pickImage(
+        source: source,
+        imageQuality: 82,
+        maxWidth: 2048,
+      );
+      if (picked == null || !mounted) return;
+      setState(() => _maintenancePhotoLocals.add(picked.path));
+      _scheduleUiRefresh();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'เลือกรูปไม่สำเร็จ: $e',
+            style: GoogleFonts.kanit(),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showMaintenancePhotoSourceSheet() async {
+    _releaseKeyboardFocus();
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: Text('ถ่ายรูป', style: GoogleFonts.kanit()),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: Text('เลือกจากแกลเลอรี', style: GoogleFonts.kanit()),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    await _pickMaintenancePhoto(source);
+  }
+
+  void _removeMaintenancePhotoAt(int index) {
+    if (index < 0 || index >= _maintenancePhotoLocals.length) return;
+    final path = _maintenancePhotoLocals[index];
+    setState(() {
+      _maintenancePhotoLocals.removeAt(index);
+      if (index < _maintenancePhotoRemotes.length) {
+        _maintenancePhotoRemotes.removeAt(index);
+      }
+    });
+    if (!_isAbsolutePhotoPath(path)) {
+      unawaited(MaintenancePhotoStore.deleteRelative(path));
+    }
+    _scheduleUiRefresh();
+  }
+
+  Future<({List<String> locals, List<String> remotes})> _finalizeMaintenancePhotos(
+    String txId,
+  ) async {
+    final locals = <String>[];
+    for (var i = 0; i < _maintenancePhotoLocals.length; i++) {
+      final raw = _maintenancePhotoLocals[i].trim();
+      if (raw.isEmpty) continue;
+      if (_isAbsolutePhotoPath(raw)) {
+        locals.add(
+          await MaintenancePhotoStore.persistSourceFile(
+            txId: txId,
+            sourcePath: raw,
+            index: i,
+          ),
+        );
+      } else {
+        locals.add(raw);
+      }
+    }
+    var remotes = List<String>.from(_maintenancePhotoRemotes);
+    if (widget.serverOnlineHint) {
+      try {
+        remotes = await MaintenancePhotoStore.uploadMissing(
+          client: Supabase.instance.client,
+          txId: txId,
+          localPaths: locals,
+          existingRemote: remotes,
+        );
+      } catch (_) {}
+    }
+    return (locals: locals, remotes: remotes);
+  }
+
+  String? _validateMaintenanceServiceLogForm() {
+    _ensureMaintenanceSelectionValid();
+    if (_maintenanceAsset.trim().isEmpty) {
+      return 'กรุณาเลือกรถ/เครื่องจักร';
+    }
+    final detail = _maintenanceDetailController.text.trim();
+    final amount =
+        double.tryParse(_maintenanceAmountController.text.trim()) ?? 0;
+    final hasPhotos = _maintenancePhotoLocals.isNotEmpty ||
+        _maintenancePhotoRemotes.isNotEmpty;
+    if (detail.isEmpty && amount <= 0 && !hasPhotos) {
+      return 'กรุณาระบุรายละเอียด จำนวนเงิน หรือแนบรูปอย่างน้อยหนึ่งอย่าง';
+    }
+    return null;
   }
 
   void _ensureMaintenanceSelectionValid() {
@@ -6282,18 +6435,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       },
       body: () async {
         _ensureMaintenanceSelectionValid();
+        final err = _validateMaintenanceServiceLogForm();
+        if (err != null) _failSave(err);
         final asset = _maintenanceAsset.trim();
-        if (asset.isEmpty) {
-          _failSave('กรุณาเลือกรถ/เครื่องจักร');
-        }
         final amount =
             double.tryParse(_maintenanceAmountController.text.trim()) ?? 0;
-        if (amount <= 0) {
-          _failSave(
-            'กรุณาระบุจำนวนเงินให้มากกว่า 0',
-            field: 'จำนวนเงิน',
-          );
-        }
         final type = _maintenanceType.trim().isEmpty
             ? kMaintenanceTypeRepair
             : _maintenanceType.trim();
@@ -6307,6 +6453,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ? _maintenanceTxId!.trim()
             : '${DateTime.now().millisecondsSinceEpoch}_maint';
         _maintenanceTxId = id;
+        final photos = await _finalizeMaintenancePhotos(id);
+        final workDetails = MaintenancePhotoMeta.encodeIntoWorkDetails(
+          existingWorkDetails: null,
+          meta: MaintenancePhotoMeta(
+            localPaths: photos.locals,
+            remoteUrls: photos.remotes,
+          ),
+        );
+        if (mounted) {
+          setState(() {
+            _maintenancePhotoLocals
+              ..clear()
+              ..addAll(photos.locals);
+            _maintenancePhotoRemotes
+              ..clear()
+              ..addAll(photos.remotes);
+          });
+        }
         await _persist(
           AppTransaction(
             id: id,
@@ -6322,6 +6486,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             vehicleId: asset,
             vehicleName: asset,
             workType: _maintenanceGroup.code,
+            workDetails: workDetails.isEmpty ? null : workDetails,
           ),
         );
       },
@@ -6368,6 +6533,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ? _maintenanceTxId!.trim()
             : '${DateTime.now().millisecondsSinceEpoch}_maint_req';
         _maintenanceTxId = id;
+        final photos = await _finalizeMaintenancePhotos(id);
+        final workDetails = MaintenancePhotoMeta.encodeIntoWorkDetails(
+          existingWorkDetails: null,
+          meta: MaintenancePhotoMeta(
+            localPaths: photos.locals,
+            remoteUrls: photos.remotes,
+          ),
+        );
+        if (mounted) {
+          setState(() {
+            _maintenancePhotoLocals
+              ..clear()
+              ..addAll(photos.locals);
+            _maintenancePhotoRemotes
+              ..clear()
+              ..addAll(photos.remotes);
+          });
+        }
         final saved = AppTransaction(
           id: id,
           date: date,
@@ -6383,6 +6566,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           vehicleName: asset,
           workType: _maintenanceGroup.code,
           eventPriority: _maintenanceUrgency == 'urgent' ? 'urgent' : 'normal',
+          workDetails: workDetails.isEmpty ? null : workDetails,
         );
         await _persist(saved);
         if (!_lastPersistQueued) {
@@ -6432,6 +6616,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       t.description,
       _maintenanceType,
     );
+    _loadMaintenancePhotosFromTransaction(t);
     _persistOmitCreatedForIds.add(t.id);
   }
 
@@ -19618,8 +19803,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ? 'เลือกเครื่อง → อาการ → ส่งผู้ดูแล'
                       : 'เลือกเครื่อง → ระบุอาการ → ส่งให้ผู้ดูแล')
                   : (phonePortrait
-                      ? 'เลือกเครื่อง → ประเภท → จำนวนเงิน'
-                      : 'เลือกเครื่อง → ประเภทงาน → จำนวนเงิน'),
+                      ? 'เลือกเครื่อง → ประเภท → รายละเอียด/รูป'
+                      : 'เลือกเครื่อง → ประเภทงาน → รายละเอียดหรือรูป'),
               style: GoogleFonts.kanit(
                 fontSize: phonePortrait ? 12 : 13,
                 fontWeight: FontWeight.w500,
@@ -19832,9 +20017,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
               onChanged: (_) => _scheduleUiRefresh(),
             ),
+            SizedBox(height: gapMd),
+            MaintenancePhotoStrip(
+              localPaths: _maintenancePhotoLocals,
+              remoteUrls: _maintenancePhotoRemotes,
+              onAdd: _showMaintenancePhotoSourceSheet,
+              onRemove: _removeMaintenancePhotoAt,
+              maxPhotos: _kMaintenancePhotoMax,
+              enabled: !_saving,
+              compact: phonePortrait,
+            ),
             if (!isRepair) ...[
               SizedBox(height: phonePortrait ? 10 : 14),
-              sectionLabel(phonePortrait ? 'จำนวนเงิน' : 'จำนวนเงิน (บาท)'),
+              sectionLabel(
+                phonePortrait
+                    ? 'จำนวนเงิน (ไม่บังคับ)'
+                    : 'จำนวนเงิน (บาท · ไม่บังคับ)',
+              ),
               TextFormField(
                 controller: _maintenanceAmountController,
                 keyboardType:
@@ -19845,7 +20044,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   color: ink,
                 ),
                 decoration: fieldDecoration(
-                  hintText: '0',
+                  hintText: 'ไม่บังคับ',
                   prefixIcon: Icon(
                     Icons.payments_outlined,
                     color: muted,
@@ -19958,9 +20157,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final isRepair = type == kMaintenanceTypeRepairRequest;
     final detail = maintenanceDetailFromDescription(t.description, type);
     final isCurrent = t.id == _maintenanceTxId;
-    final amountText = t.amount == t.amount.roundToDouble()
-        ? t.amount.round().toString()
-        : t.amount.toStringAsFixed(2);
+    final photoMeta = MaintenancePhotoMeta.decode(t.workDetails);
+    final amountPart = t.amount > 0
+        ? ' · ${t.amount == t.amount.roundToDouble() ? t.amount.round().toString() : t.amount.toStringAsFixed(2)} บาท'
+        : '';
+    final photoPart = photoMeta.count > 0 ? ' · ${photoMeta.count} รูป' : '';
     final urgency =
         ((t.eventPriority ?? '').trim() == 'urgent') ? 'ด่วน' : 'ปกติ';
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
@@ -19969,7 +20170,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final metaLine = isRepair
         ? '${type.isEmpty ? 'แจ้งซ่อม' : type} · $urgency'
             '${isCurrent ? ' · กำลังแก้ไข' : ''}'
-        : '${type.isEmpty ? 'บำรุงรักษา' : type} · $amountText บาท'
+        : '${type.isEmpty ? 'บำรุงรักษา' : type}$amountPart$photoPart'
             '${isCurrent ? ' · กำลังแก้ไข' : ''}';
     final p = DailyPalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
