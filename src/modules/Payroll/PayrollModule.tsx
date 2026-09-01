@@ -1,11 +1,24 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { CheckCircle2, History, Eye, XCircle, Printer, Users, Plus, Minus, Banknote, Calendar, Wallet, Lock, Unlock } from 'lucide-react';
+import { CheckCircle2, History, Eye, XCircle, Printer, Users, Plus, Minus, Banknote, Calendar, Wallet, Lock, Unlock, Download, AlertTriangle, Truck, Droplets, Filter } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import FormatNumber from '../../components/ui/FormatNumber';
 import { getFirstDayOfMonth, getLastDayOfMonth, getToday, formatDateBE } from '../../utils';
-import { Employee, Transaction, SalaryHistoryItem, PayrollSnapshot } from '../../types';
+import { Transaction, type Employee } from '../../types';
+import {
+    buildPayrollRows,
+    buildPayrollSnapshot,
+    buildPayrollWarnings,
+    downloadPayrollCsv,
+    filterPayrollRows,
+    getBanknoteBreakdown,
+    payrollGroupLabel,
+    summarizePayrollPeriod,
+    type PayrollRow,
+    type PayrollGroupFilter,
+    type PayrollStatusFilter,
+} from './payrollUtils';
 
 interface PayrollModuleProps {
     employees: Employee[];
@@ -16,41 +29,14 @@ interface PayrollModuleProps {
     onRelockPeriod?: (period: { start: string; end: string }, reason: string) => void;
 }
 
-/** คำนวณแบงค์จ่าย (1000, 500, 100) จากยอดบาท */
-function getBanknoteBreakdown(amount: number): { b1000: number; b500: number; b100: number; remainder: number } {
-    const a = Math.round(amount);
-    const b1000 = Math.floor(a / 1000);
-    let r = a % 1000;
-    const b500 = Math.floor(r / 500);
-    r = r % 500;
-    const b100 = Math.floor(r / 100);
-    const remainder = r % 100;
-    return { b1000, b500, b100, remainder };
-}
-
-function getDailyWageByDate(emp: Employee, date: string): number {
-    const base = emp.baseWage ?? 0;
-    if (!emp.salaryHistory || emp.salaryHistory.length === 0) {
-        return emp.type === 'Monthly' ? base / 30 : base;
-    }
-    const history = [...emp.salaryHistory]
-        .filter((h: SalaryHistoryItem) => !!h?.date)
-        .sort((a, b) => a.date.localeCompare(b.date));
-    if (history.length === 0) return emp.type === 'Monthly' ? base / 30 : base;
-    let wage = history[0].oldWage || base;
-    for (const h of history) {
-        if (h.date <= date) wage = h.newWage;
-        else break;
-    }
-    return emp.type === 'Monthly' ? wage / 30 : wage;
-}
-
 const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPeriod = false, onUnlockPeriod, onRelockPeriod }: PayrollModuleProps) => {
     const [view, setView] = useState<'Calculate' | 'History'>('Calculate');
     const [range, setRange] = useState({ start: getFirstDayOfMonth(), end: getLastDayOfMonth() });
     const [search, setSearch] = useState('');
-    const [selectedEmp, setSelectedEmp] = useState<any>(null);
-    const [slipEmp, setSlipEmp] = useState<any>(null);
+    const [statusFilter, setStatusFilter] = useState<PayrollStatusFilter>('all');
+    const [groupFilter, setGroupFilter] = useState<PayrollGroupFilter>('all');
+    const [selectedEmp, setSelectedEmp] = useState<PayrollRow | null>(null);
+    const [slipEmp, setSlipEmp] = useState<PayrollRow | null>(null);
 
     // --- NEW: History Filters ---
     const [historySearch, setHistorySearch] = useState('');
@@ -80,104 +66,52 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPe
     };
 
     const getPayrollHistory = () => transactions.filter(t => t.category === 'Payroll').sort((a, b) => b.date.localeCompare(a.date));
-    const checkOverlap = (empId: string, start: string, end: string) => transactions.some(t => t.category === 'Payroll' && t.employeeId === empId && t.payrollPeriod && (start <= t.payrollPeriod.end && end >= t.payrollPeriod.start));
 
-    const calculatePayroll = (emp: Employee) => {
-        const empTrans = transactions.filter(t =>
-            t.date >= range.start &&
-            t.date <= range.end &&
-            (t.employeeId === emp.id || t.employeeIds?.includes(emp.id) || t.driverId === emp.id)
-        );
-        const isHalfDay = (t: Transaction) => {
-            if (t.laborStatus !== 'Work') return false;
-            if (t.workTypeByEmployee && emp.id in t.workTypeByEmployee) return t.workTypeByEmployee[emp.id] === 'HalfDay';
-            return t.workType === 'HalfDay';
-        };
-        const workedTrans = empTrans.filter(t => t.laborStatus === 'Work');
-        const fullDays = workedTrans.filter(t => !isHalfDay(t)).length;
-        const halfDays = workedTrans.filter(t => isHalfDay(t)).length;
-        const ot = empTrans.reduce((s, t) => s + (t.otAmount || 0), 0);
-        const adv = empTrans.reduce((s, t) => s + (t.advanceAmount || 0), 0);
-        const special = empTrans.reduce((s, t) => s + (t.specialAmount || 0), 0);
-        const driverAllowance = empTrans.reduce((s, t) => s + (t.driverWage || 0), 0);
+    const allPayrollRows = useMemo(
+        () => buildPayrollRows(employees, transactions, range, adjustments),
+        [employees, transactions, range, adjustments],
+    );
 
-        const adj = adjustments[emp.id] || { bonus: 0, deduction: 0, note: '' };
+    const payrollData = useMemo(
+        () => filterPayrollRows(allPayrollRows, { search, status: statusFilter, group: groupFilter }),
+        [allPayrollRows, search, statusFilter, groupFilter],
+    );
 
-        const base = emp.baseWage ?? 0;
-        let basePay = 0;
-        if (emp.type === 'Monthly') {
-            basePay = base;
-        } else {
-            basePay = workedTrans.reduce((sum, t) => {
-                const dailyWage = getDailyWageByDate(emp, t.date);
-                return sum + (isHalfDay(t) ? dailyWage / 2 : dailyWage);
-            }, 0);
+    const periodSummary = useMemo(() => summarizePayrollPeriod(allPayrollRows), [allPayrollRows]);
+
+    const totalEstimatedPayroll = periodSummary.totalPendingNet;
+    const unpaidCount = periodSummary.unpaidCount;
+    const paidCount = periodSummary.paidCount;
+    const totalPaidInPeriod = periodSummary.totalPaidNet;
+    const reviewCount = periodSummary.reviewCount;
+    const payProgressPct = periodSummary.totalEmployees > 0
+        ? Math.round((paidCount / periodSummary.totalEmployees) * 100)
+        : 0;
+
+    const payrollWarnings = useMemo(
+        () => buildPayrollWarnings(allPayrollRows, transactions, range),
+        [allPayrollRows, transactions, range],
+    );
+
+    const groupedPayrollData = useMemo(() => {
+        const groups: { key: PayrollRow['group']; label: string; rows: PayrollRow[] }[] = [];
+        for (const key of ['sandYard', 'driver'] as const) {
+            const rows = payrollData.filter((r) => r.group === key);
+            if (rows.length > 0) groups.push({ key, label: payrollGroupLabel(key), rows });
         }
-        const totalIncome = basePay + ot + special + driverAllowance + adj.bonus;
-        const totalDeductions = adv + adj.deduction;
-        const netPay = totalIncome - totalDeductions;
-        const isPaid = checkOverlap(emp.id, range.start, range.end);
-        const needsWageReview = workedTrans.length > 0 && basePay <= 0;
+        return groups;
+    }, [payrollData]);
 
-        return {
-            ...emp,
-            fullDays,
-            halfDays,
-            income: totalIncome,
-            net: netPay,
-            ot,
-            adv,
-            special,
-            driverAllowance,
-            basePay,
-            transactions: empTrans,
-            isPaid,
-            customBonus: adj.bonus,
-            customDeduction: adj.deduction,
-            adjNote: adj.note,
-            needsWageReview
-        };
-    };
-
-    const payrollData = useMemo(() => employees.filter(e => e.name.toLowerCase().includes(search.toLowerCase()) || e.nickname.toLowerCase().includes(search.toLowerCase())).map(emp => calculatePayroll(emp)), [employees, transactions, range, search, adjustments]);
-
-    const totalEstimatedPayroll = useMemo(() => payrollData.filter(p => !p.isPaid).reduce((sum, p) => sum + p.net, 0), [payrollData]);
-    const unpaidCount = payrollData.filter(p => !p.isPaid).length;
-    const paidInPeriod = payrollData.filter(p => p.isPaid);
-    const paidCount = paidInPeriod.length;
-    const totalPaidInPeriod = useMemo(() => paidInPeriod.reduce((sum, p) => sum + p.net, 0), [payrollData]);
-    const payrollWarnings = useMemo(() => {
-        const warns: string[] = [];
-        const wageMissing = payrollData.filter(p => !p.isPaid && p.needsWageReview);
-        if (wageMissing.length > 0) {
-            const names = wageMissing.slice(0, 5).map(p => p.nickname || p.name).join(', ');
-            warns.push(`พบพนักงานมีวันทำงานแต่ค่าแรงเป็น 0: ${names}${wageMissing.length > 5 ? ` (+${wageMissing.length - 5})` : ''}`);
-        }
-        const unlockedSource = transactions.some(t => t.category !== 'Payroll' && t.date >= range.start && t.date <= range.end);
-        if (!unlockedSource) {
-            warns.push('ไม่พบข้อมูลบันทึกงาน/ค่าแรงในงวดนี้ (ตรวจสอบช่วงวันที่ก่อนกดจ่าย)');
-        }
-        return warns;
-    }, [payrollData, transactions, range.start, range.end]);
-
-    const handleConfirmPayment = (p: any, bypassAlert = false) => {
+    const handleConfirmPayment = (p: PayrollRow, bypassAlert = false) => {
         if (p.isPaid) {
             if (!bypassAlert) alert(`จ่ายเงินให้ ${p.name} ซ้ำไม่ได้ (มีการจ่ายในงวดนี้ไปแล้ว)`);
             return false;
         }
-        const payrollDetails: PayrollSnapshot = {
-            fullDays: p.fullDays,
-            halfDays: p.halfDays,
-            basePay: p.basePay,
-            ot: p.ot,
-            special: p.special,
-            driverAllowance: p.driverAllowance,
-            adv: p.adv,
-            customBonus: p.customBonus,
-            customDeduction: p.customDeduction,
-            adjNote: p.adjNote,
-            net: p.net
-        };
+        if (p.needsWageReview) {
+            if (!bypassAlert) alert(`ไม่สามารถจ่ายให้ ${p.name} ได้ — มีวันทำงานแต่ค่าแรงเป็น 0 กรุณาแก้ค่าแรงในเมนูพนักงานก่อน`);
+            return false;
+        }
+        const payrollDetails = buildPayrollSnapshot(p);
         onSaveTransaction({
             id: Date.now().toString() + Math.random().toString(36).substring(7),
             date: getToday(),
@@ -193,10 +127,18 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPe
     };
 
     const handleBulkPay = () => {
-        const unpaidEmps = payrollData.filter(p => !p.isPaid);
-        if (unpaidEmps.length === 0) return alert('ไม่มีพนักงานที่รอจ่ายเงินเดือนในงวดนี้');
+        const unpaidEmps = allPayrollRows.filter(p => !p.isPaid && !p.needsWageReview);
+        const blocked = allPayrollRows.filter(p => !p.isPaid && p.needsWageReview);
+        if (unpaidEmps.length === 0) {
+            if (blocked.length > 0) {
+                return alert(`ไม่มีรายการที่จ่ายได้ — ${blocked.length} คนต้องแก้ค่าแรงก่อน`);
+            }
+            return alert('ไม่มีพนักงานที่รอจ่ายเงินเดือนในงวดนี้');
+        }
 
-        const confirmMsg = `ต้องการยืนยันการจ่ายเงินเดือนให้พนักงาน ${unpaidEmps.length} คน\nยอดรวม ${totalEstimatedPayroll.toLocaleString()} บาท ใช่หรือไม่?`;
+        const total = unpaidEmps.reduce((s, p) => s + p.net, 0);
+        const blockedNote = blocked.length > 0 ? `\n(ข้าม ${blocked.length} คนที่ต้องตรวจสอบค่าแรง)` : '';
+        const confirmMsg = `ต้องการยืนยันการจ่ายเงินเดือนให้พนักงาน ${unpaidEmps.length} คน\nยอดรวม ${total.toLocaleString()} บาท ใช่หรือไม่?${blockedNote}`;
         if (confirm(confirmMsg)) {
             let successCount = 0;
             unpaidEmps.forEach(p => {
@@ -267,7 +209,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPe
                     </div>
                     <div>
                         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">เงินเดือน</h1>
-                        <p className="text-sm text-slate-500">จัดทำเงินเดือนและประวัติการจ่าย</p>
+                        <p className="text-sm text-slate-500">ออกเงินเดือนเฉพาะ <span className="font-semibold text-emerald-700">พนักงานท่าทราย</span> และ <span className="font-semibold text-emerald-700">คนขับรถแม็คโคร</span></p>
                     </div>
                 </div>
             </div>
@@ -293,10 +235,21 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPe
                     </button>
                 </div>
 
-                {view === 'Calculate' && unpaidCount > 0 && (
-                    <Button onClick={handleBulkPay} className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-500/25 text-white font-bold">
-                        <CheckCircle2 className="mr-2" size={20} /> อนุมัติจ่ายทั้งหมด ({unpaidCount} คน)
-                    </Button>
+                {view === 'Calculate' && (
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <Button
+                            variant="outline"
+                            onClick={() => downloadPayrollCsv(allPayrollRows, range)}
+                            className="w-full sm:w-auto border-slate-300 text-slate-700"
+                        >
+                            <Download className="mr-2" size={18} /> ส่งออก CSV
+                        </Button>
+                        {unpaidCount > 0 && (
+                            <Button onClick={handleBulkPay} className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-500/25 text-white font-bold">
+                                <CheckCircle2 className="mr-2" size={20} /> อนุมัติจ่ายทั้งหมด ({allPayrollRows.filter(p => !p.isPaid && !p.needsWageReview).length} คน)
+                            </Button>
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -309,8 +262,9 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPe
                                 <Users size={28} />
                             </div>
                             <div className="min-w-0">
-                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">พนักงานทั้งหมด (งวดนี้)</p>
-                                <p className="text-2xl font-bold text-slate-800">{payrollData.length} <span className="text-sm font-normal text-slate-500">คน</span></p>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">พนักงานในระบบ (งวดนี้)</p>
+                                <p className="text-2xl font-bold text-slate-800">{periodSummary.totalEmployees} <span className="text-sm font-normal text-slate-500">คน</span></p>
+                                <p className="text-[11px] text-slate-500 mt-0.5">ท่าทราย {periodSummary.sandYard.count} · แม็คโคร {periodSummary.driver.count}</p>
                             </div>
                         </Card>
                         <Card className="p-5 flex items-center gap-4 bg-gradient-to-br from-amber-50 to-orange-50/50 border-amber-200/50">
@@ -335,9 +289,35 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPe
                             <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
                                 <CheckCircle2 size={28} />
                             </div>
-                            <div className="min-w-0">
-                                <p className="text-xs font-bold text-emerald-700/80 uppercase tracking-wider">จ่ายแล้วในงวดนี้</p>
-                                <p className="text-2xl font-bold text-slate-800">{paidCount} <span className="text-sm font-normal text-slate-500">คน</span> · ฿{totalPaidInPeriod.toLocaleString()}</p>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-xs font-bold text-emerald-700/80 uppercase tracking-wider">ความคืบหน้างวด</p>
+                                <p className="text-2xl font-bold text-slate-800">{paidCount}/{periodSummary.totalEmployees} <span className="text-sm font-normal text-slate-500">คน</span></p>
+                                <div className="mt-2 h-2 rounded-full bg-emerald-100 overflow-hidden">
+                                    <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${payProgressPct}%` }} />
+                                </div>
+                                <p className="text-[11px] text-slate-500 mt-1">จ่ายแล้ว ฿{totalPaidInPeriod.toLocaleString()}</p>
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* Group breakdown */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Card className="p-4 border-cyan-200/60 bg-gradient-to-br from-cyan-50/80 to-sky-50/40">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center"><Droplets size={20} /></div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-bold text-cyan-800 uppercase tracking-wider">พนักงานท่าทราย</p>
+                                    <p className="text-sm text-slate-700">{periodSummary.sandYard.count} คน · รอจ่าย {periodSummary.sandYard.unpaid} · ฿{periodSummary.sandYard.pendingNet.toLocaleString()}</p>
+                                </div>
+                            </div>
+                        </Card>
+                        <Card className="p-4 border-amber-200/60 bg-gradient-to-br from-amber-50/80 to-orange-50/40">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center"><Truck size={20} /></div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">คนขับรถแม็คโคร</p>
+                                    <p className="text-sm text-slate-700">{periodSummary.driver.count} คน · รอจ่าย {periodSummary.driver.unpaid} · ฿{periodSummary.driver.pendingNet.toLocaleString()}</p>
+                                </div>
                             </div>
                         </Card>
                     </div>
@@ -365,21 +345,56 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPe
                     })()}
 
                     {/* Filter Bar */}
-                    <Card className="p-4 flex flex-col sm:flex-row gap-4 items-stretch sm:items-center border-slate-200/60">
-                        <div className="flex-1 min-w-0">
-                            <Input placeholder="ค้นหาชื่อ หรือชื่อเล่นพนักงาน..." value={search} onChange={(e: any) => setSearch(e.target.value)} className="w-full sm:max-w-xs" />
+                    <Card className="p-4 flex flex-col gap-4 border-slate-200/60">
+                        <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center">
+                            <div className="flex-1 min-w-0">
+                                <Input placeholder="ค้นหาชื่อ หรือชื่อเล่นพนักงาน..." value={search} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)} className="w-full sm:max-w-xs" />
+                            </div>
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-wrap">
+                                <span className="text-sm font-bold text-slate-600 flex items-center gap-1.5"><Calendar size={16} /> งวดที่จ่าย:</span>
+                                <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                                    <input type="date" value={range.start} onChange={(e) => setRange({ ...range, start: e.target.value })} className="bg-transparent text-sm font-medium text-slate-700 outline-none min-w-0" />
+                                    <span className="text-slate-400 font-medium">ถึง</span>
+                                    <input type="date" value={range.end} onChange={(e) => setRange({ ...range, end: e.target.value })} className="bg-transparent text-sm font-medium text-slate-700 outline-none min-w-0" />
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick={setCurrentMonth} className="px-4 py-2 text-sm font-bold bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200 hover:bg-emerald-200/80 transition-colors">เดือนนี้</button>
+                                    <button onClick={setLastMonth} className="px-4 py-2 text-sm font-bold bg-slate-100 text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-200 transition-colors">เดือนก่อน</button>
+                                </div>
+                            </div>
                         </div>
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-wrap">
-                            <span className="text-sm font-bold text-slate-600 flex items-center gap-1.5"><Calendar size={16} /> งวดที่จ่าย:</span>
-                            <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
-                                <input type="date" value={range.start} onChange={(e) => setRange({ ...range, start: e.target.value })} className="bg-transparent text-sm font-medium text-slate-700 outline-none min-w-0" />
-                                <span className="text-slate-400 font-medium">ถึง</span>
-                                <input type="date" value={range.end} onChange={(e) => setRange({ ...range, end: e.target.value })} className="bg-transparent text-sm font-medium text-slate-700 outline-none min-w-0" />
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={setCurrentMonth} className="px-4 py-2 text-sm font-bold bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200 hover:bg-emerald-200/80 transition-colors">เดือนนี้</button>
-                                <button onClick={setLastMonth} className="px-4 py-2 text-sm font-bold bg-slate-100 text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-200 transition-colors">เดือนก่อน</button>
-                            </div>
+                        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+                            <span className="text-xs font-bold text-slate-500 flex items-center gap-1 mr-1"><Filter size={14} /> กรอง:</span>
+                            {([
+                                ['all', 'ทั้งหมด'],
+                                ['unpaid', `รอจ่าย (${unpaidCount})`],
+                                ['paid', `จ่ายแล้ว (${paidCount})`],
+                                ['review', `ต้องตรวจสอบ (${reviewCount})`],
+                            ] as const).map(([key, label]) => (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => setStatusFilter(key)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${statusFilter === key ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                            <span className="w-px h-5 bg-slate-200 mx-1 hidden sm:block" />
+                            {([
+                                ['all', 'ทุกกลุ่ม'],
+                                ['sandYard', 'ท่าทราย'],
+                                ['driver', 'แม็คโคร'],
+                            ] as const).map(([key, label]) => (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => setGroupFilter(key)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${groupFilter === key ? 'bg-cyan-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
                         </div>
                     </Card>
                     {payrollWarnings.length > 0 && (
@@ -391,13 +406,22 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPe
                         </Card>
                     )}
 
-                    {/* Employee List */}
-                    <div className="space-y-4">
-                        <h2 className="text-lg font-bold text-slate-700 flex items-center gap-2">
-                            <Users size={20} /> รายชื่อพนักงาน ({payrollData.length} คน)
-                        </h2>
-                        {payrollData.map(p => (
-                            <Card key={p.id} className={`p-0 overflow-hidden border-2 transition-all duration-200 ${p.isPaid ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white hover:border-emerald-200/80 hover:shadow-lg'}`}>
+                    {/* Employee List — grouped */}
+                    <div className="space-y-6">
+                        {payrollData.length === 0 ? (
+                            <Card className="p-10 text-center text-slate-500">
+                                <Users size={32} className="mx-auto mb-3 text-slate-300" />
+                                <p className="font-medium">ไม่พบพนักงานตามเงื่อนไขที่เลือก</p>
+                                <p className="text-sm mt-1">ระบบแสดงเฉพาะพนักงานท่าทรายและคนขับรถแม็คโครที่ยัง active</p>
+                            </Card>
+                        ) : groupedPayrollData.map(({ key, label, rows }) => (
+                            <div key={key} className="space-y-4">
+                                <h2 className="text-lg font-bold text-slate-700 flex items-center gap-2">
+                                    {key === 'sandYard' ? <Droplets size={20} className="text-cyan-600" /> : <Truck size={20} className="text-amber-600" />}
+                                    {label} ({rows.length} คน)
+                                </h2>
+                                {rows.map(p => (
+                            <Card key={p.id} className={`p-0 overflow-hidden border-2 transition-all duration-200 ${p.isPaid ? 'border-emerald-200 bg-emerald-50/40' : p.needsWageReview ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200 bg-white hover:border-emerald-200/80 hover:shadow-lg'}`}>
                                 <div className="p-5 flex flex-col gap-5">
                                     {/* Row 1: Identity + Status + Net */}
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -414,6 +438,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPe
                                                         <span key={i} className="text-xs font-medium px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700">{pos}</span>
                                                     ))}
                                                     {p.isPaid && <span className="inline-flex text-xs bg-emerald-100 text-emerald-700 font-bold items-center gap-1 px-2.5 py-1 rounded-full"><CheckCircle2 size={12} /> จ่ายแล้ว</span>}
+                                                    {!p.isPaid && p.needsWageReview && <span className="inline-flex text-xs bg-rose-100 text-rose-700 font-bold items-center gap-1 px-2.5 py-1 rounded-full"><AlertTriangle size={12} /> ต้องแก้ค่าแรง</span>}
                                                 </div>
                                             </div>
                                         </div>
@@ -482,7 +507,7 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPe
                                     <Button variant="outline" onClick={() => setSlipEmp(p)} className="text-sm px-4 py-2 bg-white border-slate-300 text-slate-700 rounded-xl">
                                         <Printer size={16} className="mr-2" /> พิมพ์สลิป
                                     </Button>
-                                    {!p.isPaid && (
+                                    {!p.isPaid && !p.needsWageReview && (
                                         <Button onClick={() => { if (confirm(`ยืนยันจ่ายเงินเดือน ${p.name} ยอด ฿${p.net.toLocaleString()} บาท?`)) { handleConfirmPayment(p); setSlipEmp(null); } }} className="text-sm px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md">
                                             ยืนยันจ่ายคนนี้
                                         </Button>
@@ -509,6 +534,8 @@ const PayrollModule = ({ employees, transactions, onSaveTransaction, canUnlockPe
                                     </div>
                                 )}
                             </Card>
+                                ))}
+                            </div>
                         ))}
                     </div>
                 </>

@@ -163,10 +163,15 @@ export const classifyAttendancePositionGroup = (e: Employee): AttendancePosition
     return 'other';
 };
 
+/** @deprecated ใช้ isSandYardOrMacroDriverEmployee — คงไว้เพื่อความเข้ากันได้ */
 export const isSandYardOrDriverEmployee = (e: Employee): boolean => {
     const g = classifyAttendancePositionGroup(e);
     return g === 'sandYard' || g === 'driver';
 };
+
+/** พนักงานที่มีสิทธิ์ออกเงินเดือน (ท่าทราย + คนขับแม็คโคร active) */
+export const employeeEligibleForPayroll = (e: Employee): boolean =>
+    !e.inactive && isSandYardOrMacroDriverEmployee(e);
 
 /** @deprecated ใช้ collectEmployeePositionTokens แทน */
 export const getEmployeePositions = (e: Employee): string[] =>
