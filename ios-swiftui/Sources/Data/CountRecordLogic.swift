@@ -134,13 +134,12 @@ enum CountRecordLogic {
         return s.hasPrefix("v_") && s.count >= 4
     }
 
-    /// Port of web `makeVehicleId` — stable hash id for a display name.
+    /// Port of web `makeVehicleId` — stable hash id for a display name (UTF-16 code units, same as JS).
     static func makeVehicleId(from name: String) -> String {
         let key = name.trimmingCharacters(in: .whitespacesAndNewlines)
         var hash: Int32 = 0
-        for scalar in key.unicodeScalars {
-            let c = Int32(bitPattern: UInt32(scalar.value))
-            hash = ((hash &<< 5) &- hash) &+ c
+        for unit in key.utf16 {
+            hash = ((hash &<< 5) &- hash) &+ Int32(unit)
         }
         let absHash = hash == Int32.min ? Int64(Int32.max) + 1 : Int64(abs(hash))
         return "v_\(String(absHash, radix: 16))"
@@ -174,6 +173,23 @@ enum CountRecordLogic {
         return head
     }
 
+    /// Web `findVehicleCatalogRow` — match by id, name, or hashed name.
+    static func findVehicleCatalogRow(_ raw: String, catalog: [VehicleCatalogRow]) -> VehicleCatalogRow? {
+        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty, !catalog.isEmpty else { return nil }
+        let lower = key.lowercased()
+        if let exact = catalog.first(where: {
+            $0.id == key || $0.name == key
+                || $0.id.lowercased() == lower || $0.name.lowercased() == lower
+        }) {
+            return exact
+        }
+        return catalog.first(where: {
+            let made = makeVehicleId(from: $0.name)
+            return made == key || made.lowercased() == lower
+        })
+    }
+
     /// Resolve a raw vehicle id / token to a human label using catalog + cars list.
     static func resolveVehicleLabel(
         _ raw: String,
@@ -192,7 +208,7 @@ enum CountRecordLogic {
         {
             return mapped
         }
-        if let hit = catalog.first(where: { $0.id == token || $0.id.lowercased() == lower }) {
+        if let hit = findVehicleCatalogRow(token, catalog: catalog) {
             let n = hit.name.trimmingCharacters(in: .whitespacesAndNewlines)
             if !n.isEmpty { return n }
         }

@@ -605,17 +605,32 @@ enum FuelLogic {
         return nil
     }
 
-    private static func monthlyLine(from t: Transaction, kind: MonthlyLineKind) -> MonthlyLineItem {
+    private static func monthlyLine(
+        from t: Transaction,
+        kind: MonthlyLineKind,
+        cars: [String],
+        catalog: [VehicleCatalogRow],
+        nameById: [String: String]
+    ) -> MonthlyLineItem {
         let lit = liters(of: t)
-        let vid = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let title: String
         switch kind {
-        case .carFill:
-            title = vid.isEmpty ? "รถยนต์" : vid
+        case .carFill, .macro:
+            let label = CountRecordLogic.vehicleDisplayLabel(
+                vehicleId: t.vehicleId,
+                vehicleName: t.vehicleName,
+                cars: cars,
+                catalog: catalog,
+                description: t.description,
+                nameById: nameById
+            )
+            if kind == .carFill {
+                title = label.isEmpty || CountRecordLogic.looksLikeCatalogVehicleId(label) ? "รถยนต์" : label
+            } else {
+                title = label.isEmpty || CountRecordLogic.looksLikeCatalogVehicleId(label) ? "แม็คโคร" : label
+            }
         case .generator:
             title = "ปั่นไฟเล็ก"
-        case .macro:
-            title = vid.isEmpty ? "แม็คโคร" : vid
         }
         let desc = stripRecorder(t.description)
         let detail: String? = {
@@ -634,7 +649,26 @@ enum FuelLogic {
     }
 
     /// สรุปรายเดือน: เติมรถยนต์+ปั่นไฟ · เครื่องร่อน · แม็คโคร
-    static func buildMonthly(monthStart: Date, transactions: [Transaction]) -> MonthlyUsageReport {
+    static func buildMonthly(
+        monthStart: Date,
+        transactions: [Transaction],
+        cars: [String] = [],
+        catalog: [VehicleCatalogRow] = []
+    ) -> MonthlyUsageReport {
+        let nameById = CountRecordLogic.vehicleNameIndex(from: transactions)
+
+        func vehicleLabel(_ t: Transaction, fallback: String) -> String {
+            let label = CountRecordLogic.vehicleDisplayLabel(
+                vehicleId: t.vehicleId,
+                vehicleName: t.vehicleName,
+                cars: cars,
+                catalog: catalog,
+                description: t.description,
+                nameById: nameById
+            )
+            if label.isEmpty || CountRecordLogic.looksLikeCatalogVehicleId(label) { return fallback }
+            return label
+        }
         let cal = DashboardAggregations.gregorian
         let year = cal.component(.year, from: monthStart)
         let month = cal.component(.month, from: monthStart)
@@ -670,18 +704,18 @@ enum FuelLogic {
 
             if isCarFill(t) {
                 carByDay[day, default: 0] += lit
-                let vid = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                carByVehicle[vid.isEmpty ? "ไม่ระบุรถ" : vid, default: 0] += lit
-                carItemsByDay[day, default: []].append(monthlyLine(from: t, kind: .carFill))
+                let vid = vehicleLabel(t, fallback: "ไม่ระบุรถ")
+                carByVehicle[vid, default: 0] += lit
+                carItemsByDay[day, default: []].append(monthlyLine(from: t, kind: .carFill, cars: cars, catalog: catalog, nameById: nameById))
             } else if isGenerator(t) {
                 genByDay[day, default: 0] += lit
                 genByLabel["ปั่นไฟเล็ก", default: 0] += lit
-                carItemsByDay[day, default: []].append(monthlyLine(from: t, kind: .generator))
+                carItemsByDay[day, default: []].append(monthlyLine(from: t, kind: .generator, cars: cars, catalog: catalog, nameById: nameById))
             } else if isVehicleUsage(t), !isSandSieve(t), !isCarFill(t) {
                 macroByDay[day, default: 0] += lit
-                let vid = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                macroByVehicle[vid.isEmpty ? "ไม่ระบุรถ" : vid, default: 0] += lit
-                macroItemsByDay[day, default: []].append(monthlyLine(from: t, kind: .macro))
+                let vid = vehicleLabel(t, fallback: "ไม่ระบุรถ")
+                macroByVehicle[vid, default: 0] += lit
+                macroItemsByDay[day, default: []].append(monthlyLine(from: t, kind: .macro, cars: cars, catalog: catalog, nameById: nameById))
             }
         }
 

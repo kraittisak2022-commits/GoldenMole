@@ -27,6 +27,8 @@ enum FuelUsageReportLogic {
         var fuelType: FuelTypeFilter?
         var kind: Kind?
         var estimatedSieveByDay: [String: Double] = [:]
+        var cars: [String] = []
+        var catalog: [VehicleCatalogRow] = []
     }
 
     struct Row: Identifiable, Sendable {
@@ -176,6 +178,35 @@ enum FuelUsageReportLogic {
         return v
     }
 
+    private static func resolveFuelVehicleLabel(
+        _ t: Transaction,
+        kind: Kind,
+        cars: [String],
+        catalog: [VehicleCatalogRow],
+        nameById: [String: String]
+    ) -> String {
+        let raw = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty {
+            switch kind {
+            case .sandSieve: return FuelLogic.sandSieveVehicleId
+            case .vehicle, .otherOut: return unnamedVehicle
+            default: return ""
+            }
+        }
+        let label = CountRecordLogic.vehicleDisplayLabel(
+            vehicleId: t.vehicleId,
+            vehicleName: t.vehicleName,
+            cars: cars,
+            catalog: catalog,
+            description: t.description,
+            nameById: nameById
+        )
+        if !label.isEmpty, !CountRecordLogic.looksLikeCatalogVehicleId(label) {
+            return label
+        }
+        return normalizeVehicleId(raw)
+    }
+
     private static func withdrawPurpose(_ t: Transaction) -> String {
         (t.workType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
@@ -296,6 +327,7 @@ enum FuelUsageReportLogic {
         let vehicleFilter = filters.vehicleId.trimmingCharacters(in: .whitespacesAndNewlines)
         let fuelTypeFilter = filters.fuelType
         let kindFilter = filters.kind
+        let nameById = CountRecordLogic.vehicleNameIndex(from: transactions)
 
         var rows: [Row] = []
         for t in transactions {
@@ -303,12 +335,12 @@ enum FuelUsageReportLogic {
             let date = normalizeDate(t.date)
             guard date >= start, date <= end else { continue }
 
-            let rawVehicleId = (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let vehicleId = normalizeVehicleId(
-                rawVehicleId.isEmpty
-                    ? (kind == .sandSieve ? FuelLogic.sandSieveVehicleId
-                        : (kind == .vehicle || kind == .otherOut ? unnamedVehicle : ""))
-                    : rawVehicleId
+            let vehicleId = resolveFuelVehicleLabel(
+                t,
+                kind: kind,
+                cars: filters.cars,
+                catalog: filters.catalog,
+                nameById: nameById
             )
 
             if !vehicleFilter.isEmpty, vehicleId != vehicleFilter { continue }
@@ -372,13 +404,21 @@ enum FuelUsageReportLogic {
         transactions: [Transaction],
         start: String,
         end: String,
-        allTransactionsForEstimate: [Transaction]? = nil
+        allTransactionsForEstimate: [Transaction]? = nil,
+        cars: [String] = [],
+        catalog: [VehicleCatalogRow] = []
     ) -> Report {
         let source = allTransactionsForEstimate ?? transactions
         let estimated = estimateSieveByDay(transactions: source)
         return buildReport(
             transactions: transactions,
-            filters: Filters(start: start, end: end, estimatedSieveByDay: estimated)
+            filters: Filters(
+                start: start,
+                end: end,
+                estimatedSieveByDay: estimated,
+                cars: cars,
+                catalog: catalog
+            )
         )
     }
 

@@ -369,7 +369,7 @@ struct TodayOpsDetailScreen: View {
                             Image(systemName: "hammer.fill")
                                 .foregroundStyle(kind.accent)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(row.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "แม็คโคร")
+                                Text(vehicleDisplayName(for: row, fallback: "แม็คโคร"))
                                     .font(.subheadline.weight(.semibold))
                                 Text(macroSubtitle(row))
                                     .font(.caption)
@@ -410,9 +410,9 @@ struct TodayOpsDetailScreen: View {
                             Image(systemName: kind.systemImage)
                                 .foregroundStyle(kind.accent)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(fuelTitle(row))
+                                Text(fuelVehicleTitle(row))
                                     .font(.subheadline.weight(.semibold))
-                                Text(fuelSubtitle(row))
+                                Text(fuelVehicleSubtitle(row))
                                     .font(.caption)
                                     .foregroundStyle(AppTheme.inkMuted)
                             }
@@ -482,6 +482,38 @@ struct TodayOpsDetailScreen: View {
         }
     }
 
+    private func vehicleDisplayName(for t: Transaction, fallback: String = "ไม่ระบุรถ") -> String {
+        let settings = appState.settings
+        let nameById = CountRecordLogic.vehicleNameIndex(from: appState.transactions)
+        let label = CountRecordLogic.vehicleDisplayLabel(
+            vehicleId: t.vehicleId,
+            vehicleName: t.vehicleName,
+            cars: settings.cars,
+            catalog: settings.vehicleCatalog,
+            description: t.description,
+            nameById: nameById
+        )
+        if label.isEmpty || CountRecordLogic.looksLikeCatalogVehicleId(label) { return fallback }
+        return label
+    }
+
+    private func fuelVehicleTitle(_ t: Transaction) -> String {
+        switch kind {
+        case .fuelStockIn:
+            return t.fuelType?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                ?? (t.description.isEmpty ? "รับเข้า" : t.description)
+        case .fuelWithdraw:
+            return t.subCategory?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                ?? (t.description.isEmpty ? "เบิกน้ำมัน" : t.description)
+        case .fuelCarFill:
+            return vehicleDisplayName(for: t, fallback: t.description.isEmpty ? "เติมน้ำมันรถยนต์" : t.description)
+        case .fuelMacroUsage:
+            return vehicleDisplayName(for: t, fallback: "รถแม็คโคร")
+        default:
+            return t.description.isEmpty ? kind.title : t.description
+        }
+    }
+
     // MARK: - Helpers
 
     private func macroSubtitle(_ t: Transaction) -> String {
@@ -497,30 +529,12 @@ struct TodayOpsDetailScreen: View {
         return parts.joined(separator: " · ")
     }
 
-    private func fuelTitle(_ t: Transaction) -> String {
-        switch kind {
-        case .fuelStockIn:
-            return t.fuelType?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                ?? (t.description.isEmpty ? "รับเข้า" : t.description)
-        case .fuelWithdraw:
-            return t.subCategory?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                ?? (t.description.isEmpty ? "เบิกน้ำมัน" : t.description)
-        case .fuelCarFill:
-            return t.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                ?? (t.description.isEmpty ? "เติมน้ำมันรถยนต์" : t.description)
-        case .fuelMacroUsage:
-            return t.vehicleId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                ?? "รถแม็คโคร"
-        default:
-            return t.description.isEmpty ? kind.title : t.description
-        }
-    }
-
-    private func fuelSubtitle(_ t: Transaction) -> String {
+    private func fuelVehicleSubtitle(_ t: Transaction) -> String {
         var parts: [String] = []
         if let ft = t.fuelType, !ft.isEmpty { parts.append(ft) }
+        let title = fuelVehicleTitle(t)
         let desc = t.description.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !desc.isEmpty, desc != fuelTitle(t) { parts.append(desc) }
+        if !desc.isEmpty, desc != title { parts.append(desc) }
         if let time = t.createdAt?.prefix(16), !time.isEmpty {
             parts.append(String(time).replacingOccurrences(of: "T", with: " "))
         }

@@ -803,6 +803,7 @@ struct OverviewHubView: View {
     private var todayDrumTripRows: [DrumTripRow] {
         let dayKey = focusDayKey
         let catalog = settings.vehicleCatalog
+        let nameById = CountRecordLogic.vehicleNameIndex(from: allTransactions)
         let units = CountRecordLogic.buildTripUnits(
             dayKey: dayKey,
             transactions: allTransactions,
@@ -836,7 +837,13 @@ struct OverviewHubView: View {
             } else {
                 byVehicle[key] = DrumTripRow(
                     id: key,
-                    vehicleName: unit.vehicleId,
+                    vehicleName: CountRecordLogic.vehicleDisplayLabel(
+                        vehicleId: unit.vehicleId,
+                        vehicleName: nil,
+                        cars: settings.cars,
+                        catalog: catalog,
+                        nameById: nameById
+                    ),
                     driverLabel: unit.driverLabel,
                     rounds: unit.rounds,
                     morning: unit.morning,
@@ -931,7 +938,7 @@ struct OverviewHubView: View {
 
     private var todayMacroVehicleRows: [MacroVehicleRow] {
         let dayKey = focusDayKey
-        let cars = MacroVehicleLogic.macroCars(from: settings)
+        let cars = settings.cars
         let catalog = settings.vehicleCatalog
         let nameById = CountRecordLogic.vehicleNameIndex(from: allTransactions)
         let byVehicle = MacroVehicleLogic.dayRowsByVehicle(

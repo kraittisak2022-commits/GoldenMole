@@ -466,7 +466,9 @@ struct CategoryReportView: View {
             transactions: transactions,
             start: dateFilter.start,
             end: dateFilter.end,
-            allTransactionsForEstimate: fuelStockSource
+            allTransactionsForEstimate: fuelStockSource,
+            cars: settings.cars,
+            catalog: settings.vehicleCatalog
         )
     }
 

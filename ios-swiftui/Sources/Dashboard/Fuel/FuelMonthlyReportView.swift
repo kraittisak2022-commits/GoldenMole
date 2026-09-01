@@ -472,8 +472,10 @@ struct FuelMonthlyReportView: View {
     private func reload() async {
         let month = visibleMonth
         let txs = appState.transactions
+        let cars = appState.settings.cars
+        let catalog = appState.settings.vehicleCatalog
         report = await Task.detached(priority: .userInitiated) {
-            FuelLogic.buildMonthly(monthStart: month, transactions: txs)
+            FuelLogic.buildMonthly(monthStart: month, transactions: txs, cars: cars, catalog: catalog)
         }.value
     }
 }
