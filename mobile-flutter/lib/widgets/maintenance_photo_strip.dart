@@ -193,7 +193,7 @@ class _ThumbImage extends StatelessWidget {
     final colors = DailyPalette.of(context);
     if (localPath != null && localPath!.trim().isNotEmpty) {
       return FutureBuilder<String>(
-        future: MaintenancePhotoStore.absolutePathForRelative(localPath!),
+        future: MaintenancePhotoStore.resolveDisplayPath(localPath!),
         builder: (context, snap) {
           if (!snap.hasData) {
             return ColoredBox(color: colors.chipSurface);

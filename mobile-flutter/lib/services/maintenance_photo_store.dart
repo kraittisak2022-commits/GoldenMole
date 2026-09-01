@@ -42,6 +42,20 @@ class MaintenancePhotoStore {
     return _joinPath(docs.path, relative);
   }
 
+  static bool isAbsolutePath(String path) {
+    final p = path.trim();
+    if (p.isEmpty) return false;
+    return p.startsWith('/') || RegExp(r'^[a-zA-Z]:\\').hasMatch(p);
+  }
+
+  /// พาธสำหรับแสดง thumbnail — รองรับทั้งพาธสัมพัทธ์และพาธเต็มจาก image_picker
+  static Future<String> resolveDisplayPath(String pathOrRelative) async {
+    final p = pathOrRelative.trim();
+    if (p.isEmpty) return p;
+    if (isAbsolutePath(p)) return p;
+    return absolutePathForRelative(p);
+  }
+
   static String relativePathFor({required String txId, required String fileName}) {
     final safeId = txId.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
     return '$relativeRoot/$safeId/$fileName';

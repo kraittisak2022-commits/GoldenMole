@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:ui' show ImageFilter;
 
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -35,6 +36,7 @@ import '../utils/daily_module_transactions.dart';
 import '../theme/daily_palette.dart';
 import '../utils/fuel_stock.dart';
 import '../utils/maintenance_catalog.dart';
+import '../utils/maintenance_image_permissions.dart';
 import '../utils/maintenance_work_details.dart';
 import '../services/maintenance_photo_store.dart';
 import '../widgets/maintenance_photo_strip.dart';
@@ -6208,21 +6210,52 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       );
       return;
     }
-    try {
-      final picked = await _maintenanceImagePicker.pickImage(
-        source: source,
-        imageQuality: 82,
-        maxWidth: 2048,
+    final permError = await MaintenanceImagePermissions.ensureFor(source);
+    if (!mounted) return;
+    if (permError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(permError, style: GoogleFonts.kanit()),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'ตั้งค่า',
+            onPressed: openAppSettings,
+          ),
+        ),
       );
-      if (picked == null || !mounted) return;
-      setState(() => _maintenancePhotoLocals.add(picked.path));
+      return;
+    }
+    try {
+      if (source == ImageSource.gallery) {
+        final remaining = _kMaintenancePhotoMax - _maintenancePhotoLocals.length;
+        final picked = await _maintenanceImagePicker.pickMultiImage(
+          imageQuality: 82,
+          maxWidth: 2048,
+          limit: remaining,
+        );
+        if (!mounted || picked.isEmpty) return;
+        setState(() {
+          for (final file in picked) {
+            if (_maintenancePhotoLocals.length >= _kMaintenancePhotoMax) break;
+            _maintenancePhotoLocals.add(file.path);
+          }
+        });
+      } else {
+        final picked = await _maintenanceImagePicker.pickImage(
+          source: source,
+          imageQuality: 82,
+          maxWidth: 2048,
+        );
+        if (picked == null || !mounted) return;
+        setState(() => _maintenancePhotoLocals.add(picked.path));
+      }
       _scheduleUiRefresh();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'เลือกรูปไม่สำเร็จ: $e',
+            maintenanceImagePickErrorMessage(e),
             style: GoogleFonts.kanit(),
           ),
           behavior: SnackBarBehavior.floating,
@@ -6255,6 +6288,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       ),
     );
     if (source == null || !mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 280));
+    if (!mounted) return;
     await _pickMaintenancePhoto(source);
   }
 
