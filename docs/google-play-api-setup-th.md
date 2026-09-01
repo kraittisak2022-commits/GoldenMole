@@ -180,7 +180,7 @@ cd c:\construction-management-app\mobile-flutter
 | `403` permission denied | เชิญ service account ใหม่ + สิทธิ์ Release manager + เลือกแอป                                                                                   |
 | `404 Package not found` | ตรวจ `com.goldenmole.app` ใน Console                                                                                                            |
 | API not enabled         | Enable [androidpublisher API](https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com) ใน Cloud project เดียวกับ JSON key |
-| อัปโหลดไม่ผ่าน — photo/video permissions | Play Console → **นโยบายและโปรแกรม** → **เนื้อหาแอป** → **สิทธิ์ที่ละเอียดอ่อนของแอป** (หรือ **Photo and video**) → กรอกว่าใช้กล้อง/รูปเพื่อ **แนบรูปประกอบบันทึกบำรุงรักษา** → บันทึก → รออนุมัติ (ถ้ามี) แล้วรัน `.\scripts\release-android-closed.ps1 -SkipBuild` อีกครั้ง |
+| อัปโหลดไม่ผ่าน — photo/video permissions | แอปใช้ Photo Picker ไม่ต้องขอ `READ_MEDIA_IMAGES` — ถ้ายังเจอ error ให้ตรวจ `AndroidManifest.xml` ว่าไม่มีสิทธิ์นี้ แล้ว build รุ่นใหม่ หรือถ้าจำเป็นต้องใช้สิทธิ์กว้าง: Play Console → ค้นหา **Photo and video** หรือ **App content** → แท็บ **Needs attention** |
 
 
 ---

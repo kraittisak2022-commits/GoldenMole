@@ -33,11 +33,8 @@ class MaintenanceImagePermissions {
 
     if (Platform.isAndroid) {
       final sdk = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
-      // Android 13+ ใช้ Photo Picker ได้โดยไม่บังคับสิทธิ์ — ขอแบบ best-effort
-      if (sdk >= 33) {
-        await Permission.photos.request();
-        return null;
-      }
+      // Android 13+ uses system Photo Picker — no READ_MEDIA permission needed.
+      if (sdk >= 33) return null;
       var status = await Permission.storage.status;
       if (!status.isGranted) {
         status = await Permission.storage.request();
