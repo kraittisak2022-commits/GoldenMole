@@ -205,11 +205,15 @@ describe('ReportsModule', () => {
         );
 
         await user.click(screen.getByRole('tab', { name: 'รายงานการใช้รถ' }));
-        expect(screen.getByRole('heading', { name: 'รายงานการใช้รถ' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'รายงานการใช้รถแม็คโคร' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'รายงานเที่ยวรถดั๊ม สิบล้อ ดรัม' })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: 'รายงานรถแม็คโคร' })).toBeInTheDocument();
+        expect(screen.getByRole('tab', { name: 'รายงานรถดั๊ม / สิบล้อ / ดรัม' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'รายงานรถแม็คโคร' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'พิมพ์แม็คโคร 01' })).toBeInTheDocument();
         expect(screen.getAllByText('แม็คโคร 01').length).toBeGreaterThan(0);
         expect(screen.getByText('ขุดลาน')).toBeInTheDocument();
         expect(screen.getByText('ชาย')).toBeInTheDocument();
+        expect(screen.queryByRole('columnheader', { name: 'สรุป' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('columnheader', { name: 'เที่ยว' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('columnheader', { name: 'คิว' })).not.toBeInTheDocument();
     });
 });

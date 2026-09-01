@@ -32,10 +32,10 @@ import {
 } from '../../utils/fuelUsageReport';
 import {
     buildVehicleUsageReport,
+    filterVehicleUsageByVehicle,
     filterVehicleUsageReport,
     vehicleKindLabel,
     vehiclePrintGroupTitle,
-    vehiclePrintOverviewSections,
     vehicleUsageToCsv,
     vehicleUsageToPrintHtml,
     type VehiclePrintGroup,
@@ -44,9 +44,14 @@ import {
 import { transactionVehicleLabel } from '../../utils/vehicleCatalog';
 
 const PRINT_GROUPS: FuelPrintGroup[] = ['overview', 'stock_in', 'macro', 'sieve_generator', 'other_fill'];
-const VEHICLE_PRINT_GROUPS: VehiclePrintGroup[] = ['overview', 'macro', 'dump', 'hire'];
 
 type ReportMenu = 'fuel' | 'vehicle';
+
+const VEHICLE_REPORT_TABS: Array<{ id: VehicleUsageKind; label: string; printGroup: Exclude<VehiclePrintGroup, 'overview'> }> = [
+    { id: 'macro', label: 'รายงานรถแม็คโคร', printGroup: 'macro' },
+    { id: 'dump_trip', label: 'รายงานรถดั๊ม / สิบล้อ / ดรัม', printGroup: 'dump' },
+    { id: 'hire', label: 'รายงานการใช้รถ (ค่าจ้าง)', printGroup: 'hire' },
+];
 
 interface ReportsModuleProps {
     transactions: Transaction[];
@@ -63,13 +68,6 @@ const KIND_OPTIONS: Array<{ id: '' | FuelUsageKind; label: string }> = [
     { id: 'vehicle', label: 'ใช้แล้ว (รถ/แม็คโคร)' },
     { id: 'sand_sieve', label: 'ใช้แล้ว (ร่อนทราย)' },
     { id: 'other_out', label: 'ใช้แล้ว (อื่น ๆ)' },
-];
-
-const VEHICLE_KIND_OPTIONS: Array<{ id: '' | VehicleUsageKind; label: string }> = [
-    { id: '', label: 'ทุกรายการ' },
-    { id: 'macro', label: 'รถแม็คโคร' },
-    { id: 'dump_trip', label: 'เที่ยวรถดั๊ม / สิบล้อ / ดรัม' },
-    { id: 'hire', label: 'การใช้รถ (ค่าจ้าง)' },
 ];
 
 const selectClass = 'dark:bg-white/5 dark:text-slate-100 dark:border-white/20';
@@ -168,7 +166,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
     const [vehicleId, setVehicleId] = useState('');
     const [fuelType, setFuelType] = useState<'' | FuelTypeFilter>('');
     const [kind, setKind] = useState<'' | FuelUsageKind>('');
-    const [vehicleKind, setVehicleKind] = useState<'' | VehicleUsageKind>('');
+    const [vehicleKind, setVehicleKind] = useState<VehicleUsageKind>('macro');
 
     const orgTitle = (settings.orgProfile?.name || settings.appName || 'Goldenmole').trim();
     const orgLine = [settings.orgProfile?.address, settings.orgProfile?.phone].filter(Boolean).join(' · ');
@@ -178,22 +176,6 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
         const names = new Set<string>(settings.cars || []);
         transactions.forEach((t) => {
             if (t.category !== 'Fuel') return;
-            const label = transactionVehicleLabel(
-                { vehicleId: t.vehicleId, vehicleName: t.vehicleName },
-                catalog,
-            );
-            if (label) names.add(label);
-        });
-        return Array.from(names).sort((a, b) => a.localeCompare(b, 'th'));
-    }, [settings.cars, settings.vehicleCatalog, transactions]);
-
-    const opsVehicleOptions = useMemo(() => {
-        const catalog = settings.vehicleCatalog || [];
-        const names = new Set<string>(settings.cars || []);
-        transactions.forEach((t) => {
-            if (t.category !== 'Vehicle' && !(t.category === 'DailyLog' && String(t.subCategory ?? '').toLowerCase() === 'vehicletrip')) {
-                return;
-            }
             const label = transactionVehicleLabel(
                 { vehicleId: t.vehicleId, vehicleName: t.vehicleName },
                 catalog,
@@ -238,6 +220,19 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
         [transactions, employees, range.start, range.end, vehicleId, vehicleKind, settings.vehicleCatalog]
     );
 
+    const opsVehicleOptions = useMemo(() => {
+        const unfiltered = buildVehicleUsageReport(transactions, employees, {
+            start: range.start,
+            end: range.end,
+            kind: vehicleKind,
+            vehicleCatalog: settings.vehicleCatalog,
+        });
+        return unfiltered.byVehicle
+            .map((row) => row.vehicleId)
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b, 'th'));
+    }, [transactions, employees, range.start, range.end, vehicleKind, settings.vehicleCatalog]);
+
     const remainingStock = useMemo(() => {
         const throughEnd = transactions.filter(t => normalizeDate(t.date) <= range.end);
         const sieveThroughEnd: Record<string, number> = {};
@@ -255,10 +250,9 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
     const rangeLabel = `${formatDateBE(range.start)} – ${formatDateBE(range.end)}`;
 
     const overviewSections = useMemo(() => fuelPrintOverviewSections(fuelReport), [fuelReport]);
-    const vehicleOverviewSections = useMemo(
-        () => vehiclePrintOverviewSections(vehicleReport),
-        [vehicleReport],
-    );
+
+    const activeVehicleTab = VEHICLE_REPORT_TABS.find((t) => t.id === vehicleKind) || VEHICLE_REPORT_TABS[0];
+    const vehiclePrintGroup = activeVehicleTab.printGroup;
 
     const applyBounds = (bounds: { start: string; end: string }) => {
         setStart(bounds.start);
@@ -326,10 +320,17 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
         w.print();
     };
 
-    const printVehicleGroupReport = (group: VehiclePrintGroup, locale: 'th' | 'zh' = 'th') => {
-        const grouped = group === 'overview'
+    const printVehicleGroupReport = (
+        group: VehiclePrintGroup,
+        locale: 'th' | 'zh' = 'th',
+        opts?: { vehicleId?: string },
+    ) => {
+        let grouped = group === 'overview'
             ? vehicleReport
             : filterVehicleUsageReport(vehicleReport, group);
+        if (opts?.vehicleId) {
+            grouped = filterVehicleUsageByVehicle(grouped, opts.vehicleId);
+        }
         const html = vehicleUsageToPrintHtml({
             appName: orgTitle,
             orgSubtitle: orgLine || undefined,
@@ -338,6 +339,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
             group,
             formatDate: formatDateBE,
             locale,
+            vehicleTitle: opts?.vehicleId,
         });
         const w = window.open('', '_blank');
         if (!w) return;
@@ -352,8 +354,13 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
         setMenu(next);
         setVehicleId('');
         setKind('');
-        setVehicleKind('');
+        setVehicleKind('macro');
         setFuelType('');
+    };
+
+    const switchVehicleReport = (next: VehicleUsageKind) => {
+        setVehicleKind(next);
+        setVehicleId('');
     };
 
     return (
@@ -712,34 +719,60 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                 </>
             ) : (
                 <>
+                    <div className="flex flex-wrap gap-2 print:hidden" role="tablist" aria-label="ประเภทรายงานการใช้รถ">
+                        {VEHICLE_REPORT_TABS.map((tab) => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={vehicleKind === tab.id}
+                                onClick={() => switchVehicleReport(tab.id)}
+                                className={`inline-flex items-center rounded-xl px-3.5 py-2 text-sm font-bold transition ${
+                                    vehicleKind === tab.id
+                                        ? 'bg-sky-600 text-white shadow-sm'
+                                        : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-white/5 dark:text-slate-200 dark:ring-white/15'
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between print:hidden">
                         <div className="min-w-0">
                             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">เอกสารรายงาน</p>
                             <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50 flex items-center gap-2">
                                 <Truck className="h-5 w-5 text-slate-700 dark:text-slate-200 shrink-0" />
-                                รายงานการใช้รถ
+                                {activeVehicleTab.label}
                             </h3>
                             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
-                                รวมรถแม็คโคร · เที่ยวรถดั๊ม/สิบล้อ/ดรัม · การใช้รถที่มีค่าจ้าง — กรองช่วงวันที่และพิมพ์/ส่งออกได้เหมือนรายงานน้ำมัน
+                                รายงานแยกตามประเภทรถ — กรองวันที่ ดูสรุปตามรถแล้วพิมพ์ได้รายคัน และดูรายละเอียดแยกเป็นรายวัน
                             </p>
                         </div>
                         <div className="flex flex-wrap gap-2 shrink-0">
                             <Button type="button" variant="outline" className="px-3" onClick={exportVehicleCsv}>
                                 <FileDown className="h-4 w-4" /> Export CSV
                             </Button>
-                            {VEHICLE_PRINT_GROUPS.map(group => (
-                                <Button
-                                    key={group}
-                                    type="button"
-                                    variant="outline"
-                                    className="px-3 text-xs sm:text-sm"
-                                    aria-label={vehiclePrintGroupTitle(group)}
-                                    onClick={() => printVehicleGroupReport(group)}
-                                >
-                                    <Printer className="h-4 w-4 shrink-0" />
-                                    <span className="max-w-[9rem] truncate sm:max-w-none">{vehiclePrintGroupTitle(group)}</span>
-                                </Button>
-                            ))}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="px-3 text-xs sm:text-sm"
+                                aria-label={vehiclePrintGroupTitle(vehiclePrintGroup)}
+                                onClick={() => printVehicleGroupReport(vehiclePrintGroup)}
+                            >
+                                <Printer className="h-4 w-4 shrink-0" />
+                                พิมพ์รายงานนี้
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="px-3 text-xs sm:text-sm"
+                                aria-label={vehiclePrintGroupTitle(vehiclePrintGroup, 'zh')}
+                                onClick={() => printVehicleGroupReport(vehiclePrintGroup, 'zh')}
+                            >
+                                <Printer className="h-4 w-4 shrink-0" />
+                                พิมพ์+ภาษาจีน
+                            </Button>
                         </div>
                     </div>
 
@@ -750,7 +783,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                             <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
                                 ช่วง <span className="font-medium text-slate-800 dark:text-slate-100">{rangeLabel}</span>
                                 <span className="text-slate-400 mx-1.5">·</span>
-                                {vehicleReport.totals.count} รายการ
+                                {vehicleReport.totals.count} รายการ · {vehicleReport.totals.vehicleCount} คัน
                             </p>
                         </div>
 
@@ -766,259 +799,125 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                         <option key={name} value={name}>{name}</option>
                                     ))}
                                 </Select>
-                                <Select label="ประเภทการใช้รถ" value={vehicleKind} onChange={e => setVehicleKind(e.target.value as '' | VehicleUsageKind)} className={selectClass}>
-                                    {VEHICLE_KIND_OPTIONS.map(opt => (
-                                        <option key={opt.id || 'all'} value={opt.id}>{opt.label}</option>
-                                    ))}
-                                </Select>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(monthBoundsFromYmd(today))}>เดือนนี้</Button>
-                                <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(shiftMonthBounds(today, -1))}>เดือนที่แล้ว</Button>
-                                <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(yearBoundsFromYmd(today))}>ปีนี้</Button>
+                                <div className="flex flex-wrap items-end gap-2">
+                                    <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(monthBoundsFromYmd(today))}>เดือนนี้</Button>
+                                    <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(shiftMonthBounds(today, -1))}>เดือนที่แล้ว</Button>
+                                    <Button type="button" variant="ghost" className="px-3 py-2 text-xs" onClick={() => applyBounds(yearBoundsFromYmd(today))}>ปีนี้</Button>
+                                </div>
                             </div>
                         </div>
                     </Card>
 
-                    <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10 print:hidden">
-                        <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
-                            <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปภาพรวมแต่ละรายงาน</h4>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
-                                        <th scope="col" className="px-4 py-2.5 font-semibold">รายงาน</th>
-                                        <th scope="col" className="px-4 py-2.5 font-semibold">สรุป</th>
-                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
-                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right w-20">พิมพ์</th>
-                                        <th scope="col" className="px-4 py-2.5 font-semibold text-right w-28">พิมพ์+ภาษาจีน</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {vehicleOverviewSections.map((section) => (
-                                        <Fragment key={section.id}>
-                                            <tr className="bg-slate-100/90 dark:bg-white/[0.06]">
-                                                <td colSpan={5} className="px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
-                                                    {section.title}
-                                                    <span className="ml-2 font-semibold normal-case tracking-normal text-slate-500 dark:text-slate-400">
-                                                        {section.count} รายการ · {vehicleReport.totals.vehicleCount} คัน
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                            {section.items.map((item, i) => (
-                                                <tr key={item.group} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                                    <td className="px-4 py-2.5 pl-6 font-medium text-slate-800 dark:text-slate-100">{item.title}</td>
-                                                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{item.metric}</td>
-                                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{item.count}</td>
-                                                    <td className="px-4 py-2.5 text-right">
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            className="px-2 py-1.5 text-xs inline-flex"
-                                                            aria-label={`พิมพ์${vehiclePrintGroupTitle(item.group)}`}
-                                                            onClick={() => printVehicleGroupReport(item.group, 'th')}
-                                                        >
-                                                            <Printer className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                    </td>
-                                                    <td className="px-4 py-2.5 text-right">
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            className="px-2 py-1.5 text-xs inline-flex gap-1"
-                                                            aria-label={`พิมพ์${vehiclePrintGroupTitle(item.group, 'zh')}`}
-                                                            onClick={() => printVehicleGroupReport(item.group, 'zh')}
-                                                        >
-                                                            <Printer className="h-3.5 w-3.5" />
-                                                            <span className="text-[10px] font-bold">中文</span>
-                                                        </Button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </Fragment>
-                                    ))}
-                                </tbody>
-                                <tfoot>
-                                    <tr className="border-t border-slate-200 dark:border-white/10 font-semibold text-slate-800 dark:text-slate-100">
-                                        <td className="px-4 py-2.5">พิมพ์สรุปภาพรวม</td>
-                                        <td className="px-4 py-2.5" />
-                                        <td className="px-4 py-2.5" />
-                                        <td className="px-4 py-2.5 text-right">
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                className="px-2 py-1.5 text-xs inline-flex"
-                                                aria-label={vehiclePrintGroupTitle('overview')}
-                                                onClick={() => printVehicleGroupReport('overview', 'th')}
-                                            >
-                                                <Printer className="h-3.5 w-3.5" />
-                                            </Button>
-                                        </td>
-                                        <td className="px-4 py-2.5 text-right">
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                className="px-2 py-1.5 text-xs inline-flex gap-1"
-                                                aria-label={vehiclePrintGroupTitle('overview', 'zh')}
-                                                onClick={() => printVehicleGroupReport('overview', 'zh')}
-                                            >
-                                                <Printer className="h-3.5 w-3.5" />
-                                                <span className="text-[10px] font-bold">中文</span>
-                                            </Button>
-                                        </td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                    </Card>
-
-                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
                         <SummaryTile
-                            label="แม็คโคร"
-                            value={`${formatDisplayNumber(vehicleReport.totals.macroCount)} รายการ`}
-                            hint={`${vehicleReport.totals.macroFullDays} เต็มวัน · ${vehicleReport.totals.macroHalfDays} ครึ่งวัน`}
+                            label="รายการ"
+                            value={formatDisplayNumber(vehicleReport.totals.count)}
                         />
                         <SummaryTile
-                            label="เที่ยวรถดั๊ม"
-                            value={`${formatDisplayNumber(vehicleReport.totals.dumpTrips)} เที่ยว`}
-                            hint={`${formatDisplayNumber(vehicleReport.totals.dumpCubic)} คิว · ${vehicleReport.totals.dumpTripCount} รายการ`}
-                        />
-                        <SummaryTile
-                            label="การใช้รถ (ค่าจ้าง)"
-                            value={`${formatDisplayNumber(vehicleReport.totals.hireCount)} รายการ`}
-                        />
-                        <SummaryTile
-                            label="รวมรถในช่วง"
+                            label="จำนวนรถ"
                             value={`${formatDisplayNumber(vehicleReport.totals.vehicleCount)} คัน`}
-                            hint={`${vehicleReport.totals.count} รายการทั้งหมด`}
                         />
-                    </div>
-
-                    <div className="grid gap-4 lg:grid-cols-2">
-                        <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
-                            <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10 flex items-center gap-2">
-                                <Truck size={16} className="text-slate-500" />
-                                <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปตามรถ</h4>
-                            </div>
-                            {vehicleReport.byVehicle.length === 0 ? (
-                                <p className="p-6 text-sm text-slate-400 text-center">ยังไม่มีรายการใช้รถในช่วงนี้</p>
-                            ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
-                                        <thead>
-                                            <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
-                                                <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
-                                                <th scope="col" className="px-4 py-2.5 font-semibold">ประเภท</th>
-                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {vehicleReport.byVehicle.map((row, i) => (
-                                                <tr key={`${row.kind}-${row.vehicleId}`} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                                    <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-100">{row.vehicleId}</td>
-                                                    <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300">{vehicleKindLabel(row.kind)}</td>
-                                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{row.count}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </Card>
-
-                        <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
-                            <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
-                                <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปรายวัน</h4>
-                            </div>
-                            {vehicleReport.byDay.length === 0 ? (
-                                <p className="p-6 text-sm text-slate-400 text-center">ไม่มีข้อมูลในช่วงวันที่ที่เลือก</p>
-                            ) : (
-                                <div className="overflow-x-auto max-h-80">
-                                    <table className="w-full text-sm">
-                                        <thead className="sticky top-0 bg-white dark:bg-slate-950 z-10">
-                                            <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
-                                                <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
-                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">แม็คโคร</th>
-                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">เที่ยว</th>
-                                                <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {vehicleReport.byDay.map((row, i) => (
-                                                <tr key={row.date} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                                    <td className="px-4 py-2.5 text-slate-800 dark:text-slate-100 whitespace-nowrap">{formatDateBE(row.date)}</td>
-                                                    <td className="px-4 py-2.5 text-right tabular-nums">{row.macroCount}</td>
-                                                    <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(row.dumpTrips)}</td>
-                                                    <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{row.count}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </Card>
+                        <SummaryTile
+                            label="ประเภท"
+                            value={vehicleKindLabel(vehicleKind)}
+                        />
                     </div>
 
                     <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
-                        <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
-                            <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">รายละเอียดรายการ</h4>
+                        <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10 flex items-center gap-2">
+                            <Truck size={16} className="text-slate-500" />
+                            <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปตามรถ</h4>
                         </div>
-                        {vehicleReport.rows.length === 0 ? (
-                            <p className="p-6 text-sm text-slate-400 text-center">ไม่พบรายการใช้รถในช่วงนี้</p>
+                        {vehicleReport.byVehicle.length === 0 ? (
+                            <p className="p-6 text-sm text-slate-400 text-center">ยังไม่มีรายการใช้รถในช่วงนี้</p>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
-                                            <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
-                                            <th scope="col" className="px-4 py-2.5 font-semibold">ประเภท</th>
                                             <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
-                                            <th scope="col" className="px-4 py-2.5 font-semibold">คนขับ</th>
-                                            <th scope="col" className="px-4 py-2.5 font-semibold">สรุป</th>
-                                            <th scope="col" className="px-4 py-2.5 font-semibold">รายละเอียด</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold text-right">รายการ</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold text-right w-24">พิมพ์</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {(() => {
-                                            const byDate = new Map<string, typeof vehicleReport.rows>();
-                                            for (const row of vehicleReport.rows) {
-                                                const list = byDate.get(row.date) || [];
-                                                list.push(row);
-                                                byDate.set(row.date, list);
-                                            }
-                                            return [...byDate.entries()].map(([date, dayRows]) => (
-                                                <Fragment key={date}>
-                                                    <tr className="bg-slate-100/80 dark:bg-white/[0.06]">
-                                                        <td colSpan={6} className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                                                            {formatDateBE(date)}
-                                                            <span className="ml-2 font-semibold text-slate-500 dark:text-slate-400">
-                                                                {dayRows.length} รายการ
-                                                            </span>
-                                                        </td>
-                                                    </tr>
-                                                    {dayRows.map((row, i) => {
-                                                        const summary = row.kind === 'macro'
-                                                            ? (row.workType === 'HalfDay' ? 'ครึ่งวัน' : 'เต็มวัน')
-                                                            : row.kind === 'dump_trip'
-                                                                ? `${formatDisplayNumber(row.trips)} เที่ยว · ${formatDisplayNumber(row.cubic)} คิว`
-                                                                : 'ค่าจ้าง';
-                                                        return (
-                                                            <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                                                <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{formatDateBE(row.date)}</td>
-                                                                <td className="px-4 py-2.5">{vehicleKindLabel(row.kind)}</td>
-                                                                <td className="px-4 py-2.5 font-medium">{row.vehicleId}</td>
-                                                                <td className="px-4 py-2.5">{row.driverLabel}</td>
-                                                                <td className="px-4 py-2.5 tabular-nums">{summary}</td>
-                                                                <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">{row.description || '—'}</td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </Fragment>
-                                            ));
-                                        })()}
+                                        {vehicleReport.byVehicle.map((row, i) => (
+                                            <tr key={`${row.kind}-${row.vehicleId}`} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                <td className="px-4 py-2.5 font-medium text-slate-800 dark:text-slate-100">{row.vehicleId}</td>
+                                                <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{row.count}</td>
+                                                <td className="px-4 py-2.5 text-right">
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        className="px-2 py-1.5 text-xs inline-flex"
+                                                        aria-label={`พิมพ์${row.vehicleId}`}
+                                                        onClick={() => printVehicleGroupReport(vehiclePrintGroup, 'th', { vehicleId: row.vehicleId })}
+                                                    >
+                                                        <Printer className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </td>
+                                            </tr>
+                                        ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        )}
+                    </Card>
+
+                    <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
+                        <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
+                            <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">รายละเอียดรายวัน</h4>
+                        </div>
+                        {vehicleReport.rows.length === 0 ? (
+                            <p className="p-6 text-sm text-slate-400 text-center">ไม่พบรายการใช้รถในช่วงนี้</p>
+                        ) : (
+                            <div className="space-y-4 p-3 sm:p-4">
+                                {(() => {
+                                    const byDate = new Map<string, typeof vehicleReport.rows>();
+                                    for (const row of vehicleReport.rows) {
+                                        const list = byDate.get(row.date) || [];
+                                        list.push(row);
+                                        byDate.set(row.date, list);
+                                    }
+                                    return [...byDate.entries()].map(([date, dayRows]) => (
+                                        <section
+                                            key={date}
+                                            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/40"
+                                        >
+                                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-100 px-4 py-3 dark:border-white/10 dark:bg-slate-800/80">
+                                                <h5 className="text-sm font-bold text-slate-900 dark:text-slate-50">
+                                                    {formatDateBE(date)}
+                                                </h5>
+                                                <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-white/15">
+                                                    {dayRows.length} รายการ
+                                                </span>
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-sm">
+                                                    <thead>
+                                                        <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
+                                                            <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
+                                                            <th scope="col" className="px-4 py-2.5 font-semibold">คนขับ</th>
+                                                            <th scope="col" className="px-4 py-2.5 font-semibold">รายละเอียด</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {dayRows.map((row, i) => (
+                                                            <tr
+                                                                key={row.id}
+                                                                className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/80 dark:bg-white/[0.03]'}
+                                                            >
+                                                                <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{row.vehicleId}</td>
+                                                                <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{row.driverLabel}</td>
+                                                                <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{row.description || '—'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </section>
+                                    ));
+                                })()}
                             </div>
                         )}
                     </Card>

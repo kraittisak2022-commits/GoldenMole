@@ -288,6 +288,15 @@ export function filterVehicleUsageReport(
     return { rows, ...aggregateVehicleUsageRows(rows) };
 }
 
+export function filterVehicleUsageByVehicle(
+    report: VehicleUsageReport,
+    vehicleId: string,
+): VehicleUsageReport {
+    const want = vehicleId.trim();
+    const rows = want ? report.rows.filter((r) => r.vehicleId === want) : report.rows;
+    return { rows, ...aggregateVehicleUsageRows(rows) };
+}
+
 export function vehiclePrintOverviewSections(report: VehicleUsageReport): Array<{
     id: string;
     title: string;
@@ -313,7 +322,7 @@ export function vehiclePrintOverviewSections(report: VehicleUsageReport): Array<
                     group: 'dump',
                     title: vehiclePrintGroupTitle('dump'),
                     count: dump.length,
-                    metric: `${report.totals.dumpTrips} เที่ยว · ${Math.round(report.totals.dumpCubic * 10) / 10} คิว`,
+                    metric: `${dump.length} รายการ`,
                 },
                 {
                     group: 'hire',
@@ -339,34 +348,27 @@ export function vehicleUsageToCsv(
     const lines: Array<Array<string | number>> = [
         ['รายงานการใช้รถ', `${normalizeDate(filters.start)} - ${normalizeDate(filters.end)}`],
         [],
-        ['ประเภท', 'รายการ', 'สรุป'],
-        ['รถแม็คโคร', report.totals.macroCount, `${report.totals.macroFullDays} เต็มวัน / ${report.totals.macroHalfDays} ครึ่งวัน`],
-        ['เที่ยวรถดั๊ม/สิบล้อ/ดรัม', report.totals.dumpTripCount, `${report.totals.dumpTrips} เที่ยว / ${report.totals.dumpCubic} คิว`],
-        ['การใช้รถ (ค่าจ้าง)', report.totals.hireCount, report.totals.hireAmount],
-        ['รวม', report.totals.count, `${report.totals.vehicleCount} คัน`],
+        ['ประเภท', 'รายการ'],
+        ['รถแม็คโคร', report.totals.macroCount],
+        ['เที่ยวรถดั๊ม/สิบล้อ/ดรัม', report.totals.dumpTripCount],
+        ['การใช้รถ (ค่าจ้าง)', report.totals.hireCount],
+        ['รวม', report.totals.count],
         [],
         ['สรุปตามรถ'],
-        ['ประเภท', 'รถ', 'รายการ', 'เที่ยว', 'คิว', 'เต็มวัน', 'ครึ่งวัน'],
+        ['ประเภท', 'รถ', 'รายการ'],
         ...report.byVehicle.map((v) => [
             vehicleKindLabel(v.kind),
             v.vehicleId,
             v.count,
-            v.trips,
-            v.cubic,
-            v.fullDays,
-            v.halfDays,
         ]),
         [],
         ['รายละเอียด'],
-        ['วันที่', 'ประเภท', 'รถ', 'คนขับ', 'งาน', 'เที่ยว', 'คิว', 'รายละเอียด'],
+        ['วันที่', 'ประเภท', 'รถ', 'คนขับ', 'รายละเอียด'],
         ...report.rows.map((r) => [
             r.date,
             vehicleKindLabel(r.kind),
             r.vehicleId,
             r.driverLabel,
-            r.workType === 'HalfDay' ? 'ครึ่งวัน' : r.workType === 'FullDay' ? 'เต็มวัน' : '',
-            r.trips || '',
-            r.cubic || '',
             r.description,
         ]),
     ];
@@ -390,51 +392,60 @@ export function vehicleUsageToPrintHtml(opts: {
     group: VehiclePrintGroup;
     formatDate: (ymd: string) => string;
     locale?: 'th' | 'zh';
+    vehicleTitle?: string;
 }): string {
     const locale = opts.locale || 'th';
-    const title = vehiclePrintGroupTitle(opts.group, locale);
+    const baseTitle = vehiclePrintGroupTitle(opts.group, locale);
+    const title = opts.vehicleTitle
+        ? `${baseTitle} · ${opts.vehicleTitle}`
+        : baseTitle;
     const th = locale === 'zh'
         ? {
             date: '日期',
-            type: '类型',
             vehicle: '车辆',
             driver: '司机',
             detail: '详情',
-            trips: '趟次',
-            cubic: '方量',
-            work: '班次',
-            full: '全天',
-            half: '半天',
-            summary: '汇总',
             count: '笔数',
+            dayTotal: '当日合计',
         }
         : {
             date: 'วันที่',
-            type: 'ประเภท',
             vehicle: 'รถ',
             driver: 'คนขับ',
             detail: 'รายละเอียด',
-            trips: 'เที่ยว',
-            cubic: 'คิว',
-            work: 'งาน',
-            full: 'เต็มวัน',
-            half: 'ครึ่งวัน',
-            summary: 'สรุป',
             count: 'รายการ',
+            dayTotal: 'รวมวันนั้น',
         };
 
-    const rowsHtml = opts.report.rows.map((r) => {
-        const work = r.workType === 'HalfDay' ? th.half : r.workType === 'FullDay' ? th.full : '—';
-        return `<tr>
-          <td>${escHtml(opts.formatDate(r.date))}</td>
-          <td>${escHtml(vehicleKindLabel(r.kind))}</td>
+    const byDate = new Map<string, typeof opts.report.rows>();
+    for (const row of opts.report.rows) {
+        const list = byDate.get(row.date) || [];
+        list.push(row);
+        byDate.set(row.date, list);
+    }
+
+    const bodyHtml = [...byDate.entries()].map(([date, dayRows]) => {
+        const rows = dayRows.map((r) => `<tr>
           <td>${escHtml(r.vehicleId)}</td>
           <td>${escHtml(r.driverLabel)}</td>
-          <td>${escHtml(work)}</td>
-          <td class="num">${r.trips ? escHtml(r.trips) : '—'}</td>
-          <td class="num">${r.cubic ? escHtml(Math.round(r.cubic * 10) / 10) : '—'}</td>
           <td>${escHtml(r.description || '—')}</td>
-        </tr>`;
+        </tr>`).join('');
+        return `
+        <section class="day">
+          <h2>${escHtml(opts.formatDate(date))}
+            <span>${dayRows.length} ${th.count}</span>
+          </h2>
+          <table>
+            <thead>
+              <tr>
+                <th>${th.vehicle}</th>
+                <th>${th.driver}</th>
+                <th>${th.detail}</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </section>`;
     }).join('');
 
     return `<!DOCTYPE html>
@@ -446,15 +457,17 @@ export function vehicleUsageToPrintHtml(opts: {
   body { font-family: "Sarabun", "Noto Sans Thai", "Microsoft YaHei", sans-serif; color: #0f172a; margin: 24px; }
   h1 { font-size: 18px; margin: 0 0 4px; }
   .meta { color: #64748b; font-size: 12px; margin-bottom: 16px; }
+  .day { margin: 0 0 18px; page-break-inside: avoid; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+  .day h2 { margin: 0; padding: 10px 12px; background: #f1f5f9; font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
+  .day h2 span { color: #64748b; font-weight: 600; font-size: 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th, td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th, td { border-top: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; vertical-align: top; }
   th { background: #f8fafc; }
-  .num { text-align: right; font-variant-numeric: tabular-nums; }
   .tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
   .tile { border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; min-width: 120px; }
   .tile b { display: block; font-size: 16px; }
   .tile span { color: #64748b; font-size: 11px; }
-  @media print { body { margin: 12px; } }
+  @media print { body { margin: 12px; } .day { break-inside: avoid; } }
 </style>
 </head>
 <body>
@@ -462,28 +475,10 @@ export function vehicleUsageToPrintHtml(opts: {
   ${opts.orgSubtitle ? `<div class="meta">${escHtml(opts.orgSubtitle)}</div>` : ''}
   <div class="meta"><strong>${escHtml(title)}</strong> · ${escHtml(opts.rangeLabel)} · ${opts.report.totals.count} ${th.count}</div>
   <div class="tiles">
-    <div class="tile"><span>${escHtml(vehicleKindLabel('macro'))}</span><b>${opts.report.totals.macroCount}</b></div>
-    <div class="tile"><span>${escHtml(vehicleKindLabel('dump_trip'))}</span><b>${opts.report.totals.dumpTrips}</b></div>
-    <div class="tile"><span>${escHtml(vehicleKindLabel('hire'))}</span><b>${opts.report.totals.hireCount}</b></div>
-    <div class="tile"><span>${th.summary}</span><b>${opts.report.totals.vehicleCount}</b></div>
+    <div class="tile"><span>${th.count}</span><b>${opts.report.totals.count}</b></div>
+    <div class="tile"><span>${th.vehicle}</span><b>${opts.report.totals.vehicleCount}</b></div>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>${th.date}</th>
-        <th>${th.type}</th>
-        <th>${th.vehicle}</th>
-        <th>${th.driver}</th>
-        <th>${th.work}</th>
-        <th class="num">${th.trips}</th>
-        <th class="num">${th.cubic}</th>
-        <th>${th.detail}</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rowsHtml || `<tr><td colspan="8">—</td></tr>`}
-    </tbody>
-  </table>
+  ${bodyHtml || `<p>—</p>`}
 </body>
 </html>`;
 }
