@@ -1,4 +1,4 @@
-import { useMemo, useState, Fragment } from 'react';
+import { useMemo, useState, Fragment, type ReactNode } from 'react';
 import { FileDown, Fuel, Printer, Truck } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -105,7 +105,7 @@ const ThaiDateSelect = ({
     return (
         <fieldset className="w-full min-w-0">
             <legend className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">{label}</legend>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <Select
                     aria-label={`${label} วัน`}
                     value={String(Math.min(day, maxDay))}
@@ -150,12 +150,42 @@ const SummaryTile = ({
     value: string;
     hint?: string;
 }) => (
-    <div className="rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-white/[0.03] px-3.5 py-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
-        <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-50">{value}</p>
-        {hint ? <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{hint}</p> : null}
+    <div className="rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-white/[0.03] px-3.5 py-3 min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 break-words">{label}</p>
+        <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-50 break-words">{value}</p>
+        {hint ? <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 break-words">{hint}</p> : null}
     </div>
 );
+
+const ReportDocHeader = ({
+    icon,
+    title,
+    description,
+    actions,
+}: {
+    icon: ReactNode;
+    title: string;
+    description: string;
+    actions: ReactNode;
+}) => (
+    <div className="w-full min-w-0 space-y-4 print:hidden">
+        <div className="w-full min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">เอกสารรายงาน</p>
+            <h3 className="mt-1 flex items-start gap-2 text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50 sm:text-xl">
+                <span className="mt-0.5 shrink-0">{icon}</span>
+                <span className="min-w-0 break-words">{title}</span>
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400 break-words">
+                {description}
+            </p>
+        </div>
+        <div className="grid w-full min-w-0 grid-cols-1 gap-2 min-[420px]:grid-cols-2 xl:flex xl:flex-wrap">
+            {actions}
+        </div>
+    </div>
+);
+
+const reportTableClass = 'w-full min-w-[36rem] text-sm';
 
 const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModuleProps) => {
     const today = getToday();
@@ -368,14 +398,14 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
     };
 
     return (
-        <div className="space-y-5 print:space-y-4">
+        <div className="w-full min-w-0 max-w-full space-y-5 print:space-y-4">
             <div className="flex flex-wrap gap-2 print:hidden" role="tablist" aria-label="เมนูย่อยรายงาน">
                 <button
                     type="button"
                     role="tab"
                     aria-selected={menu === 'fuel'}
                     onClick={() => switchMenu('fuel')}
-                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold transition ${
+                    className={`inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold transition whitespace-normal text-center leading-snug sm:flex-none sm:justify-start ${
                         menu === 'fuel'
                             ? 'bg-amber-500 text-white shadow-sm'
                             : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-white/5 dark:text-slate-200 dark:ring-white/15'
@@ -389,7 +419,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                     role="tab"
                     aria-selected={menu === 'vehicle'}
                     onClick={() => switchMenu('vehicle')}
-                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold transition ${
+                    className={`inline-flex min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-bold transition whitespace-normal text-center leading-snug sm:flex-none sm:justify-start ${
                         menu === 'vehicle'
                             ? 'bg-sky-600 text-white shadow-sm'
                             : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-white/5 dark:text-slate-200 dark:ring-white/15'
@@ -402,36 +432,31 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
 
             {menu === 'fuel' ? (
                 <>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between print:hidden">
-                        <div className="min-w-0">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">เอกสารรายงาน</p>
-                            <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50 flex items-center gap-2">
-                                <Fuel className="h-5 w-5 text-slate-700 dark:text-slate-200 shrink-0" />
-                                รายงานการใช้น้ำมัน
-                            </h3>
-                            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
-                                รับเข้า = เพิ่มเข้าถังหลัก · เบิกไปถังสำรองยังไม่นับเป็นใช้ · ใช้แล้ว = รถ/แม็คโคร, รถยนต์, เครื่องปั่นไฟ, อื่นระบุ, ร่อนทราย
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2 shrink-0">
-                            <Button type="button" variant="outline" className="px-3" onClick={exportFuelCsv}>
-                                <FileDown className="h-4 w-4" /> Export CSV
-                            </Button>
-                            {PRINT_GROUPS.map(group => (
-                                <Button
-                                    key={group}
-                                    type="button"
-                                    variant="outline"
-                                    className="px-3 text-xs sm:text-sm"
-                                    aria-label={fuelPrintGroupTitle(group)}
-                                    onClick={() => printFuelGroupReport(group)}
-                                >
-                                    <Printer className="h-4 w-4 shrink-0" />
-                                    <span className="max-w-[9rem] truncate sm:max-w-none">{fuelPrintGroupTitle(group)}</span>
+                    <ReportDocHeader
+                        icon={<Fuel className="h-5 w-5 text-slate-700 dark:text-slate-200" />}
+                        title="รายงานการใช้น้ำมัน"
+                        description="รับเข้า = เพิ่มเข้าถังหลัก · เบิกไปถังสำรองยังไม่นับเป็นใช้ · ใช้แล้ว = รถ/แม็คโคร, รถยนต์, เครื่องปั่นไฟ, อื่นระบุ, ร่อนทราย"
+                        actions={(
+                            <>
+                                <Button type="button" variant="outline" className="w-full justify-center px-3 xl:w-auto" onClick={exportFuelCsv}>
+                                    <FileDown className="h-4 w-4" /> Export CSV
                                 </Button>
-                            ))}
-                        </div>
-                    </div>
+                                {PRINT_GROUPS.map(group => (
+                                    <Button
+                                        key={group}
+                                        type="button"
+                                        variant="outline"
+                                        className="w-full justify-center px-3 text-xs sm:text-sm xl:w-auto"
+                                        aria-label={fuelPrintGroupTitle(group)}
+                                        onClick={() => printFuelGroupReport(group)}
+                                    >
+                                        <Printer className="h-4 w-4 shrink-0" />
+                                        <span className="whitespace-normal text-center leading-snug">{fuelPrintGroupTitle(group)}</span>
+                                    </Button>
+                                ))}
+                            </>
+                        )}
+                    />
 
                     <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10 shadow-sm">
                         <div className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-white/[0.03] px-5 py-4">
@@ -449,7 +474,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                 <ThaiDateSelect label="ตั้งแต่" value={start} onChange={setStart} />
                                 <ThaiDateSelect label="ถึง" value={end} onChange={setEnd} />
                             </div>
-                            <div className="grid gap-3 sm:grid-cols-3">
+                            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                                 <Select label="รถ" value={vehicleId} onChange={e => setVehicleId(e.target.value)} className={selectClass}>
                                     <option value="">ทุกคัน</option>
                                     {fuelVehicleOptions.map(name => (
@@ -480,7 +505,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                             <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">สรุปภาพรวมแต่ละรายงาน</h4>
                         </div>
                         <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
+                            <table className={reportTableClass}>
                                 <thead>
                                     <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
                                         <th scope="col" className="px-4 py-2.5 font-semibold">รายงาน</th>
@@ -575,7 +600,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                         </div>
                     </Card>
 
-                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4">
                         <SummaryTile label="รับเข้า (ถังหลัก)" value={liters(fuelReport.totals.stockInLiters)} />
                         <SummaryTile
                             label="เบิกไปถังสำรอง"
@@ -611,7 +636,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                 <p className="p-6 text-sm text-slate-400 text-center">ยังไม่มีรายการใช้น้ำมันรายรถในช่วงนี้</p>
                             ) : (
                                 <div className="overflow-x-auto">
-                                    <table className="w-full text-sm">
+                                    <table className={reportTableClass}>
                                         <thead>
                                             <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
                                                 <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
@@ -641,7 +666,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                 <p className="p-6 text-sm text-slate-400 text-center">ไม่มีข้อมูลในช่วงวันที่ที่เลือก</p>
                             ) : (
                                 <div className="overflow-x-auto max-h-80">
-                                    <table className="w-full text-sm">
+                                    <table className={reportTableClass}>
                                         <thead className="sticky top-0 bg-white dark:bg-slate-950 z-10">
                                             <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
                                                 <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
@@ -674,7 +699,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                             <p className="p-6 text-sm text-slate-400 text-center">ไม่พบรายการน้ำมันในช่วงนี้</p>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
+                                <table className={reportTableClass}>
                                     <thead>
                                         <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
                                             <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
@@ -731,7 +756,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                 role="tab"
                                 aria-selected={vehicleKind === tab.id}
                                 onClick={() => switchVehicleReport(tab.id)}
-                                className={`inline-flex items-center rounded-xl px-3.5 py-2 text-sm font-bold transition ${
+                                className={`inline-flex items-center rounded-xl px-3.5 py-2 text-sm font-bold transition text-left whitespace-normal leading-snug ${
                                     vehicleKind === tab.id
                                         ? 'bg-sky-600 text-white shadow-sm'
                                         : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-white/5 dark:text-slate-200 dark:ring-white/15'
@@ -742,43 +767,38 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                         ))}
                     </div>
 
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between print:hidden">
-                        <div className="min-w-0">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">เอกสารรายงาน</p>
-                            <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50 flex items-center gap-2">
-                                <Truck className="h-5 w-5 text-slate-700 dark:text-slate-200 shrink-0" />
-                                {activeVehicleTab.label}
-                            </h3>
-                            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
-                                รายงานแยกตามประเภทรถ — กรองวันที่ ดูสรุปตามรถแล้วพิมพ์ได้รายคัน และดูรายละเอียดแยกเป็นรายวัน
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2 shrink-0">
-                            <Button type="button" variant="outline" className="px-3" onClick={exportVehicleCsv}>
-                                <FileDown className="h-4 w-4" /> Export CSV
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                className="px-3 text-xs sm:text-sm"
-                                aria-label={vehiclePrintGroupTitle(vehiclePrintGroup)}
-                                onClick={() => printVehicleGroupReport(vehiclePrintGroup)}
-                            >
-                                <Printer className="h-4 w-4 shrink-0" />
-                                พิมพ์รายงานนี้
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                className="px-3 text-xs sm:text-sm"
-                                aria-label={vehiclePrintGroupTitle(vehiclePrintGroup, 'zh')}
-                                onClick={() => printVehicleGroupReport(vehiclePrintGroup, 'zh')}
-                            >
-                                <Printer className="h-4 w-4 shrink-0" />
-                                พิมพ์+ภาษาจีน
-                            </Button>
-                        </div>
-                    </div>
+                    <ReportDocHeader
+                        icon={<Truck className="h-5 w-5 text-slate-700 dark:text-slate-200" />}
+                        title={activeVehicleTab.label}
+                        description="รายงานแยกตามประเภทรถ — กรองวันที่ ดูสรุปตามรถแล้วพิมพ์ได้รายคัน และดูรายละเอียดแยกเป็นรายวัน"
+                        actions={(
+                            <>
+                                <Button type="button" variant="outline" className="w-full justify-center px-3 xl:w-auto" onClick={exportVehicleCsv}>
+                                    <FileDown className="h-4 w-4" /> Export CSV
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="w-full justify-center px-3 text-xs sm:text-sm xl:w-auto"
+                                    aria-label={vehiclePrintGroupTitle(vehiclePrintGroup)}
+                                    onClick={() => printVehicleGroupReport(vehiclePrintGroup)}
+                                >
+                                    <Printer className="h-4 w-4 shrink-0" />
+                                    <span className="whitespace-normal text-center leading-snug">พิมพ์รายงานนี้</span>
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="w-full justify-center px-3 text-xs sm:text-sm xl:w-auto"
+                                    aria-label={vehiclePrintGroupTitle(vehiclePrintGroup, 'zh')}
+                                    onClick={() => printVehicleGroupReport(vehiclePrintGroup, 'zh')}
+                                >
+                                    <Printer className="h-4 w-4 shrink-0" />
+                                    <span className="whitespace-normal text-center leading-snug">พิมพ์+ภาษาจีน</span>
+                                </Button>
+                            </>
+                        )}
+                    />
 
                     <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10 shadow-sm">
                         <div className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-white/[0.03] px-5 py-4">
@@ -812,7 +832,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                         </div>
                     </Card>
 
-                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-3">
                         <SummaryTile
                             label="รายการ"
                             value={formatDisplayNumber(vehicleReport.totals.count)}
@@ -836,7 +856,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                             <p className="p-6 text-sm text-slate-400 text-center">ยังไม่มีรายการใช้รถในช่วงนี้</p>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
+                                <table className={reportTableClass}>
                                     <thead>
                                         <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
                                             <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
@@ -909,7 +929,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                                 </div>
                                             </div>
                                             <div className="overflow-x-auto">
-                                                <table className="w-full text-sm">
+                                                <table className={reportTableClass}>
                                                     <thead>
                                                         <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
                                                             <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
