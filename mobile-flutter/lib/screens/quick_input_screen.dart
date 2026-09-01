@@ -1209,6 +1209,63 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
+  /// ล้างค่าในแถวน้ำมันแม็คโคร (คงแถวรถไว้เพราะผูกกับบันทึกการใช้รถวันนั้น)
+  void _clearFuelVehicleDraftFields(_FuelVehicleDraft row) {
+    row.txId = null;
+    row.liters = '';
+    row.time = '';
+    row.litersController.clear();
+    row.timeController.clear();
+  }
+
+  /// ลบรายการใช้น้ำมันแม็คโคร: มี `txId` ลบจากฐานข้อมูล + คืนยอดถัง — ไม่เช่นนั้นล้างเฉพาะฟอร์ม
+  Future<void> _handleFuelVehicleRowDelete(_FuelVehicleDraft row) async {
+    final prior = _priorFuelVehicleUsageForDraft(row);
+    final persistedId = (row.txId ?? prior?.id)?.trim();
+    if (persistedId != null && persistedId.isNotEmpty) {
+      AppTransaction? oldTx = prior;
+      if (oldTx == null) {
+        for (final t in _moduleDayAllTransactions) {
+          if (t.id == persistedId) {
+            oldTx = t;
+            break;
+          }
+        }
+      }
+      try {
+        await _deleteTransactionOfflineAware(persistedId);
+        if (!mounted) return;
+        if (oldTx != null) {
+          await _applyLocalFuelStockAfterSave(const [], reverseFirst: [oldTx]);
+        } else {
+          await _refreshFuelStock(allowNetworkFetch: false);
+        }
+        if (!mounted) return;
+        await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
+        if (!mounted) return;
+        setState(() => _clearFuelVehicleDraftFields(row));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'ลบรายการน้ำมันแล้ว',
+              style: GoogleFonts.kanit(),
+            ),
+          ),
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('ลบไม่สำเร็จ: $e', style: GoogleFonts.kanit()),
+            ),
+          );
+        }
+      }
+      return;
+    }
+    setState(() => _clearFuelVehicleDraftFields(row));
+  }
+
   void _disposeFuelVehicleDrafts() {
     for (final row in _fuelVehicleDrafts) {
       row.dispose();
@@ -4621,16 +4678,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               field: 'จำนวนลิตรที่เบิกออก',
             );
           }
-          final reserveAfterReverse =
-              _fuelStock.reserveDiesel - (isUpdate ? priorLiters : 0);
-          final reserveRoom =
-              kFuelTankCapacityReserveLiters - reserveAfterReverse;
-          if (liters > reserveRoom + 1e-9) {
-            _failSave(
-              'ถังสำรองว่างเหลือ ${formatFuelLiters(reserveRoom < 0 ? 0 : reserveRoom)} ลิตร',
-              field: 'จำนวนลิตรที่เบิกออก',
-            );
-          }
+          // เกินความจุถังสำรอง — เตือนบนแบนเนอร์ได้ แต่ไม่บล็อกบันทึก
           final ts = DateTime.now().millisecondsSinceEpoch;
           final existingInId = _fuelWithdrawTransferInTxId?.trim();
           final outId =
@@ -4946,8 +4994,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _saveFuelVehicleUsageEntries() async {
+    var doneMessage = 'บันทึกการใช้น้ำมันรายรถสำเร็จ';
     await _runSaveWithPopups(
       successMessage: 'บันทึกการใช้น้ำมันรายรถสำเร็จ',
+      successMessageBuilder: () => doneMessage,
       saveActionLabel: 'บันทึกการใช้น้ำมันรายรถ',
       saveButtonLabel: 'บันทึก',
       requireSignature: false,
@@ -4964,13 +5014,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           );
         }
         final allowed = fuelCars.toSet();
-        final activeRows = _fuelVehicleDrafts.where((row) {
-          if (!allowed.contains(row.vehicleId.trim())) return false;
+        final rowsToSave = <_FuelVehicleDraft>[];
+        final rowsToDelete = <_FuelVehicleDraft>[];
+        for (final row in _fuelVehicleDrafts) {
+          if (!allowed.contains(row.vehicleId.trim())) continue;
           final liters = double.tryParse(row.liters.trim()) ?? 0;
-          final hasTime = row.time.trim().isNotEmpty;
-          return liters > 0 || hasTime || row.txId != null;
-        }).toList();
-        if (activeRows.isEmpty) {
+          final priorTx = _priorFuelVehicleUsageForDraft(row);
+          final hasPersisted =
+              priorTx != null || (row.txId?.trim().isNotEmpty ?? false);
+          if (liters > 0) {
+            rowsToSave.add(row);
+          } else if (hasPersisted) {
+            // เคลียร์เป็น 0 / ว่าง = ลบรายการผิดที่เคยบันทึกไว้
+            rowsToDelete.add(row);
+          }
+        }
+        if (rowsToSave.isEmpty && rowsToDelete.isEmpty) {
           _failSave('กรุณาระบุปริมาณน้ำมันอย่างน้อย 1 คัน');
         }
         final y = _selectedDate.year.toString().padLeft(4, '0');
@@ -4978,10 +5037,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final d = _selectedDate.day.toString().padLeft(2, '0');
         final date = '$y-$m-$d';
 
-        final saved = <AppTransaction>[];
         final reverseFirst = <AppTransaction>[];
-        for (var i = 0; i < activeRows.length; i++) {
-          final row = activeRows[i];
+        for (final row in rowsToDelete) {
+          final priorTx = _priorFuelVehicleUsageForDraft(row);
+          final id = (row.txId ?? priorTx?.id)?.trim() ?? '';
+          if (id.isEmpty) continue;
+          AppTransaction? oldTx = priorTx;
+          if (oldTx == null) {
+            for (final t in _moduleDayAllTransactions) {
+              if (t.id == id) {
+                oldTx = t;
+                break;
+              }
+            }
+          }
+          await _deleteTransactionOfflineAware(id);
+          if (oldTx != null) reverseFirst.add(oldTx);
+          _clearFuelVehicleDraftFields(row);
+        }
+
+        final saved = <AppTransaction>[];
+        for (var i = 0; i < rowsToSave.length; i++) {
+          final row = rowsToSave[i];
           final vehicle = row.vehicleId.trim();
           final liters = double.tryParse(row.liters.trim()) ?? 0;
           if (vehicle.isEmpty) {
@@ -4989,12 +5066,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           }
           if (!fuelCars.contains(vehicle)) {
             _failSave('เลือกรถได้เฉพาะรถแม็คโคร');
-          }
-          if (liters <= 0) {
-            _failSave(
-              'กรุณาระบุปริมาณน้ำมันให้มากกว่า 0 ($vehicle)',
-              field: 'ใช้น้ำมัน (ลิตร)',
-            );
           }
           if (row.time.trim().isEmpty) {
             _failSave('กรุณาระบุเวลาเติมน้ำมัน ($vehicle)');
@@ -5040,6 +5111,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           saved,
           reverseFirst: reverseFirst,
         );
+        if (saved.isEmpty && rowsToDelete.isNotEmpty) {
+          doneMessage = 'ลบรายการน้ำมันที่เคลียร์แล้ว ${rowsToDelete.length} คัน';
+        } else if (saved.isNotEmpty && rowsToDelete.isNotEmpty) {
+          doneMessage =
+              'บันทึก ${saved.length} คัน · ลบที่เคลียร์ ${rowsToDelete.length} คัน';
+        } else {
+          doneMessage = 'บันทึกการใช้น้ำมันรายรถสำเร็จ';
+        }
       },
     );
   }
@@ -8941,8 +9020,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         size.shortestSide < 600 && size.height >= size.width;
     final compactLeaveHistory = phonePortrait && _isLaborLeaveMode;
     final historyDark =
-        (_isMacroVehicleMode || _isLaborLeaveMode || _isLaborAdvanceMode ||
-                _isLaborMode) &&
+        (_isMacroVehicleMode || _isLaborLeaveMode || _isLaborAdvanceMode) &&
             (AppThemeScope.maybeOf(context)?.isDark ??
                 Theme.of(context).brightness == Brightness.dark);
     final historyP = historyDark ? DailyPalette.of(context) : null;
@@ -10042,107 +10120,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-
-  /// Theme สำหรับหน้าบันทึกการทำงาน (ค่าแรง) — คง brightness ของแอป
-  ThemeData _laborFormTheme(BuildContext context) {
-    final base = Theme.of(context);
-    final p = DailyPalette.of(context);
-    final isDark = base.brightness == Brightness.dark;
-    final primary =
-        isDark ? const Color(0xFFA78BFA) : DailyPalette.moduleLabor;
-    return base.copyWith(
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: primary,
-        brightness: isDark ? Brightness.dark : Brightness.light,
-      ),
-      scaffoldBackgroundColor: isDark ? p.surface : _bg,
-      cardTheme: CardThemeData(
-        color: isDark ? p.card : Colors.white,
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(48),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          backgroundColor: primary,
-          foregroundColor: isDark ? const Color(0xFF0B1219) : Colors.white,
-          textStyle: GoogleFonts.kanit(fontWeight: FontWeight.w700),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: isDark ? p.chipSurface : const Color(0xFFFBFCFF),
-        labelStyle: GoogleFonts.kanit(
-          color: p.inkMuted,
-          fontSize: 16.5,
-          fontWeight: FontWeight.w600,
-        ),
-        floatingLabelStyle: GoogleFonts.kanit(
-          color: primary,
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-        ),
-        hintStyle: GoogleFonts.kanit(
-          color: p.inkMuted.withValues(alpha: 0.85),
-          fontSize: 15.5,
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 18,
-        ),
-        prefixIconColor: p.inkMuted,
-        prefixIconConstraints: const BoxConstraints(
-          minWidth: 50,
-          minHeight: 50,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: p.hairline),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: primary, width: 1.5),
-        ),
-      ),
-      textTheme: GoogleFonts.kanitTextTheme(base.textTheme).copyWith(
-        bodyLarge: GoogleFonts.kanit(
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: p.ink,
-        ),
-        bodyMedium: GoogleFonts.kanit(
-          fontSize: 17,
-          color: p.ink,
-        ),
-        titleMedium: GoogleFonts.kanit(
-          fontSize: 19,
-          fontWeight: FontWeight.w700,
-          color: p.ink,
-        ),
-      ),
-      chipTheme: ChipThemeData(
-        backgroundColor: isDark ? p.chipSurface : const Color(0xFFF8FAFC),
-        disabledColor: isDark ? p.chipSurface : const Color(0xFFF1F5F9),
-        selectedColor: primary.withValues(alpha: isDark ? 0.28 : 0.18),
-        checkmarkColor: isDark ? primary : const Color(0xFF0D47A1),
-        side: BorderSide(color: p.hairline),
-        labelStyle: GoogleFonts.kanit(
-          fontWeight: FontWeight.w700,
-          color: p.ink,
-        ),
-        secondaryLabelStyle: GoogleFonts.kanit(
-          fontWeight: FontWeight.w700,
-          color: p.ink,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-
   ThemeData _quickFormTheme(BuildContext context) {
     final base = Theme.of(context);
     const primary = Color(0xFF0F9EA8);
@@ -10282,7 +10259,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final macroDark = _isMacroVehicleMode && appIsDark;
     final incomeExpenseDark = _isIncomeUtilitiesEntryMode && appIsDark;
     final advanceDark = _isLaborAdvanceMode && appIsDark;
-    final laborDark = _isLaborMode && appIsDark;
     return Theme(
       data: _isAttendanceMode
           ? _attendanceFormTheme(context)
@@ -10290,9 +10266,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ? _leaveFormTheme(context)
               : _isLaborAdvanceMode
                   ? _advanceFormTheme(context)
-                  : _isLaborMode
-                      ? _laborFormTheme(context)
-                      : _isMacroVehicleMode
+                  : _isMacroVehicleMode
                       ? _macroFormTheme(context)
                       : _isFuelMode
                           ? _fuelFormTheme(context)
@@ -10333,8 +10307,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _isLaborAdvanceMode ||
                   _isIncomeUtilitiesEntryMode ||
                   _isVehicleTripMode ||
-                  _isDailyEventMode ||
-                  _isLaborMode)
+                  _isDailyEventMode)
               ? dailyColors.surface
               : _bg,
           body: Stack(
@@ -10359,7 +10332,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         ? (incomeExpenseDark
                             ? const [Color(0xFF3730A3), Color(0xFF1E1B4B)]
                             : const [Color(0xFF5C6BC0), Color(0xFF3949AB)])
-                        : (macroDark || otDark || laborDark)
+                        : (macroDark || otDark)
                         ? const [Color(0xFF0A5C66), Color(0xFF0D7A85)]
                         : const [Color(0xFF0D98A5), Color(0xFF1BB7C0)],
                     begin: Alignment.topLeft,
@@ -13339,7 +13312,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
-    return Container(
+    final hasDeletableData = isSaved ||
+        liters > 0 ||
+        row.time.trim().isNotEmpty ||
+        row.liters.trim().isNotEmpty;
+    final card = Container(
       margin: EdgeInsets.only(bottom: phonePortrait ? 8 : 10),
       padding: EdgeInsets.all(phonePortrait ? 12 : 14),
       decoration: BoxDecoration(
@@ -13455,6 +13432,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                                   : const Color(0xFF2E7D32),
                             ),
                           ),
+                        ),
+                      ),
+                    ],
+                    if (phonePortrait && hasDeletableData) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'ปัดซ้ายเพื่อลบ',
+                        style: GoogleFonts.kanit(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: p.inkMuted,
                         ),
                       ),
                     ],
@@ -13593,6 +13581,42 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
         ],
       ),
+    );
+
+    if (!hasDeletableData) return card;
+
+    return Dismissible(
+      key: ValueKey('fuel_usage_row_${identityHashCode(row)}'),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (direction) async {
+        await _handleFuelVehicleRowDelete(row);
+        return false;
+      },
+      background: Container(
+        margin: EdgeInsets.only(bottom: phonePortrait ? 8 : 10),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF7F1D1D) : const Color(0xFFD14343),
+          borderRadius: BorderRadius.circular(phonePortrait ? 14 : 16),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text(
+              'ลบ',
+              style: GoogleFonts.kanit(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.delete_outline_rounded, color: Colors.white),
+          ],
+        ),
+      ),
+      child: card,
     );
   }
 
@@ -13949,7 +13973,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           if (overMain || overReserve) ...[
             SizedBox(height: phonePortrait ? 4 : 4),
             Text(
-              'เกินความจุถัง',
+              phonePortrait
+                  ? 'เกินความจุถัง (บันทึกได้)'
+                  : 'เกินความจุถัง — ยังบันทึกได้ (ใช้เป็นคำเตือน)',
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w700,
@@ -15022,9 +15048,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           SizedBox(height: phonePortrait ? 4 : 6),
           Text(
             phonePortrait
-                ? 'เฉพาะคันที่มีบันทึกการใช้รถวันนี้ — กรอกคันที่เติม'
+                ? 'เฉพาะคันที่มีบันทึกการใช้รถวันนี้ — กรอกคันที่เติม · ปัดซ้ายลบ'
                 : 'แสดงเฉพาะคันที่มีบันทึกการใช้รถแม็คโครของวันนี้ — '
-                    'กรอกเฉพาะคันที่เติมน้ำมัน · '
+                    'กรอกเฉพาะคันที่เติมน้ำมัน · ปัดซ้ายเพื่อลบรายการผิด · '
                     'ถังสำรองหักเฉพาะสำรอง · ถังหลัก (พล่าม) หักเฉพาะหลัก',
             style: GoogleFonts.kanit(
               fontSize: phonePortrait ? 12.5 : 13,
@@ -15483,20 +15509,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget _employeeDataLoadProgressBanner() {
     if (!_employeesLoading) return const SizedBox.shrink();
     final pct = _employeesLoadPercent.clamp(0, 100);
-    final p = DailyPalette.of(context);
-    final appDark = AppThemeScope.maybeOf(context)?.isDark ??
-        Theme.of(context).brightness == Brightness.dark;
-    // Dark tokens only on บันทึกการทำงาน — other modes keep light banner.
-    final isDark = _isLaborMode && appDark;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: isDark ? p.brandSurface : const Color(0xFFEFF7FF),
+          color: const Color(0xFFEFF7FF),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isDark ? p.brandBorder : const Color(0xFFC8DCF2),
-          ),
+          border: Border.all(color: const Color(0xFFC8DCF2)),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -15508,10 +15527,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 child: LinearProgressIndicator(
                   minHeight: 8,
                   value: pct / 100.0,
-                  backgroundColor:
-                      isDark ? p.chipSurface : const Color(0xFFD6E8FA),
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    isDark ? p.brand : const Color(0xFF1565C0),
+                  backgroundColor: const Color(0xFFD6E8FA),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Color(0xFF1565C0),
                   ),
                 ),
               ),
@@ -15522,7 +15540,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w800,
                   fontSize: 13.5,
-                  color: isDark ? p.brandDateInk : const Color(0xFF205A9A),
+                  color: const Color(0xFF205A9A),
                 ),
               ),
             ],
@@ -15625,8 +15643,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             _isIncomeUtilitiesEntryMode ||
             _isOtMode ||
             _isVehicleTripMode ||
-            _isDailyEventMode ||
-            _isLaborMode) &&
+            _isDailyEventMode) &&
         (AppThemeScope.maybeOf(context)?.isDark ??
             Theme.of(context).brightness == Brightness.dark);
     final shellP = shellDark ? DailyPalette.of(context) : null;
@@ -15695,11 +15712,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required bool isLargeTablet,
   }) {
     final poolH = _laborPoolPinHeight(context);
-    final p = DailyPalette.of(context);
-    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
-        Theme.of(context).brightness == Brightness.dark;
-    final shellBg = isDark ? p.card : Colors.white;
-    final shellLine = isDark ? p.hairline : const Color(0xFFE7EDF5);
     return CustomScrollView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       cacheExtent: DevicePerf.isConstrainedDevice
@@ -15720,16 +15732,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: shellBg,
+                  color: Colors.white,
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(24),
                   ),
-                  border: Border.all(color: shellLine),
+                  border: Border.all(color: const Color(0xFFE7EDF5)),
                   boxShadow: [
                     BoxShadow(
-                      color: isDark
-                          ? p.shadowCard
-                          : Colors.black.withValues(alpha: 0.03),
+                      color: Colors.black.withValues(alpha: 0.03),
                       blurRadius: 18,
                       offset: const Offset(0, 6),
                     ),
@@ -15783,11 +15793,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               child: Container(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 decoration: BoxDecoration(
-                  color: shellBg,
+                  color: Colors.white,
                   borderRadius: const BorderRadius.vertical(
                     bottom: Radius.circular(24),
                   ),
-                  border: Border.all(color: shellLine),
+                  border: Border.all(color: const Color(0xFFE7EDF5)),
                 ),
                 child: _buildLaborFormCard(
                   includePool: false,
@@ -18456,11 +18466,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }) {
     final assigned = _collectLaborAssignedIds().length;
     final showHeader = !headerOnly;
-    final p = DailyPalette.of(context);
-    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
-        Theme.of(context).brightness == Brightness.dark;
-    final titleColor =
-        isDark ? const Color(0xFFA78BFA) : const Color(0xFF0F5FAF);
     final borderRadius = BorderRadius.vertical(
       top: roundTop ? const Radius.circular(18) : Radius.zero,
       bottom: roundBottom ? const Radius.circular(18) : Radius.zero,
@@ -18470,16 +18475,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       curve: Curves.easeOutCubic,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? p.card : Colors.white,
+        color: Colors.white,
         borderRadius: borderRadius,
-        border: Border.all(
-          color: isDark ? p.hairline : const Color(0xFFE3ECF7),
-        ),
+        border: Border.all(color: const Color(0xFFE3ECF7)),
         boxShadow: roundTop && roundBottom
             ? [
                 BoxShadow(
-                  color: (isDark ? p.shadowCard : const Color(0xFF0F9EA8))
-                      .withValues(alpha: isDark ? 1 : 0.05),
+                  color: const Color(0xFF0F9EA8).withValues(alpha: 0.05),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -18502,7 +18504,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
-                        color: titleColor,
+                        color: const Color(0xFF0F5FAF),
                         height: 1.15,
                       ),
                     ),
@@ -18512,7 +18514,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: p.inkMuted,
+                        color: const Color(0xFF5C6B7F),
                         height: 1.35,
                       ),
                     ),
@@ -18526,15 +18528,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? p.statusComplete.withValues(alpha: 0.16)
-                        : const Color(0xFFE8F5E9),
+                    color: const Color(0xFFE8F5E9),
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: isDark
-                          ? p.statusComplete.withValues(alpha: 0.45)
-                          : const Color(0xFFA5D6A7),
-                    ),
+                    border: Border.all(color: const Color(0xFFA5D6A7)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -18542,9 +18538,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       Icon(
                         Icons.assignment_turned_in_outlined,
                         size: 18,
-                        color: isDark
-                            ? p.statusComplete
-                            : Colors.green.shade800,
+                        color: Colors.green.shade800,
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -18552,9 +18546,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                         style: GoogleFonts.kanit(
                           fontWeight: FontWeight.w800,
                           fontSize: 13,
-                          color: isDark
-                              ? p.statusComplete
-                              : const Color(0xFF1B5E20),
+                          color: const Color(0xFF1B5E20),
                         ),
                       ),
                     ],
@@ -21604,16 +21596,12 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
       listenable: controller,
       builder: (context, _) {
         final text = controller.text.trim();
-        final p = DailyPalette.of(context);
-        final isDark = AppThemeScope.maybeOf(context)?.isDark ??
-            Theme.of(context).brightness == Brightness.dark;
-        final fieldBg = isDark ? p.chipSurface : const Color(0xFFF8FAFD);
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: Material(
-                color: fieldBg,
+                color: const Color(0xFFF8FAFD),
                 borderRadius: BorderRadius.circular(10),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(10),
@@ -21631,7 +21619,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                       labelStyle: GoogleFonts.kanit(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: p.inkMuted,
+                        color: const Color(0xFF64748B),
                       ),
                       suffixIcon: Icon(
                         Icons.edit_note_rounded,
@@ -21639,7 +21627,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                         color: parentColor.withValues(alpha: 0.75),
                       ),
                       filled: true,
-                      fillColor: fieldBg,
+                      fillColor: const Color(0xFFF8FAFD),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 10,
@@ -21709,7 +21697,6 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
 
   Widget _generalWorkDetailsInline() {
     const parentColor = _kGeneralWorkColor;
-    final p = DailyPalette.of(context);
     final filled = widget.generalWorkDetails
         .where((c) => c.text.trim().isNotEmpty)
         .length;
@@ -21727,7 +21714,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w800,
                       fontSize: 13.5,
-                      color: p.ink,
+                      color: const Color(0xFF0F172A),
                     ),
                   ),
                   Text(
@@ -21735,7 +21722,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                     style: GoogleFonts.kanit(
                       fontSize: 11.5,
                       height: 1.3,
-                      color: p.inkMuted,
+                      color: const Color(0xFF64748B),
                     ),
                   ),
                 ],
@@ -21806,22 +21793,16 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
     required String subtitle,
   }) {
     final selected = widget.poolKind == kind;
-    final p = DailyPalette.of(context);
-    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
-        Theme.of(context).brightness == Brightness.dark;
-    final accent = isDark ? const Color(0xFF60A5FA) : const Color(0xFF1565C0);
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
-        color: selected
-            ? (isDark
-                ? accent.withValues(alpha: 0.22)
-                : const Color(0xFFE8F1FF))
-            : (isDark ? p.chipSurface : const Color(0xFFF6F8FC)),
+        color: selected ? const Color(0xFFE8F1FF) : const Color(0xFFF6F8FC),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(
-            color: selected ? accent : p.hairline,
+            color: selected
+                ? const Color(0xFF1565C0)
+                : const Color(0xFFE1E8F0),
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -21836,7 +21817,9 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                 Icon(
                   icon,
                   size: 24,
-                  color: selected ? accent : p.inkMuted,
+                  color: selected
+                      ? const Color(0xFF1565C0)
+                      : const Color(0xFF5B6D83),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -21848,7 +21831,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                         style: GoogleFonts.kanit(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
-                          color: p.ink,
+                          color: const Color(0xFF1D2A3A),
                         ),
                       ),
                       Text(
@@ -21856,7 +21839,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                         style: GoogleFonts.kanit(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w500,
-                          color: p.inkMuted,
+                          color: Colors.black54,
                           height: 1.25,
                         ),
                       ),
@@ -21864,10 +21847,10 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                   ),
                 ),
                 if (selected)
-                  Icon(
+                  const Icon(
                     Icons.check_circle_rounded,
                     size: 22,
-                    color: accent,
+                    color: Color(0xFF1565C0),
                   ),
               ],
             ),
@@ -21891,23 +21874,18 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
       },
       builder: (context, candidateData, rejectedData) {
         final isHovering = candidateData.isNotEmpty;
-        final p = DailyPalette.of(context);
-        final isDark = AppThemeScope.maybeOf(context)?.isDark ??
-            Theme.of(context).brightness == Brightness.dark;
-        final accent =
-            isDark ? const Color(0xFF60A5FA) : const Color(0xFF1565C0);
         return AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
           decoration: BoxDecoration(
             color: isHovering
-                ? accent.withValues(alpha: isDark ? 0.22 : 0.18)
-                : (isDark ? p.chipSurface : const Color(0xFFF8FAFD)),
+                ? const Color(0xFFDDEBFA)
+                : const Color(0xFFF8FAFD),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isHovering
-                  ? accent.withValues(alpha: 0.7)
-                  : p.hairline,
+                  ? const Color(0xFF73A6E8)
+                  : const Color(0xFFE1E8F0),
             ),
           ),
           child: available.isEmpty
@@ -21924,7 +21902,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                     textAlign: TextAlign.center,
                     style: GoogleFonts.kanit(
                       fontSize: 13,
-                      color: p.inkMuted,
+                      color: Colors.black54,
                       height: 1.3,
                     ),
                   ),
@@ -21955,7 +21933,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                               fontSize: 14,
                             ),
                           ),
-                          backgroundColor: accent,
+                          backgroundColor: const Color(0xFF1565C0),
                         ),
                       ),
                       childWhenDragging: Opacity(
@@ -21988,11 +21966,8 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
                           horizontal: 4,
                         ),
                         showCheckmark: true,
-                        selectedColor: accent.withValues(
-                          alpha: isDark ? 0.28 : 0.22,
-                        ),
-                        checkmarkColor:
-                            isDark ? accent : const Color(0xFF0D47A1),
+                        selectedColor: const Color(0xFFBBDEFB),
+                        checkmarkColor: const Color(0xFF0D47A1),
                         label: Text(
                           name,
                           style: GoogleFonts.kanit(
@@ -22167,23 +22142,14 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
       );
     }
 
-    final boardP = DailyPalette.of(context);
-    final boardDark = AppThemeScope.maybeOf(context)?.isDark ??
-        Theme.of(context).brightness == Brightness.dark;
-    final boardAccent =
-        boardDark ? const Color(0xFF60A5FA) : const Color(0xFF0D47A1);
     final poolColumn = DecoratedBox(
       decoration: BoxDecoration(
-        color: boardDark ? boardP.card : Colors.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: boardDark ? boardP.hairline : const Color(0xFFC8DCF2),
-        ),
+        border: Border.all(color: const Color(0xFFC8DCF2)),
         boxShadow: [
           BoxShadow(
-            color: boardDark
-                ? boardP.shadowCard
-                : Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 12,
             offset: const Offset(0, 3),
           ),
@@ -22199,7 +22165,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w800,
                 fontSize: 16,
-                color: boardAccent,
+                color: const Color(0xFF0D47A1),
               ),
             ),
             const SizedBox(height: 2),
@@ -22210,7 +22176,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
               style: GoogleFonts.kanit(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: boardP.inkMuted,
+                color: const Color(0xFF64748B),
                 height: 1.3,
               ),
             ),
@@ -22347,7 +22313,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
           style: GoogleFonts.kanit(
             fontWeight: FontWeight.w800,
             fontSize: 16,
-            color: boardAccent,
+            color: const Color(0xFF0D47A1),
           ),
         ),
         const SizedBox(height: 2),
@@ -22357,7 +22323,7 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
             fontSize: 12.5,
             height: 1.35,
             fontWeight: FontWeight.w500,
-            color: boardP.inkMuted,
+            color: const Color(0xFF64748B),
           ),
         ),
         const SizedBox(height: 10),
@@ -22430,16 +22396,12 @@ class _LaborDragBoardState extends State<_LaborDragBoard> {
       return Container(
         padding: padding ?? const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: boardDark ? boardP.chipSurface : const Color(0xFFF0F6FC),
+          color: const Color(0xFFF0F6FC),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: boardDark ? boardP.hairline : const Color(0xFFC5D9EF),
-          ),
+          border: Border.all(color: const Color(0xFFC5D9EF)),
           boxShadow: [
             BoxShadow(
-              color: boardDark
-                  ? boardP.shadowCard
-                  : Colors.black.withValues(alpha: 0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 10,
               offset: const Offset(0, 2),
             ),
@@ -22534,13 +22496,10 @@ class _LaborPoolPinHeaderDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    final p = DailyPalette.of(context);
-    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
-        Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: isDark ? p.card : Colors.white,
+      color: Colors.white,
       elevation: overlapsContent ? 2 : 0,
-      shadowColor: isDark ? p.shadowLift : Colors.black26,
+      shadowColor: Colors.black26,
       child: child,
     );
   }
@@ -22585,14 +22544,11 @@ class _LaborBucketCard extends StatelessWidget {
         final hasMembers = ids.isNotEmpty;
         final canMove = onMovePickedHere != null;
         final title = category.shortTitle;
-        final p = DailyPalette.of(context);
-        final isDark = AppThemeScope.maybeOf(context)?.isDark ??
-            Theme.of(context).brightness == Brightness.dark;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: isDark ? p.card : Colors.white,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: category.color.withValues(
@@ -22637,7 +22593,7 @@ class _LaborBucketCard extends StatelessWidget {
                             fontSize: 14,
                             height: 1.28,
                             fontWeight: FontWeight.w700,
-                            color: p.ink,
+                            color: const Color(0xFF0F172A),
                           ),
                         ),
                       ),
@@ -22778,7 +22734,7 @@ class _LaborBucketCard extends StatelessWidget {
                                       'ว่าง — ลากชื่อมาวาง',
                                       style: GoogleFonts.kanit(
                                         fontSize: 12,
-                                        color: p.inkMuted,
+                                        color: const Color(0xFF64748B),
                                       ),
                                     ),
                                   ),
@@ -22805,9 +22761,7 @@ class _LaborBucketCard extends StatelessWidget {
                           ),
                           style: FilledButton.styleFrom(
                             backgroundColor: category.color,
-                            foregroundColor: isDark
-                                ? const Color(0xFF0B1219)
-                                : Colors.white,
+                            foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                             ),
@@ -22825,8 +22779,8 @@ class _LaborBucketCard extends StatelessWidget {
                             ),
                           ),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: p.inkMuted,
-                            side: BorderSide(color: p.hairline),
+                            foregroundColor: const Color(0xFF94A3B8),
+                            side: const BorderSide(color: Color(0xFFE2E8F0)),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
                             ),
