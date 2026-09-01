@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../../types';
 import {
     buildCountRecordTripUnits,
+    countActiveCountRecordTripUnits,
     countRecordLapPeriods,
     diffCountRecordIncrements,
     isCountRecordSandTapRow,
@@ -229,5 +230,20 @@ describe('buildCountRecordTripUnits vehicle labels', () => {
             [{ id: 'v_296bfec0b1056325', name: 'รถดรัมนายก', defaultDriverId: null, sortOrder: 0 }],
         );
         expect(units[0]?.vehicleId).toBe('รถดรัมนายก');
+    });
+});
+
+describe('countActiveCountRecordTripUnits', () => {
+    it('counts only vehicles with trip rounds for summaries', () => {
+        const units = buildCountRecordTripUnits(
+            '2026-08-20',
+            [
+                trip({ id: 'd1', date: '2026-08-20', vehicleId: 'รถดั๊มโอเว่น', perCarTrips: 43, lapTimes: ['20/08 13:50:01'] }),
+                trip({ id: 's1', date: '2026-08-20', vehicleId: 'รถสิบล้อนายกพนม', perCarTrips: 0 }),
+            ],
+            [],
+        );
+        expect(units).toHaveLength(2);
+        expect(countActiveCountRecordTripUnits(units)).toBe(1);
     });
 });

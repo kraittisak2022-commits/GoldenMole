@@ -2,11 +2,15 @@ import type { Employee, Transaction } from '../types';
 import { normalizeDate } from './index';
 import { transactionVehicleLabel, type VehicleCatalogRow } from './vehicleCatalog';
 import {
+    countRecordRowHasSavedData,
+    driverDisplayName,
+    isCountRecordVehicleRow,
+} from '../modules/Dashboard/countRecordUtils';
+import {
     countsAsWizardVehicleUsageRecord,
     isMacroVehicleId,
     transactionCountsAsVehicleTripMenu,
 } from '../modules/Dashboard/dailyStepRecorderUtils';
-import { driverDisplayName } from '../modules/Dashboard/countRecordUtils';
 
 export type VehicleUsageKind = 'macro' | 'dump_trip' | 'hire';
 export type VehiclePrintGroup = 'overview' | 'macro' | 'dump' | 'hire';
@@ -129,6 +133,11 @@ function classifyVehicleRow(
     const label = transactionVehicleLabel(t, catalog);
     if (t.category === 'Vehicle' && isMacroVehicleId(label || t.vehicleId)) {
         return 'macro';
+    }
+    if (isCountRecordVehicleRow(t)) {
+        if (isMacroVehicleId(label || t.vehicleId)) return null;
+        if (!countRecordRowHasSavedData(t)) return null;
+        return 'dump_trip';
     }
     if (transactionCountsAsVehicleTripMenu(t)) return 'dump_trip';
     if (countsAsWizardVehicleUsageRecord(t)) return 'hire';

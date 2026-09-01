@@ -191,6 +191,11 @@ function sandRowIsEmpty(t: Transaction): boolean {
     return laps.length === 0 && drums <= 0;
 }
 
+export function countActiveCountRecordTripUnits(units: CountRecordTripUnit[]): number {
+    const active = units.filter((u) => u.rounds > 0);
+    return active.length > 0 ? active.length : units.length;
+}
+
 export function buildCountRecordTripUnits(
     dayKey: string,
     transactions: Transaction[],

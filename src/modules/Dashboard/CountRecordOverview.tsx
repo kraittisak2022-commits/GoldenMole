@@ -7,6 +7,7 @@ import {
     SAND_TARGET_ROUNDS,
     buildCountRecordSandUnit,
     buildCountRecordTripUnits,
+    countActiveCountRecordTripUnits,
     countRecordMenuStatusLabel,
     formatDashboardMetric,
 } from './countRecordUtils';
@@ -508,6 +509,10 @@ const CountRecordOverview = ({
         () => buildCountRecordTripUnits(dayKey, transactions, employees, vehicleCatalog),
         [dayKey, transactions, employees, vehicleCatalog],
     );
+    const activeTripVehicleCount = useMemo(
+        () => countActiveCountRecordTripUnits(tripUnits),
+        [tripUnits],
+    );
     const sandUnit = useMemo(
         () => buildCountRecordSandUnit(dayKey, transactions),
         [dayKey, transactions],
@@ -602,7 +607,7 @@ const CountRecordOverview = ({
                     <div className="flex flex-wrap gap-2">
                         <span className="inline-flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-2 text-xs font-semibold text-blue-900 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-200">
                             <Truck size={14} className="text-blue-600 dark:text-blue-300" />
-                            {t('tripSubtitle', { vehicles: tripUnits.length, total: formatDashboardMetric(tripTotal) })}
+                            {t('tripSubtitle', { vehicles: activeTripVehicleCount, total: formatDashboardMetric(tripTotal) })}
                         </span>
                         <span className="inline-flex items-center gap-2 rounded-xl border border-pink-100 bg-pink-50/80 px-3 py-2 text-xs font-semibold text-pink-900 dark:border-pink-400/20 dark:bg-pink-500/10 dark:text-pink-200">
                             <Droplets size={14} className="text-pink-600 dark:text-pink-300" />
@@ -615,7 +620,7 @@ const CountRecordOverview = ({
             <div className={`grid gap-4 ${panelGridClass}`}>
                 <CountRecordPanelShell
                     title={t('tripCountTitle')}
-                    subtitle={t('tripSubtitle', { vehicles: tripUnits.length, total: formatDashboardMetric(tripTotal) })}
+                    subtitle={t('tripSubtitle', { vehicles: activeTripVehicleCount, total: formatDashboardMetric(tripTotal) })}
                     icon={<Truck size={18} />}
                     accentClass="bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-600"
                     highlight={highlight}

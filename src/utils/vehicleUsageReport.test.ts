@@ -75,4 +75,40 @@ describe('buildVehicleUsageReport', () => {
         expect(macroDay.rows).toHaveLength(1);
         expect(filterVehicleUsageByDate(macroOnly, '2026-08-11').rows).toHaveLength(0);
     });
+
+    it('excludes zero-trip support VehicleTrip rows from dump report', () => {
+        const transactions: Transaction[] = [
+            {
+                id: 'd1',
+                date: '2026-08-20',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'VehicleTrip',
+                description: 'รถดั๊มโอเว่น: 43 เที่ยว',
+                amount: 0,
+                vehicleId: 'รถดั๊มโอเว่น',
+                perCarTrips: 43,
+            },
+            {
+                id: 's1',
+                date: '2026-08-20',
+                type: 'Expense',
+                category: 'DailyLog',
+                subCategory: 'VehicleTrip',
+                description: 'รถสิบล้อนายกพนม: ชัพพอต',
+                amount: 0,
+                vehicleId: 'รถสิบล้อนายกพนม',
+                perCarTrips: 0,
+            },
+        ];
+
+        const report = buildVehicleUsageReport(transactions, [], {
+            start: '2026-08-20',
+            end: '2026-08-20',
+            kind: 'dump_trip',
+        });
+
+        expect(report.byVehicle).toHaveLength(1);
+        expect(report.byVehicle[0]?.vehicleId).toBe('รถดั๊มโอเว่น');
+    });
 });
