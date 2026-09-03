@@ -160,6 +160,7 @@ struct OverviewHubView: View {
 
     @State private var snapshot = OverviewSnapshot.empty(filter: DateFilter(start: "", end: ""))
     @State private var todayOps = TodayOpsSnapshot.empty
+    @State private var homePro = HomeProSnapshot.empty
     @State private var rebuildTask: Task<Void, Never>?
     @State private var showAllWorkingStaff = false
 
@@ -171,7 +172,18 @@ struct OverviewHubView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: AppTheme.spaceLG) {
-                greetingHeader
+                HomeProCommandHero(
+                    greetingName: greetingDisplay,
+                    dayTitle: todayLabel,
+                    pro: homePro,
+                    laborBahtLabel: homePro.health == .strong
+                        ? "งานหลักครบ · ค่าแรง \(DashboardAggregations.formatCurrency(todayOps.laborBaht))"
+                        : ""
+                )
+                HomeProQuickActionsRow()
+                HomeProInsightStrip(insights: homePro.insights, alerts: homePro.alerts)
+                HomeProChecklistCard(pro: homePro)
+                HomeProAnalyticsLinkCard()
                 todayHighlightCard
                 dailyEventsCard
                 opsMetricGrid
@@ -226,25 +238,32 @@ struct OverviewHubView: View {
             try? await Task.sleep(nanoseconds: 150_000_000)
             guard !Task.isCancelled else { return }
             let built = await Task.detached(priority: .userInitiated) {
-                (
-                    OverviewSnapshot.build(
-                        filter: filter,
-                        transactions: txs,
-                        allTransactions: all,
-                        settings: settingsCopy,
-                        employees: emps
-                    ),
-                    TodayOpsSnapshot.build(
-                        transactions: all,
-                        employees: emps,
-                        settings: settingsCopy,
-                        dayKey: dayKey
-                    )
+                let overview = OverviewSnapshot.build(
+                    filter: filter,
+                    transactions: txs,
+                    allTransactions: all,
+                    settings: settingsCopy,
+                    employees: emps
                 )
+                let today = TodayOpsSnapshot.build(
+                    transactions: all,
+                    employees: emps,
+                    settings: settingsCopy,
+                    dayKey: dayKey
+                )
+                let pro = HomeProSnapshot.build(
+                    dayKey: dayKey,
+                    transactions: all,
+                    employees: emps,
+                    periodAlerts: overview.alerts,
+                    periodInsights: overview.insights
+                )
+                return (overview, today, pro)
             }.value
             guard !Task.isCancelled else { return }
             snapshot = built.0
             todayOps = built.1
+            homePro = built.2
         }
     }
 
@@ -268,35 +287,6 @@ struct OverviewHubView: View {
         if start.isEmpty || end.isEmpty { return "ช่วงที่เลือก" }
         if start == end { return DashboardAggregations.thaiDateLong(start) }
         return "\(start) – \(end)"
-    }
-
-    private var greetingHeader: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("สวัสดี \(greetingDisplay)")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-                Text(todayLabel)
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.inkMuted)
-            }
-            Spacer(minLength: 8)
-            Image(systemName: "sun.max.fill")
-                .font(.title2)
-                .foregroundStyle(AppTheme.brand)
-                .frame(width: 48, height: 48)
-                .background(AppTheme.brandSoft, in: Circle())
-        }
-        .padding(18)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(AppTheme.surface)
-                .shadow(color: AppTheme.cardShadow, radius: 12, y: 4)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(AppTheme.hairline, lineWidth: 1)
-        )
     }
 
     // MARK: - Today highlight
@@ -340,7 +330,10 @@ struct OverviewHubView: View {
                                         title: "ค่าแรง",
                                         value: DashboardAggregations.formatCurrency(todayOps.laborBaht),
                                         detail: "มา \(todayOps.presentCount) คน",
-                                        accent: AppTheme.labor
+                                        accent: AppTheme.labor,
+                                        deltaLabel: homePro.labor.compactCompareLabel,
+                                        deltaIsUp: homePro.labor.isUp,
+                                        deltaUpIsGood: false
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -481,7 +474,15 @@ struct OverviewHubView: View {
         .background(accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private func moneyPill(title: String, value: String, detail: String, accent: Color) -> some View {
+    private func moneyPill(
+        title: String,
+        value: String,
+        detail: String,
+        accent: Color,
+        deltaLabel: String? = nil,
+        deltaIsUp: Bool = true,
+        deltaUpIsGood: Bool = true
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(title)
@@ -497,6 +498,9 @@ struct OverviewHubView: View {
                 .foregroundStyle(AppTheme.ink)
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
+            if deltaLabel != nil {
+                HomeProDeltaBadge(label: deltaLabel, isUp: deltaIsUp, upIsGood: deltaUpIsGood)
+            }
             Text(detail)
                 .font(.caption2)
                 .foregroundStyle(accent)
@@ -574,7 +578,9 @@ struct OverviewHubView: View {
                                     unit: "เที่ยว",
                                     detail: "\(m.tripVehicles) คัน · \(DashboardAggregations.formatNumber(m.tripCubic)) คิว",
                                     accent: AppTheme.vehicle,
-                                    systemImage: "truck.box.fill"
+                                    systemImage: "truck.box.fill",
+                                    deltaLabel: homePro.trip.compactCompareLabel,
+                                    deltaIsUp: homePro.trip.isUp
                                 )
                             }
                             .buttonStyle(.plain)
@@ -590,7 +596,9 @@ struct OverviewHubView: View {
                                     unit: "รอบ",
                                     detail: "ล้าง \(DashboardAggregations.formatNumber(m.sandWashedCubic)) คิว",
                                     accent: AppTheme.sand,
-                                    systemImage: "drop.fill"
+                                    systemImage: "drop.fill",
+                                    deltaLabel: homePro.sand.compactCompareLabel,
+                                    deltaIsUp: homePro.sand.isUp
                                 )
                             }
                             .buttonStyle(.plain)
@@ -606,7 +614,9 @@ struct OverviewHubView: View {
                                     unit: "คน",
                                     detail: "ลา \(m.leaveCount) · ขาด \(m.absentCount)",
                                     accent: AppTheme.labor,
-                                    systemImage: "person.3.fill"
+                                    systemImage: "person.3.fill",
+                                    deltaLabel: homePro.present.compactCompareLabel,
+                                    deltaIsUp: homePro.present.isUp
                                 )
                             }
                             .buttonStyle(.plain)
@@ -1290,6 +1300,9 @@ private struct SummaryMetricCard: View {
     let detail: String
     let accent: Color
     let systemImage: String
+    var deltaLabel: String? = nil
+    var deltaIsUp: Bool = true
+    var deltaUpIsGood: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1325,6 +1338,10 @@ private struct SummaryMetricCard: View {
                 Text(unit)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.inkMuted)
+            }
+
+            if deltaLabel != nil {
+                HomeProDeltaBadge(label: deltaLabel, isUp: deltaIsUp, upIsGood: deltaUpIsGood)
             }
 
             Text(detail)

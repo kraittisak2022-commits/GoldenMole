@@ -6,7 +6,11 @@ struct CountRecordHubView: View {
     @Environment(AuthService.self) private var auth
     @Environment(\.dismiss) private var dismiss
 
+    /// When set, skips the work-mode picker and opens that panel directly.
+    var initialMode: CountRecordWorkMode? = nil
+
     @State private var session = CountRecordSession()
+    @State private var didApplyInitialMode = false
     @State private var confirmLongPressTripId: String?
     @State private var confirmLongPressSand = false
     @State private var confirmDeleteLap: String?
@@ -66,6 +70,10 @@ struct CountRecordHubView: View {
                 CountRecordOfflineSync.shared.configure(service: service, appState: appState)
             }
             session.bootstrap(appState: appState)
+            if !didApplyInitialMode, let initialMode {
+                session.mode = initialMode
+                didApplyInitialMode = true
+            }
         }
         .onChange(of: appState.transactionsRevision) { _, _ in
             session.loadFromAppState(appState)
