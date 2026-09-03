@@ -221,6 +221,8 @@ struct RealtimeV4View: View {
     var mode: RealtimeBoardMode = .trip
     /// True when either Real-time bottom tab is selected — drives snapshot rebuilds.
     var isRealtimeTabActive: Bool = true
+    /// True when this specific trip/sand board is the visible tab.
+    var isBoardVisible: Bool = true
     /// Shared with the sibling trip/sand tab so the selected day carries over.
     @Binding var focusDate: Date
 
@@ -235,6 +237,7 @@ struct RealtimeV4View: View {
     @State private var showFleetDetail = false
     @State private var pendingRebuild = false
     @State private var recentEventTimes: [Date] = []
+    @State private var lastBuiltDayKey: String = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
@@ -265,7 +268,7 @@ struct RealtimeV4View: View {
         }
         .onAppear {
             hangWatchdog.start()
-            scheduleRebuild()
+            scheduleRebuild(force: lastBuiltDayKey != focusDateStr)
             lastRefresh = Date()
             // Soft pulse only — avoid repeatForever scale animations that invalidate layout every frame while scrolling.
             if !reduceMotion {
@@ -277,7 +280,7 @@ struct RealtimeV4View: View {
             rebuildTask?.cancel()
             rebuildTask = nil
         }
-        .onChange(of: focusDateStr) { _, _ in scheduleRebuild() }
+        .onChange(of: focusDateStr) { _, _ in scheduleRebuild(force: true) }
         .onChange(of: transactionsRevision) { _, _ in
             noteIncomingEvent()
             scheduleRebuild()
@@ -291,12 +294,21 @@ struct RealtimeV4View: View {
             if mode == .sand { triggerPulse() }
         }
         .onChange(of: isRealtimeTabActive) { _, active in
-            if active, pendingRebuild { scheduleRebuild(force: true) }
+            if active, pendingRebuild || lastBuiltDayKey != focusDateStr {
+                scheduleRebuild(force: true)
+            }
+        }
+        .onChange(of: isBoardVisible) { _, visible in
+            if visible {
+                scheduleRebuild(force: lastBuiltDayKey != focusDateStr)
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 hangWatchdog.start()
-                if pendingRebuild { scheduleRebuild(force: true) }
+                if pendingRebuild || lastBuiltDayKey != focusDateStr {
+                    scheduleRebuild(force: true)
+                }
             } else {
                 hangWatchdog.stop()
             }
@@ -374,6 +386,7 @@ struct RealtimeV4View: View {
                 buildSupervisor.endBuild(durationMs: ms, light: light)
                 guard !Task.isCancelled else { return }
                 snapshot = built
+                lastBuiltDayKey = dayKey
             }
         }
     }

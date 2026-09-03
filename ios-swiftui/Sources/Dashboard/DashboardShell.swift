@@ -40,6 +40,13 @@ struct DashboardShell: View {
         mainTab == .realtimeTrip || mainTab == .realtimeSand
     }
 
+    private func isRealtimeBoardActive(_ mode: RealtimeBoardMode) -> Bool {
+        switch mode {
+        case .trip: return mainTab == .realtimeTrip
+        case .sand: return mainTab == .realtimeSand
+        }
+    }
+
     init() {
         Self.applyTabBarAppearance()
     }
@@ -360,6 +367,7 @@ struct DashboardShell: View {
                         transactionsRevision: appState.transactionsRevision,
                         mode: mode,
                         isRealtimeTabActive: isRealtimeTabActive,
+                        isBoardVisible: isRealtimeBoardActive(mode),
                         focusDate: $realtimeFocusDate
                     )
                 }
