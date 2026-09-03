@@ -85,53 +85,25 @@ struct SandProCommandStrip: View {
                 )
             }
 
-            if let cta = pro.ctaTitle {
-                NavigationLink {
-                    CountRecordHubView(initialMode: .sand)
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "plus.circle.fill")
-                        Text(cta)
-                            .fontWeight(.bold)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Spacer(minLength: 0)
-                        Image(systemName: "arrow.right")
-                            .font(.caption.weight(.bold))
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        LinearGradient(
-                            colors: [SandProAccent.pink, SandProAccent.violet],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    )
-                }
-                .buttonStyle(.plain)
-            } else if pro.hasSandData {
+            if pro.hasSandData {
                 Button {
                     onOpenDetail?()
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "checkmark.seal.fill")
-                        Text("งานร่อนถึงเป้า · ดูรายละเอียด")
+                        Image(systemName: pro.reached ? "checkmark.seal.fill" : "chart.bar.fill")
+                        Text(pro.reached ? "งานร่อนถึงเป้า · ดูรายละเอียด" : "ดูรายละเอียดร่อนทราย")
                             .fontWeight(.semibold)
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.bold))
                     }
                     .font(.caption)
-                    .foregroundStyle(Color(hex: "#059669"))
+                    .foregroundStyle(pro.reached ? Color(hex: "#059669") : SandProAccent.pink)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .background(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color(hex: "#059669").opacity(0.12))
+                            .fill((pro.reached ? Color(hex: "#059669") : SandProAccent.pink).opacity(0.12))
                     )
                 }
                 .buttonStyle(.plain)
@@ -202,58 +174,6 @@ struct SandProCommandStrip: View {
     }
 }
 
-// MARK: - Quick actions
-
-struct SandProQuickActionsRow: View {
-    var body: some View {
-        HStack(spacing: 8) {
-            NavigationLink {
-                CountRecordHubView(initialMode: .sand)
-            } label: {
-                actionLabel(title: "นับร่อน", systemImage: "drop.fill", accent: SandProAccent.pink)
-            }
-            .buttonStyle(.plain)
-
-            NavigationLink {
-                OpsTrendProAnalysisView(focus: .sand)
-            } label: {
-                actionLabel(title: "วิเคราะห์ Pro", systemImage: "chart.xyaxis.line", accent: SandProAccent.violet)
-            }
-            .buttonStyle(.plain)
-
-            NavigationLink {
-                FuelHubView()
-            } label: {
-                actionLabel(title: "น้ำมัน", systemImage: "fuelpump.fill", accent: AppTheme.fuel)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private func actionLabel(title: String, systemImage: String, accent: Color) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.bold))
-            Text(title)
-                .font(.caption.weight(.bold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .foregroundStyle(accent)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(accent.opacity(0.12))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(accent.opacity(0.22), lineWidth: 1)
-        )
-        .accessibilityLabel(title)
-    }
-}
-
 // MARK: - Insights
 
 struct SandProInsightStrip: View {
@@ -283,77 +203,6 @@ struct SandProInsightStrip: View {
             .padding(14)
             .background(SandProCardBackground())
         }
-    }
-}
-
-// MARK: - Pace card
-
-struct SandProPaceCard: View {
-    let pro: SandProSnapshot
-    let analytics: CountRecordAnalytics.ModeAnalytics
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("สถานะจังหวะ", systemImage: pro.paceHealth.systemImage)
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(RealtimeV4Palette.ink)
-                Spacer(minLength: 0)
-                Text(pro.paceHealth.label)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(SandProAccent.pink)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(SandProAccent.pink.opacity(0.12)))
-            }
-
-            HStack(spacing: 8) {
-                miniStat("คิว/ชม.", pro.perHour.map { String(format: "%.1f", $0) } ?? "—")
-                miniStat(
-                    "จังหวะเฉลี่ย",
-                    CountRecordAnalytics.formatPace(analytics.stats.avg)
-                )
-                miniStat(
-                    "นิ่งในแบนด์",
-                    pro.consistencyPct.map { "\(Int($0.rounded()))%" } ?? "—"
-                )
-            }
-
-            if pro.sparkline.count >= 2 {
-                SandProSparkline(values: pro.sparkline, accent: SandProAccent.pink)
-                    .frame(height: 36)
-                    .accessibilityLabel("แนวโน้มจังหวะล่าสุด")
-            }
-
-            if analytics.rounds > 0 {
-                RealtimeV4AnalyticsPanel(
-                    analytics: analytics,
-                    accent: Color(hex: "#F472B6"),
-                    chartsAlwaysExpanded: false
-                )
-            }
-        }
-        .padding(14)
-        .background(SandProCardBackground())
-    }
-
-    private func miniStat(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(RealtimeV4Palette.inkFaint)
-            Text(value)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(RealtimeV4Palette.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(RealtimeV4Palette.cardSoft)
-        )
     }
 }
 
@@ -425,53 +274,6 @@ struct SandProTripBalanceCard: View {
     }
 }
 
-// MARK: - Drums
-
-struct SandProDrumsCard: View {
-    let pro: SandProSnapshot
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("ถังทรายวันนี้", systemImage: "cylinder.split.1x2")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(RealtimeV4Palette.ink)
-
-            HStack(spacing: 8) {
-                drumChip("ได้", pro.drumsObtained, Color(hex: "#0D9488"))
-                drumChip("ล้างบ้าน", pro.drumsHome, Color(hex: "#EA580C"))
-                drumChip("คงเหลือ", pro.drumsNet, SandProAccent.pink)
-            }
-
-            if pro.washedCubic > 0 {
-                Text("ล้างรวม \(DashboardAggregations.formatNumber(pro.washedCubic)) คิว")
-                    .font(.caption)
-                    .foregroundStyle(RealtimeV4Palette.inkMuted)
-            }
-        }
-        .padding(14)
-        .background(SandProCardBackground())
-    }
-
-    private func drumChip(_ title: String, _ value: Double, _ accent: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(accent)
-            Text(DashboardAggregations.formatNumber(value))
-                .font(.subheadline.weight(.bold).monospacedDigit())
-                .foregroundStyle(RealtimeV4Palette.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(accent.opacity(0.1))
-        )
-    }
-}
-
 // MARK: - Peak teaser
 
 struct SandProPeakTeaser: View {
@@ -506,88 +308,6 @@ struct SandProPeakTeaser: View {
             }
             .padding(14)
             .background(SandProCardBackground())
-        }
-    }
-}
-
-// MARK: - Analytics Pro link
-
-struct SandProAnalyticsLinkCard: View {
-    var body: some View {
-        NavigationLink {
-            OpsTrendProAnalysisView(focus: .sand)
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [SandProAccent.pink, SandProAccent.violet],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "chart.xyaxis.line")
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(.white)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text("วิเคราะห์ Pro · ร่อนทราย")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(RealtimeV4Palette.ink)
-                        Text("PRO")
-                            .font(.system(size: 9, weight: .black))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(SandProAccent.pink))
-                    }
-                    Text("สัปดาห์ · คะแนน · พีคชั่วโมง · แผนเร่งจังหวะ")
-                        .font(.caption)
-                        .foregroundStyle(RealtimeV4Palette.inkMuted)
-                        .lineLimit(2)
-                }
-
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(RealtimeV4Palette.inkFaint)
-            }
-            .padding(14)
-            .background(SandProCardBackground())
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(SandProAccent.pink.opacity(0.25), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("เปิดวิเคราะห์ Pro ร่อนทราย")
-    }
-}
-
-// MARK: - Sparkline
-
-private struct SandProSparkline: View {
-    let values: [Double]
-    let accent: Color
-
-    var body: some View {
-        GeometryReader { geo in
-            let maxV = max(values.max() ?? 1, 0.001)
-            let minV = values.min() ?? 0
-            let span = max(maxV - minV, 0.001)
-            Path { path in
-                for (i, v) in values.enumerated() {
-                    let x = geo.size.width * CGFloat(i) / CGFloat(max(values.count - 1, 1))
-                    let y = geo.size.height * (1 - CGFloat((v - minV) / span))
-                    if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
-                    else { path.addLine(to: CGPoint(x: x, y: y)) }
-                }
-            }
-            .stroke(accent, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
         }
     }
 }

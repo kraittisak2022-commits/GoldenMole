@@ -968,8 +968,6 @@ struct RealtimeV4View: View {
             gradient: [Color(hex: "#BE185D"), Color(hex: "#E11D48"), Color(hex: "#C026D3")]
         ) {
             VStack(spacing: 12) {
-                SandProQuickActionsRow()
-
                 if let sand = sandUnit, sand.rounds > 0 {
                     sandHero(sand)
                         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -983,18 +981,13 @@ struct RealtimeV4View: View {
 
                     sandKPI(sand)
 
-                    SandProPaceCard(pro: pro, analytics: sandAnalytics)
                     SandProPeakTeaser(pro: pro)
                     SandProTripBalanceCard(pro: pro)
-                    SandProDrumsCard(pro: pro)
-                    SandProAnalyticsLinkCard()
                 } else {
-                    emptyState(icon: "drop", title: "ยังไม่มีคิวทราย", subtitle: "กดนับร่อน หรือรอการนับจากมือถือ")
+                    emptyState(icon: "drop", title: "ยังไม่มีคิวทราย", subtitle: "รอการนับจากมือถือ หรือข้อมูลรอบร่อน")
                     SandProCommandStrip(pro: pro)
                     SandProInsightStrip(insights: pro.insights)
                     SandProTripBalanceCard(pro: pro)
-                    SandProDrumsCard(pro: pro)
-                    SandProAnalyticsLinkCard()
                 }
             }
         }
