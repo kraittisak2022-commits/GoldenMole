@@ -55,6 +55,15 @@ final class CountRecordOfflineSync {
     /// Returns true when queued offline (not uploaded yet).
     @discardableResult
     func persist(payload: TransactionWritePayload, wasPersisted: Bool) async -> Bool {
+        if let existing = appState?.transactions.first(where: { $0.id == payload.id }),
+           CountRecordStaleGuard.isStaleCountRecordOverwrite(payload: payload, existing: existing)
+        {
+            // Keep newer server/local total; drop this stale snapshot from the queue.
+            removeQueued(for: payload.id)
+            refreshCounts()
+            return false
+        }
+
         if let local = Transaction.localFromPayload(payload) {
             appState?.upsertTransaction(local)
         }
@@ -243,6 +252,13 @@ final class CountRecordOfflineSync {
             do {
                 switch op {
                 case .upsert(let payload, let omit):
+                    if let existing = appState?.transactions.first(where: { $0.id == payload.id }),
+                       CountRecordStaleGuard.isStaleCountRecordOverwrite(payload: payload, existing: existing)
+                    {
+                        // Discard stale queued snapshot; do not re-upload.
+                        uploaded += 1
+                        continue
+                    }
                     let toSend = omit ? payload.withoutCreatedAt() : payload
                     let saved = try await service.upsertTransaction(toSend)
                     appState?.upsertTransaction(saved)

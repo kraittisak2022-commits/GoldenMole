@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/app_sync_snapshot.dart';
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
+import '../utils/count_record_stale_guard.dart';
 import '../utils/vehicle_catalog.dart';
 import 'employee_service.dart';
 import 'local_data_cache.dart';
@@ -1053,6 +1054,24 @@ class CountRecordOfflineSync {
   }) async {
     final ymd = transaction.date;
     final stamped = await stampPersistedTransaction(transaction);
+
+    AppTransaction? existing;
+    for (final row in dayServerRows) {
+      if (row.id == stamped.id) {
+        existing = row;
+        break;
+      }
+    }
+    if (CountRecordStaleGuard.isStaleCountRecordOverwrite(
+      incoming: stamped,
+      existing: existing,
+    )) {
+      debugPrint(
+        'CountRecordOfflineSync.persist skipped stale overwrite for ${stamped.id}',
+      );
+      return false;
+    }
+
     if (await isOnline(client, forceProbe: !serverOnlineHint)) {
       try {
         await service.upsertTransaction(
@@ -1146,11 +1165,23 @@ class CountRecordOfflineSync {
         .where((o) =>
             o.knownServerCreatedAtMs != null && o.transaction != null)
         .toList();
-    if (withBaseline.isEmpty) return upserts;
 
-    final ids = withBaseline.map((o) => o.transaction!.id).toList();
-    final serverTimes = await service.fetchCreatedAtByIds(ids);
+    final ids = upserts
+        .where((o) => o.transaction != null)
+        .map((o) => o.transaction!.id)
+        .toSet()
+        .toList();
+    final serverTimes = withBaseline.isEmpty
+        ? const <String, DateTime?>{}
+        : await service.fetchCreatedAtByIds(
+            withBaseline.map((o) => o.transaction!.id).toList(),
+          );
+    final snapshots = ids.isEmpty
+        ? const <String, AppTransaction>{}
+        : await service.fetchCountSnapshotsByIds(ids);
+
     final conflicts = <_PendingOp>[];
+    final stale = <_PendingOp>[];
     final ok = <_PendingOp>[];
 
     for (final op in upserts) {
@@ -1167,11 +1198,25 @@ class CountRecordOfflineSync {
         conflicts.add(op);
         continue;
       }
+      final existing = snapshots[tx.id];
+      if (CountRecordStaleGuard.isStaleCountRecordOverwrite(
+        incoming: tx,
+        existing: existing,
+      )) {
+        stale.add(op);
+        continue;
+      }
       ok.add(op);
     }
 
     for (final c in conflicts) {
       await _moveToFailedQueue(c, SyncFailureReason.conflict);
+    }
+    // Drop stale lower snapshots silently — server already has the newer total.
+    if (stale.isNotEmpty) {
+      debugPrint(
+        'CountRecordOfflineSync: dropped ${stale.length} stale count upsert(s)',
+      );
     }
     return ok;
   }

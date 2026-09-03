@@ -159,6 +159,27 @@ class TransactionService {
     return out;
   }
 
+  /// ดึงแถวนับเที่ยว/ร่อนปัจจุบัน — กันคิวเก่าทับยอดใหม่
+  Future<Map<String, AppTransaction>> fetchCountSnapshotsByIds(
+    List<String> ids,
+  ) async {
+    if (ids.isEmpty) return {};
+    final rows = await _client
+        .from('transactions')
+        .select(
+          'id, date, category, sub_category, description, '
+          'drums_obtained, trip_count, per_car_trips, work_assignments, vehicle_id',
+        )
+        .inFilter('id', ids);
+    final out = <String, AppTransaction>{};
+    for (final row in rows) {
+      final tx = AppTransaction.fromMap(Map<String, dynamic>.from(row as Map));
+      if (tx.id.isEmpty) continue;
+      out[tx.id] = tx;
+    }
+    return out;
+  }
+
   Future<void> upsertTransaction(
     AppTransaction item, {
     bool omitCreatedAt = false,
