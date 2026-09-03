@@ -31,6 +31,8 @@ struct DashboardShell: View {
     @State private var opsDestination: OpsMenuItem?
     @State private var showHomeCustomDatePicker = false
     @State private var homeCustomDraft = Date()
+    /// Shared focus day for ร่อนทราย + เที่ยวรถ tabs.
+    @State private var realtimeFocusDate = Date()
 
     private static let homeDatePresets: [DateRangePreset] = [.today, .yesterday, .custom]
 
@@ -357,7 +359,8 @@ struct DashboardShell: View {
                         settings: appState.settings,
                         transactionsRevision: appState.transactionsRevision,
                         mode: mode,
-                        isRealtimeTabActive: isRealtimeTabActive
+                        isRealtimeTabActive: isRealtimeTabActive,
+                        focusDate: $realtimeFocusDate
                     )
                 }
                 .padding(AppTheme.spaceLG)

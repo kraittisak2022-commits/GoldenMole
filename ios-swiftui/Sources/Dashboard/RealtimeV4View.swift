@@ -46,7 +46,7 @@ struct RealtimeV4Snapshot: Sendable {
     let sandWorkSpan: String?
     let sandMorningSpanLabel: String?
     let sandAfternoonSpanLabel: String?
-    let sandHours: Double?
+    let sandHours: Doub่le?
     let sandMorningHours: Double?
     let sandAfternoonHours: Double?
     let tripHours: Double?
@@ -221,8 +221,9 @@ struct RealtimeV4View: View {
     var mode: RealtimeBoardMode = .trip
     /// True when either Real-time bottom tab is selected — drives snapshot rebuilds.
     var isRealtimeTabActive: Bool = true
+    /// Shared with the sibling trip/sand tab so the selected day carries over.
+    @Binding var focusDate: Date
 
-    @State private var focusDate = Date()
     @State private var snapshot = RealtimeV4Snapshot.empty()
     @State private var rebuildTask: Task<Void, Never>?
     @State private var showDatePicker = false
