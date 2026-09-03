@@ -6,10 +6,17 @@ struct OpsTrendAnalyticsHubView: View {
     @State private var focus: OpsTrendFocus
 
     @Environment(AppState.self) private var appState
-    @State private var period: OpsTrendPeriod = .week
+    @State private var rangeMode: OpsTrendRangeMode = .week
     @State private var periodOffset = 0
+    @State private var customStart = Calendar.current.date(byAdding: .day, value: -6, to: Date()) ?? Date()
+    @State private var customEnd = Date()
     @State private var report: OpsTrendReport = .empty(period: .week)
     @State private var proBundle: OpsTrendProBundle = .empty
+    @State private var analyticsPro = OpsTrendAnalyticsPro.empty
+    @State private var showFullDetail = false
+    @State private var watchlistTick = 0
+    @State private var showShareSheet = false
+    @State private var sharePayload: [Any] = []
     @State private var isBuilding = false
     @State private var buildToken = 0
     @State private var selectedBucket: OpsTrendBucketScore?
@@ -21,49 +28,108 @@ struct OpsTrendAnalyticsHubView: View {
         _focus = State(initialValue: focus)
     }
 
+    private var period: OpsTrendPeriod {
+        rangeMode.period ?? report.period
+    }
+
+    private var isCustomRange: Bool { rangeMode == .custom }
+
     private var maxPeriodOffset: Int { period == .week ? 26 : 12 }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                focusPicker
-                periodPicker
-                periodNavigator
-                if isBuilding && report.points.isEmpty {
-                    ProgressView("กำลังวิเคราะห์…")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 40)
-                } else {
-                    scoreHero
-                    actionPlanCard
-                    pillarBreakdown
-                    growthScoreboard
-                    bucketScoreCard
-                    comparisonChartCard
-                    cumulativeChartCard
-                    periodCompareCard
-                    if focus == .both {
-                        dualBarsCard
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    header
+                    focusPicker
+                    rangeModePicker
+                    if isCustomRange {
+                        OpsTrendCustomRangeBar(customStart: $customStart, customEnd: $customEnd)
+                            .onChange(of: customStart) { _, _ in report = .empty(period: period) }
+                            .onChange(of: customEnd) { _, _ in report = .empty(period: period) }
+                    } else {
+                        periodNavigator
                     }
-                    if focus == .trip || focus == .both {
-                        sessionSplitCard
+                    if isBuilding && report.points.isEmpty {
+                        ProgressView("กำลังวิเคราะห์…")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                    } else {
+                        OpsTrendProBriefingStrip(pro: analyticsPro) {
+                            showFullDetail = true
+                            withAnimation { proxy.scrollTo("opsActionPlan", anchor: .top) }
+                        }
+                        OpsTrendProLayerToggle(showFullDetail: $showFullDetail)
+                        scoreHero
+                        OpsTrendProForecastCard(forecast: analyticsPro.forecast)
+                        OpsTrendProCostLensCard(cost: analyticsPro.cost)
+                        actionPlanCard
+                            .id("opsActionPlan")
+                        if focus == .trip || focus == .sand {
+                            proEntryBanner
+                        }
+                        combinedDetailLink
+                        shareSummaryButton
+
+                        if showFullDetail {
+                            pillarBreakdown
+                            growthScoreboard
+                            bucketScoreCard
+                            comparisonChartCard
+                            cumulativeChartCard
+                            periodCompareCard
+                            if focus == .both {
+                                dualBarsCard
+                            }
+                            if focus == .trip || focus == .both {
+                                sessionSplitCard
+                            }
+                            advancedSection
+                            if focus == .trip || focus == .sand {
+                                OpsTrendProFocusSections(focus: focus, report: report, proBundle: proBundle)
+                            }
+                            detailCards
+                            insightsCard
+                        } else {
+                            Button {
+                                withAnimation(.snappy(duration: 0.25)) { showFullDetail = true }
+                            } label: {
+                                HStack {
+                                    Image(systemName: "chart.bar.doc.horizontal")
+                                    Text("เปิดกราฟและรายละเอียดเต็ม")
+                                        .font(.subheadline.weight(.semibold))
+                                    Spacer()
+                                    Image(systemName: "chevron.down")
+                                }
+                                .foregroundStyle(AppTheme.brand)
+                                .padding(14)
+                                .background(
+                                    RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                                        .fill(AppTheme.brand.opacity(0.08))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    advancedSection
-                    if focus == .trip || focus == .sand {
-                        OpsTrendProFocusSections(focus: focus, report: report, proBundle: proBundle)
-                    }
-                    detailCards
-                    insightsCard
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 32)
         }
         .background(DashboardBackground())
         .navigationTitle("วิเคราะห์")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    prepareShare()
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("แชร์สรุปวิเคราะห์")
+            }
+        }
         .navigationDestination(item: $selectedBucket) { bucket in
             OpsTrendBucketDetailView(bucket: bucket, period: period, dailyPoints: report.dailyPoints)
         }
@@ -72,6 +138,9 @@ struct OpsTrendAnalyticsHubView: View {
                 OpsTrendChartPointSheet(title: data.title, subtitle: data.subtitle, rows: data.rows)
             }
             .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: sharePayload)
         }
         .task(id: rebuildKey) {
             await rebuild()
@@ -94,7 +163,10 @@ struct OpsTrendAnalyticsHubView: View {
     }
 
     private var rebuildKey: String {
-        "\(focus.rawValue)|\(period.rawValue)|\(periodOffset)|\(appState.transactionsRevision)|\(appState.employees.count)"
+        let customKey = isCustomRange
+            ? "\(DashboardAggregations.formatYMD(customStart))|\(DashboardAggregations.formatYMD(customEnd))"
+            : "\(periodOffset)"
+        return "\(focus.rawValue)|\(rangeMode.rawValue)|\(customKey)|\(appState.transactionsRevision)|\(appState.employees.count)"
     }
 
     // MARK: - Header / pickers
@@ -152,19 +224,26 @@ struct OpsTrendAnalyticsHubView: View {
         .onChange(of: focus) { _, _ in
             report = .empty(period: period)
             proBundle = .empty
+            analyticsPro = .empty
         }
     }
 
-    private var periodPicker: some View {
-        Picker("ช่วง", selection: $period) {
-            ForEach(OpsTrendPeriod.allCases) { p in
-                Text(p.label).tag(p)
+    private var rangeModePicker: some View {
+        Picker("ช่วง", selection: $rangeMode) {
+            ForEach(OpsTrendRangeMode.allCases) { mode in
+                Text(mode.label).tag(mode)
             }
         }
         .pickerStyle(.segmented)
-        .onChange(of: period) { _, _ in
+        .onChange(of: rangeMode) { _, mode in
             periodOffset = 0
-            report = .empty(period: period)
+            if let p = mode.period {
+                report = .empty(period: p)
+            } else {
+                report = .empty(period: .week)
+            }
+            proBundle = .empty
+            analyticsPro = .empty
         }
     }
 
@@ -548,6 +627,7 @@ struct OpsTrendAnalyticsHubView: View {
     // MARK: - Action plan / anomaly alerts
 
     private var actionPlanCard: some View {
+        let _ = watchlistTick
         let plan = report.actionPlan
         let alerts = focusedAlerts(plan.alerts)
         let critical = alerts.filter { $0.severity == .critical }.count
@@ -580,7 +660,22 @@ struct OpsTrendAnalyticsHubView: View {
                         .foregroundStyle(AppTheme.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    ForEach(alerts) { alert in
+                    let pinned = OpsTrendWatchlistStore.pinnedAlerts(matching: alerts)
+                    if !pinned.isEmpty {
+                        Text("Watchlist ที่ปักหมุด")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.warning)
+                        ForEach(pinned) { alert in
+                            alertRow(alert)
+                        }
+                        if pinned.count < alerts.count {
+                            Divider().opacity(0.35)
+                            Text("สัญญาณทั้งหมด")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(AppTheme.ink)
+                        }
+                    }
+                    ForEach(alerts.filter { !OpsTrendWatchlistStore.isPinned($0.id) }) { alert in
                         alertRow(alert)
                     }
                 }
@@ -675,6 +770,7 @@ struct OpsTrendAnalyticsHubView: View {
 
     private func alertRow(_ alert: OpsTrendAlert) -> some View {
         let color = severityColor(alert.severity)
+        let pinned = OpsTrendWatchlistStore.isPinned(alert.id)
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: alert.severity.systemImage)
@@ -690,6 +786,18 @@ struct OpsTrendAnalyticsHubView: View {
                     .padding(.vertical, 3)
                     .background(Capsule().fill(AppTheme.surfaceSoft))
                 Spacer(minLength: 0)
+                Button {
+                    OpsTrendWatchlistStore.toggle(alert.id)
+                    watchlistTick += 1
+                } label: {
+                    Image(systemName: pinned ? "pin.fill" : "pin")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(pinned ? AppTheme.warning : AppTheme.inkMuted)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(AppTheme.surfaceSoft))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(pinned ? "เลิกปักหมุด" : "ปักหมุด Watchlist")
             }
             Text(alert.title)
                 .font(.subheadline.weight(.semibold))
@@ -1604,9 +1712,17 @@ struct OpsTrendAnalyticsHubView: View {
         buildToken += 1
         let token = buildToken
         isBuilding = true
-        let period = self.period
+        let rangeMode = self.rangeMode
+        let period = rangeMode.period ?? .week
         let periodOffset = self.periodOffset
         let focus = self.focus
+        let isCustom = rangeMode == .custom
+        let customFilter: DateFilter? = isCustom
+            ? DateFilter(
+                start: DashboardAggregations.formatYMD(customStart),
+                end: DashboardAggregations.formatYMD(customEnd)
+            )
+            : nil
         let txs = appState.transactions
         let byDay = appState.transactionsByDay
         let emps = appState.employees
@@ -1615,6 +1731,7 @@ struct OpsTrendAnalyticsHubView: View {
             OpsTrendAnalytics.build(
                 period: period,
                 periodOffset: periodOffset,
+                customFilter: customFilter,
                 transactions: txs,
                 employees: emps,
                 byDay: byDay
@@ -1626,7 +1743,7 @@ struct OpsTrendAnalyticsHubView: View {
             let mode = focus == .sand ? built.sandAdvanced : built.tripAdvanced
             return OpsTrendAnalytics.buildProBundle(
                 focus: focus,
-                period: period,
+                period: built.period,
                 filter: built.filter,
                 pacePoints: built.pacePoints,
                 daily: built.dailyPoints,
@@ -1637,12 +1754,76 @@ struct OpsTrendAnalyticsHubView: View {
             )
         }.value
 
+        let pro = await Task.detached(priority: .userInitiated) {
+            OpsTrendAnalyticsPro.build(
+                report: built,
+                focus: focus,
+                periodOffset: periodOffset,
+                isCustomRange: isCustom,
+                transactions: txs,
+                employees: emps,
+                byDay: byDay
+            )
+        }.value
+
         guard token == buildToken else { return }
         withAnimation(.snappy(duration: 0.25)) {
             report = built
             proBundle = bundle
+            analyticsPro = pro
             isBuilding = false
         }
+    }
+
+    private var shareSummaryButton: some View {
+        Button {
+            prepareShare()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(AppTheme.brand)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("แชร์สรุปช่วงนี้")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("ข้อความ + ภาพสรุป Briefing")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                    .fill(AppTheme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                    .strokeBorder(AppTheme.hairline, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    @MainActor
+    private func prepareShare() {
+        var items: [Any] = []
+        if !analyticsPro.shareText.isEmpty {
+            items.append(analyticsPro.shareText)
+        }
+        let card = OpsTrendShareSummaryCard(pro: analyticsPro, report: report, focus: focus)
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3
+        if let image = renderer.uiImage {
+            items.append(image)
+        }
+        guard !items.isEmpty else { return }
+        sharePayload = items
+        showShareSheet = true
     }
 
     private func presentTrendSheet(label: String) {

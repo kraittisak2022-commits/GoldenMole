@@ -319,7 +319,7 @@ struct HomeProAnalyticsLinkCard: View {
                             .padding(.vertical, 2)
                             .background(Capsule().fill(AppTheme.brand))
                     }
-                    Text("แนวโน้มสัปดาห์ · คะแนน · จุดผิดปกติ · แผนปฏิบัติ")
+                    Text("Briefing · พยากรณ์ · ต้นทุน · Watchlist · กำหนดเอง")
                         .font(.caption)
                         .foregroundStyle(AppTheme.inkMuted)
                         .lineLimit(2)

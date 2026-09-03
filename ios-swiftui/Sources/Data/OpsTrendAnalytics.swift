@@ -470,14 +470,27 @@ enum OpsTrendAnalytics {
     nonisolated static func build(
         period: OpsTrendPeriod,
         periodOffset: Int = 0,
+        customFilter: DateFilter? = nil,
         transactions: [Transaction],
         employees: [Employee],
         byDay: [String: [Transaction]] = [:]
     ) -> OpsTrendReport {
-        let filter = DashboardAggregations.shiftedPeriodFilter(
-            dayCount: period.dayCount,
-            offset: periodOffset
-        )
+        let filter: DateFilter
+        let effectivePeriod: OpsTrendPeriod
+        if let custom = customFilter {
+            let start = min(custom.start, custom.end)
+            let end = max(custom.start, custom.end)
+            filter = DateFilter(start: start, end: end)
+            let days = DashboardAggregations.countInclusiveDays(start, end)
+            // Use daily buckets for short custom ranges; weekly for longer.
+            effectivePeriod = days <= 10 ? .week : .month
+        } else {
+            filter = DashboardAggregations.shiftedPeriodFilter(
+                dayCount: period.dayCount,
+                offset: periodOffset
+            )
+            effectivePeriod = period
+        }
         let prevFilter = DashboardAggregations.previousPeriodFilter(filter)
         let dayKeys = DashboardAggregations.enumerateDates(in: filter)
         let prevKeys = DashboardAggregations.enumerateDates(in: prevFilter)
@@ -487,7 +500,7 @@ enum OpsTrendAnalytics {
 
         let points: [OpsTrendPoint]
         let prevPoints: [OpsTrendPoint]
-        switch period {
+        switch effectivePeriod {
         case .week:
             points = daily
             prevPoints = alignSeries(prevDaily, toCount: daily.count)
@@ -503,7 +516,7 @@ enum OpsTrendAnalytics {
             points: points,
             prevPoints: prevPoints,
             value: \.tripRounds,
-            dailyTarget: period.tripDailyTarget
+            dailyTarget: effectivePeriod.tripDailyTarget
         )
         let sand = metricCard(
             title: "ร่อนทราย",
@@ -520,7 +533,7 @@ enum OpsTrendAnalytics {
         let prevRatio = ratioOrNil(trip: trip.prevAverage, sand: sand.prevAverage)
 
         let scorecard = buildScorecard(
-            period: period,
+            period: effectivePeriod,
             trip: trip,
             sand: sand,
             activeDays: activeDays,
@@ -528,7 +541,7 @@ enum OpsTrendAnalytics {
             streak: streak
         )
         let prevScorecard = buildScorecard(
-            period: period,
+            period: effectivePeriod,
             trip: flippedPrevAsCurrent(trip),
             sand: flippedPrevAsCurrent(sand),
             activeDays: prevDaily.filter { $0.tripRounds > 0 || $0.sandRounds > 0 }.count,
@@ -550,10 +563,10 @@ enum OpsTrendAnalytics {
         )
 
         let bucketScores: [OpsTrendBucketScore] = {
-            switch period {
+            switch effectivePeriod {
             case .week:
                 return daily.enumerated().map { idx, p in
-                    let dayScore = dayBucketScore(point: p, target: period.tripDailyTarget)
+                    let dayScore = dayBucketScore(point: p, target: effectivePeriod.tripDailyTarget)
                     return OpsTrendBucketScore(
                         id: p.id,
                         label: weekdayShort(p.startKey) ?? p.label,
@@ -567,7 +580,7 @@ enum OpsTrendAnalytics {
                     OpsTrendBucketScore(
                         id: p.id,
                         label: p.label,
-                        score: weekBucketScore(point: p, target: period.tripDailyTarget),
+                        score: weekBucketScore(point: p, target: effectivePeriod.tripDailyTarget),
                         tripTotal: Double(p.tripRounds),
                         sandTotal: Double(p.sandRounds)
                     )
@@ -576,7 +589,7 @@ enum OpsTrendAnalytics {
         }()
 
         let insights = buildInsights(
-            period: period,
+            period: effectivePeriod,
             trip: trip,
             sand: sand,
             scorecard: scored,
@@ -594,7 +607,7 @@ enum OpsTrendAnalytics {
         }
         let pacePoints: [OpsTrendPacePoint]
         let prevPacePoints: [OpsTrendPacePoint]
-        switch period {
+        switch effectivePeriod {
         case .week:
             pacePoints = dailyPace
             prevPacePoints = alignPaceSeries(prevDailyPace, toCount: dailyPace.count)
@@ -607,7 +620,7 @@ enum OpsTrendAnalytics {
         let tripAdvanced = buildAdvancedMode(
             title: "เที่ยวรถ",
             unit: "เที่ยว",
-            period: period,
+            period: effectivePeriod,
             points: pacePoints,
             prevPoints: prevPacePoints,
             rounds: \.tripRounds,
@@ -618,12 +631,12 @@ enum OpsTrendAnalytics {
             samples: \.tripIntervalSamples,
             peak: \.tripPeakHourLabel,
             idealIntervalSec: 150,
-            volumeDailyTarget: period.tripDailyTarget
+            volumeDailyTarget: effectivePeriod.tripDailyTarget
         )
         let sandAdvanced = buildAdvancedMode(
             title: "ร่อนทราย",
             unit: "รอบ",
-            period: period,
+            period: effectivePeriod,
             points: pacePoints,
             prevPoints: prevPacePoints,
             rounds: \.sandRounds,
@@ -638,7 +651,7 @@ enum OpsTrendAnalytics {
         )
 
         let actionPlan = buildActionPlan(
-            period: period,
+            period: effectivePeriod,
             daily: daily,
             trip: trip,
             sand: sand,
@@ -650,7 +663,7 @@ enum OpsTrendAnalytics {
         )
 
         return OpsTrendReport(
-            period: period,
+            period: effectivePeriod,
             filter: filter,
             prevFilter: prevFilter,
             points: points,

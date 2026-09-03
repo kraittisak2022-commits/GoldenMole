@@ -161,6 +161,7 @@ struct OverviewHubView: View {
     @State private var snapshot = OverviewSnapshot.empty(filter: DateFilter(start: "", end: ""))
     @State private var todayOps = TodayOpsSnapshot.empty
     @State private var homePro = HomeProSnapshot.empty
+    @State private var analyticsWatchlist: [OpsTrendAlert] = []
     @State private var rebuildTask: Task<Void, Never>?
     @State private var showAllWorkingStaff = false
 
@@ -183,6 +184,7 @@ struct OverviewHubView: View {
                 HomeProQuickActionsRow()
                 HomeProInsightStrip(insights: homePro.insights, alerts: homePro.alerts)
                 HomeProChecklistCard(pro: homePro)
+                OpsTrendHomeWatchlistCard(alerts: analyticsWatchlist)
                 HomeProAnalyticsLinkCard()
                 todayHighlightCard
                 dailyEventsCard
@@ -258,12 +260,22 @@ struct OverviewHubView: View {
                     periodAlerts: overview.alerts,
                     periodInsights: overview.insights
                 )
-                return (overview, today, pro)
+                let byDay = Dictionary(grouping: all) { String($0.date.prefix(10)) }
+                let weekReport = OpsTrendAnalytics.build(
+                    period: .week,
+                    periodOffset: 0,
+                    transactions: all,
+                    employees: emps,
+                    byDay: byDay
+                )
+                let watch = OpsTrendWatchlistStore.pinnedAlerts(matching: weekReport.actionPlan.alerts)
+                return (overview, today, pro, watch)
             }.value
             guard !Task.isCancelled else { return }
             snapshot = built.0
             todayOps = built.1
             homePro = built.2
+            analyticsWatchlist = built.3
         }
     }
 
