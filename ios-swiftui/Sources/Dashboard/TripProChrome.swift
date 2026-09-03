@@ -13,7 +13,6 @@ private enum TripProAccent {
 
 struct TripProCommandStrip: View {
     let pro: TripProSnapshot
-    var onOpenDetail: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -87,58 +86,6 @@ struct TripProCommandStrip: View {
                     isUp: (pro.roundsVsAvg7Pct ?? 0) >= 0
                 )
             }
-
-            if let cta = pro.ctaTitle {
-                NavigationLink {
-                    CountRecordHubView(initialMode: .trip)
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "plus.circle.fill")
-                        Text(cta)
-                            .fontWeight(.bold)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Spacer(minLength: 0)
-                        Image(systemName: "arrow.right")
-                            .font(.caption.weight(.bold))
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        LinearGradient(
-                            colors: [TripProAccent.blue, TripProAccent.indigo],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    )
-                }
-                .buttonStyle(.plain)
-            } else if pro.hasTripData {
-                Button {
-                    onOpenDetail?()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.seal.fill")
-                        Text("งานเที่ยวถึงเป้า · ดูรายละเอียดฝูงรถ")
-                            .fontWeight(.semibold)
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                    }
-                    .font(.caption)
-                    .foregroundStyle(Color(hex: "#059669"))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color(hex: "#059669").opacity(0.12))
-                    )
-                }
-                .buttonStyle(.plain)
-            }
         }
         .padding(14)
         .background(TripProCardBackground())
@@ -200,58 +147,6 @@ struct TripProCommandStrip: View {
         if pct > 0 { return "ช้า +\(Int(pct.rounded()))%" }
         if pct < 0 { return "เร็ว \(abs(Int(pct.rounded())))%" }
         return "เท่าเดิม"
-    }
-}
-
-// MARK: - Quick actions
-
-struct TripProQuickActionsRow: View {
-    var body: some View {
-        HStack(spacing: 8) {
-            NavigationLink {
-                CountRecordHubView(initialMode: .trip)
-            } label: {
-                actionLabel(title: "นับเที่ยว", systemImage: "truck.box.fill", accent: TripProAccent.blue)
-            }
-            .buttonStyle(.plain)
-
-            NavigationLink {
-                OpsTrendProAnalysisView(focus: .trip)
-            } label: {
-                actionLabel(title: "วิเคราะห์ Pro", systemImage: "chart.xyaxis.line", accent: TripProAccent.indigo)
-            }
-            .buttonStyle(.plain)
-
-            NavigationLink {
-                DrumTripHubView()
-            } label: {
-                actionLabel(title: "รถดรัม", systemImage: "cylinder.split.1x2", accent: TripProAccent.cyan)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private func actionLabel(title: String, systemImage: String, accent: Color) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.bold))
-            Text(title)
-                .font(.caption.weight(.bold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .foregroundStyle(accent)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(accent.opacity(0.12))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(accent.opacity(0.22), lineWidth: 1)
-        )
-        .accessibilityLabel(title)
     }
 }
 
@@ -645,64 +540,6 @@ struct TripProPeakTeaser: View {
             .padding(14)
             .background(TripProCardBackground())
         }
-    }
-}
-
-// MARK: - Analytics Pro link
-
-struct TripProAnalyticsLinkCard: View {
-    var body: some View {
-        NavigationLink {
-            OpsTrendProAnalysisView(focus: .trip)
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [TripProAccent.blue, TripProAccent.indigo],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "chart.xyaxis.line")
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(.white)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text("วิเคราะห์ Pro · เที่ยวรถ")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(RealtimeV4Palette.ink)
-                        Text("PRO")
-                            .font(.system(size: 9, weight: .black))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(TripProAccent.blue))
-                    }
-                    Text("สัปดาห์ · คะแนน · อันดับรถ · แผนเร่งจังหวะ")
-                        .font(.caption)
-                        .foregroundStyle(RealtimeV4Palette.inkMuted)
-                        .lineLimit(2)
-                }
-
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(RealtimeV4Palette.inkFaint)
-            }
-            .padding(14)
-            .background(TripProCardBackground())
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(TripProAccent.blue.opacity(0.25), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("เปิดวิเคราะห์ Pro เที่ยวรถ")
     }
 }
 

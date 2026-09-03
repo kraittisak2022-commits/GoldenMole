@@ -361,11 +361,11 @@ struct RealtimeV4View: View {
                 tripTotal: tripTotal,
                 morningSpanLabel: snapshot.fleetMorningSpanLabel,
                 afternoonSpanLabel: snapshot.fleetAfternoonSpanLabel,
-                efficiency: efficiency,
                 leaderboard: snapshot.leaderboard,
                 analytics: tripAnalytics,
                 activityEvents: modeActivityEvents,
-                dayKey: focusDateStr
+                dayKey: focusDateStr,
+                pro: snapshot.tripPro
             )
         }
     }
@@ -722,7 +722,6 @@ struct RealtimeV4View: View {
     // MARK: - Trip panel
 
     private var tripPanel: some View {
-        let pro = snapshot.tripPro
         return panelShell(
             title: "จำนวนเที่ยวรถ",
             subtitle: "\(tripUnits.count) คัน · \(CountRecordLogic.formatMetric(tripTotal)) เที่ยว",
@@ -730,14 +729,12 @@ struct RealtimeV4View: View {
             gradient: [Color(hex: "#1D4ED8"), Color(hex: "#2563EB"), Color(hex: "#0891B2")]
         ) {
             VStack(spacing: 12) {
-                TripProQuickActionsRow()
-
                 if tripUnits.isEmpty {
-                    emptyState(icon: "truck.box", title: "ยังไม่มีเที่ยวรถ", subtitle: "กดนับเที่ยว หรือรอการนับจากมือถือ")
-                    TripProCommandStrip(pro: pro)
-                    TripProInsightStrip(insights: pro.insights)
-                    TripProSandBalanceCard(pro: pro)
-                    TripProAnalyticsLinkCard()
+                    emptyState(
+                        icon: "truck.box",
+                        title: "ยังไม่มีเที่ยวรถ",
+                        subtitle: "รอการนับจากมือถือ หรือข้อมูลเที่ยววันนี้"
+                    )
                 } else {
                     if tripTotal > 0 {
                         tripSummaryHero
@@ -745,17 +742,6 @@ struct RealtimeV4View: View {
                             .onTapGesture { showFleetDetail = true }
                             .accessibilityAddTraits(.isButton)
                             .accessibilityHint("แตะเพื่อดูรายละเอียดรวมเที่ยวรถ")
-
-                        TripProCommandStrip(pro: pro, onOpenDetail: { showFleetDetail = true })
-                        TripProInsightStrip(insights: pro.insights)
-                        tripKPI
-                        TripProEfficiencyCard(pro: pro)
-                        TripProLeaderboardCard(leaders: pro.leaders)
-                        TripProIdleCard(idleVehicles: pro.idleVehicles)
-                        TripProPaceCard(pro: pro, analytics: tripAnalytics)
-                        TripProPeakTeaser(pro: pro)
-                        TripProSandBalanceCard(pro: pro)
-                        TripProAnalyticsLinkCard()
                     }
 
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
@@ -832,129 +818,6 @@ struct RealtimeV4View: View {
             .padding(.horizontal, 16)
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private var tripKPI: some View {
-        let target = CountRecordLogic.tripTarget
-        let queueTotal = tripTotal * CountRecordLogic.queuePerTrip
-        let hours = snapshot.tripHours
-        let tripsPerHour = hours.flatMap { $0 > 0 ? Double(tripTotal) / $0 : nil }
-        let tripsPerMin = hours.flatMap { $0 > 0 ? Double(tripTotal) / ($0 * 60) : nil }
-        let pct = target > 0
-            ? min(Double(tripTotal) / Double(target) * 100, 100)
-            : 0
-        let eta = CountRecordAnalytics.computeTripTargetEta(
-            tripUnits: tripUnits,
-            dayKey: focusDateStr,
-            target: target
-        )
-        let tripBlue = Color(hex: "#2563EB")
-        let tripBlueSoft = Color(hex: "#DBEAFE")
-        let tripBlueLabel = Color(light: Color(hex: "#1D4ED8"), dark: Color(hex: "#93C5FD"))
-
-        return VStack(alignment: .leading, spacing: 10) {
-            Text("ตัวชี้วัดการขน")
-                .font(.system(size: 10, weight: .bold))
-                .tracking(1.2)
-                .foregroundStyle(tripBlueLabel)
-
-            HStack(spacing: 8) {
-                kpiCell(
-                    title: "เที่ยว / ชม.",
-                    value: tripsPerHour.map { String(format: "%.1f", $0) } ?? "—",
-                    labelColor: tripBlueLabel,
-                    fill: Color(light: tripBlueSoft, dark: tripBlue.opacity(0.22))
-                )
-                kpiCell(
-                    title: "เที่ยว / นาที",
-                    value: tripsPerMin.map { String(format: "%.2f", $0) } ?? "—",
-                    labelColor: tripBlueLabel,
-                    fill: Color(light: tripBlueSoft, dark: tripBlue.opacity(0.22))
-                )
-            }
-
-            workHoursBlock(
-                titleColor: tripBlueLabel,
-                cellFill: Color(light: tripBlueSoft, dark: tripBlue.opacity(0.22)),
-                total: snapshot.tripHours,
-                morning: snapshot.tripMorningHours,
-                afternoon: snapshot.tripAfternoonHours
-            )
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("เป้าหมาย \(CountRecordLogic.formatMetric(target)) เที่ยว/วัน")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(RealtimeV4Palette.inkSecondary)
-                    Spacer()
-                    Text("\(CountRecordLogic.formatMetric(tripTotal)) / \(CountRecordLogic.formatMetric(target)) · \(Int(pct.rounded()))%")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(RealtimeV4Palette.ink)
-                }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color(light: tripBlueSoft, dark: tripBlue.opacity(0.2)))
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: eta.reached
-                                        ? [Color(hex: "#10B981"), Color(hex: "#059669")]
-                                        : [tripBlue, Color(hex: "#4338CA")],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: geo.size.width * CGFloat(pct / 100))
-                    }
-                }
-                .frame(height: 8)
-
-                if eta.reached {
-                    Label("ถึงเป้าแล้ว", systemImage: "checkmark.seal.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color(hex: "#059669"))
-                } else if let clock = eta.etaClock {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock.badge.checkmark")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("คาดการณ์ถึงเป้าประมาณ \(clock)")
-                            .font(.system(size: 11, weight: .semibold))
-                        if let hoursLeft = eta.hoursLeft {
-                            Text("· ~\(CountRecordAnalytics.formatDurationHours(hoursLeft))")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(RealtimeV4Palette.inkMuted)
-                        }
-                    }
-                    .foregroundStyle(tripBlueLabel)
-                } else {
-                    Text("นับอย่างน้อย 2 เที่ยว เพื่อคาดการณ์เวลาถึงเป้า")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(RealtimeV4Palette.inkFaint)
-                }
-
-                Text("\(CountRecordLogic.formatMetric(queueTotal)) คิว · \(CountRecordLogic.queuePerTrip) คิว / 1 เที่ยว")
-                    .font(.system(size: 9))
-                    .foregroundStyle(RealtimeV4Palette.inkMuted)
-            }
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(light: Color(hex: "#EFF6FF"), dark: Color(hex: "#0B1220")),
-                            Color(light: Color(hex: "#DBEAFE"), dark: Color(hex: "#111827"))
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(tripBlue.opacity(0.3), lineWidth: 1)
-        )
     }
 
     // MARK: - Sand panel
@@ -1593,11 +1456,11 @@ private struct FleetTripDetailSheet: View {
     let tripTotal: Int
     let morningSpanLabel: String?
     let afternoonSpanLabel: String?
-    let efficiency: VehicleEfficiency
     let leaderboard: [CountRecordTripUnit]
     let analytics: CountRecordAnalytics.ModeAnalytics
     let activityEvents: [CountRecordAnalytics.ActivityEvent]
     let dayKey: String
+    let pro: TripProSnapshot
     @Environment(\.dismiss) private var dismiss
     @State private var allRounds: [FleetRoundRow] = []
 
@@ -1662,26 +1525,14 @@ private struct FleetTripDetailSheet: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("ประสิทธิภาพ")
-                            .font(.system(size: 11, weight: .bold))
-                            .tracking(1.2)
-                            .foregroundStyle(RealtimeV4Palette.inkMuted)
-                        HStack {
-                            Text(String(format: "%.1f เที่ยว/คัน", efficiency.perVehToday))
-                                .font(.headline.weight(.bold))
-                                .foregroundStyle(RealtimeV4Palette.ink)
-                            Spacer()
-                            EfficiencyBadge(efficiency: efficiency)
-                        }
-                        Text("\(efficiency.countToday) คันที่นับ")
-                            .font(.caption)
-                            .foregroundStyle(RealtimeV4Palette.inkMuted)
-                    }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 14).fill(RealtimeV4Palette.cardSoft))
-
+                    TripProCommandStrip(pro: pro)
+                    TripProInsightStrip(insights: pro.insights)
+                    TripProEfficiencyCard(pro: pro)
+                    TripProLeaderboardCard(leaders: pro.leaders)
+                    TripProIdleCard(idleVehicles: pro.idleVehicles)
+                    TripProPaceCard(pro: pro, analytics: analytics)
+                    TripProPeakTeaser(pro: pro)
+                    TripProSandBalanceCard(pro: pro)
                     recentLeaderboardCard
 
                     RealtimeV4ActivityFeed(
