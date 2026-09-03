@@ -30,21 +30,28 @@ export async function getPayerByToken(token: string): Promise<FaReimbPayer | nul
 }
 
 export async function savePayer(input: { id?: string; name: string }): Promise<FaReimbPayer> {
-  const id = input.id || newId('payer');
-  const row = {
-    id,
-    name: input.name.trim(),
-    share_token: input.id
-      ? undefined
-      : typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID().replace(/-/g, '')
-        : newId('tok').replace(/^tok-/, ''),
-    inactive: false,
-  };
-  const payload = input.id
-    ? { id, name: row.name, inactive: false }
-    : { id, name: row.name, share_token: row.share_token, inactive: false };
-  const { data, error } = await supabase.from('fa_reimb_payers').upsert(payload).select('*').single();
+  const name = input.name.trim();
+  if (input.id) {
+    const { data, error } = await supabase
+      .from('fa_reimb_payers')
+      .update({ name, inactive: false })
+      .eq('id', input.id)
+      .select('*')
+      .single();
+    if (error) throw new Error(error.message);
+    return map(data);
+  }
+
+  const id = newId('payer');
+  const share_token =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID().replace(/-/g, '')
+      : newId('tok').replace(/^tok-/, '');
+  const { data, error } = await supabase
+    .from('fa_reimb_payers')
+    .insert({ id, name, share_token, inactive: false })
+    .select('*')
+    .single();
   if (error) throw new Error(error.message);
   return map(data);
 }
