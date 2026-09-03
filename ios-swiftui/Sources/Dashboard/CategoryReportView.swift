@@ -60,9 +60,10 @@ enum CategoryReportType: CaseIterable, Identifiable {
         let dayTx = transactions.filter { String($0.date.prefix(10)) == dayKey && matches($0) }
         switch self {
         case .labor:
-            let total = dayTx.reduce(0.0) {
-                $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees)
-            }
+            let total = DashboardAggregations.laborCostForDay(
+                dayLaborTx: dayTx,
+                employees: employees
+            )
             let people = Set(dayTx.flatMap { $0.employeeIds ?? [] }.filter { !$0.isEmpty }).count
             return CategoryHubSummary(
                 primary: total > 0 ? DashboardAggregations.formatCurrency(total) : "฿0",
@@ -254,9 +255,10 @@ struct CategoryReportView: View {
         }
         switch type {
         case .labor:
-            let total = transactions.reduce(0.0) {
-                $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees)
-            }
+            let total = DashboardAggregations.laborCost(
+                transactions: transactions,
+                employees: employees
+            )
             return CategoryHubSummary(
                 primary: DashboardAggregations.formatCurrency(total),
                 secondary: "\(scopeTitle) · \(transactions.count) รายการ",
@@ -403,23 +405,24 @@ struct CategoryReportView: View {
                 let dayTx = transactions.filter {
                     String($0.date.prefix(10)) == date && $0.category == "Labor"
                 }
-                return dayTx.reduce(0.0) {
-                    $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees)
-                }
+                return DashboardAggregations.laborCostForDay(
+                    dayLaborTx: dayTx,
+                    employees: employees
+                )
             }
         )
     }
 
-    private var laborTotal: Double {
-        transactions
-            .filter { $0.category == "Labor" }
-            .reduce(0.0) { $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees) }
+    private var laborParts: (work: Double, ot: Double, advance: Double) {
+        DashboardAggregations.laborCostParts(
+            transactions: transactions.filter { $0.category == "Labor" },
+            employees: employees
+        )
     }
-    private var laborBase: Double {
-        max(0, laborTotal - laborOT - laborAdvance)
-    }
-    private var laborOT: Double { transactions.filter { $0.category == "Labor" }.reduce(0) { $0 + ($1.otAmount ?? 0) } }
-    private var laborAdvance: Double { transactions.filter { $0.category == "Labor" }.reduce(0) { $0 + ($1.advanceAmount ?? 0) } }
+    private var laborTotal: Double { laborParts.work + laborParts.ot + laborParts.advance }
+    private var laborBase: Double { laborParts.work }
+    private var laborOT: Double { laborParts.ot }
+    private var laborAdvance: Double { laborParts.advance }
 
     // MARK: - Vehicle
 

@@ -68,25 +68,21 @@ struct TodayOpsSnapshot: Sendable {
         }
 
         var workingIds = Set<String>()
-        var leaveIds = Set<String>()
-        var wageByEmployee: [String: Double] = [:]
         var workLabelsByEmployee: [String: [String]] = [:]
 
-        for t in dayTx where t.category == "Labor" && (t.laborStatus == "Work" || t.laborStatus == "OT") {
+        let laborDayTx = dayTx.filter { $0.category == "Labor" }
+        let wageByEmployee = DashboardAggregations.laborWagesByEmployee(
+            dayLaborTx: laborDayTx,
+            employees: employees,
+            rosterIds: rosterIds
+        )
+
+        for t in laborDayTx where t.laborStatus == "Work" || t.laborStatus == "OT" {
             let allIds = (t.employeeIds ?? []).filter { !$0.isEmpty }
             let ids = allIds.filter { rosterIds.contains($0) }
             guard !ids.isEmpty else { continue }
 
             for id in ids { workingIds.insert(id) }
-
-            // Per-employee wage from employees.base_wage (web พนักงาน > ค่าแรง), not equal-split of amount.
-            for id in ids {
-                wageByEmployee[id, default: 0] += DashboardAggregations.laborWageForEmployee(
-                    t,
-                    employeeId: id,
-                    employees: employees
-                )
-            }
 
             if let assignments = t.workAssignments {
                 for (catId, empIds) in assignments {
@@ -124,7 +120,7 @@ struct TodayOpsSnapshot: Sendable {
             workingIdsSeed: workingIds
         )
         workingIds = attendance.workingIds
-        leaveIds = attendance.leaveIds
+        let leaveIds = attendance.leaveIds
         let absentIds = attendance.absentIds
 
         let empById = Dictionary(uniqueKeysWithValues: roster.map { ($0.id, $0) })
@@ -324,6 +320,113 @@ extension DashboardAggregations {
         }
         let special = max(0, t.specialAmount ?? 0)
         return dailyWageForWorkType(emp: emp, wage: base, workType: wt) + special
+    }
+
+    struct LaborDayCost: Sendable {
+        var byEmployee: [String: Double]
+        var work: Double
+        var ot: Double
+        var advance: Double
+        var total: Double { work + ot + advance }
+    }
+
+    /// Day labor cost by employee — Work attendance is **max'd** (duplicate เช็คชื่อ rows must not double-count).
+    /// OT and Advance stack on top.
+    static func laborDayCost(
+        dayLaborTx: [Transaction],
+        employees: [Employee],
+        rosterIds: Set<String>? = nil
+    ) -> LaborDayCost {
+        var workWage: [String: Double] = [:]
+        var otWage: [String: Double] = [:]
+        var advanceWage: [String: Double] = [:]
+
+        for t in dayLaborTx where t.category == "Labor" {
+            let rawIds = (t.employeeIds ?? []).filter { !$0.isEmpty }
+            let ids = rosterIds.map { rawIds.filter($0.contains) } ?? rawIds
+            guard !ids.isEmpty else { continue }
+
+            let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let isOt = t.laborStatus == "OT" || sub == "OT"
+            let isAdvance = t.laborStatus == "Advance" || sub == "Advance"
+
+            if isAdvance {
+                let payout: Double
+                if t.amount > 0 {
+                    payout = t.amount
+                } else if let adv = t.advanceAmount, adv > 0 {
+                    payout = adv
+                } else {
+                    continue
+                }
+                let share = payout / Double(ids.count)
+                for id in ids { advanceWage[id, default: 0] += share }
+                continue
+            }
+
+            for id in ids {
+                let w = laborWageForEmployee(t, employeeId: id, employees: employees)
+                guard w > 0 else { continue }
+                if isOt {
+                    otWage[id, default: 0] += w
+                } else if t.laborStatus == "Work" || sub == "Attendance" || t.laborStatus == nil {
+                    workWage[id] = max(workWage[id] ?? 0, w)
+                }
+            }
+        }
+
+        var out: [String: Double] = [:]
+        for (id, w) in workWage { out[id, default: 0] += w }
+        for (id, w) in otWage { out[id, default: 0] += w }
+        for (id, w) in advanceWage { out[id, default: 0] += w }
+        return LaborDayCost(
+            byEmployee: out,
+            work: workWage.values.reduce(0.0, +),
+            ot: otWage.values.reduce(0.0, +),
+            advance: advanceWage.values.reduce(0.0, +)
+        )
+    }
+
+    static func laborWagesByEmployee(
+        dayLaborTx: [Transaction],
+        employees: [Employee],
+        rosterIds: Set<String>? = nil
+    ) -> [String: Double] {
+        laborDayCost(dayLaborTx: dayLaborTx, employees: employees, rosterIds: rosterIds).byEmployee
+    }
+
+    static func laborCostForDay(
+        dayLaborTx: [Transaction],
+        employees: [Employee],
+        rosterIds: Set<String>? = nil
+    ) -> Double {
+        laborDayCost(dayLaborTx: dayLaborTx, employees: employees, rosterIds: rosterIds).total
+    }
+
+    /// Sum labor across many days without double-counting duplicate Attendance rows within a day.
+    static func laborCost(
+        transactions: [Transaction],
+        employees: [Employee],
+        rosterIds: Set<String>? = nil
+    ) -> Double {
+        let labor = transactions.filter { $0.category == "Labor" }
+        let byDay = Dictionary(grouping: labor) { String($0.date.prefix(10)) }
+        return byDay.values.reduce(0.0) {
+            $0 + laborCostForDay(dayLaborTx: $1, employees: employees, rosterIds: rosterIds)
+        }
+    }
+
+    static func laborCostParts(
+        transactions: [Transaction],
+        employees: [Employee],
+        rosterIds: Set<String>? = nil
+    ) -> (work: Double, ot: Double, advance: Double) {
+        let labor = transactions.filter { $0.category == "Labor" }
+        let byDay = Dictionary(grouping: labor) { String($0.date.prefix(10)) }
+        return byDay.values.reduce((work: 0.0, ot: 0.0, advance: 0.0)) { acc, dayTx in
+            let part = laborDayCost(dayLaborTx: dayTx, employees: employees, rosterIds: rosterIds)
+            return (acc.work + part.work, acc.ot + part.ot, acc.advance + part.advance)
+        }
     }
 
     static func inferredLaborAttendanceTotal(_ t: Transaction, employees: [Employee]) -> Double {

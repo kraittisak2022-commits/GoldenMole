@@ -103,9 +103,10 @@ enum DailyWizardSnapshot {
         )
 
         let labor = dayTx.filter { $0.category == "Labor" }
-        let laborBaht = labor.reduce(0.0) {
-            $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: employees)
-        }
+        let laborBaht = DashboardAggregations.laborCostForDay(
+            dayLaborTx: labor,
+            employees: employees
+        )
         let laborHeads = Set(labor.flatMap { $0.employeeIds ?? [] }.filter { !$0.isEmpty }).count
 
         // Paid vehicle hire only — macro usage and trip rows belong to other steps.

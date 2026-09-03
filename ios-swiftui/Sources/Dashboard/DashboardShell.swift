@@ -570,7 +570,12 @@ struct DashboardShell: View {
                 String($0.date.prefix(10)) == day && type.matches($0)
             }
             switch type {
-            case .labor, .vehicle:
+            case .labor:
+                return sum + DashboardAggregations.laborCostForDay(
+                    dayLaborTx: dayTx,
+                    employees: appState.employees
+                )
+            case .vehicle:
                 return sum + dayTx.reduce(0.0) {
                     $0 + DashboardAggregations.wizardMonetaryAmount($1, employees: appState.employees)
                 }
