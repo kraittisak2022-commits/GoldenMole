@@ -76,6 +76,25 @@ integrations:
 | `SUPABASE_URL` | ใช่ | `https://cocvespahjymyrvmqzcs.supabase.co` |
 | `SUPABASE_ANON_KEY` | ใช่ | ดูใน `codemagic.secrets.yaml` (ไฟล์ local ไม่ commit) |
 | `CERTIFICATE_PRIVATE_KEY` | ใช่ | ดูขั้นที่ 3.5 — ครั้งเดียว แล้ว build สร้าง cert+profile อัตโนมัติ |
+| `TESTFLIGHT_URL` | ไม่บังคับ | Public link เช่น `https://testflight.apple.com/join/XXXXXXXX` — ใส่ใน Secrets ของแอป + sync เข้า Supabase หลัง build |
+| `MARKETING_VERSION` | ไม่บังคับ | เช่น `1.0.1` — ถ้าใส่ จะตั้ง CFBundleShortVersionString ก่อนบิลด์ |
+
+---
+
+## Soft-update (TestFlight prompt ในแอป)
+
+หลัง build IPA สำเร็จ workflow จะ:
+
+1. อ่าน marketing version + build number จาก `agvtool`
+2. PATCH `app_settings.app_defaults` ใน Supabase:
+   - `iosLatestVersion`
+   - `iosLatestBuild`
+   - `iosTestFlightURL` (ถ้ามี `TESTFLIGHT_URL`)
+3. ใส่ `TESTFLIGHT_URL` / `APP_STORE_ID` ลง `Config/Secrets.xcconfig` ตอน generate โปรเจกต์
+
+แอปที่ติดตั้งไว้แล้วจะเห็น popup “มีเวอร์ชันใหม่” (ไม่บังคับ) เมื่อเวอร์ชันบนเครื่องต่ำกว่าค่าใน Supabase
+
+> หมายเหตุ: TestFlight processing อาจช้ากว่า sync ไป Supabase สองสามนาที — ผู้ใช้กดอัปเดตแล้วยังไม่เห็น build ใหม่ได้ชั่วคราว
 
 ---
 

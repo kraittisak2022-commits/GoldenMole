@@ -99,8 +99,9 @@ Icon sourced from `mobile-flutter/assets/branding/app_logo.png` (Golden Mole). R
 
 ## Version
 
-- Marketing version: 1.0.0 (set in `project.yml`)
-- Build number: incremented by fastlane on CI
+- Marketing version: `1.0.0` in `project.yml` (override on Codemagic with env `MARKETING_VERSION`)
+- Build number: incremented by Codemagic (`agvtool`) from App Store Connect latest + 1
+- Soft-update channel: after each dashboard IPA build, Codemagic writes `iosLatestVersion` / `iosLatestBuild` into Supabase `app_settings.app_defaults` (optional `TESTFLIGHT_URL` in env group)
 
 ## Scope
 

@@ -7,9 +7,12 @@
 # 1. App ID com.goldenmole.dashboard in Apple Developer → Identifiers
 # 2. Team integrations → Developer Portal → API key named "codemagic"
 # 3. Env group goldenmole_dashboard: SUPABASE_URL, SUPABASE_ANON_KEY, CERTIFICATE_PRIVATE_KEY
+#    Optional: TESTFLIGHT_URL (public TestFlight link for soft-update prompt)
 # 4. Revoke all Apple Distribution certs (Apple limit: 3) before first auto-signing build
 #
 # Each build: fetch-signing-files --create auto-creates Distribution cert + App Store profile.
+# After IPA build: syncs iosLatestVersion / iosLatestBuild into Supabase app_settings.app_defaults
+# so installed apps show the soft-update popup.
 #
 # App Preview (browser simulator): run workflow "Goldenmole Dashboard iOS (Simulator Preview)"
 # Docs: https://docs.codemagic.io/yaml-distributing/app-preview/
@@ -46,9 +49,16 @@ workflows:
           # xcconfig treats // as a comment, so https://... would be cut to
           # "https:". Escape it as https:/$()/ which Xcode resolves back.
           XCCONFIG_SUPABASE_URL=$(printf '%s' "$SUPABASE_URL" | sed 's|//|/$()/|')
+          XCCONFIG_TESTFLIGHT_URL=""
+          if [ -n "${TESTFLIGHT_URL:-}" ]; then
+            XCCONFIG_TESTFLIGHT_URL=$(printf '%s' "$TESTFLIGHT_URL" | sed 's|//|/$()/|')
+          fi
+          APP_STORE_ID_VALUE="${APP_STORE_APPLE_ID:-}"
           cat > Config/Secrets.xcconfig <<EOF
           SUPABASE_URL = $XCCONFIG_SUPABASE_URL
           SUPABASE_ANON_KEY = $SUPABASE_ANON_KEY
+          TESTFLIGHT_URL = $XCCONFIG_TESTFLIGHT_URL
+          APP_STORE_ID = $APP_STORE_ID_VALUE
           EOF
           xcodegen generate
       - name: Set up keychain for code signing
@@ -88,6 +98,11 @@ workflows:
         script: |
           set -euo pipefail
           cd "$CM_BUILD_DIR/ios-swiftui"
+          # Optional: set MARKETING_VERSION in Codemagic env to bump CFBundleShortVersionString
+          if [ -n "${MARKETING_VERSION:-}" ]; then
+            echo "Setting marketing version to $MARKETING_VERSION"
+            agvtool new-marketing-version "$MARKETING_VERSION"
+          fi
           LATEST_BUILD_NUMBER=$(app-store-connect get-latest-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || true)
           LATEST_BUILD_NUMBER=${LATEST_BUILD_NUMBER:-0}
           NEW_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
@@ -96,12 +111,73 @@ workflows:
           fi
           echo "Latest uploaded build: $LATEST_BUILD_NUMBER -> setting CFBundleVersion to $NEW_BUILD_NUMBER"
           agvtool new-version -all "$NEW_BUILD_NUMBER"
+          echo "Marketing: $(agvtool what-marketing-version -terse1 2>/dev/null || true)"
           agvtool what-version -terse
       - name: Build ipa for distribution
         script: |
           xcode-project build-ipa \
             --project "$CM_BUILD_DIR/$XCODE_PROJECT" \
             --scheme "$XCODE_SCHEME"
+      - name: Sync soft-update version to Supabase
+        script: |
+          set -euo pipefail
+          # Writes iosLatestVersion / iosLatestBuild (+ optional iosTestFlightURL) into
+          # app_settings.app_defaults so installed clients can soft-prompt for TestFlight.
+          # Runs after IPA is built (version is final). TestFlight processing may lag a few minutes.
+          if ! command -v jq >/dev/null 2>&1; then
+            brew install jq
+          fi
+          cd "$CM_BUILD_DIR/ios-swiftui"
+          MARKETING=$(agvtool what-marketing-version -terse1 2>/dev/null | tail -1 | tr -d '[:space:]' || true)
+          BUILD=$(agvtool what-version -terse 2>/dev/null | tr -d '[:space:]' || true)
+          if [ -z "${MARKETING:-}" ]; then
+            MARKETING=$(grep -E '^\s*MARKETING_VERSION:' project.yml | head -1 | sed 's/.*:[[:space:]]*//' | tr -d '"' || true)
+          fi
+          MARKETING=${MARKETING:-1.0.0}
+          BUILD=${BUILD:-1}
+          TF_URL="${TESTFLIGHT_URL:-}"
+          echo "Publishing soft-update channel: version=$MARKETING build=$BUILD testflight=${TF_URL:-"(none)"}"
+
+          RESP=$(curl -sS \
+            "${SUPABASE_URL}/rest/v1/app_settings?id=eq.default&select=app_defaults" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Accept: application/json")
+
+          if ! echo "$RESP" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            echo "ERROR: unexpected Supabase response when reading app_settings:"
+            echo "$RESP"
+            exit 1
+          fi
+
+          MERGED=$(echo "$RESP" | jq -c \
+            --arg v "$MARKETING" \
+            --arg b "$BUILD" \
+            --arg u "$TF_URL" \
+            '
+              (.[0].app_defaults // {}) as $d
+              | $d
+              | .iosLatestVersion = $v
+              | .iosLatestBuild = $b
+              | if ($u | length) > 0 then .iosTestFlightURL = $u else . end
+            ')
+
+          PAYLOAD=$(jq -nc --argjson d "$MERGED" '{app_defaults: $d}')
+
+          HTTP_CODE=$(curl -sS -o /tmp/supabase_patch_body.txt -w "%{http_code}" -X PATCH \
+            "${SUPABASE_URL}/rest/v1/app_settings?id=eq.default" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "$PAYLOAD")
+
+          if [ "$HTTP_CODE" != "204" ] && [ "$HTTP_CODE" != "200" ]; then
+            echo "ERROR: Supabase PATCH failed (HTTP $HTTP_CODE)"
+            cat /tmp/supabase_patch_body.txt || true
+            exit 1
+          fi
+          echo "OK: app_settings.app_defaults updated for soft-update prompt"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
