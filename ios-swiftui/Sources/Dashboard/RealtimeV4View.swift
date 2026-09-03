@@ -55,6 +55,7 @@ struct RealtimeV4Snapshot: Sendable {
     let vehicleWorkSpans: [String: String]
     let leaderboard: [CountRecordTripUnit]
     let sandPro: SandProSnapshot
+    let tripPro: TripProSnapshot
     let isLight: Bool
 
     var tripTotal: Int { tripUnits.reduce(0) { $0 + $1.rounds } }
@@ -160,6 +161,25 @@ struct RealtimeV4Snapshot: Sendable {
             sandHours: sandHours,
             byDay: dayIndex
         )
+        let efficiency = CountRecordLogic.vehicleEfficiency(
+            dayKey: dayKey,
+            tripUnits: units,
+            transactions: transactions,
+            employees: employees,
+            priorKey: priorTripKey,
+            byDay: dayIndex
+        )
+        let tripPro = TripProSnapshot.build(
+            dayKey: dayKey,
+            transactions: transactions,
+            employees: employees,
+            tripUnits: units,
+            tripAnalytics: tripAnalytics,
+            efficiency: efficiency,
+            sandRounds: sand?.rounds ?? 0,
+            tripHours: tripHours,
+            byDay: dayIndex
+        )
 
         return RealtimeV4Snapshot(
             tripUnits: units,
@@ -171,14 +191,7 @@ struct RealtimeV4Snapshot: Sendable {
                 tripUnits: units,
                 sandUnit: sand
             ),
-            efficiency: CountRecordLogic.vehicleEfficiency(
-                dayKey: dayKey,
-                tripUnits: units,
-                transactions: transactions,
-                employees: employees,
-                priorKey: priorTripKey,
-                byDay: dayIndex
-            ),
+            efficiency: efficiency,
             fleetWorkSpan: CountRecordLogic.fleetWorkSpanLabel(units: units, dayKey: dayKey),
             fleetMorningSpanLabel: periodSpans.morning,
             fleetAfternoonSpanLabel: periodSpans.afternoon,
@@ -202,6 +215,7 @@ struct RealtimeV4Snapshot: Sendable {
             vehicleWorkSpans: vehicleWorkSpans,
             leaderboard: leaderboard,
             sandPro: sandPro,
+            tripPro: tripPro,
             isLight: light
         )
     }
@@ -708,24 +722,42 @@ struct RealtimeV4View: View {
     // MARK: - Trip panel
 
     private var tripPanel: some View {
-        panelShell(
+        let pro = snapshot.tripPro
+        return panelShell(
             title: "จำนวนเที่ยวรถ",
             subtitle: "\(tripUnits.count) คัน · \(CountRecordLogic.formatMetric(tripTotal)) เที่ยว",
             icon: "truck.box.fill",
             gradient: [Color(hex: "#1D4ED8"), Color(hex: "#2563EB"), Color(hex: "#0891B2")]
         ) {
-            if tripUnits.isEmpty {
-                emptyState(icon: "truck.box", title: "ยังไม่มีเที่ยวรถ", subtitle: "รอการนับจากแอปมือถือ")
-            } else {
-                VStack(spacing: 12) {
+            VStack(spacing: 12) {
+                TripProQuickActionsRow()
+
+                if tripUnits.isEmpty {
+                    emptyState(icon: "truck.box", title: "ยังไม่มีเที่ยวรถ", subtitle: "กดนับเที่ยว หรือรอการนับจากมือถือ")
+                    TripProCommandStrip(pro: pro)
+                    TripProInsightStrip(insights: pro.insights)
+                    TripProSandBalanceCard(pro: pro)
+                    TripProAnalyticsLinkCard()
+                } else {
                     if tripTotal > 0 {
                         tripSummaryHero
                             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .onTapGesture { showFleetDetail = true }
                             .accessibilityAddTraits(.isButton)
                             .accessibilityHint("แตะเพื่อดูรายละเอียดรวมเที่ยวรถ")
+
+                        TripProCommandStrip(pro: pro, onOpenDetail: { showFleetDetail = true })
+                        TripProInsightStrip(insights: pro.insights)
                         tripKPI
+                        TripProEfficiencyCard(pro: pro)
+                        TripProLeaderboardCard(leaders: pro.leaders)
+                        TripProIdleCard(idleVehicles: pro.idleVehicles)
+                        TripProPaceCard(pro: pro, analytics: tripAnalytics)
+                        TripProPeakTeaser(pro: pro)
+                        TripProSandBalanceCard(pro: pro)
+                        TripProAnalyticsLinkCard()
                     }
+
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         ForEach(Array(tripUnits.enumerated()), id: \.element.id) { index, unit in
                             TripVehicleCard(
