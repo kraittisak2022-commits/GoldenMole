@@ -31,96 +31,6 @@ struct HomeProDeltaBadge: View {
     }
 }
 
-// MARK: - Quick actions
-
-struct HomeProQuickActionsRow: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("ทางลัดบันทึก")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(AppTheme.ink)
-
-            HStack(spacing: 8) {
-                quickLink(
-                    title: "เช็คชื่อ",
-                    systemImage: "person.crop.circle.badge.checkmark",
-                    accent: AppTheme.labor
-                ) {
-                    AttendanceHubView()
-                }
-                quickLink(
-                    title: "เที่ยวรถ",
-                    systemImage: "truck.box.fill",
-                    accent: AppTheme.info
-                ) {
-                    CountRecordHubView(initialMode: .trip)
-                }
-                quickLink(
-                    title: "ร่อนทราย",
-                    systemImage: "drop.fill",
-                    accent: AppTheme.sand
-                ) {
-                    CountRecordHubView(initialMode: .sand)
-                }
-                quickLink(
-                    title: "น้ำมัน",
-                    systemImage: "fuelpump.fill",
-                    accent: AppTheme.fuel
-                ) {
-                    FuelHubView()
-                }
-            }
-        }
-        .padding(16)
-        .background(HomeProCardBackground())
-        .accessibilityElement(children: .contain)
-    }
-
-    private func quickLink<Dest: View>(
-        title: String,
-        systemImage: String,
-        accent: Color,
-        @ViewBuilder destination: () -> Dest
-    ) -> some View {
-        NavigationLink {
-            destination()
-        } label: {
-            VStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(
-                        LinearGradient(
-                            colors: [accent, accent.opacity(0.75)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    )
-                Text(title)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(accent.opacity(0.08))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(accent.opacity(0.18), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityHint("แตะเพื่อเปิดเมนู\(title)")
-    }
-}
-
 // MARK: - Insight strip
 
 struct HomeProInsightStrip: View {
@@ -284,66 +194,6 @@ struct HomeProChecklistCard: View {
     }
 }
 
-// MARK: - Analytics Pro link
-
-struct HomeProAnalyticsLinkCard: View {
-    var body: some View {
-        NavigationLink {
-            OpsTrendAnalyticsHubView(focus: .both)
-        } label: {
-            HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.9)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 48, height: 48)
-                    Image(systemName: "chart.xyaxis.line")
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(.white)
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text("วิเคราะห์ Pro")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(AppTheme.ink)
-                        Text("PRO")
-                            .font(.system(size: 9, weight: .black))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(AppTheme.brand))
-                    }
-                    Text("Briefing · พยากรณ์ · ต้นทุน · Watchlist · กำหนดเอง")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.inkMuted)
-                        .lineLimit(2)
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(AppTheme.inkMuted)
-            }
-            .padding(16)
-            .background(HomeProCardBackground())
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(AppTheme.brand.opacity(0.22), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("เปิดวิเคราะห์ Pro")
-        .accessibilityHint("ดูแนวโน้มเที่ยวรถและร่อนทราย")
-    }
-}
-
 // MARK: - Command hero
 
 struct HomeProCommandHero: View {
@@ -406,28 +256,21 @@ struct HomeProCommandHero: View {
                 }
 
                 if let missing = pro.primaryMissingTitle, pro.health != .strong {
-                    NavigationLink {
-                        primaryDestination
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "plus.circle.fill")
-                            Text("บันทึก\(missing)ที่ขาด")
-                                .fontWeight(.bold)
-                            Spacer(minLength: 0)
-                            Image(systemName: "arrow.right")
-                                .font(.caption.weight(.bold))
-                        }
-                        .font(.subheadline)
-                        .foregroundStyle(AppTheme.brandDark)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color.white)
-                        )
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("ยังขาด\(missing)")
+                            .fontWeight(.semibold)
+                        Spacer(minLength: 0)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("บันทึก\(missing)ที่ขาด")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.92))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.16))
+                    )
+                    .accessibilityLabel("ยังขาด\(missing)")
                 } else {
                     HStack(spacing: 8) {
                         Image(systemName: "checkmark.seal.fill")
@@ -526,24 +369,6 @@ struct HomeProCommandHero: View {
             return "฿\(DashboardAggregations.formatNumber(value / 1000))k"
         }
         return DashboardAggregations.formatCurrency(value)
-    }
-
-    @ViewBuilder
-    private var primaryDestination: some View {
-        if let item = pro.checklist.first(where: { !$0.isDone }) {
-            switch item.destination {
-            case .attendance: AttendanceHubView()
-            case .countTrip: CountRecordHubView(initialMode: .trip)
-            case .countSand: CountRecordHubView(initialMode: .sand)
-            case .fuel: FuelHubView()
-            case .leave: LeaveHubView()
-            case .events: EventHubView()
-            case .laborReport: CategoryReportScreen(type: .labor)
-            case .vehicleReport: CategoryReportScreen(type: .vehicle)
-            }
-        } else {
-            AttendanceHubView()
-        }
     }
 }
 

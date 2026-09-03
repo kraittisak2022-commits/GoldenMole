@@ -181,11 +181,9 @@ struct OverviewHubView: View {
                         ? "งานหลักครบ · ค่าแรง \(DashboardAggregations.formatCurrency(todayOps.laborBaht))"
                         : ""
                 )
-                HomeProQuickActionsRow()
                 HomeProInsightStrip(insights: homePro.insights, alerts: homePro.alerts)
                 HomeProChecklistCard(pro: homePro)
                 OpsTrendHomeWatchlistCard(alerts: analyticsWatchlist)
-                HomeProAnalyticsLinkCard()
                 todayHighlightCard
                 dailyEventsCard
                 opsMetricGrid
