@@ -21,6 +21,13 @@ struct RealtimeFocusCalendarSheet: View {
     private var todayYmd: String { DashboardAggregations.todayYMD() }
     private var selectedYmd: String { DashboardAggregations.formatYMD(selection) }
 
+    private var monthKey: String {
+        let cal = DashboardAggregations.gregorian
+        let y = cal.component(.year, from: visibleMonth)
+        let m = cal.component(.month, from: visibleMonth)
+        return String(format: "%04d-%02d", y, m)
+    }
+
     private var monthTitle: String {
         let cal = DashboardAggregations.gregorian
         let y = cal.component(.year, from: visibleMonth)
@@ -96,28 +103,35 @@ struct RealtimeFocusCalendarSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 14) {
-                monthNavigation
-                legend
-                calendarGrid
-                Button {
-                    selectToday()
-                } label: {
-                    Label("วันนี้", systemImage: "sun.max.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+            ScrollView {
+                VStack(spacing: 14) {
+                    monthNavigation
+                    legend
+                    calendarGrid
+                    Text("ปัดซ้าย/ขวาบนปฏิทินเพื่อเปลี่ยนเดือน")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(AppTheme.inkMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
+                    Button {
+                        selectToday()
+                    } label: {
+                        Label("วันนี้", systemImage: "sun.max.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Self.tripColor)
+                    .padding(.horizontal, 4)
                 }
-                .buttonStyle(.bordered)
-                .tint(Self.tripColor)
-                .padding(.horizontal, 4)
-
-                Spacer(minLength: 0)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 20)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .background(AppTheme.pageTop.ignoresSafeArea())
-            .navigationTitle("กำลังดู")
+            .background(AppTheme.pageTop)
+            // Avoid nav title "กำลังดู" colliding with the month label below.
+            .navigationTitle("เลือกวันที่")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -130,17 +144,22 @@ struct RealtimeFocusCalendarSheet: View {
             .onChange(of: transactionsRevision) { _, _ in rebuildMarks() }
             .onChange(of: transactions.count) { _, _ in rebuildMarks() }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large, .fraction(0.92)])
+        .presentationDragIndicator(.visible)
+        .presentationContentInteraction(.scrolls)
     }
 
     // MARK: - Month nav
 
     private var monthNavigation: some View {
         HStack(spacing: 12) {
-            Button { withAnimation(.snappy(duration: 0.25)) { shiftMonth(-1) } } label: {
+            Button {
+                shiftMonth(-1)
+            } label: {
                 navIcon("chevron.left")
             }
             .buttonStyle(.plain)
+            .contentShape(Rectangle())
             .accessibilityLabel("เดือนก่อน")
 
             VStack(spacing: 2) {
@@ -149,9 +168,10 @@ struct RealtimeFocusCalendarSheet: View {
                     .foregroundStyle(AppTheme.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
+                    .id(monthKey)
                 if !isCurrentMonth {
                     Button {
-                        withAnimation(.snappy(duration: 0.25)) { goThisMonth() }
+                        goThisMonth()
                     } label: {
                         Text("กลับเดือนนี้")
                             .font(.caption2.weight(.bold))
@@ -164,22 +184,24 @@ struct RealtimeFocusCalendarSheet: View {
 
             Button {
                 guard canGoNextMonth else { return }
-                withAnimation(.snappy(duration: 0.25)) { shiftMonth(1) }
+                shiftMonth(1)
             } label: {
                 navIcon("chevron.right")
                     .opacity(canGoNextMonth ? 1 : 0.35)
             }
             .buttonStyle(.plain)
+            .contentShape(Rectangle())
             .disabled(!canGoNextMonth)
             .accessibilityLabel("เดือนถัดไป")
         }
+        .padding(.vertical, 4)
     }
 
     private func navIcon(_ name: String) -> some View {
         Image(systemName: name)
             .font(.subheadline.weight(.bold))
             .foregroundStyle(AppTheme.inkSecondary)
-            .frame(width: 40, height: 40)
+            .frame(width: 44, height: 44)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(AppTheme.surfaceSoft)
@@ -234,7 +256,7 @@ struct RealtimeFocusCalendarSheet: View {
                 ForEach(0..<leading, id: \.self) { i in
                     Color.clear
                         .frame(minHeight: 48)
-                        .id("rt-blank-\(i)")
+                        .id("\(monthKey)-blank-\(i)")
                         .accessibilityHidden(true)
                 }
                 ForEach(days) { day in
@@ -251,6 +273,28 @@ struct RealtimeFocusCalendarSheet: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
+        .contentShape(Rectangle())
+        .id(monthKey)
+        // simultaneous so day cells still receive taps; horizontal threshold filters scroll.
+        .simultaneousGesture(monthSwipeGesture)
+        .accessibilityHint("ปัดซ้ายหรือขวาเพื่อเปลี่ยนเดือน")
+    }
+
+    private var monthSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 40)
+            .onEnded { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                // Prefer horizontal swipes so vertical ScrollView still works.
+                guard abs(dx) > abs(dy) * 1.4, abs(dx) > 40 else { return }
+                if dx > 0 {
+                    shiftMonth(-1)
+                } else if canGoNextMonth {
+                    shiftMonth(1)
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                }
+            }
     }
 
     private func dayCell(_ day: DayCell) -> some View {
@@ -353,20 +397,27 @@ struct RealtimeFocusCalendarSheet: View {
 
     private func shiftMonth(_ delta: Int) {
         let cal = DashboardAggregations.gregorian
-        if let next = cal.date(byAdding: .month, value: delta, to: visibleMonth) {
-            if delta > 0 {
-                let nextMonthStart = cal.date(from: cal.dateComponents([.year, .month], from: next)) ?? next
-                let thisMonthStart = cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
-                if nextMonthStart > thisMonthStart { return }
-            }
-            visibleMonth = next
+        guard let next = cal.date(byAdding: .month, value: delta, to: visibleMonth) else { return }
+        if delta > 0 {
+            let nextMonthStart = cal.date(from: cal.dateComponents([.year, .month], from: next)) ?? next
+            let thisMonthStart = cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? Date()
+            if nextMonthStart > thisMonthStart { return }
         }
+        // Normalize to month start so identity/grid refresh stays stable.
+        let normalized = cal.date(from: cal.dateComponents([.year, .month], from: next)) ?? next
+        withAnimation(.snappy(duration: 0.25)) {
+            visibleMonth = normalized
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func goThisMonth() {
         let cal = DashboardAggregations.gregorian
         let comps = cal.dateComponents([.year, .month], from: Date())
-        visibleMonth = cal.date(from: comps) ?? Date()
+        withAnimation(.snappy(duration: 0.25)) {
+            visibleMonth = cal.date(from: comps) ?? Date()
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func selectToday() {
