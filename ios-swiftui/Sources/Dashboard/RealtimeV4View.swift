@@ -280,7 +280,6 @@ struct RealtimeV4View: View {
     private var sandUnit: CountRecordSandUnit? { snapshot.sandUnit }
     private var tripTotal: Int { snapshot.tripTotal }
     private var sandRounds: Int { snapshot.sandRounds }
-    private var efficiency: VehicleEfficiency { snapshot.efficiency }
 
     private var modeActivityEvents: [CountRecordAnalytics.ActivityEvent] {
         let want: CountRecordAnalytics.ActivityEvent.Kind = mode == .trip ? .trip : .sand
