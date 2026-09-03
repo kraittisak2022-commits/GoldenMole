@@ -63,27 +63,42 @@ enum AppUpdateChecker {
 
     /// Returns an offer when a newer build is available and not snoozed.
     /// Pass `force: true` to ignore snooze (manual “เช็คอัพเดต”).
+    ///
+    /// Source of truth: Supabase `app_settings.app_defaults`
+    /// (`iosLatestVersion` / `iosLatestBuild` — written by Codemagic after each IPA).
+    /// App Store lookup is only a fallback when the DB has no version yet.
     static func check(remote: RemoteHint? = nil, force: Bool = false) async -> Offer? {
         let currentV = installedVersion
         let currentB = installedBuild
 
-        async let store = fetchAppStoreLookup()
-        let storeInfo = await store
+        let dbVersion = remote?.latestVersion?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasDbVersion = !(dbVersion ?? "").isEmpty
 
-        let candidateVersion = newerVersion(
-            remote?.latestVersion,
-            storeInfo?.version
-        ) ?? storeInfo?.version ?? remote?.latestVersion
+        let storeInfo: LookupResult?
+        if hasDbVersion {
+            storeInfo = nil
+        } else {
+            storeInfo = await fetchAppStoreLookup()
+        }
+
+        let candidateVersion: String?
+        let candidateBuild: String?
+        let sourceLabel: String
+
+        if hasDbVersion, let dbVersion {
+            candidateVersion = dbVersion
+            let build = remote?.latestBuild?.trimmingCharacters(in: .whitespacesAndNewlines)
+            candidateBuild = (build?.isEmpty == false) ? build : nil
+            sourceLabel = "TestFlight"
+        } else if let store = storeInfo {
+            candidateVersion = store.version
+            candidateBuild = nil
+            sourceLabel = "App Store"
+        } else {
+            return nil
+        }
 
         guard let candidateVersion else { return nil }
-
-        let candidateBuild = preferBuild(
-            remoteBuild: remote?.latestBuild,
-            storeBuild: nil,
-            candidateVersion: candidateVersion,
-            remoteVersion: remote?.latestVersion,
-            storeVersion: storeInfo?.version
-        )
 
         guard isNewer(version: candidateVersion, build: candidateBuild, thanVersion: currentV, build: currentB) else {
             return nil
@@ -100,12 +115,6 @@ enum AppUpdateChecker {
         )
 
         let message = remote?.message?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let source: String = {
-            if remote?.latestVersion != nil { return "TestFlight" }
-            if storeInfo != nil { return "App Store" }
-            return "อัปเดต"
-        }()
-
         return Offer(
             id: offerId,
             latestVersion: candidateVersion,
@@ -114,7 +123,7 @@ enum AppUpdateChecker {
             currentBuild: currentB,
             message: (message?.isEmpty == false) ? message : defaultMessage(version: candidateVersion),
             openURL: openURL,
-            sourceLabel: source
+            sourceLabel: sourceLabel
         )
     }
 
@@ -207,32 +216,6 @@ enum AppUpdateChecker {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.hasPrefix("$(") else { return nil }
         return url(from: trimmed)
-    }
-
-    private static func newerVersion(_ a: String?, _ b: String?) -> String? {
-        switch (a, b) {
-        case let (x?, y?):
-            return compareVersions(x, y) >= 0 ? x : y
-        case let (x?, nil): return x
-        case let (nil, y?): return y
-        default: return nil
-        }
-    }
-
-    private static func preferBuild(
-        remoteBuild: String?,
-        storeBuild: String?,
-        candidateVersion: String,
-        remoteVersion: String?,
-        storeVersion: String?
-    ) -> String? {
-        if let remoteVersion, remoteVersion == candidateVersion, let remoteBuild, !remoteBuild.isEmpty {
-            return remoteBuild
-        }
-        if let storeVersion, storeVersion == candidateVersion, let storeBuild, !storeBuild.isEmpty {
-            return storeBuild
-        }
-        return remoteBuild ?? storeBuild
     }
 
     static func isNewer(version: String, build: String?, thanVersion currentVersion: String, build currentBuild: String) -> Bool {
