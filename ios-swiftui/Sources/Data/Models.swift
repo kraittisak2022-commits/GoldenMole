@@ -514,6 +514,11 @@ struct AppSettings: Codable, Sendable, Equatable {
     let vehicleDefaultDrivers: [String: String]
     /// From `vehicles` table — resolves `v_…` ids to display names.
     let vehicleCatalog: [VehicleCatalogRow]
+    /// Soft update channel (copied from `app_defaults` when present).
+    let iosLatestVersion: String?
+    let iosLatestBuild: String?
+    let iosTestFlightURL: String?
+    let iosUpdateMessage: String?
 
     enum CodingKeys: String, CodingKey {
         case cars, locations
@@ -529,6 +534,10 @@ struct AppSettings: Codable, Sendable, Equatable {
         case fuelOpeningStockLiters = "fuel_opening_stock"
         case vehicleDefaultDrivers = "vehicle_default_drivers"
         case vehicleCatalog = "vehicle_catalog"
+        case iosLatestVersion = "ios_latest_version"
+        case iosLatestBuild = "ios_latest_build"
+        case iosTestFlightURL = "ios_testflight_url"
+        case iosUpdateMessage = "ios_update_message"
     }
 
     init(
@@ -545,7 +554,11 @@ struct AppSettings: Codable, Sendable, Equatable {
         employeePositions: [String]?,
         fuelOpeningStockLiters: FuelStock?,
         vehicleDefaultDrivers: [String: String],
-        vehicleCatalog: [VehicleCatalogRow] = []
+        vehicleCatalog: [VehicleCatalogRow] = [],
+        iosLatestVersion: String? = nil,
+        iosLatestBuild: String? = nil,
+        iosTestFlightURL: String? = nil,
+        iosUpdateMessage: String? = nil
     ) {
         self.appName = appName
         self.appSubtext = appSubtext
@@ -561,6 +574,10 @@ struct AppSettings: Codable, Sendable, Equatable {
         self.fuelOpeningStockLiters = fuelOpeningStockLiters
         self.vehicleDefaultDrivers = vehicleDefaultDrivers
         self.vehicleCatalog = vehicleCatalog
+        self.iosLatestVersion = iosLatestVersion
+        self.iosLatestBuild = iosLatestBuild
+        self.iosTestFlightURL = iosTestFlightURL
+        self.iosUpdateMessage = iosUpdateMessage
     }
 
     init(from decoder: Decoder) throws {
@@ -579,6 +596,22 @@ struct AppSettings: Codable, Sendable, Equatable {
         fuelOpeningStockLiters = try c.decodeIfPresent(FuelStock.self, forKey: .fuelOpeningStockLiters)
         vehicleDefaultDrivers = (try c.decodeIfPresent([String: String].self, forKey: .vehicleDefaultDrivers)) ?? [:]
         vehicleCatalog = (try c.decodeIfPresent([VehicleCatalogRow].self, forKey: .vehicleCatalog)) ?? []
+        iosLatestVersion = try c.decodeIfPresent(String.self, forKey: .iosLatestVersion)
+        iosLatestBuild = try c.decodeIfPresent(String.self, forKey: .iosLatestBuild)
+        iosTestFlightURL = try c.decodeIfPresent(String.self, forKey: .iosTestFlightURL)
+        iosUpdateMessage = try c.decodeIfPresent(String.self, forKey: .iosUpdateMessage)
+    }
+
+    var updateRemoteHint: AppUpdateChecker.RemoteHint? {
+        AppUpdateChecker.remoteHint(
+            from: AppDefaultsBlob(
+                vehicleDefaultDrivers: vehicleDefaultDrivers,
+                iosLatestVersion: iosLatestVersion,
+                iosLatestBuild: iosLatestBuild,
+                iosTestFlightURL: iosTestFlightURL,
+                iosUpdateMessage: iosUpdateMessage
+            )
+        )
     }
 
     static let fallback = AppSettings(
@@ -636,23 +669,61 @@ struct VehicleCatalogRow: Codable, Sendable, Equatable, Identifiable {
 /// Nested JSON in `app_settings.app_defaults`.
 struct AppDefaultsBlob: Decodable, Sendable, Equatable {
     let vehicleDefaultDrivers: [String: String]?
+    /// Soft update channel for iOS TestFlight (optional).
+    let iosLatestVersion: String?
+    let iosLatestBuild: String?
+    let iosTestFlightURL: String?
+    let iosUpdateMessage: String?
 
     enum CodingKeys: String, CodingKey {
         case vehicleDefaultDrivers
+        case iosLatestVersion
+        case iosLatestBuild
+        case iosTestFlightURL
+        case iosUpdateMessage
+    }
+
+    init(
+        vehicleDefaultDrivers: [String: String]? = nil,
+        iosLatestVersion: String? = nil,
+        iosLatestBuild: String? = nil,
+        iosTestFlightURL: String? = nil,
+        iosUpdateMessage: String? = nil
+    ) {
+        self.vehicleDefaultDrivers = vehicleDefaultDrivers
+        self.iosLatestVersion = iosLatestVersion
+        self.iosLatestBuild = iosLatestBuild
+        self.iosTestFlightURL = iosTestFlightURL
+        self.iosUpdateMessage = iosUpdateMessage
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         if let direct = try? c.decodeIfPresent([String: String].self, forKey: .vehicleDefaultDrivers) {
             vehicleDefaultDrivers = direct
-            return
-        }
-        // Coerce mixed JSON values to strings.
-        if let raw = try? c.decodeIfPresent([String: FlexibleStringValue].self, forKey: .vehicleDefaultDrivers) {
+        } else if let raw = try? c.decodeIfPresent([String: FlexibleStringValue].self, forKey: .vehicleDefaultDrivers) {
             vehicleDefaultDrivers = raw.mapValues(\.value)
-            return
+        } else {
+            vehicleDefaultDrivers = nil
         }
-        vehicleDefaultDrivers = nil
+        iosLatestVersion = Self.flexString(c, key: .iosLatestVersion)
+        iosLatestBuild = Self.flexString(c, key: .iosLatestBuild)
+        iosTestFlightURL = Self.flexString(c, key: .iosTestFlightURL)
+        iosUpdateMessage = Self.flexString(c, key: .iosUpdateMessage)
+    }
+
+    private static func flexString(_ c: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) -> String? {
+        if let s = try? c.decodeIfPresent(String.self, forKey: key) {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : t
+        }
+        if let n = try? c.decodeIfPresent(Int.self, forKey: key) {
+            return String(n)
+        }
+        if let d = try? c.decodeIfPresent(Double.self, forKey: key) {
+            return String(Int(d))
+        }
+        return nil
     }
 }
 
@@ -730,7 +801,11 @@ struct AppSettingsRow: Decodable, Sendable {
             employeePositions: employeePositions,
             fuelOpeningStockLiters: fuelOpeningStock,
             vehicleDefaultDrivers: drivers,
-            vehicleCatalog: vehicleCatalog
+            vehicleCatalog: vehicleCatalog,
+            iosLatestVersion: appDefaults?.iosLatestVersion,
+            iosLatestBuild: appDefaults?.iosLatestBuild,
+            iosTestFlightURL: appDefaults?.iosTestFlightURL,
+            iosUpdateMessage: appDefaults?.iosUpdateMessage
         )
     }
 }

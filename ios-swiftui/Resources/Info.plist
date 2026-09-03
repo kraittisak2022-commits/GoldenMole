@@ -57,5 +57,10 @@
 	<string>$(SUPABASE_URL)</string>
 	<key>SUPABASE_ANON_KEY</key>
 	<string>$(SUPABASE_ANON_KEY)</string>
+	<!-- Optional soft-update overrides (TestFlight public link / App Store id) -->
+	<key>TESTFLIGHT_URL</key>
+	<string>$(TESTFLIGHT_URL)</string>
+	<key>APP_STORE_ID</key>
+	<string>$(APP_STORE_ID)</string>
 </dict>
 </plist>

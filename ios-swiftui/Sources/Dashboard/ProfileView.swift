@@ -19,6 +19,9 @@ struct ProfileView: View {
     @State private var confirmPassword = ""
     @State private var savingPassword = false
     @State private var passwordNotice: Notice?
+    @State private var updateChecking = false
+    @State private var updateNotice: Notice?
+    @State private var updateOffer: AppUpdateChecker.Offer?
 
     private struct Notice: Equatable {
         let ok: Bool
@@ -49,6 +52,22 @@ struct ProfileView: View {
         .onChange(of: photoItem) { _, item in
             guard let item else { return }
             Task { await loadAvatar(item) }
+        }
+        .overlay {
+            if let offer = updateOffer {
+                AppUpdatePromptView(
+                    offer: offer,
+                    onLater: {
+                        AppUpdateChecker.snooze(offer)
+                        updateOffer = nil
+                    },
+                    onUpdate: {
+                        AppUpdateChecker.open(offer)
+                        AppUpdateChecker.snooze(offer)
+                        updateOffer = nil
+                    }
+                )
+            }
         }
     }
 
@@ -220,6 +239,34 @@ struct ProfileView: View {
         SectionCard("เกี่ยวกับ", systemImage: "info.circle.fill") {
             row(icon: "iphone", title: "เวอร์ชัน", value: appVersion)
             Divider()
+            Button {
+                Task { await checkUpdateManual() }
+            } label: {
+                HStack {
+                    Label("เช็คอัพเดต", systemImage: "arrow.down.app.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.brand)
+                    Spacer()
+                    if updateChecking {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.inkMuted)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(updateChecking)
+
+            if let updateNotice {
+                Text(updateNotice.text)
+                    .font(.caption)
+                    .foregroundStyle(updateNotice.ok ? AppTheme.income : AppTheme.expense)
+                    .padding(.top, 4)
+            }
+
+            Divider()
             Button(role: .destructive) {
                 appState.clearLocalData()
                 auth.logout()
@@ -236,6 +283,22 @@ struct ProfileView: View {
         guard let admin = auth.currentAdmin else { return }
         displayName = admin.displayName
         avatarString = admin.avatar ?? ""
+    }
+
+    @MainActor
+    private func checkUpdateManual() async {
+        updateChecking = true
+        updateNotice = nil
+        let offer = await AppUpdateChecker.check(
+            remote: appState.settings.updateRemoteHint,
+            force: true
+        )
+        updateChecking = false
+        if let offer {
+            updateOffer = offer
+        } else {
+            updateNotice = Notice(ok: true, text: "คุณใช้เวอร์ชันล่าสุดแล้ว (\(appVersion))")
+        }
     }
 
     private func saveProfile() async {

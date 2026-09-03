@@ -33,6 +33,7 @@ struct DashboardShell: View {
     @State private var homeCustomDraft = Date()
     /// Shared focus day for ร่อนทราย + เที่ยวรถ tabs.
     @State private var realtimeFocusDate = Date()
+    @State private var updateOffer: AppUpdateChecker.Offer?
 
     private static let homeDatePresets: [DateRangePreset] = [.today, .yesterday, .custom]
 
@@ -114,9 +115,27 @@ struct DashboardShell: View {
                 .transition(.opacity)
                 .zIndex(20)
             }
+
+            if let offer = updateOffer {
+                AppUpdatePromptView(
+                    offer: offer,
+                    onLater: {
+                        AppUpdateChecker.snooze(offer)
+                        withAnimation(.easeOut(duration: 0.2)) { updateOffer = nil }
+                    },
+                    onUpdate: {
+                        AppUpdateChecker.open(offer)
+                        AppUpdateChecker.snooze(offer)
+                        withAnimation(.easeOut(duration: 0.2)) { updateOffer = nil }
+                    }
+                )
+                .zIndex(40)
+                .transition(.opacity)
+            }
         }
         .task {
             await appState.refresh()
+            await checkForAppUpdate(force: false)
         }
         .task(id: auth.currentAdmin?.id) {
             // Load tasks before the "งาน" tab is ever opened so the assignment badge is accurate.
@@ -125,7 +144,10 @@ struct DashboardShell: View {
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
-            Task { await appState.refreshOnForeground() }
+            Task {
+                await appState.refreshOnForeground()
+                await checkForAppUpdate(force: false)
+            }
         }
         .sheet(isPresented: $showProfile) {
             NavigationStack {
@@ -171,6 +193,20 @@ struct DashboardShell: View {
         withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
             showOpsMenu = true
             opsMenuDrag = 0
+        }
+    }
+
+    @MainActor
+    private func checkForAppUpdate(force: Bool) async {
+        // Soft delay so login / first paint settle before the prompt.
+        if !force {
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+        }
+        let remote = appState.settings.updateRemoteHint
+        let offer = await AppUpdateChecker.check(remote: remote, force: force)
+        guard !Task.isCancelled else { return }
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) {
+            updateOffer = offer
         }
     }
 
