@@ -46,7 +46,7 @@ struct RealtimeV4Snapshot: Sendable {
     let sandWorkSpan: String?
     let sandMorningSpanLabel: String?
     let sandAfternoonSpanLabel: String?
-    let sandHours: Doub่le?
+    let sandHours: Double?
     let sandMorningHours: Double?
     let sandAfternoonHours: Double?
     let tripHours: Double?
@@ -54,6 +54,7 @@ struct RealtimeV4Snapshot: Sendable {
     let tripAfternoonHours: Double?
     let vehicleWorkSpans: [String: String]
     let leaderboard: [CountRecordTripUnit]
+    let sandPro: SandProSnapshot
     let isLight: Bool
 
     var tripTotal: Int { tripUnits.reduce(0) { $0 + $1.rounds } }
@@ -148,6 +149,17 @@ struct RealtimeV4Snapshot: Sendable {
                 .prefix(5)
         )
         let periodSpans = CountRecordLogic.fleetPeriodSpanLabels(units: units, dayKey: dayKey)
+        let tripTotal = units.reduce(0) { $0 + $1.rounds }
+        let sandPro = SandProSnapshot.build(
+            dayKey: dayKey,
+            transactions: transactions,
+            employees: employees,
+            sandUnit: sand,
+            sandAnalytics: sandAnalytics,
+            tripTotal: tripTotal,
+            sandHours: sandHours,
+            byDay: dayIndex
+        )
 
         return RealtimeV4Snapshot(
             tripUnits: units,
@@ -189,6 +201,7 @@ struct RealtimeV4Snapshot: Sendable {
             tripAfternoonHours: tripAfternoonHours,
             vehicleWorkSpans: vehicleWorkSpans,
             leaderboard: leaderboard,
+            sandPro: sandPro,
             isLight: light
         )
     }
@@ -915,23 +928,42 @@ struct RealtimeV4View: View {
     // MARK: - Sand panel
 
     private var sandPanel: some View {
-        panelShell(
+        let pro = snapshot.sandPro
+        return panelShell(
             title: "การร่อนทราย",
             subtitle: sandUnit.map { "\($0.rounds) คิว" } ?? "ยังไม่มีคิว",
             icon: "drop.fill",
             gradient: [Color(hex: "#BE185D"), Color(hex: "#E11D48"), Color(hex: "#C026D3")]
         ) {
-            if let sand = sandUnit, sand.rounds > 0 {
-                VStack(spacing: 12) {
+            VStack(spacing: 12) {
+                SandProQuickActionsRow()
+
+                if let sand = sandUnit, sand.rounds > 0 {
                     sandHero(sand)
                         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .onTapGesture { showSandDetail = true }
                         .accessibilityAddTraits(.isButton)
                         .accessibilityHint("แตะเพื่อดูรายละเอียดร่อนทราย")
+
+                    SandProCommandStrip(pro: pro, onOpenDetail: { showSandDetail = true })
+
+                    SandProInsightStrip(insights: pro.insights)
+
                     sandKPI(sand)
+
+                    SandProPaceCard(pro: pro, analytics: sandAnalytics)
+                    SandProPeakTeaser(pro: pro)
+                    SandProTripBalanceCard(pro: pro)
+                    SandProDrumsCard(pro: pro)
+                    SandProAnalyticsLinkCard()
+                } else {
+                    emptyState(icon: "drop", title: "ยังไม่มีคิวทราย", subtitle: "กดนับร่อน หรือรอการนับจากมือถือ")
+                    SandProCommandStrip(pro: pro)
+                    SandProInsightStrip(insights: pro.insights)
+                    SandProTripBalanceCard(pro: pro)
+                    SandProDrumsCard(pro: pro)
+                    SandProAnalyticsLinkCard()
                 }
-            } else {
-                emptyState(icon: "drop", title: "ยังไม่มีคิวทราย", subtitle: "รอการนับร่อนทรายจากมือถือ")
             }
         }
     }
