@@ -261,6 +261,7 @@ struct RealtimeV4View: View {
     @State private var livePing = false
     @State private var selectedVehicle: CountRecordTripUnit?
     @State private var showSandDetail = false
+    @State private var showSandKPIDetail = false
     @State private var showFleetDetail = false
     @State private var pendingRebuild = false
     @State private var recentEventTimes: [Date] = []
@@ -352,6 +353,24 @@ struct RealtimeV4View: View {
                     afternoonSpanLabel: snapshot.sandAfternoonSpanLabel,
                     activityEvents: modeActivityEvents,
                     pro: snapshot.sandPro
+                )
+            }
+        }
+        .sheet(isPresented: $showSandKPIDetail) {
+            if let sand = sandUnit {
+                SandKPIDetailSheet(
+                    sand: sand,
+                    dayKey: focusDateStr,
+                    sandHours: snapshot.sandHours,
+                    sandMorningHours: snapshot.sandMorningHours,
+                    sandAfternoonHours: snapshot.sandAfternoonHours,
+                    tripTotal: tripTotal,
+                    tripVehicleCount: tripUnits.count,
+                    tripMorning: tripMorningTotal,
+                    tripAfternoon: tripAfternoonTotal,
+                    tripHours: snapshot.tripHours,
+                    tripMorningHours: snapshot.tripMorningHours,
+                    tripAfternoonHours: snapshot.tripAfternoonHours
                 )
             }
         }
@@ -900,10 +919,20 @@ struct RealtimeV4View: View {
         )
 
         return VStack(alignment: .leading, spacing: 10) {
-            Text("ตัวชี้วัดร่อนทราย")
-                .font(.system(size: 10, weight: .bold))
-                .tracking(1.2)
-                .foregroundStyle(RealtimeV4Palette.sandLabel)
+            HStack(spacing: 8) {
+                Text("ตัวชี้วัดร่อนทราย")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.2)
+                    .foregroundStyle(RealtimeV4Palette.sandLabel)
+                Spacer(minLength: 0)
+                HStack(spacing: 4) {
+                    Text("เชิงลึก")
+                        .font(.system(size: 10, weight: .bold))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .foregroundStyle(RealtimeV4Palette.sandLabel.opacity(0.85))
+            }
 
             HStack(spacing: 8) {
                 kpiCell(
@@ -1002,6 +1031,10 @@ struct RealtimeV4View: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color(hex: "#EC4899").opacity(0.3), lineWidth: 1)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onTapGesture { showSandKPIDetail = true }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("แตะเพื่อดูรายละเอียดเชิงลึก เทียบอัตราร่อนกับเที่ยวรถ")
     }
 
     /// Total + morning + afternoon active work hours (lunch deducted on full-day total).
@@ -1924,6 +1957,341 @@ private struct SandRoundsSheet: View {
                 isLatest: index == lapTimes.count - 1
             )
         }
+    }
+}
+
+private struct SandKPIDetailSheet: View {
+    let sand: CountRecordSandUnit
+    let dayKey: String
+    let sandHours: Double?
+    let sandMorningHours: Double?
+    let sandAfternoonHours: Double?
+    let tripTotal: Int
+    let tripVehicleCount: Int
+    let tripMorning: Int
+    let tripAfternoon: Int
+    let tripHours: Double?
+    let tripMorningHours: Double?
+    let tripAfternoonHours: Double?
+    @Environment(\.dismiss) private var dismiss
+
+    private var queuePerTrip: Int { CountRecordLogic.queuePerTrip }
+
+    private var totalQueuePerHour: Double? {
+        Self.queueRate(rounds: sand.rounds, hours: sandHours)
+    }
+    private var totalQueuePerMin: Double? {
+        totalQueuePerHour.map { $0 / 60 }
+    }
+    private var morningQueuePerHour: Double? {
+        Self.queueRate(rounds: sand.morning, hours: sandMorningHours)
+    }
+    private var afternoonQueuePerHour: Double? {
+        Self.queueRate(rounds: sand.afternoon, hours: sandAfternoonHours)
+    }
+
+    /// คัน·เที่ยวเทียบจากอัตราร่อน: คิว/ชม. ÷ คิวต่อเที่ยว
+    private var equivTripsPerHour: Double? {
+        Self.tripEquivalent(fromQueuePerHour: totalQueuePerHour)
+    }
+    private var equivTripsPerMin: Double? {
+        equivTripsPerHour.map { $0 / 60 }
+    }
+    private var morningEquivPerHour: Double? {
+        Self.tripEquivalent(fromQueuePerHour: morningQueuePerHour)
+    }
+    private var morningEquivPerMin: Double? {
+        morningEquivPerHour.map { $0 / 60 }
+    }
+    private var afternoonEquivPerHour: Double? {
+        Self.tripEquivalent(fromQueuePerHour: afternoonQueuePerHour)
+    }
+    private var afternoonEquivPerMin: Double? {
+        afternoonEquivPerHour.map { $0 / 60 }
+    }
+
+    private var actualTripsPerHour: Double? {
+        Self.queueRate(rounds: tripTotal, hours: tripHours)
+    }
+    private var actualTripsPerMin: Double? {
+        actualTripsPerHour.map { $0 / 60 }
+    }
+    private var morningActualPerHour: Double? {
+        Self.queueRate(rounds: tripMorning, hours: tripMorningHours)
+    }
+    private var afternoonActualPerHour: Double? {
+        Self.queueRate(rounds: tripAfternoon, hours: tripAfternoonHours)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    headerCard
+
+                    sectionCard(title: "อัตราร่อนทราย", icon: "drop.fill") {
+                        rateRow(
+                            label: "รวม",
+                            perHourTitle: "คิว / ชม.",
+                            perHour: totalQueuePerHour,
+                            perMinTitle: "คิว / นาที",
+                            perMin: totalQueuePerMin,
+                            hourDigits: 1,
+                            minDigits: 2
+                        )
+                        rateRow(
+                            label: "เช้า",
+                            perHourTitle: "คิว / ชม.",
+                            perHour: morningQueuePerHour,
+                            perMinTitle: "คิว / นาที",
+                            perMin: morningQueuePerHour.map { $0 / 60 },
+                            hourDigits: 1,
+                            minDigits: 2
+                        )
+                        rateRow(
+                            label: "บ่าย",
+                            perHourTitle: "คิว / ชม.",
+                            perHour: afternoonQueuePerHour,
+                            perMinTitle: "คิว / นาที",
+                            perMin: afternoonQueuePerHour.map { $0 / 60 },
+                            hourDigits: 1,
+                            minDigits: 2
+                        )
+                    }
+
+                    sectionCard(title: "เทียบเที่ยวรถจากอัตราร่อน", icon: "truck.box.fill") {
+                        Text("คิว / ชม. ÷ \(queuePerTrip) คิวต่อเที่ยว = คัน / ชม.")
+                            .font(.caption)
+                            .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        rateRow(
+                            label: "รวม",
+                            perHourTitle: "คัน / ชม.",
+                            perHour: equivTripsPerHour,
+                            perMinTitle: "คัน / นาที",
+                            perMin: equivTripsPerMin,
+                            hourDigits: 2,
+                            minDigits: 3
+                        )
+                        rateRow(
+                            label: "เช้า",
+                            perHourTitle: "คัน / ชม.",
+                            perHour: morningEquivPerHour,
+                            perMinTitle: "คัน / นาที",
+                            perMin: morningEquivPerMin,
+                            hourDigits: 2,
+                            minDigits: 3
+                        )
+                        rateRow(
+                            label: "บ่าย",
+                            perHourTitle: "คัน / ชม.",
+                            perHour: afternoonEquivPerHour,
+                            perMinTitle: "คัน / นาที",
+                            perMin: afternoonEquivPerMin,
+                            hourDigits: 2,
+                            minDigits: 3
+                        )
+                    }
+
+                    sectionCard(title: "อัตราเที่ยวรถจริง", icon: "gauge.with.dots.needle.67percent") {
+                        DetailStatRow(items: [
+                            ("คันวันนี้", "\(tripVehicleCount)"),
+                            ("เที่ยวรวม", CountRecordLogic.formatMetric(tripTotal)),
+                            ("คิวจากเที่ยว", CountRecordLogic.formatMetric(tripTotal * queuePerTrip))
+                        ])
+
+                        rateRow(
+                            label: "รวม",
+                            perHourTitle: "เที่ยว / ชม.",
+                            perHour: actualTripsPerHour,
+                            perMinTitle: "เที่ยว / นาที",
+                            perMin: actualTripsPerMin,
+                            hourDigits: 2,
+                            minDigits: 3
+                        )
+                        rateRow(
+                            label: "เช้า",
+                            perHourTitle: "เที่ยว / ชม.",
+                            perHour: morningActualPerHour,
+                            perMinTitle: "เที่ยว / นาที",
+                            perMin: morningActualPerHour.map { $0 / 60 },
+                            hourDigits: 2,
+                            minDigits: 3
+                        )
+                        rateRow(
+                            label: "บ่าย",
+                            perHourTitle: "เที่ยว / ชม.",
+                            perHour: afternoonActualPerHour,
+                            perMinTitle: "เที่ยว / นาที",
+                            perMin: afternoonActualPerHour.map { $0 / 60 },
+                            hourDigits: 2,
+                            minDigits: 3
+                        )
+
+                        if let note = balanceNote {
+                            Text(note)
+                                .font(.caption)
+                                .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .background(RealtimeV4Palette.page.ignoresSafeArea())
+            .navigationTitle("เชิงลึกตัวชี้วัดร่อน")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("ปิด") { dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var headerCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(CountRecordLogic.formatMetric(sand.rounds))
+                    .font(.system(size: 44, weight: .black, design: .rounded))
+                    .foregroundStyle(RealtimeV4Palette.ink)
+                Text("คิว")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                Spacer(minLength: 0)
+            }
+            Text("วัน \(dayKey) · เวลาทำงานร่อน \(Self.formatHours(sandHours))")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(RealtimeV4Palette.inkMuted)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [RealtimeV4Palette.sandPanelTop, RealtimeV4Palette.sandPanelBottom],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color(hex: "#EC4899").opacity(0.28), lineWidth: 1)
+        )
+    }
+
+    private var balanceNote: String? {
+        switch (equivTripsPerHour, actualTripsPerHour) {
+        case let (eq?, act?):
+            let delta = eq - act
+            if abs(delta) < 0.15 {
+                return "อัตราร่อนเทียบเที่ยวใกล้เคียงอัตราเที่ยวจริง — จังหวะคู่ขนานดี"
+            }
+            if delta > 0 {
+                return String(
+                    format: "ร่อนเทียบได้เร็วกว่าเที่ยวจริงประมาณ %.2f คัน/ชม. — อาจขนออกไม่ทัน",
+                    delta
+                )
+            }
+            return String(
+                format: "เที่ยวจริงเร็วกว่าอัตราร่อนเทียบประมาณ %.2f คัน/ชม. — อาจร่อนไม่ทัน",
+                -delta
+            )
+        default:
+            return nil
+        }
+    }
+
+    private func sectionCard<Content: View>(
+        title: String,
+        icon: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(RealtimeV4Palette.ink)
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(RealtimeV4Palette.card)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(RealtimeV4Palette.border, lineWidth: 1)
+        )
+    }
+
+    private func rateRow(
+        label: String,
+        perHourTitle: String,
+        perHour: Double?,
+        perMinTitle: String,
+        perMin: Double?,
+        hourDigits: Int,
+        minDigits: Int
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(RealtimeV4Palette.sandLabel)
+            HStack(spacing: 8) {
+                metricCell(
+                    title: perHourTitle,
+                    value: Self.formatRate(perHour, digits: hourDigits)
+                )
+                metricCell(
+                    title: perMinTitle,
+                    value: Self.formatRate(perMin, digits: minDigits)
+                )
+            }
+        }
+    }
+
+    private func metricCell(title: String, value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(RealtimeV4Palette.sandLabel)
+            Text(value)
+                .font(.title3.weight(.black))
+                .minimumScaleFactor(0.65)
+                .lineLimit(1)
+                .foregroundStyle(RealtimeV4Palette.ink)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(RealtimeV4Palette.sandCellFill)
+        )
+    }
+
+    private static func queueRate(rounds: Int, hours: Double?) -> Double? {
+        guard rounds > 0, let hours, hours > 0, hours.isFinite else { return nil }
+        return Double(rounds) / hours
+    }
+
+    private static func tripEquivalent(fromQueuePerHour rate: Double?) -> Double? {
+        guard let rate, CountRecordLogic.queuePerTrip > 0 else { return nil }
+        return rate / Double(CountRecordLogic.queuePerTrip)
+    }
+
+    private static func formatRate(_ value: Double?, digits: Int) -> String {
+        guard let value, value.isFinite else { return "—" }
+        return String(format: "%.\(digits)f", value)
+    }
+
+    private static func formatHours(_ hours: Double?) -> String {
+        guard let hours, hours > 0, hours.isFinite else { return "—" }
+        return CountRecordAnalytics.formatDurationHours(hours)
     }
 }
 
