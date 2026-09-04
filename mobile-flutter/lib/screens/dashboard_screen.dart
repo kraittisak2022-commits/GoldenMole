@@ -18,6 +18,7 @@ import '../services/local_data_cache.dart';
 import '../services/dashboard_service.dart';
 import '../services/employee_service.dart';
 import '../services/project_service.dart';
+import '../utils/advance_line_notify.dart';
 import '../services/transaction_service.dart';
 import '../l10n/app_locale.dart';
 import '../l10n/app_localizations.dart';
@@ -465,6 +466,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (!mounted) return;
     CountRecordOfflineSync.instance.noteServerReachable();
     _applyServerReachability(true);
+    unawaited(flushPendingLineNotifies());
     unawaited(_refreshHomeDataInPlace());
   }
 
@@ -483,6 +485,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (online) {
       CountRecordOfflineSync.instance.noteServerReachable();
       _applyServerReachability(true);
+      unawaited(flushPendingLineNotifies());
     }
     await _refreshHomeDataInPlace();
   }

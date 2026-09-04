@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_transaction.dart';
 import '../models/employee.dart';
@@ -7,17 +10,25 @@ import 'advance_work_details.dart';
 import 'line_messaging.dart';
 import 'maintenance_catalog.dart';
 
-/// ผลการแจ้ง LINE หลังบันทึกเบิกเงิน
+const _kPendingLineNotifyPrefsKey = 'gm_pending_line_notify_v1';
+
+/// ผลการแจ้ง LINE หลังบันทึกเบิกเงิน / ลางาน / แจ้งซ่อม
 class AdvanceLineNotifyStatus {
   const AdvanceLineNotifyStatus._({
     required this.skipped,
     required this.ok,
     this.messageTh,
+    this.queuedForRetry = false,
   });
 
   /// ไม่มี LINE User ID ของพนักงาน / env — ไม่ได้เรียก Edge
   factory AdvanceLineNotifyStatus.skippedNoRecipients() =>
-      const AdvanceLineNotifyStatus._(skipped: true, ok: true);
+      const AdvanceLineNotifyStatus._(
+        skipped: true,
+        ok: false,
+        messageTh:
+            'ยังไม่แจ้ง LINE — ไม่มีผู้รับ (ตั้ง LINE User ID พนักงาน หรือ LINE_ADVANCE_NOTIFY_USER_IDS)',
+      );
 
   /// ส่งสำเร็จ (HTTP 200 และ ok !== false)
   factory AdvanceLineNotifyStatus.sent() =>
@@ -30,9 +41,184 @@ class AdvanceLineNotifyStatus {
         messageTh: messageTh,
       );
 
+  factory AdvanceLineNotifyStatus.queuedForRetry() =>
+      const AdvanceLineNotifyStatus._(
+        skipped: false,
+        ok: false,
+        queuedForRetry: true,
+        messageTh: 'บันทึกแล้ว จะแจ้ง LINE อัตโนมัติเมื่อออนไลน์',
+      );
+
   final bool skipped;
   final bool ok;
   final String? messageTh;
+  final bool queuedForRetry;
+
+  /// ข้อความต่อท้ายหลังบันทึกสำเร็จ
+  String successSuffixTh({String sent = 'แจ้ง LINE แล้ว'}) {
+    if (ok && !skipped) return sent;
+    if (queuedForRetry) return 'จะแจ้ง LINE เมื่อออนไลน์';
+    if (skipped || !ok) {
+      final m = (messageTh ?? '').trim();
+      if (m.isNotEmpty) return m;
+      return 'ยังไม่แจ้ง LINE';
+    }
+    return sent;
+  }
+}
+
+Future<List<String>> _adminLineRecipientIds() async {
+  final to = <String>{};
+  final extraRaw = dotenv.env['LINE_ADVANCE_NOTIFY_USER_IDS'] ?? '';
+  for (final part in extraRaw.split(',')) {
+    final u = normalizeLineUserId(part);
+    if (u != null) to.add(u);
+  }
+  return to.toList();
+}
+
+List<String> _employeeLineRecipientIds(
+  AppTransaction tx,
+  List<Employee> employees,
+) {
+  final to = <String>{};
+  for (final id in tx.employeeIds) {
+    Employee? e;
+    for (final x in employees) {
+      if (x.id == id) {
+        e = x;
+        break;
+      }
+    }
+    final u = normalizeLineUserId(e?.lineUserId ?? '');
+    if (u != null) to.add(u);
+  }
+  return to.toList();
+}
+
+Future<void> _enqueuePendingLineNotify({
+  required String text,
+  required List<String> to,
+}) async {
+  if (to.isEmpty || text.trim().isEmpty) return;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kPendingLineNotifyPrefsKey);
+    final list = <Map<String, dynamic>>[];
+    if (raw != null && raw.trim().isNotEmpty) {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        for (final item in decoded) {
+          if (item is Map) {
+            list.add(Map<String, dynamic>.from(item));
+          }
+        }
+      }
+    }
+    list.add(<String, dynamic>{
+      'text': text,
+      'to': to,
+      'at': DateTime.now().toIso8601String(),
+    });
+    // กันคิวยาวเกิน
+    while (list.length > 40) {
+      list.removeAt(0);
+    }
+    await prefs.setString(_kPendingLineNotifyPrefsKey, jsonEncode(list));
+  } catch (e, st) {
+    debugPrint('_enqueuePendingLineNotify failed: $e\n$st');
+  }
+}
+
+/// ส่งคิวแจ้ง LINE ที่ค้างตอนออฟไลน์ (เรียกหลังซิงก์สำเร็จ)
+Future<int> flushPendingLineNotifies() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kPendingLineNotifyPrefsKey);
+    if (raw == null || raw.trim().isEmpty) return 0;
+    final decoded = jsonDecode(raw);
+    if (decoded is! List || decoded.isEmpty) {
+      await prefs.remove(_kPendingLineNotifyPrefsKey);
+      return 0;
+    }
+    final remaining = <Map<String, dynamic>>[];
+    var sent = 0;
+    for (final item in decoded) {
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final text = '${map['text'] ?? ''}'.trim();
+      final toRaw = map['to'];
+      final to = <String>[];
+      if (toRaw is List) {
+        for (final x in toRaw) {
+          final u = normalizeLineUserId('$x');
+          if (u != null) to.add(u);
+        }
+      }
+      if (text.isEmpty || to.isEmpty) continue;
+      try {
+        final res = await invokeNotifyAdvanceLine(text: text, to: to);
+        final body = res.data;
+        if (res.status >= 400 || (body is Map && body['ok'] == false)) {
+          remaining.add(map);
+          continue;
+        }
+        sent++;
+      } catch (_) {
+        remaining.add(map);
+      }
+    }
+    if (remaining.isEmpty) {
+      await prefs.remove(_kPendingLineNotifyPrefsKey);
+    } else {
+      await prefs.setString(
+        _kPendingLineNotifyPrefsKey,
+        jsonEncode(remaining),
+      );
+    }
+    return sent;
+  } catch (e, st) {
+    debugPrint('flushPendingLineNotifies failed: $e\n$st');
+    return 0;
+  }
+}
+
+Future<AdvanceLineNotifyStatus> _sendOrQueueLineNotify({
+  required String text,
+  required List<String> to,
+  required String debugTag,
+}) async {
+  if (to.isEmpty) {
+    return AdvanceLineNotifyStatus.skippedNoRecipients();
+  }
+  try {
+    final res = await invokeNotifyAdvanceLine(text: text, to: to);
+    final body = res.data;
+    if (res.status >= 500) {
+      final msg = 'แจ้ง LINE ไม่สำเร็จ (HTTP ${res.status}) — ${res.data}';
+      debugPrint('$debugTag: $msg');
+      await _enqueuePendingLineNotify(text: text, to: to);
+      return AdvanceLineNotifyStatus.queuedForRetry();
+    }
+    if (res.status >= 400) {
+      final msg = 'แจ้ง LINE ไม่สำเร็จ (HTTP ${res.status}) — ${res.data}';
+      debugPrint('$debugTag: $msg');
+      return AdvanceLineNotifyStatus.failed(msg);
+    }
+    if (body is Map && body['ok'] == false) {
+      final hint = '${body['hint_th'] ?? body['message'] ?? body['error']}';
+      debugPrint('$debugTag: $hint $body');
+      return AdvanceLineNotifyStatus.failed(
+        hint.isEmpty ? 'แจ้ง LINE ไม่สำเร็จ' : hint,
+      );
+    }
+    return AdvanceLineNotifyStatus.sent();
+  } catch (e, st) {
+    final msg = lineNotifyAdvanceInvokeErrorMessage(e);
+    debugPrint('$debugTag failed: $msg\n$st');
+    await _enqueuePendingLineNotify(text: text, to: to);
+    return AdvanceLineNotifyStatus.queuedForRetry();
+  }
 }
 
 String _formatBahtTh(num value) {
@@ -156,50 +342,16 @@ Future<AdvanceLineNotifyStatus> notifyAdvanceLineAfterSaved(
     return AdvanceLineNotifyStatus.skippedNoRecipients();
   }
 
-  final to = <String>{};
-  for (final id in tx.employeeIds) {
-    Employee? e;
-    for (final x in employees) {
-      if (x.id == id) {
-        e = x;
-        break;
-      }
-    }
-    final u = normalizeLineUserId(e?.lineUserId ?? '');
-    if (u != null) to.add(u);
-  }
-  final extraRaw = dotenv.env['LINE_ADVANCE_NOTIFY_USER_IDS'] ?? '';
-  for (final part in extraRaw.split(',')) {
-    final u = normalizeLineUserId(part);
-    if (u != null) to.add(u);
-  }
-  if (to.isEmpty) {
-    return AdvanceLineNotifyStatus.skippedNoRecipients();
-  }
-
+  final to = <String>{
+    ..._employeeLineRecipientIds(tx, employees),
+    ...await _adminLineRecipientIds(),
+  };
   final text = buildAdvanceLineText(tx, employees);
-  try {
-    final res = await invokeNotifyAdvanceLine(text: text, to: to.toList());
-    final body = res.data;
-    if (res.status >= 400) {
-      final msg =
-          'แจ้ง LINE ไม่สำเร็จ (HTTP ${res.status}) — ${res.data}';
-      debugPrint('notifyAdvanceLineAfterSaved: $msg');
-      return AdvanceLineNotifyStatus.failed(msg);
-    }
-    if (body is Map && body['ok'] == false) {
-      final hint = '${body['hint_th'] ?? body['message'] ?? body['error']}';
-      debugPrint('notifyAdvanceLineAfterSaved: $hint $body');
-      return AdvanceLineNotifyStatus.failed(
-        hint.isEmpty ? 'แจ้ง LINE ไม่สำเร็จ' : hint,
-      );
-    }
-    return AdvanceLineNotifyStatus.sent();
-  } catch (e, st) {
-    final msg = lineNotifyAdvanceInvokeErrorMessage(e);
-    debugPrint('notifyAdvanceLineAfterSaved failed: $msg\n$st');
-    return AdvanceLineNotifyStatus.failed(msg);
-  }
+  return _sendOrQueueLineNotify(
+    text: text,
+    to: to.toList(),
+    debugTag: 'notifyAdvanceLineAfterSaved',
+  );
 }
 
 String _leaveKindTh(String? subCategory) {
@@ -283,50 +435,16 @@ Future<AdvanceLineNotifyStatus> notifyLeaveLineAfterSaved(
     return AdvanceLineNotifyStatus.skippedNoRecipients();
   }
 
-  final to = <String>{};
-  for (final id in tx.employeeIds) {
-    Employee? e;
-    for (final x in employees) {
-      if (x.id == id) {
-        e = x;
-        break;
-      }
-    }
-    final u = normalizeLineUserId(e?.lineUserId ?? '');
-    if (u != null) to.add(u);
-  }
-  final extraRaw = dotenv.env['LINE_ADVANCE_NOTIFY_USER_IDS'] ?? '';
-  for (final part in extraRaw.split(',')) {
-    final u = normalizeLineUserId(part);
-    if (u != null) to.add(u);
-  }
-  if (to.isEmpty) {
-    return AdvanceLineNotifyStatus.skippedNoRecipients();
-  }
-
+  final to = <String>{
+    ..._employeeLineRecipientIds(tx, employees),
+    ...await _adminLineRecipientIds(),
+  };
   final text = buildLeaveLineText(tx, employees);
-  try {
-    final res = await invokeNotifyAdvanceLine(text: text, to: to.toList());
-    final body = res.data;
-    if (res.status >= 400) {
-      final msg =
-          'แจ้ง LINE ไม่สำเร็จ (HTTP ${res.status}) — ${res.data}';
-      debugPrint('notifyLeaveLineAfterSaved: $msg');
-      return AdvanceLineNotifyStatus.failed(msg);
-    }
-    if (body is Map && body['ok'] == false) {
-      final hint = '${body['hint_th'] ?? body['message'] ?? body['error']}';
-      debugPrint('notifyLeaveLineAfterSaved: $hint $body');
-      return AdvanceLineNotifyStatus.failed(
-        hint.isEmpty ? 'แจ้ง LINE ไม่สำเร็จ' : hint,
-      );
-    }
-    return AdvanceLineNotifyStatus.sent();
-  } catch (e, st) {
-    final msg = lineNotifyAdvanceInvokeErrorMessage(e);
-    debugPrint('notifyLeaveLineAfterSaved failed: $msg\n$st');
-    return AdvanceLineNotifyStatus.failed(msg);
-  }
+  return _sendOrQueueLineNotify(
+    text: text,
+    to: to.toList(),
+    debugTag: 'notifyLeaveLineAfterSaved',
+  );
 }
 
 String buildMaintenanceRepairLineText(AppTransaction tx) {
@@ -371,37 +489,11 @@ Future<AdvanceLineNotifyStatus> notifyMaintenanceRepairLineAfterSaved(
     return AdvanceLineNotifyStatus.skippedNoRecipients();
   }
 
-  final to = <String>{};
-  final extraRaw = dotenv.env['LINE_ADVANCE_NOTIFY_USER_IDS'] ?? '';
-  for (final part in extraRaw.split(',')) {
-    final u = normalizeLineUserId(part);
-    if (u != null) to.add(u);
-  }
-  if (to.isEmpty) {
-    return AdvanceLineNotifyStatus.skippedNoRecipients();
-  }
-
+  final to = await _adminLineRecipientIds();
   final text = buildMaintenanceRepairLineText(tx);
-  try {
-    final res = await invokeNotifyAdvanceLine(text: text, to: to.toList());
-    final body = res.data;
-    if (res.status >= 400) {
-      final msg =
-          'แจ้ง LINE ไม่สำเร็จ (HTTP ${res.status}) — ${res.data}';
-      debugPrint('notifyMaintenanceRepairLineAfterSaved: $msg');
-      return AdvanceLineNotifyStatus.failed(msg);
-    }
-    if (body is Map && body['ok'] == false) {
-      final hint = '${body['hint_th'] ?? body['message'] ?? body['error']}';
-      debugPrint('notifyMaintenanceRepairLineAfterSaved: $hint $body');
-      return AdvanceLineNotifyStatus.failed(
-        hint.isEmpty ? 'แจ้ง LINE ไม่สำเร็จ' : hint,
-      );
-    }
-    return AdvanceLineNotifyStatus.sent();
-  } catch (e, st) {
-    final msg = lineNotifyAdvanceInvokeErrorMessage(e);
-    debugPrint('notifyMaintenanceRepairLineAfterSaved failed: $msg\n$st');
-    return AdvanceLineNotifyStatus.failed(msg);
-  }
+  return _sendOrQueueLineNotify(
+    text: text,
+    to: to,
+    debugTag: 'notifyMaintenanceRepairLineAfterSaved',
+  );
 }

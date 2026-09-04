@@ -345,8 +345,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         widget.initialCategory?.trim(),
       );
 
-  bool _lastPersistQueued = false;
-
   void _deferDisposeVehicleDrafts(Iterable<_VehicleTripDraft> rows) {
     final old = rows.toList();
     if (old.isEmpty) return;
@@ -1040,7 +1038,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         dayServerRows: _moduleDayAllTransactions,
         serverOnlineHint: widget.serverOnlineHint,
       );
-      _lastPersistQueued = queued;
+      // queued=true = เก็บในคิวออฟไลน์ (LINE จะคิวแยกถ้าส่งไม่สำเร็จ)
+      if (queued) {
+        debugPrint('persist queued offline: ${stamped.id}');
+      }
       _persistOmitCreatedSessionIds.add(stamped.id);
       final ymd = t.date;
       final mergedDay = await _mergeOfflineQueue(
@@ -1063,7 +1064,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }
       return;
     }
-    _lastPersistQueued = false;
     await widget.service.upsertTransaction(stamped, omitCreatedAt: omitCreated);
     _persistOmitCreatedSessionIds.add(stamped.id);
   }
@@ -5668,10 +5668,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final leaveStartDate = _leaveStartDate;
     final leaveEndDate = _leaveEndDate;
     final existingLeaveTxId = _laborLeaveTxId;
+    AdvanceLineNotifyStatus? leaveLineStatus;
     await _runSaveWithPopups(
       successMessage: existingLeaveTxId != null
           ? 'บันทึกการแก้ไขลางานแล้ว'
           : 'บันทึกลางานสำเร็จ',
+      successMessageBuilder: () {
+        final base = existingLeaveTxId != null
+            ? 'บันทึกการแก้ไขลางานแล้ว'
+            : 'บันทึกลางานสำเร็จ';
+        final line = leaveLineStatus;
+        if (line == null) return base;
+        return '$base · ${line.successSuffixTh()}';
+      },
       saveActionLabel: existingLeaveTxId != null
           ? 'แก้ไขลางาน'
           : 'บันทึกลางาน',
@@ -5768,10 +5777,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           workDetails: halfMeta,
         );
         await _persist(saved);
-        // ออฟไลน์ส่ง LINE ไม่ได้ — ข้ามไปแทนที่จะยิงทิ้งแล้วล้มเงียบ
-        if (!_lastPersistQueued) {
-          unawaited(notifyLeaveLineAfterSaved(saved, _employees));
-        }
+        // แจ้ง LINE ทุกครั้งหลังบันทึก (ถ offline จะคิวไว้แล้วส่งเมื่อออนไลน์)
+        leaveLineStatus = await notifyLeaveLineAfterSaved(saved, _employees);
       },
     );
   }
@@ -5927,8 +5934,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final confirmed = await _confirmAdvanceRequestSummary();
     if (!confirmed || !mounted) return;
 
+    AdvanceLineNotifyStatus? advanceLineStatus;
     await _runSaveWithPopups(
       successMessage: 'ส่งคำขอเบิกเงินแล้ว',
+      successMessageBuilder: () {
+        final line = advanceLineStatus;
+        if (line == null) return 'ส่งคำขอเบิกเงินแล้ว';
+        return 'ส่งคำขอเบิกเงินแล้ว · ${line.successSuffixTh()}';
+      },
       saveActionLabel: 'คำขอเบิกเงิน',
       saveButtonLabel: 'ส่งคำขอเบิกเงิน',
       body: () async {
@@ -5951,6 +5964,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final ymd = _quickYmd(_selectedDate);
         final empIds = _selectedAdvanceEmpIds.toList();
         final ts = DateTime.now().millisecondsSinceEpoch;
+        AdvanceLineNotifyStatus? lastLine;
         for (var i = 0; i < empIds.length; i++) {
           final empId = empIds[i];
           final emp = _employeesById[empId];
@@ -5978,8 +5992,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           );
           await _persist(saved);
           _advanceWorkDetailsSeed = workDetails;
-          unawaited(notifyAdvanceLineAfterSaved(saved, _employees));
+          lastLine = await notifyAdvanceLineAfterSaved(saved, _employees);
         }
+        advanceLineStatus = lastLine;
       },
     );
   }
@@ -6525,8 +6540,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final confirmed = await _confirmMaintenanceRepairSummary();
     if (!confirmed || !mounted) return;
 
+    AdvanceLineNotifyStatus? repairLineStatus;
     await _runSaveWithPopups(
       successMessage: 'ส่งแจ้งซ่อมแล้ว',
+      successMessageBuilder: () {
+        final line = repairLineStatus;
+        if (line == null) return 'ส่งแจ้งซ่อมแล้ว';
+        return 'ส่งแจ้งซ่อมแล้ว · ${line.successSuffixTh()}';
+      },
       saveActionLabel: 'แจ้งซ่อม',
       saveButtonLabel: 'ส่งแจ้งซ่อม',
       requireSignature: true,
@@ -6586,9 +6607,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           workDetails: workDetails.isEmpty ? null : workDetails,
         );
         await _persist(saved);
-        if (!_lastPersistQueued) {
-          unawaited(notifyMaintenanceRepairLineAfterSaved(saved));
-        }
+        repairLineStatus = await notifyMaintenanceRepairLineAfterSaved(saved);
       },
     );
   }
