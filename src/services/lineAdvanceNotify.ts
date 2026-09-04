@@ -1,7 +1,7 @@
 import type { Employee, Transaction } from '../types';
 import { hasSupabaseConfig } from '../lib/supabase';
 import { decodeAdvanceGm } from '../utils/advanceGmWorkDetails';
-import { invokeNotifyAdvanceLine, normalizeLineUserId } from '../utils/lineMessaging';
+import { invokeNotifyAdvanceLine, normalizeLineRecipientId, normalizeLineUserId } from '../utils/lineMessaging';
 
 function formatBahtTh(value: number): string {
     const isInt = Math.abs(value - Math.round(value)) < 1e-9;
@@ -158,7 +158,7 @@ export async function notifyAdvanceLineSaved(
     }
     const extra = (import.meta.env.VITE_LINE_ADVANCE_NOTIFY_USER_IDS as string | undefined)?.split(',') || [];
     for (const raw of extra) {
-        const u = normalizeLineUserId(raw);
+        const u = normalizeLineRecipientId(raw) || normalizeLineUserId(raw);
         if (u) to.add(u);
     }
     if (to.size === 0) return { kind: 'skipped' };
@@ -205,7 +205,7 @@ export async function notifyLeaveLineSaved(
     }
     const extra = (import.meta.env.VITE_LINE_ADVANCE_NOTIFY_USER_IDS as string | undefined)?.split(',') || [];
     for (const raw of extra) {
-        const u = normalizeLineUserId(raw);
+        const u = normalizeLineRecipientId(raw) || normalizeLineUserId(raw);
         if (u) to.add(u);
     }
     if (to.size === 0) return { kind: 'skipped' };

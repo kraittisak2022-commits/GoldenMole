@@ -1,4 +1,4 @@
-# LINE — แจ้งเตือนการเบิกเงิน (GoldenMole)
+# LINE — แจ้งเตือน GoldenMole
 
 ใช้ [LINE Messaging API](https://developers.line.biz/en/docs/messaging-api/) ส่งข้อความหลังบันทึกสำเร็จแบบออนไลน์ (เว็บ + แอปมือถือ)
 
@@ -16,19 +16,105 @@
 
 1. **LINE Official Account** เปิดใช้ Messaging API ใน [LINE Developers Console](https://developers.line.biz/)
 2. **Channel access token (long-lived)** — เก็บเป็น Edge secret **`LINE_CHANNEL_ACCESS_TOKEN`** (อย่าใส่ในโค้ดฝั่ง client)
-3. **LINE userId** ของผู้รับ — ผู้ใช้ต้อง **เพิ่มเพื่อน OA** ก่อน แล้วได้ `userId` (ขึ้นต้นด้วย `U` + 32 ตัว hex) จาก Webhook หรือ LINE Login
+3. **ผู้รับอย่างน้อยหนึ่งอย่าง**
+   - **User ID** (`U` + 32 hex) — เพิ่มเพื่อน OA ก่อน
+   - **Group ID** (`C` + 32 hex) — เชิญบอทเข้ากลุ่ม (แนะนำสำหรับทีม)
+   - **Room ID** (`R` + 32 hex) — ห้องแชทหลายคน
+
+## แจ้งเตือนในกลุ่ม LINE (แนะนำ)
+
+### 1) เปิดให้บอทเข้ากลุ่มได้
+
+1. เปิด [LINE Developers](https://developers.line.biz/) → Channel ของ OA
+2. แท็บ **Messaging API**
+3. เปิด **Allow bot to join group chats** (อนุญาตให้บอทเข้าร่วมแชทกลุ่ม)
+4. (แนะนำ) ปิด **Auto-reply messages** / **Greeting messages** ถ้าไม่ต้องการบอทตอบทักทายรบกวนในกลุ่ม
+
+### 2) เชิญบอทเข้ากลุ่ม
+
+1. ในแอป LINE สร้างกลุ่ม (หรือใช้กลุ่มเดิม)
+2. เพิ่มสมาชิก → ค้นหาบัญชีทางการ (OA) ของ GoldenMole → เชิญเข้ากลุ่ม
+3. ยืนยันว่าบอทอยู่ในสมาชิกกลุ่มแล้ว
+
+### 3) หา Group ID (`C…`)
+
+Group ID **ไม่โชว์ในแอป LINE** — ได้จาก Webhook เมื่อมีอีเวนต์ในกลุ่ม:
+
+1. ใน LINE Developers → Messaging API → ตั้ง **Webhook URL** (เช่น Supabase Edge / บริการรับ webhook ชั่วคราว)
+2. เปิด **Use webhook**
+3. ในกลุ่มที่มีบอทแล้ว ให้ใครสักคนพิมพ์ข้อความสั้น ๆ (หรือเตะ/เชิญบอทใหม่)
+4. ใน payload จะมีประมาณนี้:
+
+```json
+{
+  "events": [
+    {
+      "type": "message",
+      "source": {
+        "type": "group",
+        "groupId": "Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  ]
+}
+```
+
+คัดลอกค่า `groupId` ที่ขึ้นต้นด้วย **`C`**
+
+อีเวนต์ `join` / `memberJoined` ก็มี `groupId` เช่นกัน
+
+### 4) ใส่ Group ID ในระบบ
+
+ใน `mobile-flutter/.env` (และเว็บ `.env` ถ้าใช้):
+
+```env
+# คนเดียว (U…) และ/หรือ กลุ่ม (C…) คั่นด้วย comma ได้
+LINE_ADVANCE_NOTIFY_USER_IDS=Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+หรือรวมทั้งคนและกลุ่ม:
+
+```env
+LINE_ADVANCE_NOTIFY_USER_IDS=Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,Cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+```
+
+เว็บใช้ชื่อเดิม:
+
+```env
+VITE_LINE_ADVANCE_NOTIFY_USER_IDS=Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+จากนั้น:
+
+- **มือถือ**: ต้อง build/ติดตั้งแอปใหม่ (ค่าอยู่ใน asset `.env`)
+- **Edge**: deploy ฟังก์ชัน `notify-advance-line` รุ่นที่รองรับ Group ID แล้ว
+
+```bash
+npx supabase functions deploy notify-advance-line
+```
+
+### 5) ทดสอบส่งเข้ากลุ่ม
+
+หลังใส่ Group ID แล้ว ให้บันทึกเมนูใดเมนูหนึ่ง หรือเรียกทดสอบ Edge ด้วย `to: ["C…"]` — ข้อความควรโผล่ในกลุ่ม
+
+ถ้าได้ **403**: บอทยังไม่อยู่ในกลุ่ม หรือถูกเตะออก — เชิญเข้ากลุ่มใหม่  
+ถ้าได้ **400**: Group ID ผิด หรือยังไม่ได้เปิด Allow bot to join group chats
+
+---
 
 ## ในแอป GoldenMole
 
 | ที่มา | รายละเอียด |
 |--------|------------|
-| **พนักงานในรายการเบิกเงิน** | ฟิลด์ **LINE User ID** ในโปรไฟล์พนักงาน (`line_user_id` ในฐานข้อมูล) |
-| **เพิ่มเติม** | ตัวแปร env: **`VITE_LINE_ADVANCE_NOTIFY_USER_IDS`** (เว็บ) / **`LINE_ADVANCE_NOTIFY_USER_IDS`** (มือถือ) — หลายค่าคั่นด้วย comma |
+| **พนักงานในรายการเบิกเงิน/ลา** | ฟิลด์ **LINE User ID** ในโปรไฟล์ (`line_user_id`) — เฉพาะ `U…` |
+| **ผู้ดูแล / กลุ่ม** | env **`VITE_LINE_ADVANCE_NOTIFY_USER_IDS`** (เว็บ) / **`LINE_ADVANCE_NOTIFY_USER_IDS`** (มือถือ) — `U…` / `C…` / `R…` คั่นด้วย comma |
 
 ## Supabase Edge Function `notify-advance-line`
 
-- รับ `{ text, to: string[] }` แล้วเรียก `POST https://api.line.me/v2/bot/message/multicast` แบ่งชุดละ 150 คน
-- กรองเฉพาะ `userId` รูปแบบ `U` + 32 hex
+- รับ `{ text, to: string[] }`
+- **User (`U…`)**: `multicast` (fallback เป็น `push`)
+- **Group (`C…`) / Room (`R…`)**: `push` ทีละ chat
+- กรองเฉพาะ ID รูปแบบ `U|C|R` + hex 32 ตัว
 
 ### การยืนยันตัวตน (เลือกอย่างใดอย่างหนึ่ง)
 
@@ -62,7 +148,8 @@ npx supabase secrets set NOTIFY_ADVANCE_INVOKER_SECRET=your_long_random_secret
 - **Channel secret** (แท็บ Basic — มักเป็น hex 32 ตัว) ใช้ยืนยัน webhook ไม่ใช่ส่งข้อความ — ถ้าใส่ผิด ฟังก์ชันจะตอบ `token_looks_like_channel_secret` พร้อมข้อความภาษาไทย
 - ข้อความยาวสูงสุดตามที่ LINE นับเป็น **UTF-16** ไม่เกิน 5000 code units (ฟังก์ชันจะตัดให้อัตโนมัติ)
 
-## แก้ error 400
+## แก้ error 400 / 403
 
-- **LINE HTTP 400** มักเกิดจากผู้รับ **ยังไม่ได้เพิ่มเพื่อน OA** หรือ User ID ไม่ตรงกับบัญชีที่เป็นเพื่อน — ลองข้อความสั้น ๆ แล้วส่งใหม่
+- **User**: มักเกิดจากยังไม่ได้เพิ่มเพื่อน OA หรือ User ID ไม่ตรง
+- **Group**: บอทไม่อยู่ในกลุ่ม / ยังไม่เปิด Allow bot to join group chats / Group ID ผิด
 - หน้า **ทดสอบ LINE** จะแสดงข้อความจาก LINE (`LINE: ...`) ถ้ามี ช่วยไล่สาเหตุได้เร็ว

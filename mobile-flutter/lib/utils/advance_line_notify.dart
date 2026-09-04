@@ -71,7 +71,7 @@ Future<List<String>> _adminLineRecipientIds() async {
   final to = <String>{};
   final extraRaw = dotenv.env['LINE_ADVANCE_NOTIFY_USER_IDS'] ?? '';
   for (final part in extraRaw.split(',')) {
-    final u = normalizeLineUserId(part);
+    final u = normalizeLineRecipientId(part);
     if (u != null) to.add(u);
   }
   return to.toList();
@@ -151,7 +151,7 @@ Future<int> flushPendingLineNotifies() async {
       final to = <String>[];
       if (toRaw is List) {
         for (final x in toRaw) {
-          final u = normalizeLineUserId('$x');
+          final u = normalizeLineRecipientId('$x') ?? normalizeLineUserId('$x');
           if (u != null) to.add(u);
         }
       }

@@ -25,10 +25,19 @@ String? normalizeLineUserId(String raw) {
   return 'U${m.group(1)!.toLowerCase()}';
 }
 
+/// User `U…` / Group `C…` / Room `R…` สำหรับแจ้งเตือน (env ผู้ดูแล)
+String? normalizeLineRecipientId(String raw) {
+  final s = raw.trim();
+  final re = RegExp(r'^([UCRucr])([a-fA-F0-9]{32})$');
+  final m = re.firstMatch(s);
+  if (m == null) return null;
+  return '${m.group(1)!.toUpperCase()}${m.group(2)!.toLowerCase()}';
+}
+
 List<String> parseLineUserIdsField(String raw) {
   final out = <String>{};
   for (final part in raw.split(RegExp(r'[\s,]+'))) {
-    final u = normalizeLineUserId(part);
+    final u = normalizeLineRecipientId(part) ?? normalizeLineUserId(part);
     if (u != null) out.add(u);
   }
   return out.toList();

@@ -1,4 +1,4 @@
-/** LINE Messaging API userId: U + 32 hex (normalized to lowercase hex) */
+/** LINE Messaging API: User U… / Group C… / Room R… (normalized) */
 import { supabase } from '../lib/supabase';
 import { ensureSupabaseSessionForEdgeFunctions } from './supabaseFunctionSession';
 
@@ -8,10 +8,17 @@ export function normalizeLineUserId(raw: string): string | undefined {
     return `U${m[1].toLowerCase()}`;
 }
 
+/** ผู้รับแจ้งเตือนรวมกลุ่ม/ห้อง — ใช้ใน env ผู้ดูแล */
+export function normalizeLineRecipientId(raw: string): string | undefined {
+    const m = String(raw || '').trim().match(/^([UCR])([a-f0-9]{32})$/i);
+    if (!m) return undefined;
+    return `${m[1].toUpperCase()}${m[2].toLowerCase()}`;
+}
+
 export function parseLineUserIdsField(raw: string): string[] {
     const out = new Set<string>();
     for (const part of raw.split(/[\s,]+/)) {
-        const u = normalizeLineUserId(part);
+        const u = normalizeLineRecipientId(part) || normalizeLineUserId(part);
         if (u) out.add(u);
     }
     return [...out];

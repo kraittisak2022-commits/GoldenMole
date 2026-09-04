@@ -29,11 +29,16 @@ function looksLikeChannelSecretNotAccessToken(t: string): boolean {
   return s.length === 32 && /^[a-f0-9]{32}$/i.test(s);
 }
 
-function canonicalLineUserId(raw: string): string | null {
+/** User U… / Group C… / Room R… */
+function canonicalLineRecipientId(raw: string): string | null {
   const s = raw.trim();
-  const m = s.match(/^U([a-f0-9]{32})$/i);
+  const m = s.match(/^([UCR])([a-f0-9]{32})$/i);
   if (!m) return null;
-  return `U${m[1].toLowerCase()}`;
+  return `${m[1].toUpperCase()}${m[2].toLowerCase()}`;
+}
+
+function isLineUserId(id: string): boolean {
+  return id.startsWith("U");
 }
 
 function jsonResponse(
@@ -252,7 +257,7 @@ Deno.serve(async (req) => {
   const to = [
     ...new Set(
       rawList
-        .map((x) => canonicalLineUserId(x))
+        .map((x) => canonicalLineRecipientId(x))
         .filter((x): x is string => !!x),
     ),
   ].slice(0, 500);
@@ -261,9 +266,9 @@ Deno.serve(async (req) => {
     return jsonResponse({
       ok: false,
       code: "no_valid_recipients",
-      message: "No valid LINE user IDs",
+      message: "No valid LINE recipient IDs",
       hint_th:
-        "ผู้รับต้องเป็น LINE User ID รูปแบบ U ตามด้วยตัวเลข 0-9 ตัวอักษร a-f ครบ 32 ตัว — คั่นหลายค่าด้วย comma หรือส่ง to เป็น array",
+        "ผู้รับต้องเป็น User ID (U…), Group ID (C…) หรือ Room ID (R…) — ตัวอักษร + hex 32 ตัว คั่นด้วย comma หรือส่ง to เป็น array",
     }, 200);
   }
 
@@ -278,16 +283,53 @@ Deno.serve(async (req) => {
   }
 
   const messages = [{ type: "text" as const, text }];
-  const chunkSize = 150;
+  const users = to.filter(isLineUserId);
+  const chats = to.filter((id) => !isLineUserId(id));
   const details: unknown[] = [];
   let usedPushFallback = false;
+  let okRecipients = 0;
 
-  for (let i = 0; i < to.length; i += chunkSize) {
-    const chunk = to.slice(i, i + chunkSize);
+  // กลุ่ม/ห้อง — ใช้ push ทีละ chat (multicast ใช้กับ user อย่างเดียว)
+  for (const chatId of chats) {
+    const pr = await linePush(chatId, messages, rawToken);
+    details.push({ mode: "push_group_or_room", to: chatId, status: pr.status, body: pr.body });
+    if (pr.ok) {
+      okRecipients++;
+      continue;
+    }
+    const lineMsg = lineApiErrorMessage(pr.body);
+    let hint_th =
+      "ส่งเข้ากลุ่ม/ห้องไม่สำเร็จ — ตรวจว่าเชิญบอทเข้ากลุ่มแล้ว และเปิด Allow bot to join group chats";
+    if (pr.status === 403) {
+      hint_th =
+        "LINE 403: บอทยังไม่อยู่ในกลุ่ม หรือถูกเตะออก — เชิญ OA เข้ากลุ่มอีกครั้ง";
+    } else if (pr.status === 400) {
+      hint_th =
+        "LINE 400: Group ID อาจผิด หรือบอทไม่ได้อยู่ในกลุ่มนี้";
+      if (lineMsg) hint_th += ` | LINE: ${lineMsg}`;
+    }
+    return jsonResponse({
+      ok: false,
+      code: "line_api_error",
+      message: "LINE API request failed (group/room)",
+      lineStatus: pr.status,
+      lineMessage: lineMsg || undefined,
+      detail: pr.body,
+      hint_th,
+      partialOk: okRecipients,
+    }, 200);
+  }
+
+  const chunkSize = 150;
+  for (let i = 0; i < users.length; i += chunkSize) {
+    const chunk = users.slice(i, i + chunkSize);
     const mc = await lineMulticast(chunk, messages, rawToken);
     details.push({ mode: "multicast", status: mc.status, body: mc.body });
 
-    if (mc.ok) continue;
+    if (mc.ok) {
+      okRecipients += chunk.length;
+      continue;
+    }
 
     const lineMsg = lineApiErrorMessage(mc.body);
     const tryPush =
@@ -309,6 +351,7 @@ Deno.serve(async (req) => {
       });
 
       if (okCount > 0) {
+        okRecipients += okCount;
         if (okCount < chunk.length) {
           details.push({
             partialWarning:
@@ -341,6 +384,7 @@ Deno.serve(async (req) => {
         detail: { multicast: mc.body, pushFallback: pushResults },
         hint_th,
         partialChunks: Math.floor(i / chunkSize),
+        partialOk: okRecipients,
       }, 200);
     }
 
@@ -367,12 +411,16 @@ Deno.serve(async (req) => {
       detail: mc.body,
       hint_th,
       partialChunks: details.length - 1,
+      partialOk: okRecipients,
     }, 200);
   }
 
   return jsonResponse({
     ok: true,
     recipients: to.length,
+    okRecipients,
+    users: users.length,
+    groupsOrRooms: chats.length,
     usedPushFallback,
     details,
   });
