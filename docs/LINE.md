@@ -38,12 +38,39 @@
 
 ### 3) หา Group ID (`C…`)
 
-Group ID **ไม่โชว์ในแอป LINE** — ได้จาก Webhook เมื่อมีอีเวนต์ในกลุ่ม:
+Group ID **ไม่โชว์ในแอป LINE** — ได้จาก Webhook เมื่อมีอีเวนต์ในกลุ่ม
 
-1. ใน LINE Developers → Messaging API → ตั้ง **Webhook URL** (เช่น Supabase Edge / บริการรับ webhook ชั่วคราว)
-2. เปิด **Use webhook**
-3. ในกลุ่มที่มีบอทแล้ว ให้ใครสักคนพิมพ์ข้อความสั้น ๆ (หรือเตะ/เชิญบอทใหม่)
-4. ใน payload จะมีประมาณนี้:
+#### ลิงก์ Webhook เอามาจากไหน?
+
+**ไม่ได้มาจาก LINE** — LINE ให้คุณกรอก URL ของเซิร์ฟเวอร์คุณเอง  
+สำหรับโปรเจกต์ GoldenMole ใช้ Edge Function นี้:
+
+```text
+https://cocvespahjymyrvmqzcs.supabase.co/functions/v1/line-webhook
+```
+
+(รูปแบบทั่วไป: `https://<PROJECT_REF>.supabase.co/functions/v1/line-webhook`)
+
+#### วิธีตั้งใน LINE Developers
+
+1. เปิด [LINE Developers](https://developers.line.biz/) → Channel ของ OA → แท็บ **Messaging API**
+2. ช่อง **Webhook URL** → วางลิงก์ด้านบน → **Update**
+3. เปิด **Use webhook** = On
+4. กด **Verify** ให้ขึ้น Success
+5. (แนะนำ) ตั้ง secret `LINE_CHANNEL_SECRET` บน Supabase ให้ตรงกับ Channel secret ในแท็บ Basic
+
+#### อ่าน Group ID หลังเชิญบอทเข้ากลุ่ม
+
+1. เชิญ OA เข้ากลุ่ม แล้วให้ใครสักคน**พิมพ์ข้อความในกลุ่ม 1 ครั้ง**
+2. เปิดลิงก์นี้ในเบราว์เซอร์ (GET):
+
+```text
+https://cocvespahjymyrvmqzcs.supabase.co/functions/v1/line-webhook
+```
+
+3. จะเห็น `groups[].id` ขึ้นต้นด้วย **`C`** — คัดลอกไปใส่ `LINE_ADVANCE_NOTIFY_USER_IDS`
+
+ใน payload ดิบของ LINE จะมีประมาณนี้:
 
 ```json
 {
@@ -59,9 +86,14 @@ Group ID **ไม่โชว์ในแอป LINE** — ได้จาก We
 }
 ```
 
-คัดลอกค่า `groupId` ที่ขึ้นต้นด้วย **`C`**
-
 อีเวนต์ `join` / `memberJoined` ก็มี `groupId` เช่นกัน
+
+Deploy webhook (ครั้งแรกหรือเมื่อแก้โค้ด):
+
+```bash
+npx supabase functions deploy line-webhook --project-ref cocvespahjymyrvmqzcs
+npx supabase secrets set LINE_CHANNEL_SECRET=your_channel_secret
+```
 
 ### 4) ใส่ Group ID ในระบบ
 

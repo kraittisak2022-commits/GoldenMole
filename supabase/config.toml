@@ -4,6 +4,10 @@
 # รองรับทั้ง JWT (เช่น Anonymous sign-in) และ header x-cm-notify-advance-secret (NOTIFY_ADVANCE_INVOKER_SECRET)
 verify_jwt = false
 
+[functions.line-webhook]
+# LINE เรียกตรงจากเซิร์ฟเวอร์ LINE — ตรวจลายเซ็นด้วย LINE_CHANNEL_SECRET เอง
+verify_jwt = false
+
 [functions.market-insights]
 # รองรับทั้ง JWT และ header x-cm-market-secret (MARKET_INSIGHTS_INVOKER_SECRET) สำหรับ cron รายวัน
 verify_jwt = false
