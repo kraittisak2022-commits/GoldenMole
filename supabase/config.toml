@@ -12,6 +12,10 @@ verify_jwt = false
 # cron 09:00 Asia/Bangkok — น้ำมันคงเหลือถังหลัก+สำรอง → LINE
 verify_jwt = false
 
+[functions.notify-daily-attendance]
+# cron 09:00 Asia/Bangkok — สรุปเช็คชื่อคนขับรถ+ท่าทราย → LINE
+verify_jwt = false
+
 [functions.line-webhook]
 # LINE เรียกตรงจากเซิร์ฟเวอร์ LINE — ตรวจลายเซ็นด้วย LINE_CHANNEL_SECRET เอง
 verify_jwt = false

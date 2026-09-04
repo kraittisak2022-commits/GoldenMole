@@ -9,7 +9,7 @@
 | เบิกเงิน | รายการเบิกเงิน |
 | ลางาน | บันทึกลางาน |
 | บำรุงรักษา | แจ้งซ่อม / บันทึกบำรุงรักษา |
-| เช็คชื่อ | เช็คชื่อ · ท่าทราย / คนขับรถ |
+| เช็คชื่อ | ~~หลังบันทึก~~ → **อัตโนมัติ 09:00** (คนขับรถ + ท่าทราย) |
 | รถดรัม / จำนวนเที่ยว | สรุปรถและเที่ยว (หลังบันทึก) |
 | **การใช้รถ (อัตโนมัติ 09:00)** | สรุปดรัม + แม็คโครประจำวัน |
 | **น้ำมันคงเหลือ (อัตโนมัติ 09:00)** | ถังหลัก + ถังสำรอง |
@@ -170,6 +170,7 @@ npx supabase functions deploy notify-advance-line
 npx supabase functions deploy notify-advance-line
 npx supabase functions deploy notify-daily-vehicle-usage
 npx supabase functions deploy notify-daily-fuel-stock
+npx supabase functions deploy notify-daily-attendance
 npx supabase secrets set LINE_CHANNEL_ACCESS_TOKEN=your_channel_access_token
 npx supabase secrets set NOTIFY_ADVANCE_INVOKER_SECRET=your_long_random_secret
 npx supabase secrets set LINE_ADVANCE_NOTIFY_USER_IDS=U…,C…
@@ -240,6 +241,22 @@ Edge **`notify-daily-fuel-stock`** คำนวณยอดจากรายก
 ```bash
 npx supabase functions deploy notify-daily-fuel-stock
 curl -X POST "https://cocvespahjymyrvmqzcs.supabase.co/functions/v1/notify-daily-fuel-stock" \
+  -H "Content-Type: application/json" \
+  -H "x-cm-notify-advance-secret: <secret>" \
+  -d '{"force":true,"testPersonalOnly":true}'
+```
+
+## เช็คชื่ออัตโนมัติ 09:00 (คนขับรถ + พนักงานท่าทราย)
+
+Edge **`notify-daily-attendance`** อ่านบันทึก Labor/Leave ของวันนั้นแล้วส่งรายงานรวม
+
+- **ไม่แจ้งหลังบันทึกในแอปแล้ว** — เหลือเฉพาะรอบเช้าอัตโนมัติ
+- เวลา: **09:00 Asia/Bangkok**
+- ทดสอบไม่เข้ากลุ่ม: `{ "force": true, "testPersonalOnly": true }`
+
+```bash
+npx supabase functions deploy notify-daily-attendance
+curl -X POST "https://cocvespahjymyrvmqzcs.supabase.co/functions/v1/notify-daily-attendance" \
   -H "Content-Type: application/json" \
   -H "x-cm-notify-advance-secret: <secret>" \
   -d '{"force":true,"testPersonalOnly":true}'

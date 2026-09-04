@@ -5233,14 +5233,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final drvDrum = _attendanceAssignments['att_drv_drum']!.toSet();
     final drvLeave = _attendanceAssignments['att_drv_leave']!.toSet();
 
-    AdvanceLineNotifyStatus? attendanceLineStatus;
     await _runSaveWithPopups(
       successMessage: 'บันทึกเช็คชื่อพนักงานท่าทรายสำเร็จ',
-      successMessageBuilder: () {
-        final line = attendanceLineStatus;
-        if (line == null) return 'บันทึกเช็คชื่อพนักงานท่าทรายสำเร็จ';
-        return 'บันทึกเช็คชื่อพนักงานท่าทรายสำเร็จ · ${line.successSuffixTh()}';
-      },
       saveActionLabel: 'บันทึกเช็คชื่อพนักงานท่าทราย',
       saveButtonLabel: 'บันทึกเช็คชื่อ',
       requireSignature: false,
@@ -5351,15 +5345,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
 
         await _refreshAttendanceDaysWorked();
-        attendanceLineStatus = await upsertAttendanceLineAndMaybeNotify(
-          AttendanceLineSectionUpdate(
-            dateYmd: date,
-            section: AttendanceLineSection.sandYard,
-            presentIds: present.toList(),
-            leaveIds: genLeave.toList(),
-          ),
-          _employees,
-        );
       },
     );
   }
@@ -5372,14 +5357,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final work = _attendanceAssignments['att_work']!.toSet();
     final genLeave = _attendanceAssignments['att_leave']!.toSet();
 
-    AdvanceLineNotifyStatus? attendanceLineStatus;
     await _runSaveWithPopups(
       successMessage: 'บันทึกเช็คชื่อคนขับรถสำเร็จ',
-      successMessageBuilder: () {
-        final line = attendanceLineStatus;
-        if (line == null) return 'บันทึกเช็คชื่อคนขับรถสำเร็จ';
-        return 'บันทึกเช็คชื่อคนขับรถสำเร็จ · ${line.successSuffixTh()}';
-      },
       saveActionLabel: 'บันทึกเช็คชื่อคนขับรถ',
       saveButtonLabel: 'บันทึกเช็คชื่อ',
       requireSignature: false,
@@ -5497,15 +5476,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _attendanceDriverLeaveTxId = null;
         }
         await _refreshAttendanceDaysWorked();
-        attendanceLineStatus = await upsertAttendanceLineAndMaybeNotify(
-          AttendanceLineSectionUpdate(
-            dateYmd: date,
-            section: AttendanceLineSection.driver,
-            presentIds: present.toList(),
-            leaveIds: drvLeave.toList(),
-          ),
-          _employees,
-        );
       },
     );
   }

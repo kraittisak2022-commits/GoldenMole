@@ -1,4 +1,3 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_flutter/models/app_transaction.dart';
 import 'package:mobile_flutter/models/employee.dart';
@@ -73,40 +72,6 @@ void main() {
     expect(text, contains('ลุงศักดิ์, โจว์'));
     expect(text, contains('ลางาน : 0 คน'));
     expect(text, contains('รายชื่อลางาน : —'));
-  });
-
-  test('attendance waits for driver then sends when both ready', () async {
-    await dotenv.load(fileName: '.env');
-    final employees = [
-      const Employee(id: 's1', name: 'โจว์', nickname: 'โจว์', type: 'Daily'),
-      const Employee(id: 'd1', name: 'นุ', nickname: 'พี่นุ', type: 'Daily'),
-    ];
-    final t0 = DateTime(2026, 9, 4, 8, 0);
-    final sand = await upsertAttendanceLineAndMaybeNotify(
-      const AttendanceLineSectionUpdate(
-        dateYmd: '2026-09-04',
-        section: AttendanceLineSection.sandYard,
-        presentIds: ['s1'],
-        leaveIds: [],
-      ),
-      employees,
-      now: t0,
-    );
-    expect(sand.skipped, isTrue);
-    expect(sand.messageTh, contains('รอข้อมูลคนขับรถ'));
-
-    // เมื่อครบทั้งสองฝั่งจะพยายามส่ง — ในเทสต์อาจ sent หรือ failed ตาม env
-    final both = await upsertAttendanceLineAndMaybeNotify(
-      const AttendanceLineSectionUpdate(
-        dateYmd: '2026-09-04',
-        section: AttendanceLineSection.driver,
-        presentIds: ['d1'],
-        leaveIds: [],
-      ),
-      employees,
-      now: t0.add(const Duration(minutes: 10)),
-    );
-    expect(both.messageTh ?? '', isNot(contains('รอข้อมูลคนขับรถ')));
   });
 
   test('buildVehicleTripLineText includes vehicle and trips', () {
