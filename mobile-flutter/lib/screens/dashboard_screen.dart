@@ -467,7 +467,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     CountRecordOfflineSync.instance.noteServerReachable();
     _applyServerReachability(true);
     unawaited(flushPendingLineNotifies());
+    unawaited(_flushAttendanceLineIfNeeded());
     unawaited(_refreshHomeDataInPlace());
+  }
+
+  Future<void> _flushAttendanceLineIfNeeded() async {
+    final emps = await LocalDataCache.readEmployeesAny() ?? const <Employee>[];
+    await flushPendingAttendanceLineReports(emps);
   }
 
   Future<void> _syncCountRecordQueueThenRefresh() async {
@@ -486,6 +492,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       CountRecordOfflineSync.instance.noteServerReachable();
       _applyServerReachability(true);
       unawaited(flushPendingLineNotifies());
+      unawaited(_flushAttendanceLineIfNeeded());
     }
     await _refreshHomeDataInPlace();
   }

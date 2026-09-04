@@ -5351,10 +5351,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
 
         await _refreshAttendanceDaysWorked();
-        attendanceLineStatus = await notifyAttendanceLineAfterSaved(
-          AttendanceLineNotifyPayload(
+        attendanceLineStatus = await upsertAttendanceLineAndMaybeNotify(
+          AttendanceLineSectionUpdate(
             dateYmd: date,
-            sectionTitle: 'พนักงานท่าทราย',
+            section: AttendanceLineSection.sandYard,
             presentIds: present.toList(),
             leaveIds: genLeave.toList(),
           ),
@@ -5497,14 +5497,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _attendanceDriverLeaveTxId = null;
         }
         await _refreshAttendanceDaysWorked();
-        attendanceLineStatus = await notifyAttendanceLineAfterSaved(
-          AttendanceLineNotifyPayload(
+        attendanceLineStatus = await upsertAttendanceLineAndMaybeNotify(
+          AttendanceLineSectionUpdate(
             dateYmd: date,
-            sectionTitle: 'คนขับรถ',
+            section: AttendanceLineSection.driver,
             presentIds: present.toList(),
             leaveIds: drvLeave.toList(),
-            macroIds: drvMacro.toList(),
-            drumIds: drvDrum.toList(),
           ),
           _employees,
         );
