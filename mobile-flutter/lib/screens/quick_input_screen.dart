@@ -3618,8 +3618,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Future<void> _saveVehicleTripEntry() async {
+    AdvanceLineNotifyStatus? tripLineStatus;
     await _runSaveWithPopups(
       successMessage: 'บันทึกรถดรัมและจำนวนเที่ยวสำเร็จ',
+      successMessageBuilder: () {
+        final line = tripLineStatus;
+        if (line == null) return 'บันทึกรถดรัมและจำนวนเที่ยวสำเร็จ';
+        return 'บันทึกรถดรัมและจำนวนเที่ยวสำเร็จ · ${line.successSuffixTh()}';
+      },
       saveActionLabel: 'บันทึกรถดรัมและจำนวนเที่ยว',
       saveButtonLabel: 'บันทึกรถคันนี้',
       requireSignature: false,
@@ -3685,6 +3691,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           }
         }
 
+        final lineItems = <VehicleTripLineItem>[];
         for (var i = 0; i < activeRows.length; i++) {
           final row = activeRows[i];
           final vehicle = row.vehicleId.trim();
@@ -3716,6 +3723,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           row.tripTxId = tripId;
           final existingTx = existingById[tripId];
           final lapAssignments = existingTx?.workAssignments;
+          final driverEmp = _employeesById[driver];
+          final driverName = driverEmp != null
+              ? _employeeUiDisplayName(driverEmp)
+              : driver;
 
           if (row.tripBillingMode == 'LumpSum') {
             final lumpCubic =
@@ -3750,6 +3761,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                     ? row.workType
                     : 'FullDay',
                 workAssignments: lapAssignments,
+              ),
+            );
+            lineItems.add(
+              VehicleTripLineItem(
+                vehicle: vehicle,
+                driverName: driverName,
+                billingLabel: 'เหมา',
+                detailLine:
+                    'รวม ${lumpCubic.toStringAsFixed(0)} คิว · เช้า ${_strNum(tripMorning)} / บ่าย ${_strNum(tripAfternoon)} เที่ยว',
               ),
             );
             continue;
@@ -3791,7 +3811,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               workAssignments: lapAssignments,
             ),
           );
+          lineItems.add(
+            VehicleTripLineItem(
+              vehicle: vehicle,
+              driverName: driverName,
+              billingLabel: 'คิดเป็นเที่ยว',
+              detailLine:
+                  'เช้า ${_strNum(tripMorning)} / บ่าย ${_strNum(tripAfternoon)} · รวม ${_strNum(totalTrips)} เที่ยว × ${_strNum(cubicPerTrip)} คิว = ${_strNum(totalCubic)} คิว',
+            ),
+          );
         }
+        tripLineStatus = await notifyVehicleTripLineAfterSaved(
+          dateYmd: date,
+          items: lineItems,
+        );
       },
     );
   }
@@ -5200,8 +5233,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final drvDrum = _attendanceAssignments['att_drv_drum']!.toSet();
     final drvLeave = _attendanceAssignments['att_drv_leave']!.toSet();
 
+    AdvanceLineNotifyStatus? attendanceLineStatus;
     await _runSaveWithPopups(
       successMessage: 'บันทึกเช็คชื่อพนักงานท่าทรายสำเร็จ',
+      successMessageBuilder: () {
+        final line = attendanceLineStatus;
+        if (line == null) return 'บันทึกเช็คชื่อพนักงานท่าทรายสำเร็จ';
+        return 'บันทึกเช็คชื่อพนักงานท่าทรายสำเร็จ · ${line.successSuffixTh()}';
+      },
       saveActionLabel: 'บันทึกเช็คชื่อพนักงานท่าทราย',
       saveButtonLabel: 'บันทึกเช็คชื่อ',
       requireSignature: false,
@@ -5312,6 +5351,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
 
         await _refreshAttendanceDaysWorked();
+        attendanceLineStatus = await notifyAttendanceLineAfterSaved(
+          AttendanceLineNotifyPayload(
+            dateYmd: date,
+            sectionTitle: 'พนักงานท่าทราย',
+            presentIds: present.toList(),
+            leaveIds: genLeave.toList(),
+          ),
+          _employees,
+        );
       },
     );
   }
@@ -5324,8 +5372,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final work = _attendanceAssignments['att_work']!.toSet();
     final genLeave = _attendanceAssignments['att_leave']!.toSet();
 
+    AdvanceLineNotifyStatus? attendanceLineStatus;
     await _runSaveWithPopups(
       successMessage: 'บันทึกเช็คชื่อคนขับรถสำเร็จ',
+      successMessageBuilder: () {
+        final line = attendanceLineStatus;
+        if (line == null) return 'บันทึกเช็คชื่อคนขับรถสำเร็จ';
+        return 'บันทึกเช็คชื่อคนขับรถสำเร็จ · ${line.successSuffixTh()}';
+      },
       saveActionLabel: 'บันทึกเช็คชื่อคนขับรถ',
       saveButtonLabel: 'บันทึกเช็คชื่อ',
       requireSignature: false,
@@ -5443,6 +5497,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _attendanceDriverLeaveTxId = null;
         }
         await _refreshAttendanceDaysWorked();
+        attendanceLineStatus = await notifyAttendanceLineAfterSaved(
+          AttendanceLineNotifyPayload(
+            dateYmd: date,
+            sectionTitle: 'คนขับรถ',
+            presentIds: present.toList(),
+            leaveIds: drvLeave.toList(),
+            macroIds: drvMacro.toList(),
+            drumIds: drvDrum.toList(),
+          ),
+          _employees,
+        );
       },
     );
   }
@@ -6452,8 +6517,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       await _saveMaintenanceRepairRequest();
       return;
     }
+    AdvanceLineNotifyStatus? serviceLineStatus;
     await _runSaveWithPopups(
       successMessage: 'บันทึกบำรุงรักษาสำเร็จ',
+      successMessageBuilder: () {
+        final line = serviceLineStatus;
+        if (line == null) return 'บันทึกบำรุงรักษาสำเร็จ';
+        return 'บันทึกบำรุงรักษาสำเร็จ · ${line.successSuffixTh()}';
+      },
       saveActionLabel: 'บันทึกซ่อม/ดูแลรักษาเครื่องยนต์',
       saveButtonLabel:
           _maintenanceTxId != null && _maintenanceTxId!.isNotEmpty
@@ -6503,24 +6574,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ..addAll(photos.remotes);
           });
         }
-        await _persist(
-          AppTransaction(
-            id: id,
-            date: date,
-            type: 'Expense',
-            category: kMaintenanceTxCategory,
-            subCategory: type,
-            description: _appendRecorder(
-              maintenanceDescription(type: type, detail: detail),
-            ),
-            amount: amount,
-            note: _activeSignatureNote,
-            vehicleId: asset,
-            vehicleName: asset,
-            workType: _maintenanceGroup.code,
-            workDetails: workDetails.isEmpty ? null : workDetails,
+        final saved = AppTransaction(
+          id: id,
+          date: date,
+          type: 'Expense',
+          category: kMaintenanceTxCategory,
+          subCategory: type,
+          description: _appendRecorder(
+            maintenanceDescription(type: type, detail: detail),
           ),
+          amount: amount,
+          note: _activeSignatureNote,
+          vehicleId: asset,
+          vehicleName: asset,
+          workType: _maintenanceGroup.code,
+          workDetails: workDetails.isEmpty ? null : workDetails,
         );
+        await _persist(saved);
+        serviceLineStatus =
+            await notifyMaintenanceServiceLogLineAfterSaved(saved);
       },
     );
   }

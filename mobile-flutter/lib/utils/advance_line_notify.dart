@@ -497,3 +497,233 @@ Future<AdvanceLineNotifyStatus> notifyMaintenanceRepairLineAfterSaved(
     debugTag: 'notifyMaintenanceRepairLineAfterSaved',
   );
 }
+
+String _employeeDisplayName(String id, List<Employee> employees) {
+  for (final e in employees) {
+    if (e.id == id) {
+      final nick = e.nickname.trim();
+      if (nick.isNotEmpty) return nick;
+      final name = e.name.trim();
+      return name.isEmpty ? id : name;
+    }
+  }
+  return id;
+}
+
+String _joinNames(Iterable<String> ids, List<Employee> employees) {
+  final names = ids
+      .map((id) => _employeeDisplayName(id, employees))
+      .where((s) => s.trim().isNotEmpty)
+      .toList();
+  if (names.isEmpty) return '—';
+  return names.join(', ');
+}
+
+String _formatOptionalBaht(double amount) {
+  if (amount <= 0) return '—';
+  return '${_formatBahtTh(amount)} บาท';
+}
+
+/// ข้อความ LINE หลังบันทึกซ่อม/ดูแลรักษา (ไม่ใช่แจ้งซ่อม)
+String buildMaintenanceServiceLogLineText(AppTransaction tx) {
+  final asset = (tx.vehicleName ?? tx.vehicleId ?? '').trim();
+  final group =
+      MaintenanceAssetGroupX.tryParse(tx.workType)?.label ?? '—';
+  final type = (tx.subCategory ?? '').trim();
+  final detail = maintenanceDetailFromDescription(
+    tx.description,
+    type.isEmpty ? kMaintenanceTypeRepair : type,
+  );
+  final dateLine = '${_formatDateThaiBE(tx.date)} (${tx.date})';
+  final lines = <String>[
+    '━━━━ GoldenMole ━━━━',
+    '',
+    'บันทึกบำรุงรักษา',
+    '',
+    'วันที่ :',
+    dateLine,
+    '',
+    'กลุ่ม :',
+    group,
+    '',
+    'รายการ :',
+    asset.isEmpty ? '—' : asset,
+    '',
+    'ประเภท :',
+    type.isEmpty ? '—' : type,
+    '',
+    'จำนวนเงิน :',
+    _formatOptionalBaht(tx.amount),
+    '',
+    'รายละเอียด :',
+    detail.isEmpty ? '—' : detail,
+  ];
+  final raw = lines.join('\n').trim();
+  return raw.length > 4800 ? raw.substring(0, 4800) : raw;
+}
+
+Future<AdvanceLineNotifyStatus> notifyMaintenanceServiceLogLineAfterSaved(
+  AppTransaction tx,
+) async {
+  if (tx.category.trim() != kMaintenanceTxCategory) {
+    return AdvanceLineNotifyStatus.skippedNoRecipients();
+  }
+  if (isMaintenanceRepairRequest(tx)) {
+    return AdvanceLineNotifyStatus.skippedNoRecipients();
+  }
+
+  final to = await _adminLineRecipientIds();
+  final text = buildMaintenanceServiceLogLineText(tx);
+  return _sendOrQueueLineNotify(
+    text: text,
+    to: to,
+    debugTag: 'notifyMaintenanceServiceLogLineAfterSaved',
+  );
+}
+
+/// สรุปเช็คชื่อสำหรับ LINE (ท่าทราย / คนขับรถ)
+class AttendanceLineNotifyPayload {
+  const AttendanceLineNotifyPayload({
+    required this.dateYmd,
+    required this.sectionTitle,
+    required this.presentIds,
+    required this.leaveIds,
+    this.macroIds = const [],
+    this.drumIds = const [],
+  });
+
+  final String dateYmd;
+  final String sectionTitle;
+  final List<String> presentIds;
+  final List<String> leaveIds;
+  final List<String> macroIds;
+  final List<String> drumIds;
+}
+
+String buildAttendanceLineText(
+  AttendanceLineNotifyPayload payload,
+  List<Employee> employees,
+) {
+  final dateLine =
+      '${_formatDateThaiBE(payload.dateYmd)} (${payload.dateYmd})';
+  final lines = <String>[
+    '━━━━ GoldenMole ━━━━',
+    '',
+    'เช็คชื่อ · ${payload.sectionTitle}',
+    '',
+    'วันที่ :',
+    dateLine,
+    '',
+    'มาทำงาน :',
+    '${payload.presentIds.length} คน',
+  ];
+  if (payload.macroIds.isNotEmpty || payload.drumIds.isNotEmpty) {
+    if (payload.macroIds.isNotEmpty) {
+      lines.addAll([
+        '',
+        'แม็คโคร (${payload.macroIds.length}) :',
+        _joinNames(payload.macroIds, employees),
+      ]);
+    }
+    if (payload.drumIds.isNotEmpty) {
+      lines.addAll([
+        '',
+        'รถดรัม (${payload.drumIds.length}) :',
+        _joinNames(payload.drumIds, employees),
+      ]);
+    }
+  } else {
+    lines.addAll([
+      '',
+      'รายชื่อมาทำงาน :',
+      _joinNames(payload.presentIds, employees),
+    ]);
+  }
+  lines.addAll([
+    '',
+    'ลางาน :',
+    '${payload.leaveIds.length} คน',
+    '',
+    'รายชื่อลางาน :',
+    _joinNames(payload.leaveIds, employees),
+  ]);
+  final raw = lines.join('\n').trim();
+  return raw.length > 4800 ? raw.substring(0, 4800) : raw;
+}
+
+Future<AdvanceLineNotifyStatus> notifyAttendanceLineAfterSaved(
+  AttendanceLineNotifyPayload payload,
+  List<Employee> employees,
+) async {
+  if (payload.presentIds.isEmpty && payload.leaveIds.isEmpty) {
+    return AdvanceLineNotifyStatus.skippedNoRecipients();
+  }
+  final to = await _adminLineRecipientIds();
+  final text = buildAttendanceLineText(payload, employees);
+  return _sendOrQueueLineNotify(
+    text: text,
+    to: to,
+    debugTag: 'notifyAttendanceLineAfterSaved',
+  );
+}
+
+/// แถวสรุปเที่ยวรถสำหรับ LINE
+class VehicleTripLineItem {
+  const VehicleTripLineItem({
+    required this.vehicle,
+    required this.driverName,
+    required this.billingLabel,
+    required this.detailLine,
+  });
+
+  final String vehicle;
+  final String driverName;
+  final String billingLabel;
+  final String detailLine;
+}
+
+String buildVehicleTripLineText({
+  required String dateYmd,
+  required List<VehicleTripLineItem> items,
+}) {
+  final dateLine = '${_formatDateThaiBE(dateYmd)} ($dateYmd)';
+  final lines = <String>[
+    '━━━━ GoldenMole ━━━━',
+    '',
+    'บันทึกรถดรัม / จำนวนเที่ยว',
+    '',
+    'วันที่ :',
+    dateLine,
+    '',
+    'จำนวนรถ :',
+    '${items.length} คัน',
+  ];
+  for (var i = 0; i < items.length; i++) {
+    final it = items[i];
+    lines.addAll([
+      '',
+      '${i + 1}) ${it.vehicle}',
+      'คนขับ : ${it.driverName}',
+      'รูปแบบ : ${it.billingLabel}',
+      it.detailLine,
+    ]);
+  }
+  final raw = lines.join('\n').trim();
+  return raw.length > 4800 ? raw.substring(0, 4800) : raw;
+}
+
+Future<AdvanceLineNotifyStatus> notifyVehicleTripLineAfterSaved({
+  required String dateYmd,
+  required List<VehicleTripLineItem> items,
+}) async {
+  if (items.isEmpty) {
+    return AdvanceLineNotifyStatus.skippedNoRecipients();
+  }
+  final to = await _adminLineRecipientIds();
+  final text = buildVehicleTripLineText(dateYmd: dateYmd, items: items);
+  return _sendOrQueueLineNotify(
+    text: text,
+    to: to,
+    debugTag: 'notifyVehicleTripLineAfterSaved',
+  );
+}
