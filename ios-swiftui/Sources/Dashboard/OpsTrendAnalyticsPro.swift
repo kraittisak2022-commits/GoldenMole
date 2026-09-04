@@ -4,6 +4,7 @@ import SwiftUI
 // MARK: - Range mode (week / month / custom)
 
 enum OpsTrendRangeMode: String, CaseIterable, Identifiable, Sendable {
+    case day
     case week
     case month
     case custom
@@ -12,14 +13,16 @@ enum OpsTrendRangeMode: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .week: return "รายสัปดาห์"
-        case .month: return "รายเดือน"
+        case .day: return "วันนี้"
+        case .week: return "สัปดาห์"
+        case .month: return "เดือน"
         case .custom: return "กำหนดเอง"
         }
     }
 
     var period: OpsTrendPeriod? {
         switch self {
+        case .day: return .day
         case .week: return .week
         case .month: return .month
         case .custom: return nil

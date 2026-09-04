@@ -3,6 +3,7 @@ import Darwin
 
 /// Period scope for the ops trend analytics tab (trip + sand).
 enum OpsTrendPeriod: String, CaseIterable, Identifiable, Sendable {
+    case day
     case week
     case month
 
@@ -10,6 +11,7 @@ enum OpsTrendPeriod: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
+        case .day: return "วันนี้"
         case .week: return "รายสัปดาห์"
         case .month: return "รายเดือน"
         }
@@ -17,6 +19,7 @@ enum OpsTrendPeriod: String, CaseIterable, Identifiable, Sendable {
 
     var shortLabel: String {
         switch self {
+        case .day: return "วัน"
         case .week: return "สัปดาห์"
         case .month: return "เดือน"
         }
@@ -24,8 +27,17 @@ enum OpsTrendPeriod: String, CaseIterable, Identifiable, Sendable {
 
     var dayCount: Int {
         switch self {
+        case .day: return 1
         case .week: return 7
         case .month: return 30
+        }
+    }
+
+    /// Daily buckets (day/week) vs weekly buckets (month).
+    var usesDailyBuckets: Bool {
+        switch self {
+        case .day, .week: return true
+        case .month: return false
         }
     }
 
@@ -360,8 +372,14 @@ struct OpsTrendReport: Sendable {
     let prevTripSandRatio: Double?
 
     nonisolated static func empty(period: OpsTrendPeriod) -> OpsTrendReport {
+        let preset: DateRangePreset
+        switch period {
+        case .day: preset = .today
+        case .week: preset = .days7
+        case .month: preset = .days30
+        }
         let filter = DashboardAggregations.dateFilter(
-            preset: period == .week ? .days7 : .days30,
+            preset: preset,
             customStart: nil,
             customEnd: nil
         )
@@ -483,7 +501,13 @@ enum OpsTrendAnalytics {
             filter = DateFilter(start: start, end: end)
             let days = DashboardAggregations.countInclusiveDays(start, end)
             // Use daily buckets for short custom ranges; weekly for longer.
-            effectivePeriod = days <= 10 ? .week : .month
+            if days <= 1 {
+                effectivePeriod = .day
+            } else if days <= 10 {
+                effectivePeriod = .week
+            } else {
+                effectivePeriod = .month
+            }
         } else {
             filter = DashboardAggregations.shiftedPeriodFilter(
                 dayCount: period.dayCount,
@@ -501,7 +525,7 @@ enum OpsTrendAnalytics {
         let points: [OpsTrendPoint]
         let prevPoints: [OpsTrendPoint]
         switch effectivePeriod {
-        case .week:
+        case .day, .week:
             points = daily
             prevPoints = alignSeries(prevDaily, toCount: daily.count)
         case .month:
@@ -564,7 +588,7 @@ enum OpsTrendAnalytics {
 
         let bucketScores: [OpsTrendBucketScore] = {
             switch effectivePeriod {
-            case .week:
+            case .day, .week:
                 return daily.enumerated().map { idx, p in
                     let dayScore = dayBucketScore(point: p, target: effectivePeriod.tripDailyTarget)
                     return OpsTrendBucketScore(
@@ -608,7 +632,7 @@ enum OpsTrendAnalytics {
         let pacePoints: [OpsTrendPacePoint]
         let prevPacePoints: [OpsTrendPacePoint]
         switch effectivePeriod {
-        case .week:
+        case .day, .week:
             pacePoints = dailyPace
             prevPacePoints = alignPaceSeries(prevDailyPace, toCount: dailyPace.count)
         case .month:

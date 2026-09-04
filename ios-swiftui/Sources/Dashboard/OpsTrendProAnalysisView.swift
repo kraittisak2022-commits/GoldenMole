@@ -1,20 +1,26 @@
 import Charts
 import SwiftUI
 
-/// Full-screen professional analytics for trip or sand (weekly / monthly).
-/// Self-contained: supports week/month picker, swipe between periods, and drill-down details.
+/// Full-screen professional analytics for trip or sand (day / week / month).
+/// Self-contained: supports period picker, swipe between periods, and drill-down details.
 struct OpsTrendProAnalysisView: View {
     let focus: OpsTrendFocus
 
     @Environment(AppState.self) private var appState
-    @State private var period: OpsTrendPeriod = .week
+    @State private var period: OpsTrendPeriod = .day
     @State private var periodOffset = 0
-    @State private var report: OpsTrendReport = .empty(period: .week)
+    @State private var report: OpsTrendReport = .empty(period: .day)
     @State private var proBundle: OpsTrendProBundle = .empty
     @State private var isBuilding = false
     @State private var buildToken = 0
 
-    private var maxPeriodOffset: Int { period == .week ? 26 : 12 }
+    private var maxPeriodOffset: Int {
+        switch period {
+        case .day: return 60
+        case .week: return 26
+        case .month: return 12
+        }
+    }
 
     private var mode: OpsTrendAdvancedMode {
         focus == .sand ? report.sandAdvanced : report.tripAdvanced
@@ -137,11 +143,20 @@ struct OpsTrendProAnalysisView: View {
 
     private var periodOffsetLabel: String {
         if periodOffset == 0 {
-            return period == .week ? "สัปดาห์ล่าสุด" : "เดือนล่าสุด"
+            switch period {
+            case .day: return "วันนี้"
+            case .week: return "สัปดาห์ล่าสุด"
+            case .month: return "เดือนล่าสุด"
+            }
         }
-        return period == .week
-            ? "สัปดาห์ย้อนหลัง \(periodOffset)"
-            : "เดือนย้อนหลัง \(periodOffset)"
+        switch period {
+        case .day:
+            return periodOffset == 1 ? "เมื่อวาน" : "ย้อนหลัง \(periodOffset) วัน"
+        case .week:
+            return "สัปดาห์ย้อนหลัง \(periodOffset)"
+        case .month:
+            return "เดือนย้อนหลัง \(periodOffset)"
+        }
     }
 
     private var periodSwipeGesture: some Gesture {
@@ -173,7 +188,7 @@ struct OpsTrendProAnalysisView: View {
                     Text("ดูรายละเอียดทั้งหมด")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(AppTheme.ink)
-                    Text("สถิติ · ราย\(period == .week ? "วัน" : "สัปดาห์") · \(focus == .trip ? "อันดับรถ" : "ชั่วโมงพีค")")
+                    Text("สถิติ · ราย\(period.usesDailyBuckets ? "วัน" : "สัปดาห์") · \(focus == .trip ? "อันดับรถ" : "ชั่วโมงพีค")")
                         .font(.caption2)
                         .foregroundStyle(AppTheme.inkMuted)
                 }
@@ -360,7 +375,7 @@ struct OpsTrendProAnalysisView: View {
 
     private var dailyPerformanceCard: some View {
         SectionCard(
-            report.period == .week ? "ผลรายวัน" : "ผลรายสัปดาห์ย่อย",
+            report.period.usesDailyBuckets ? "ผลรายวัน" : "ผลรายสัปดาห์ย่อย",
             systemImage: "calendar",
             subtitle: "แตะวันเพื่อดูรายละเอียด"
         ) {

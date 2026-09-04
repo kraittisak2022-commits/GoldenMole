@@ -87,7 +87,7 @@ struct OpsTrendProFocusSections: View {
 
     private var dailyPerformanceCard: some View {
         SectionCard(
-            report.period == .week ? "ผลรายวัน" : "ผลรายสัปดาห์ย่อย",
+            report.period.usesDailyBuckets ? "ผลรายวัน" : "ผลรายสัปดาห์ย่อย",
             systemImage: "calendar",
             subtitle: "แตะวันเพื่อดูรายละเอียด"
         ) {

@@ -1,16 +1,16 @@
 import Charts
 import SwiftUI
 
-/// Unified weekly / monthly analytics — switch รวม / เที่ยวรถ / ร่อนทราย on one page.
+/// Unified daily / weekly / monthly analytics — switch รวม / เที่ยวรถ / ร่อนทราย on one page.
 struct OpsTrendAnalyticsHubView: View {
     @State private var focus: OpsTrendFocus
 
     @Environment(AppState.self) private var appState
-    @State private var rangeMode: OpsTrendRangeMode = .week
+    @State private var rangeMode: OpsTrendRangeMode = .day
     @State private var periodOffset = 0
     @State private var customStart = Calendar.current.date(byAdding: .day, value: -6, to: Date()) ?? Date()
     @State private var customEnd = Date()
-    @State private var report: OpsTrendReport = .empty(period: .week)
+    @State private var report: OpsTrendReport = .empty(period: .day)
     @State private var proBundle: OpsTrendProBundle = .empty
     @State private var analyticsPro = OpsTrendAnalyticsPro.empty
     @State private var showFullDetail = false
@@ -34,7 +34,13 @@ struct OpsTrendAnalyticsHubView: View {
 
     private var isCustomRange: Bool { rangeMode == .custom }
 
-    private var maxPeriodOffset: Int { period == .week ? 26 : 12 }
+    private var maxPeriodOffset: Int {
+        switch period {
+        case .day: return 60
+        case .week: return 26
+        case .month: return 12
+        }
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -299,11 +305,20 @@ struct OpsTrendAnalyticsHubView: View {
 
     private var periodOffsetLabel: String {
         if periodOffset == 0 {
-            return period == .week ? "สัปดาห์ล่าสุด" : "เดือนล่าสุด"
+            switch period {
+            case .day: return "วันนี้"
+            case .week: return "สัปดาห์ล่าสุด"
+            case .month: return "เดือนล่าสุด"
+            }
         }
-        return period == .week
-            ? "สัปดาห์ย้อนหลัง \(periodOffset)"
-            : "เดือนย้อนหลัง \(periodOffset)"
+        switch period {
+        case .day:
+            return periodOffset == 1 ? "เมื่อวาน" : "ย้อนหลัง \(periodOffset) วัน"
+        case .week:
+            return "สัปดาห์ย้อนหลัง \(periodOffset)"
+        case .month:
+            return "เดือนย้อนหลัง \(periodOffset)"
+        }
     }
 
     private var periodSwipeGesture: some Gesture {
@@ -331,7 +346,7 @@ struct OpsTrendAnalyticsHubView: View {
                     Text("ดูรายละเอียดทั้งหมด")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(AppTheme.ink)
-                    Text("คะแนน · เที่ยวรถ · ร่อนทราย · ราย\(period == .week ? "วัน" : "สัปดาห์")")
+                    Text("คะแนน · เที่ยวรถ · ร่อนทราย · ราย\(period.usesDailyBuckets ? "วัน" : "สัปดาห์")")
                         .font(.caption2)
                         .foregroundStyle(AppTheme.inkMuted)
                 }
@@ -1027,11 +1042,11 @@ struct OpsTrendAnalyticsHubView: View {
 
     private var bucketScoreCard: some View {
         SectionCard(
-            period == .week ? "คะแนนรายวัน" : "คะแนนรายสัปดาห์ย่อย",
+            period.usesDailyBuckets ? "คะแนนรายวัน" : "คะแนนรายสัปดาห์ย่อย",
             systemImage: "rosette",
-            subtitle: focus == .both
-                ? (period == .week ? "แตะวันเพื่อดูรายละเอียด" : "แตะสัปดาห์เพื่อดูรายละเอียด")
-                : (period == .week ? "แตะวันเพื่อดูรายละเอียด" : "แตะสัปดาห์เพื่อดูรายละเอียด")
+            subtitle: period.usesDailyBuckets
+                ? "แตะวันเพื่อดูรายละเอียด"
+                : "แตะสัปดาห์เพื่อดูรายละเอียด"
         ) {
             if report.bucketScores.isEmpty {
                 Text("ยังไม่มีคะแนนย่อย")
@@ -1311,7 +1326,7 @@ struct OpsTrendAnalyticsHubView: View {
         SectionCard(
             "เปรียบเทียบต่อช่วง",
             systemImage: "chart.bar.xaxis",
-            subtitle: period == .week ? "รายวัน" : "รายสัปดาห์ย่อย"
+            subtitle: period.usesDailyBuckets ? "รายวัน" : "รายสัปดาห์ย่อย"
         ) {
             GroupedBarChartView(
                 labels: report.trip.labels,
@@ -1330,7 +1345,7 @@ struct OpsTrendAnalyticsHubView: View {
         let mornings = report.dailyPoints.map { Double($0.tripMorning) }
         let afternoons = report.dailyPoints.map { Double($0.tripAfternoon) }
         let labels = report.dailyPoints.map(\.label)
-        let showDaily = period == .week || labels.count <= 14
+        let showDaily = period.usesDailyBuckets || labels.count <= 14
         let morningTotal = mornings.reduce(0, +)
         let afternoonTotal = afternoons.reduce(0, +)
         return SectionCard(
@@ -1389,7 +1404,7 @@ struct OpsTrendAnalyticsHubView: View {
             Text("วิเคราะห์ขั้นสูง · ความเร็ว × ปริมาณ")
                 .font(.headline.weight(.bold))
                 .foregroundStyle(AppTheme.ink)
-            Text(period == .week ? "จากเวลาแตะรอบจริงรายวัน" : "รวมเป็นสัปดาห์ย่อยจากเวลาแตะรอบ")
+            Text(period.usesDailyBuckets ? "จากเวลาแตะรอบจริงรายวัน" : "รวมเป็นสัปดาห์ย่อยจากเวลาแตะรอบ")
                 .font(.caption)
                 .foregroundStyle(AppTheme.inkMuted)
 

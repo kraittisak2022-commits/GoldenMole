@@ -266,7 +266,7 @@ struct OpsTrendBucketDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                SectionCard(bucket.label, systemImage: "calendar.badge.clock", subtitle: period == .week ? "รายละเอียดวัน" : "รายละเอียดสัปดาห์ย่อย") {
+                SectionCard(bucket.label, systemImage: "calendar.badge.clock", subtitle: period.usesDailyBuckets ? "รายละเอียดวัน" : "รายละเอียดสัปดาห์ย่อย") {
                     HStack(spacing: 16) {
                         VStack {
                             Text("\(bucket.score)")
@@ -365,7 +365,7 @@ struct OpsTrendCombinedDetailView: View {
                 }
                 .buttonStyle(.plain)
 
-                SectionCard("คะแนนราย\(report.period == .week ? "วัน" : "สัปดาห์")", systemImage: "calendar") {
+                SectionCard("คะแนนราย\(report.period.usesDailyBuckets ? "วัน" : "สัปดาห์")", systemImage: "calendar") {
                     ForEach(report.bucketScores) { bucket in
                         NavigationLink {
                             OpsTrendBucketDetailView(
@@ -471,7 +471,7 @@ struct OpsTrendModeDetailView: View {
                 }
                 .buttonStyle(.plain)
 
-                SectionCard("ผลราย\(report.period == .week ? "วัน" : "สัปดาห์")", systemImage: "calendar") {
+                SectionCard("ผลราย\(report.period.usesDailyBuckets ? "วัน" : "สัปดาห์")", systemImage: "calendar") {
                     ForEach(proBundle.dayPerformance.sorted { $0.score > $1.score }) { day in
                         NavigationLink {
                             OpsTrendProDayDetailView(

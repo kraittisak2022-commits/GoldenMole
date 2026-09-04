@@ -9,7 +9,7 @@ struct OpsTrendAnalyticsMenuView: View {
                     Text("ศูนย์วิเคราะห์ข้อมูล")
                         .font(.title2.weight(.bold))
                         .foregroundStyle(AppTheme.ink)
-                    Text("เลือกว่าจะดูรายสัปดาห์ / รายเดือนแบบรวม หรือแยกเที่ยวรถกับร่อนทราย")
+                    Text("เลือกว่าจะดูวันนี้ / รายสัปดาห์ / รายเดือนแบบรวม หรือแยกเที่ยวรถกับร่อนทราย")
                         .font(.caption)
                         .foregroundStyle(AppTheme.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -20,21 +20,21 @@ struct OpsTrendAnalyticsMenuView: View {
                     menuLink(
                         focus: .trip,
                         title: "วิเคราะห์เที่ยวรถ",
-                        subtitle: "Pro มืออาชีพ · แตะดูรายละเอียด · ปัดเปลี่ยนสัปดาห์",
+                        subtitle: "วันนี้ · สัปดาห์ · เดือน · แตะดูรายละเอียด",
                         systemImage: "truck.box.fill",
                         accent: AppTheme.info
                     )
                     menuLink(
                         focus: .sand,
                         title: "วิเคราะห์ร่อนทราย",
-                        subtitle: "Pro มืออาชีพ · แตะดูรายละเอียด · ปัดเปลี่ยนสัปดาห์",
+                        subtitle: "วันนี้ · สัปดาห์ · เดือน · แตะดูรายละเอียด",
                         systemImage: "drop.fill",
                         accent: AppTheme.brand
                     )
                     menuLink(
                         focus: .both,
                         title: "วิเคราะห์รวม",
-                        subtitle: "รายสัปดาห์ / รายเดือน · แตะดูรายละเอียด · ปัดเปลี่ยนสัปดาห์",
+                        subtitle: "วันนี้ · สัปดาห์ · เดือน · กำหนดช่วงเองได้",
                         systemImage: "chart.xyaxis.line",
                         accent: Color(hex: "#16a34a")
                     )
