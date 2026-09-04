@@ -350,7 +350,8 @@ struct RealtimeV4View: View {
                     analytics: sandAnalytics,
                     morningSpanLabel: snapshot.sandMorningSpanLabel,
                     afternoonSpanLabel: snapshot.sandAfternoonSpanLabel,
-                    activityEvents: modeActivityEvents
+                    activityEvents: modeActivityEvents,
+                    pro: snapshot.sandPro
                 )
             }
         }
@@ -822,7 +823,6 @@ struct RealtimeV4View: View {
     // MARK: - Sand panel
 
     private var sandPanel: some View {
-        let pro = snapshot.sandPro
         return panelShell(
             title: "การร่อนทราย",
             subtitle: sandUnit.map { "\($0.rounds) คิว" } ?? "ยังไม่มีคิว",
@@ -837,19 +837,9 @@ struct RealtimeV4View: View {
                         .accessibilityAddTraits(.isButton)
                         .accessibilityHint("แตะเพื่อดูรายละเอียดร่อนทราย")
 
-                    SandProCommandStrip(pro: pro, onOpenDetail: { showSandDetail = true })
-
-                    SandProInsightStrip(insights: pro.insights)
-
                     sandKPI(sand)
-
-                    SandProPeakTeaser(pro: pro)
-                    SandProTripBalanceCard(pro: pro)
                 } else {
                     emptyState(icon: "drop", title: "ยังไม่มีคิวทราย", subtitle: "รอการนับจากมือถือ หรือข้อมูลรอบร่อน")
-                    SandProCommandStrip(pro: pro)
-                    SandProInsightStrip(insights: pro.insights)
-                    SandProTripBalanceCard(pro: pro)
                 }
             }
         }
@@ -895,6 +885,10 @@ struct RealtimeV4View: View {
         let hours = snapshot.sandHours
         let perHour = hours.flatMap { $0 > 0 ? Double(sand.rounds) / $0 : nil }
         let perMin = hours.flatMap { $0 > 0 ? Double(sand.rounds) / ($0 * 60) : nil }
+        let morningPerHour = Self.queueRatePerHour(rounds: sand.morning, hours: snapshot.sandMorningHours)
+        let morningPerMin = Self.queueRatePerMinute(rounds: sand.morning, hours: snapshot.sandMorningHours)
+        let afternoonPerHour = Self.queueRatePerHour(rounds: sand.afternoon, hours: snapshot.sandAfternoonHours)
+        let afternoonPerMin = Self.queueRatePerMinute(rounds: sand.afternoon, hours: snapshot.sandAfternoonHours)
         let target = CountRecordLogic.sandTarget
         let pct = target > 0
             ? min(Double(sand.rounds) / Double(target) * 100, 100)
@@ -921,6 +915,17 @@ struct RealtimeV4View: View {
                     value: perMin.map { String(format: "%.2f", $0) } ?? "—"
                 )
             }
+
+            sandRatePeriodBlock(
+                title: "เช้า",
+                perHour: morningPerHour,
+                perMin: morningPerMin
+            )
+            sandRatePeriodBlock(
+                title: "บ่าย",
+                perHour: afternoonPerHour,
+                perMin: afternoonPerMin
+            )
 
             workHoursBlock(
                 titleColor: RealtimeV4Palette.sandLabel,
@@ -1032,6 +1037,34 @@ struct RealtimeV4View: View {
                 )
             }
         }
+    }
+
+    private func sandRatePeriodBlock(title: String, perHour: Double?, perMin: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(RealtimeV4Palette.sandLabel)
+            HStack(spacing: 8) {
+                kpiCell(
+                    title: "คิว / ชม.",
+                    value: perHour.map { String(format: "%.1f", $0) } ?? "—"
+                )
+                kpiCell(
+                    title: "คิว / นาที",
+                    value: perMin.map { String(format: "%.2f", $0) } ?? "—"
+                )
+            }
+        }
+    }
+
+    private static func queueRatePerHour(rounds: Int, hours: Double?) -> Double? {
+        guard rounds > 0, let hours, hours > 0, hours.isFinite else { return nil }
+        return Double(rounds) / hours
+    }
+
+    private static func queueRatePerMinute(rounds: Int, hours: Double?) -> Double? {
+        guard let perHour = queueRatePerHour(rounds: rounds, hours: hours) else { return nil }
+        return perHour / 60
     }
 
     private static func formatWorkHours(_ hours: Double?) -> String {
@@ -1901,6 +1934,7 @@ private struct SandDetailSheet: View {
     let morningSpanLabel: String?
     let afternoonSpanLabel: String?
     let activityEvents: [CountRecordAnalytics.ActivityEvent]
+    let pro: SandProSnapshot
     @Environment(\.dismiss) private var dismiss
     @State private var showSandRounds = false
 
@@ -1944,6 +1978,11 @@ private struct SandDetailSheet: View {
                             }
                         }
                     }
+
+                    SandProCommandStrip(pro: pro)
+                    SandProInsightStrip(insights: pro.insights)
+                    SandProPeakTeaser(pro: pro)
+                    SandProTripBalanceCard(pro: pro)
 
                     recentLapsCard
 

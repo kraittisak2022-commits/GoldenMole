@@ -85,10 +85,8 @@ struct SandProCommandStrip: View {
                 )
             }
 
-            if pro.hasSandData {
-                Button {
-                    onOpenDetail?()
-                } label: {
+            if pro.hasSandData, let onOpenDetail {
+                Button(action: onOpenDetail) {
                     HStack(spacing: 8) {
                         Image(systemName: pro.reached ? "checkmark.seal.fill" : "chart.bar.fill")
                         Text(pro.reached ? "งานร่อนถึงเป้า · ดูรายละเอียด" : "ดูรายละเอียดร่อนทราย")
