@@ -95,6 +95,8 @@ integrations:
 แอปที่ติดตั้งไว้แล้วจะเห็น popup “มีเวอร์ชันใหม่” (ไม่บังคับ) เมื่อเวอร์ชันบนเครื่องต่ำกว่าค่าใน Supabase
 
 > หมายเหตุ: TestFlight processing อาจช้ากว่า sync ไป Supabase สองสามนาที — ผู้ใช้กดอัปเดตแล้วยังไม่เห็น build ใหม่ได้ชั่วคราว
+>
+> ถ้า Supabase/Cloudflare ล่มชั่วคราว (เช่น HTTP 521) สเต็ป sync จะ **retry แล้วข้ามด้วย warning** — IPA และ TestFlight ยังอัปโหลดต่อได้ ตั้ง `iosLatestVersion` / `iosLatestBuild` ใน `app_settings.app_defaults` เองทีหลังได้
 
 ---
 

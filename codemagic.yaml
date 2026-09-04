@@ -120,34 +120,59 @@ workflows:
             --scheme "$XCODE_SCHEME"
       - name: Sync soft-update version to Supabase
         script: |
-          set -euo pipefail
+          set -uo pipefail
           # Writes iosLatestVersion / iosLatestBuild (+ optional iosTestFlightURL) into
           # app_settings.app_defaults so installed clients can soft-prompt for TestFlight.
-          # Runs after IPA is built (version is final). TestFlight processing may lag a few minutes.
+          # Soft-fails after retries: IPA / TestFlight must not fail when Supabase is briefly down
+          # (e.g. Cloudflare 521 origin_down).
           if ! command -v jq >/dev/null 2>&1; then
             brew install jq
           fi
           cd "$CM_BUILD_DIR/ios-swiftui"
           MARKETING=$(agvtool what-marketing-version -terse1 2>/dev/null | tail -1 | tr -d '[:space:]' || true)
           BUILD=$(agvtool what-version -terse 2>/dev/null | tr -d '[:space:]' || true)
-          if [ -z "${MARKETING:-}" ]; then
+          # agvtool may echo unresolved build settings like "$(MARKETING_VERSION)"
+          if [ -z "${MARKETING:-}" ] || [[ "$MARKETING" == *'$('* ]]; then
             MARKETING=$(grep -E '^\s*MARKETING_VERSION:' project.yml | head -1 | sed 's/.*:[[:space:]]*//' | tr -d '"' || true)
+          fi
+          if [ -n "${MARKETING_VERSION:-}" ] && [[ "${MARKETING_VERSION}" != *'$('* ]]; then
+            MARKETING="$MARKETING_VERSION"
           fi
           MARKETING=${MARKETING:-1.0.0}
           BUILD=${BUILD:-1}
           TF_URL="${TESTFLIGHT_URL:-}"
           echo "Publishing soft-update channel: version=$MARKETING build=$BUILD testflight=${TF_URL:-"(none)"}"
 
-          RESP=$(curl -sS \
-            "${SUPABASE_URL}/rest/v1/app_settings?id=eq.default&select=app_defaults" \
-            -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            -H "Accept: application/json")
+          supabase_get() {
+            curl -sS --connect-timeout 15 --max-time 45 \
+              "${SUPABASE_URL}/rest/v1/app_settings?id=eq.default&select=app_defaults" \
+              -H "apikey: ${SUPABASE_ANON_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+              -H "Accept: application/json"
+          }
+
+          RESP=""
+          ATTEMPTS=4
+          SLEEP_SECS=30
+          for i in $(seq 1 "$ATTEMPTS"); do
+            RESP=$(supabase_get || true)
+            if echo "$RESP" | jq -e 'type == "array"' >/dev/null 2>&1; then
+              break
+            fi
+            echo "WARN: Supabase read attempt $i/$ATTEMPTS failed (transient outage possible)."
+            echo "$RESP" | head -c 800
+            echo
+            if [ "$i" -lt "$ATTEMPTS" ]; then
+              echo "Retrying in ${SLEEP_SECS}s…"
+              sleep "$SLEEP_SECS"
+              SLEEP_SECS=$((SLEEP_SECS * 2))
+            fi
+          done
 
           if ! echo "$RESP" | jq -e 'type == "array"' >/dev/null 2>&1; then
-            echo "ERROR: unexpected Supabase response when reading app_settings:"
-            echo "$RESP"
-            exit 1
+            echo "WARN: soft-update sync skipped — could not read app_settings after $ATTEMPTS attempts."
+            echo "IPA / TestFlight publishing will continue. Re-run sync later or set app_defaults manually."
+            exit 0
           fi
 
           MERGED=$(echo "$RESP" | jq -c \
@@ -164,18 +189,36 @@ workflows:
 
           PAYLOAD=$(jq -nc --argjson d "$MERGED" '{app_defaults: $d}')
 
-          HTTP_CODE=$(curl -sS -o /tmp/supabase_patch_body.txt -w "%{http_code}" -X PATCH \
-            "${SUPABASE_URL}/rest/v1/app_settings?id=eq.default" \
-            -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            -H "Content-Type: application/json" \
-            -H "Prefer: return=minimal" \
-            -d "$PAYLOAD")
+          PATCH_OK=0
+          SLEEP_SECS=30
+          for i in $(seq 1 "$ATTEMPTS"); do
+            HTTP_CODE=$(curl -sS --connect-timeout 15 --max-time 45 \
+              -o /tmp/supabase_patch_body.txt -w "%{http_code}" -X PATCH \
+              "${SUPABASE_URL}/rest/v1/app_settings?id=eq.default" \
+              -H "apikey: ${SUPABASE_ANON_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+              -H "Content-Type: application/json" \
+              -H "Prefer: return=minimal" \
+              -d "$PAYLOAD" || echo "000")
 
-          if [ "$HTTP_CODE" != "204" ] && [ "$HTTP_CODE" != "200" ]; then
-            echo "ERROR: Supabase PATCH failed (HTTP $HTTP_CODE)"
-            cat /tmp/supabase_patch_body.txt || true
-            exit 1
+            if [ "$HTTP_CODE" = "204" ] || [ "$HTTP_CODE" = "200" ]; then
+              PATCH_OK=1
+              break
+            fi
+            echo "WARN: Supabase PATCH attempt $i/$ATTEMPTS failed (HTTP $HTTP_CODE)"
+            cat /tmp/supabase_patch_body.txt 2>/dev/null | head -c 800 || true
+            echo
+            if [ "$i" -lt "$ATTEMPTS" ]; then
+              echo "Retrying in ${SLEEP_SECS}s…"
+              sleep "$SLEEP_SECS"
+              SLEEP_SECS=$((SLEEP_SECS * 2))
+            fi
+          done
+
+          if [ "$PATCH_OK" != "1" ]; then
+            echo "WARN: soft-update sync skipped — PATCH failed after $ATTEMPTS attempts."
+            echo "IPA / TestFlight publishing will continue. Update iosLatestVersion/Build in Supabase manually if needed."
+            exit 0
           fi
           echo "OK: app_settings.app_defaults updated for soft-update prompt"
     artifacts:
