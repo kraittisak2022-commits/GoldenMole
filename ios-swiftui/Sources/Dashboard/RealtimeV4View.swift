@@ -26,6 +26,12 @@ enum RealtimeV4Palette {
     static let sandLabel = Color(light: Color(hex: "#BE185D"), dark: Color(hex: "#F9A8D4"))
     static let sandTrack = Color(light: Color(hex: "#FBCFE8"), dark: Color.white.opacity(0.12))
     static let sandCellFill = Color(light: Color.white.opacity(0.85), dark: Color.black.opacity(0.28))
+
+    static let tripPanelTop = Color(light: Color(hex: "#EFF6FF"), dark: Color(hex: "#172554").opacity(0.55))
+    static let tripPanelBottom = Color(light: Color(hex: "#E0F2FE"), dark: Color(hex: "#0C4A6E").opacity(0.4))
+    static let tripLabel = Color(light: Color(hex: "#1D4ED8"), dark: Color(hex: "#93C5FD"))
+    static let tripTrack = Color(light: Color(hex: "#BFDBFE"), dark: Color.white.opacity(0.12))
+    static let tripCellFill = Color(light: Color.white.opacity(0.85), dark: Color.black.opacity(0.28))
 }
 
 /// Memoized bundle of all heavy Real-time V.4 analytics.
@@ -761,6 +767,8 @@ struct RealtimeV4View: View {
                             .onTapGesture { showFleetDetail = true }
                             .accessibilityAddTraits(.isButton)
                             .accessibilityHint("แตะเพื่อดูรายละเอียดรวมเที่ยวรถ")
+
+                        tripKPI
                     }
 
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
@@ -837,6 +845,141 @@ struct RealtimeV4View: View {
             .padding(.horizontal, 16)
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var tripKPI: some View {
+        let hours = snapshot.tripHours
+        let perHour = hours.flatMap { $0 > 0 ? Double(tripTotal) / $0 : nil }
+        let perMin = hours.flatMap { $0 > 0 ? Double(tripTotal) / ($0 * 60) : nil }
+        let morningPerHour = Self.queueRatePerHour(rounds: tripMorningTotal, hours: snapshot.tripMorningHours)
+        let morningPerMin = Self.queueRatePerMinute(rounds: tripMorningTotal, hours: snapshot.tripMorningHours)
+        let afternoonPerHour = Self.queueRatePerHour(rounds: tripAfternoonTotal, hours: snapshot.tripAfternoonHours)
+        let afternoonPerMin = Self.queueRatePerMinute(rounds: tripAfternoonTotal, hours: snapshot.tripAfternoonHours)
+        let target = CountRecordLogic.tripTarget
+        let pct = target > 0
+            ? min(Double(tripTotal) / Double(target) * 100, 100)
+            : 0
+        let eta = CountRecordAnalytics.computeTripTargetEta(
+            tripUnits: tripUnits,
+            dayKey: focusDateStr,
+            target: target
+        )
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("ตัวชี้วัดเที่ยวรถ")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(RealtimeV4Palette.tripLabel)
+
+            HStack(spacing: 8) {
+                kpiCell(
+                    title: "เที่ยว / ชม.",
+                    value: perHour.map { String(format: "%.1f", $0) } ?? "—",
+                    labelColor: RealtimeV4Palette.tripLabel,
+                    fill: RealtimeV4Palette.tripCellFill
+                )
+                kpiCell(
+                    title: "เที่ยว / นาที",
+                    value: perMin.map { String(format: "%.2f", $0) } ?? "—",
+                    labelColor: RealtimeV4Palette.tripLabel,
+                    fill: RealtimeV4Palette.tripCellFill
+                )
+            }
+
+            ratePeriodBlock(
+                title: "เช้า",
+                perHour: morningPerHour,
+                perMin: morningPerMin,
+                unitHour: "เที่ยว / ชม.",
+                unitMin: "เที่ยว / นาที",
+                labelColor: RealtimeV4Palette.tripLabel,
+                fill: RealtimeV4Palette.tripCellFill
+            )
+            ratePeriodBlock(
+                title: "บ่าย",
+                perHour: afternoonPerHour,
+                perMin: afternoonPerMin,
+                unitHour: "เที่ยว / ชม.",
+                unitMin: "เที่ยว / นาที",
+                labelColor: RealtimeV4Palette.tripLabel,
+                fill: RealtimeV4Palette.tripCellFill
+            )
+
+            workHoursBlock(
+                titleColor: RealtimeV4Palette.tripLabel,
+                cellFill: RealtimeV4Palette.tripCellFill,
+                total: snapshot.tripHours,
+                morning: snapshot.tripMorningHours,
+                afternoon: snapshot.tripAfternoonHours
+            )
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("เป้าหมาย \(CountRecordLogic.formatMetric(target)) เที่ยว/วัน")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(RealtimeV4Palette.inkSecondary)
+                    Spacer()
+                    Text("\(CountRecordLogic.formatMetric(tripTotal)) / \(CountRecordLogic.formatMetric(target)) · \(Int(pct.rounded()))%")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(RealtimeV4Palette.ink)
+                }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(RealtimeV4Palette.tripTrack)
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: eta.reached
+                                        ? [Color(hex: "#10B981"), Color(hex: "#059669")]
+                                        : [Color(hex: "#38BDF8"), Color(hex: "#2563EB")],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: geo.size.width * CGFloat(pct / 100))
+                    }
+                }
+                .frame(height: 8)
+
+                if eta.reached {
+                    Label("ถึงเป้าแล้ว", systemImage: "checkmark.seal.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(hex: "#059669"))
+                } else if let clock = eta.etaClock {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.badge.checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("คาดการณ์ถึงเป้าประมาณ \(clock)")
+                            .font(.system(size: 11, weight: .semibold))
+                        if let hoursLeft = eta.hoursLeft {
+                            Text("· ~\(CountRecordAnalytics.formatDurationHours(hoursLeft))")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(RealtimeV4Palette.inkMuted)
+                        }
+                    }
+                    .foregroundStyle(Color(hex: "#1D4ED8"))
+                } else {
+                    Text("นับอย่างน้อย 2 เที่ยว เพื่อคาดการณ์เวลาถึงเป้า")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(RealtimeV4Palette.inkFaint)
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(
+                    LinearGradient(
+                        colors: [RealtimeV4Palette.tripPanelTop, RealtimeV4Palette.tripPanelBottom],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color(hex: "#2563EB").opacity(0.3), lineWidth: 1)
+        )
     }
 
     // MARK: - Sand panel
@@ -945,15 +1088,23 @@ struct RealtimeV4View: View {
                 )
             }
 
-            sandRatePeriodBlock(
+            ratePeriodBlock(
                 title: "เช้า",
                 perHour: morningPerHour,
-                perMin: morningPerMin
+                perMin: morningPerMin,
+                unitHour: "คิว / ชม.",
+                unitMin: "คิว / นาที",
+                labelColor: RealtimeV4Palette.sandLabel,
+                fill: RealtimeV4Palette.sandCellFill
             )
-            sandRatePeriodBlock(
+            ratePeriodBlock(
                 title: "บ่าย",
                 perHour: afternoonPerHour,
-                perMin: afternoonPerMin
+                perMin: afternoonPerMin,
+                unitHour: "คิว / ชม.",
+                unitMin: "คิว / นาที",
+                labelColor: RealtimeV4Palette.sandLabel,
+                fill: RealtimeV4Palette.sandCellFill
             )
 
             workHoursBlock(
@@ -1072,19 +1223,31 @@ struct RealtimeV4View: View {
         }
     }
 
-    private func sandRatePeriodBlock(title: String, perHour: Double?, perMin: Double?) -> some View {
+    private func ratePeriodBlock(
+        title: String,
+        perHour: Double?,
+        perMin: Double?,
+        unitHour: String,
+        unitMin: String,
+        labelColor: Color,
+        fill: Color
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(RealtimeV4Palette.sandLabel)
+                .foregroundStyle(labelColor)
             HStack(spacing: 8) {
                 kpiCell(
-                    title: "คิว / ชม.",
-                    value: perHour.map { String(format: "%.1f", $0) } ?? "—"
+                    title: unitHour,
+                    value: perHour.map { String(format: "%.1f", $0) } ?? "—",
+                    labelColor: labelColor,
+                    fill: fill
                 )
                 kpiCell(
-                    title: "คิว / นาที",
-                    value: perMin.map { String(format: "%.2f", $0) } ?? "—"
+                    title: unitMin,
+                    value: perMin.map { String(format: "%.2f", $0) } ?? "—",
+                    labelColor: labelColor,
+                    fill: fill
                 )
             }
         }
