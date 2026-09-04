@@ -17,7 +17,7 @@ const corsHeaders: Record<string, string> = {
     "authorization, x-client-info, apikey, content-type, x-line-signature",
 };
 
-const SETTINGS_KEY = "line_webhook_seen_chats";
+const SETTINGS_FIELD = "lineWebhookSeenChats";
 
 function jsonResponse(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -99,14 +99,15 @@ function adminClient() {
 async function loadSeen(client: ReturnType<typeof createClient>): Promise<SeenChat[]> {
   const { data, error } = await client
     .from("app_settings")
-    .select("value")
-    .eq("key", SETTINGS_KEY)
+    .select("app_defaults")
+    .eq("id", "default")
     .maybeSingle();
   if (error || !data) return [];
-  const v = data.value;
-  if (Array.isArray(v)) return v as SeenChat[];
-  if (v && typeof v === "object" && Array.isArray((v as { chats?: unknown }).chats)) {
-    return (v as { chats: SeenChat[] }).chats;
+  const defaults = (data.app_defaults ?? {}) as Record<string, unknown>;
+  const raw = defaults[SETTINGS_FIELD];
+  if (Array.isArray(raw)) return raw as SeenChat[];
+  if (raw && typeof raw === "object" && Array.isArray((raw as { chats?: unknown }).chats)) {
+    return (raw as { chats: SeenChat[] }).chats;
   }
   return [];
 }
@@ -115,15 +116,24 @@ async function saveSeen(
   client: ReturnType<typeof createClient>,
   chats: SeenChat[],
 ): Promise<void> {
-  // เก็บล่าสุด 30 รายการ
   const trimmed = chats.slice(-30);
-  await client.from("app_settings").upsert(
-    {
-      key: SETTINGS_KEY,
-      value: { chats: trimmed, updatedAt: new Date().toISOString() },
+  const { data, error } = await client
+    .from("app_settings")
+    .select("app_defaults")
+    .eq("id", "default")
+    .maybeSingle();
+  if (error) throw error;
+  const defaults = {
+    ...((data?.app_defaults as Record<string, unknown> | null) ?? {}),
+    [SETTINGS_FIELD]: {
+      chats: trimmed,
+      updatedAt: new Date().toISOString(),
     },
-    { onConflict: "key" },
-  );
+  };
+  const { error: upErr } = await client
+    .from("app_settings")
+    .upsert({ id: "default", app_defaults: defaults }, { onConflict: "id" });
+  if (upErr) throw upErr;
 }
 
 Deno.serve(async (req) => {
