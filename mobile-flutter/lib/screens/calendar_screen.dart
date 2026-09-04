@@ -323,6 +323,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _openDayDetails(day);
   }
 
+  /// เลือกวันโดยไม่เปิดรายละเอียด — ใช้เลื่อนสัปดาห์ / แตะแถบสัปดาห์
+  void _selectDateKeepingView(DateTime raw) {
+    final next = DateTime(raw.year, raw.month, raw.day);
+    setState(() {
+      _selectedDate = next;
+      if (_monthCursor.year != next.year || _monthCursor.month != next.month) {
+        _monthCursor = DateTime(next.year, next.month, 1);
+      }
+    });
+    widget.onDaySelected?.call(next);
+  }
+
+  void _shiftWeek(int deltaWeeks) {
+    _selectDateKeepingView(
+      _selectedDate.add(Duration(days: 7 * deltaWeeks)),
+    );
+  }
+
   void _openDayDetails(_CalendarDay day) {
     final phonePortrait = _phonePortrait(context);
     showModalBottomSheet<void>(
@@ -1323,6 +1341,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     monthDays: days,
                     selectedDate: _selectedDate,
                     compact: phonePortrait,
+                    onShiftWeek: _shiftWeek,
                     onSelectDate: (d) {
                       final key = _ymd(d);
                       _CalendarDay? hit;
@@ -1336,8 +1355,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         _pickDay(hit);
                         return;
                       }
-                      setState(() => _selectedDate = d);
-                      widget.onDaySelected?.call(d);
+                      _selectDateKeepingView(d);
                     },
                   ),
                   SizedBox(height: phonePortrait ? 8 : 10),
@@ -2138,12 +2156,14 @@ class _CalendarWeekStrip extends StatelessWidget {
     required this.monthDays,
     required this.selectedDate,
     required this.onSelectDate,
+    required this.onShiftWeek,
     this.compact = false,
   });
 
   final List<_CalendarDay?> monthDays;
   final DateTime selectedDate;
   final ValueChanged<DateTime> onSelectDate;
+  final ValueChanged<int> onShiftWeek;
   final bool compact;
 
   _CalendarDay? _dayFor(DateTime d) {
@@ -2155,165 +2175,260 @@ class _CalendarWeekStrip extends StatelessWidget {
     return null;
   }
 
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool _isCurrentWeek(DateTime monday) {
+    final now = DateTime.now();
+    final thisMonday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    return _isSameDay(monday, thisMonday);
+  }
+
+  String _weekTitle(DateTime monday) {
+    if (_isCurrentWeek(monday)) return 'สัปดาห์นี้';
+    final sunday = monday.add(const Duration(days: 6));
+    const mm = [
+      'ม.ค.',
+      'ก.พ.',
+      'มี.ค.',
+      'เม.ย.',
+      'พ.ค.',
+      'มิ.ย.',
+      'ก.ค.',
+      'ส.ค.',
+      'ก.ย.',
+      'ต.ค.',
+      'พ.ย.',
+      'ธ.ค.',
+    ];
+    if (monday.month == sunday.month && monday.year == sunday.year) {
+      return '${monday.day}–${sunday.day} ${mm[monday.month - 1]}';
+    }
+    if (monday.year == sunday.year) {
+      return '${monday.day} ${mm[monday.month - 1]} – ${sunday.day} ${mm[sunday.month - 1]}';
+    }
+    return '${monday.day} ${mm[monday.month - 1]} ${monday.year + 543} – '
+        '${sunday.day} ${mm[sunday.month - 1]} ${sunday.year + 543}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final monday =
         selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
     const labels = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+    final chevronSize = compact ? 34.0 : 38.0;
+    final chevronIcon = compact ? 20.0 : 22.0;
 
-    return Container(
-      padding: EdgeInsets.all(compact ? 8 : 10),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFF8FAFC), Color(0xFFEFF6FF)],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: (details) {
+        final v = details.primaryVelocity ?? 0;
+        if (v <= -200) {
+          onShiftWeek(1); // ปัดซ้าย → สัปดาห์ถัดไป
+        } else if (v >= 200) {
+          onShiftWeek(-1); // ปัดขวา → สัปดาห์ก่อน
+        }
+      },
+      child: Container(
+        padding: EdgeInsets.fromLTRB(
+          compact ? 4 : 6,
+          compact ? 8 : 10,
+          compact ? 4 : 6,
+          compact ? 8 : 10,
         ),
-        borderRadius: BorderRadius.circular(compact ? 12 : 14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.date_range_rounded,
-                size: compact ? 16 : 18,
-                color: const Color(0xFF2563EB),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'สัปดาห์นี้',
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w800,
-                  fontSize: compact ? 12.5 : 13.5,
-                  color: const Color(0xFF1E3A5F),
-                ),
-              ),
-            ],
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFFF8FAFC), Color(0xFFEFF6FF)],
           ),
-          SizedBox(height: compact ? 6 : 8),
-          Row(
-            children: List.generate(7, (i) {
-              final d = monday.add(Duration(days: i));
-              final cell = _dayFor(d);
-              final selected = d.year == selectedDate.year &&
-                  d.month == selectedDate.month &&
-                  d.day == selectedDate.day;
-              final today = _isToday(d);
-              final weeklyOff = cell?.hasWeeklyOff ?? false;
-              final leaveN = cell?.leaveNames.length ?? 0;
-              final bg = selected
-                  ? const Color(0xFF2563EB)
-                  : weeklyOff
-                      ? const Color(0xFFFFEBEE)
-                      : Colors.white;
-              final border = selected
-                  ? const Color(0xFF1D4ED8)
-                  : weeklyOff
-                      ? const Color(0xFFEF9A9A)
-                      : const Color(0xFFE2E8F0);
+          borderRadius: BorderRadius.circular(compact ? 12 : 14),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  tooltip: 'สัปดาห์ก่อน',
+                  onPressed: () => onShiftWeek(-1),
+                  constraints: BoxConstraints(
+                    minWidth: chevronSize,
+                    minHeight: chevronSize,
+                  ),
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    Icons.chevron_left_rounded,
+                    size: chevronIcon,
+                    color: const Color(0xFF2563EB),
+                  ),
+                ),
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.date_range_rounded,
+                        size: compact ? 16 : 18,
+                        color: const Color(0xFF2563EB),
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          _weekTitle(monday),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.kanit(
+                            fontWeight: FontWeight.w800,
+                            fontSize: compact ? 12.5 : 13.5,
+                            color: const Color(0xFF1E3A5F),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'สัปดาห์ถัดไป',
+                  onPressed: () => onShiftWeek(1),
+                  constraints: BoxConstraints(
+                    minWidth: chevronSize,
+                    minHeight: chevronSize,
+                  ),
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(
+                    Icons.chevron_right_rounded,
+                    size: chevronIcon,
+                    color: const Color(0xFF2563EB),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: compact ? 4 : 6),
+            Row(
+              children: List.generate(7, (i) {
+                final d = monday.add(Duration(days: i));
+                final cell = _dayFor(d);
+                final selected = _isSameDay(d, selectedDate);
+                final today = _isToday(d);
+                final weeklyOff = cell?.hasWeeklyOff ?? false;
+                final leaveN = cell?.leaveNames.length ?? 0;
+                final bg = selected
+                    ? const Color(0xFF2563EB)
+                    : weeklyOff
+                        ? const Color(0xFFFFEBEE)
+                        : Colors.white;
+                final border = selected
+                    ? const Color(0xFF1D4ED8)
+                    : weeklyOff
+                        ? const Color(0xFFEF9A9A)
+                        : const Color(0xFFE2E8F0);
 
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: compact ? 2 : 3),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(compact ? 10 : 12),
-                      onTap: () => onSelectDate(d),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: EdgeInsets.symmetric(
-                          vertical: compact ? 6 : 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: bg,
-                          borderRadius:
-                              BorderRadius.circular(compact ? 10 : 12),
-                          border: Border.all(color: border, width: 1.2),
-                          boxShadow: selected
-                              ? [
-                                  BoxShadow(
-                                    color: const Color(0xFF2563EB)
-                                        .withValues(alpha: 0.22),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              labels[i],
-                              style: GoogleFonts.kanit(
-                                fontSize: compact ? 9.5 : 10.5,
-                                fontWeight: FontWeight.w700,
-                                color: selected
-                                    ? Colors.white70
-                                    : const Color(0xFF64748B),
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${d.day}',
-                              style: GoogleFonts.kanit(
-                                fontSize: compact ? 14 : 16,
-                                fontWeight: FontWeight.w800,
-                                color: selected
-                                    ? Colors.white
-                                    : today
-                                        ? const Color(0xFF0D47A1)
-                                        : const Color(0xFF1E293B),
-                              ),
-                            ),
-                            SizedBox(height: compact ? 3 : 4),
-                            if (weeklyOff)
-                              Icon(
-                                Icons.beach_access_rounded,
-                                size: compact ? 12 : 14,
-                                color: selected
-                                    ? Colors.white
-                                    : const Color(0xFFD32F2F),
-                              )
-                            else if (leaveN > 0)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 5,
-                                  vertical: 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: selected
-                                      ? Colors.white.withValues(alpha: 0.22)
-                                      : const Color(0xFFFFB74D)
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: compact ? 2 : 3),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(compact ? 10 : 12),
+                        onTap: () => onSelectDate(d),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: EdgeInsets.symmetric(
+                            vertical: compact ? 6 : 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: bg,
+                            borderRadius:
+                                BorderRadius.circular(compact ? 10 : 12),
+                            border: Border.all(color: border, width: 1.2),
+                            boxShadow: selected
+                                ? [
+                                    BoxShadow(
+                                      color: const Color(0xFF2563EB)
                                           .withValues(alpha: 0.22),
-                                  borderRadius: BorderRadius.circular(999),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                labels[i],
+                                style: GoogleFonts.kanit(
+                                  fontSize: compact ? 9.5 : 10.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: selected
+                                      ? Colors.white70
+                                      : const Color(0xFF64748B),
                                 ),
-                                child: Text(
-                                  'ลา$leaveN',
-                                  style: GoogleFonts.kanit(
-                                    fontSize: compact ? 8.5 : 9.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: selected
-                                        ? Colors.white
-                                        : const Color(0xFFE65100),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${d.day}',
+                                style: GoogleFonts.kanit(
+                                  fontSize: compact ? 14 : 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: selected
+                                      ? Colors.white
+                                      : today
+                                          ? const Color(0xFF0D47A1)
+                                          : const Color(0xFF1E293B),
+                                ),
+                              ),
+                              SizedBox(height: compact ? 3 : 4),
+                              if (weeklyOff)
+                                Icon(
+                                  Icons.beach_access_rounded,
+                                  size: compact ? 12 : 14,
+                                  color: selected
+                                      ? Colors.white
+                                      : const Color(0xFFD32F2F),
+                                )
+                              else if (leaveN > 0)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1,
                                   ),
-                                ),
-                              )
-                            else
-                              SizedBox(height: compact ? 12 : 14),
-                          ],
+                                  decoration: BoxDecoration(
+                                    color: selected
+                                        ? Colors.white.withValues(alpha: 0.22)
+                                        : const Color(0xFFFFB74D)
+                                            .withValues(alpha: 0.22),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    'ลา$leaveN',
+                                    style: GoogleFonts.kanit(
+                                      fontSize: compact ? 8.5 : 9.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: selected
+                                          ? Colors.white
+                                          : const Color(0xFFE65100),
+                                    ),
+                                  ),
+                                )
+                              else
+                                SizedBox(height: compact ? 12 : 14),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              );
-            }),
-          ),
-        ],
+                );
+              }),
+            ),
+          ],
+        ),
       ),
     );
   }
