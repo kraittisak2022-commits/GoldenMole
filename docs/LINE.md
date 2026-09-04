@@ -10,7 +10,8 @@
 | ลางาน | บันทึกลางาน |
 | บำรุงรักษา | แจ้งซ่อม / บันทึกบำรุงรักษา |
 | เช็คชื่อ | เช็คชื่อ · ท่าทราย / คนขับรถ |
-| รถดรัม / จำนวนเที่ยว | สรุปรถและเที่ยว |
+| รถดรัม / จำนวนเที่ยว | สรุปรถและเที่ยว (หลังบันทึก) |
+| **การใช้รถ (อัตโนมัติ 09:00)** | สรุปดรัม + แม็คโครประจำวัน |
 
 ## สิ่งที่ต้องมี
 
@@ -166,8 +167,52 @@ npx supabase functions deploy notify-advance-line
 
 ```bash
 npx supabase functions deploy notify-advance-line
+npx supabase functions deploy notify-daily-vehicle-usage
 npx supabase secrets set LINE_CHANNEL_ACCESS_TOKEN=your_channel_access_token
 npx supabase secrets set NOTIFY_ADVANCE_INVOKER_SECRET=your_long_random_secret
+npx supabase secrets set LINE_ADVANCE_NOTIFY_USER_IDS=U…,C…
+```
+
+## สรุปการใช้รถอัตโนมัติ 09:00 (ดรัม + แม็คโคร)
+
+Edge **`notify-daily-vehicle-usage`** อ่านบันทึกวันนี้แล้วส่งข้อความรูปแบบ:
+
+```text
+การใช้รถ 4 ก.ย. 2569
+
+บันทึกรถดรัม จำนวน 4 คัน
+คันที่ 1 : รถดั๊มลุงศักดิ์ · พี่เดี่ยว
+…
+
+รถแม็คโคร จำนวน 5 คัน
+คันที่ 1 : ชื่อรถ · คนขับ · งานวันนี้
+…
+```
+
+- เวลา: **09:00 Asia/Bangkok** (= 02:00 UTC) ผ่าน `pg_cron` + `pg_net`
+- ผู้รับ: secret **`LINE_ADVANCE_NOTIFY_USER_IDS`** บน Edge (เดียวกับแจ้งเตือนอื่น)
+- ไม่ส่งซ้ำในวันเดียวกัน (เก็บ `app_defaults.lineDailyVehicleUsageLastYmd`) — ส่งซ้ำด้วย `{ "force": true }`
+- ถ้ายังไม่มีข้อมูลดรัมและแม็คโครในวันนั้น จะข้าม (ไม่ส่ง)
+
+ตั้ง cron (ครั้งแรก) ใน SQL Editor หลัง deploy:
+
+```sql
+select vault.create_secret(
+  'https://cocvespahjymyrvmqzcs.supabase.co/functions/v1/notify-daily-vehicle-usage',
+  'daily_vehicle_usage_function_url');
+select vault.create_secret(
+  '<ค่าเดียวกับ NOTIFY_ADVANCE_INVOKER_SECRET>',
+  'daily_vehicle_usage_invoker_secret');
+-- แล้วรัน migration 20260904090000_daily_vehicle_usage_line_cron.sql
+```
+
+ทดสอบทันที:
+
+```bash
+curl -X POST "https://cocvespahjymyrvmqzcs.supabase.co/functions/v1/notify-daily-vehicle-usage" \
+  -H "Content-Type: application/json" \
+  -H "x-cm-notify-advance-secret: <secret>" \
+  -d '{"force":true}'
 ```
 
 ### Migration คอลัมน์พนักงาน

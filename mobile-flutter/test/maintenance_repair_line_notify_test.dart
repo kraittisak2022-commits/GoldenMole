@@ -126,4 +126,29 @@ void main() {
     expect(text, contains('เอ'));
     expect(text, contains('5 เที่ยว'));
   });
+
+  test('buildDailyVehicleUsageLineText matches 09:00 digest format', () {
+    final text = buildDailyVehicleUsageLineText(
+      dateYmd: '2026-09-04',
+      drums: const [
+        (vehicle: 'รถดั๊มลุงศักดิ์', driverName: 'พี่เดี่ยว'),
+        (vehicle: 'รถดั๊มโอเว่น', driverName: 'ไม้'),
+      ],
+      macros: const [
+        MacroVehicleUsageLineItem(
+          vehicle: 'รถแม็คโคร SK200-10',
+          driverName: 'ลุงศักดิ์',
+          workToday: 'ขุดแร่, เปิดหน้าดิน',
+        ),
+      ],
+    );
+    expect(text, contains('การใช้รถ 4 ก.ย. 2569'));
+    expect(text, contains('บันทึกรถดรัม จำนวน 2 คัน'));
+    expect(text, contains('คันที่ 1 : รถดั๊มลุงศักดิ์ · พี่เดี่ยว'));
+    expect(text, contains('รถแม็คโคร จำนวน 1 คัน'));
+    expect(
+      text,
+      contains('คันที่ 1 : รถแม็คโคร SK200-10 · ลุงศักดิ์ · ขุดแร่, เปิดหน้าดิน'),
+    );
+  });
 }

@@ -66,3 +66,5 @@ evals/results/
 
 # VoltAgent subagents vendor clone (agents are copied to .cursor/agents)
 awesome-claude-code-subagents/
+
+.tmp-schedule-daily-vehicle.sql

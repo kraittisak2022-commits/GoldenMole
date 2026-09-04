@@ -863,7 +863,7 @@ Future<int> flushPendingAttendanceLineReports(List<Employee> employees) async {
   return sent;
 }
 
-/// แถวสรุปเที่ยวรถสำหรับ LINE
+/// แถวสรุปเที่ยวรถสำหรับ LINE (หลังบันทึกทันที — รายละเอียดเที่ยว/คิว)
 class VehicleTripLineItem {
   const VehicleTripLineItem({
     required this.vehicle,
@@ -876,6 +876,19 @@ class VehicleTripLineItem {
   final String driverName;
   final String billingLabel;
   final String detailLine;
+}
+
+/// แถวแม็คโครในสรุปการใช้รถประจำวัน (09:00)
+class MacroVehicleUsageLineItem {
+  const MacroVehicleUsageLineItem({
+    required this.vehicle,
+    required this.driverName,
+    required this.workToday,
+  });
+
+  final String vehicle;
+  final String driverName;
+  final String workToday;
 }
 
 String buildVehicleTripLineText({
@@ -903,6 +916,36 @@ String buildVehicleTripLineText({
       'รูปแบบ : ${it.billingLabel}',
       it.detailLine,
     ]);
+  }
+  final raw = lines.join('\n').trim();
+  return raw.length > 4800 ? raw.substring(0, 4800) : raw;
+}
+
+/// สรุปการใช้รถดรัม + แม็คโคร (รูปแบบแจ้งเตือนอัตโนมัติ 09:00)
+String buildDailyVehicleUsageLineText({
+  required String dateYmd,
+  required List<({String vehicle, String driverName})> drums,
+  required List<MacroVehicleUsageLineItem> macros,
+}) {
+  final lines = <String>[
+    'การใช้รถ ${_formatDateThaiBE(dateYmd)}',
+    '',
+    'บันทึกรถดรัม จำนวน ${drums.length} คัน',
+  ];
+  for (var i = 0; i < drums.length; i++) {
+    final it = drums[i];
+    lines.add('คันที่ ${i + 1} : ${it.vehicle} · ${it.driverName}');
+  }
+  lines.addAll([
+    '',
+    'รถแม็คโคร จำนวน ${macros.length} คัน',
+  ]);
+  for (var i = 0; i < macros.length; i++) {
+    final it = macros[i];
+    final work = it.workToday.trim().isEmpty ? '—' : it.workToday.trim();
+    lines.add(
+      'คันที่ ${i + 1} : ${it.vehicle} · ${it.driverName} · $work',
+    );
   }
   final raw = lines.join('\n').trim();
   return raw.length > 4800 ? raw.substring(0, 4800) : raw;
