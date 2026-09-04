@@ -951,6 +951,53 @@ String buildDailyVehicleUsageLineText({
   return raw.length > 4800 ? raw.substring(0, 4800) : raw;
 }
 
+/// สรุปน้ำมันคงเหลือถังหลัก + ถังสำรอง (แจ้งเตือนอัตโนมัติ 09:00)
+String buildDailyFuelStockLineText({
+  required String dateYmd,
+  required double mainDieselLiters,
+  required double reserveDieselLiters,
+  double mainBenzineLiters = 0,
+  double reserveBenzineLiters = 0,
+}) {
+  String liters(double n) {
+    final rounded = (n * 100).roundToDouble() / 100;
+    final core = (rounded - rounded.round()).abs() < 1e-9
+        ? '${rounded.round()}'
+        : rounded.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+    return _formatThousands(core);
+  }
+
+  final lines = <String>[
+    'น้ำมันคงเหลือ ${_formatDateThaiBE(dateYmd)}',
+    '',
+    'ถังหลัก : ${liters(mainDieselLiters)} ลิตร',
+    'ถังสำรอง : ${liters(reserveDieselLiters)} ลิตร',
+    '',
+    'รวม : ${liters(mainDieselLiters + reserveDieselLiters)} ลิตร',
+  ];
+  if (mainBenzineLiters.abs() > 0.001 || reserveBenzineLiters.abs() > 0.001) {
+    lines.addAll([
+      '',
+      'เบนซิน ถังหลัก : ${liters(mainBenzineLiters)} ลิตร',
+      'เบนซิน ถังสำรอง : ${liters(reserveBenzineLiters)} ลิตร',
+    ]);
+  }
+  final raw = lines.join('\n').trim();
+  return raw.length > 4800 ? raw.substring(0, 4800) : raw;
+}
+
+String _formatThousands(String core) {
+  final parts = core.split('.');
+  final intPart = parts[0];
+  final buf = StringBuffer();
+  for (var i = 0; i < intPart.length; i++) {
+    if (i > 0 && (intPart.length - i) % 3 == 0) buf.write(',');
+    buf.write(intPart[i]);
+  }
+  if (parts.length > 1) buf.write('.${parts[1]}');
+  return buf.toString();
+}
+
 Future<AdvanceLineNotifyStatus> notifyVehicleTripLineAfterSaved({
   required String dateYmd,
   required List<VehicleTripLineItem> items,

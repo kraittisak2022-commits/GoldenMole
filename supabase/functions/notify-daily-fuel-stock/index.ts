@@ -1,16 +1,18 @@
 /**
- * สรุปการใช้รถดรัม + แม็คโคร ประจำวัน → LINE
+ * สรุปน้ำมันคงเหลือ (ถังหลัก + ถังสำรอง) → LINE
  * เรียกด้วย cron 09:00 Asia/Bangkok (02:00 UTC) หรือ POST เอง
  *
  * Auth: header `x-cm-notify-advance-secret` = NOTIFY_ADVANCE_INVOKER_SECRET
- * Secrets: LINE_CHANNEL_ACCESS_TOKEN, LINE_ADVANCE_NOTIFY_USER_IDS,
- *          NOTIFY_ADVANCE_INVOKER_SECRET
- *
  * Body (optional): { "date": "YYYY-MM-DD", "force": true, "testPersonalOnly": true }
- *   force=true — ส่งซ้ำแม้เคยส่งวันนั้นแล้ว
  *   testPersonalOnly — ส่งเฉพาะ User ID (U…) ไม่เข้ากลุ่ม
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
+import {
+  FUEL_STOCK_CUTOVER_YMD,
+  buildDailyFuelStockLineText,
+  computeFuelStockBalances,
+  type FuelTx,
+} from "../_shared/fuel_stock_balance.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -53,13 +55,12 @@ function secureCompareStrings(a: string, b: string): boolean {
 }
 
 function bangkokYmd(d = new Date()): string {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  });
-  return fmt.format(d); // YYYY-MM-DD
+  }).format(d);
 }
 
 function formatDateThaiBE(ymd: string): string {
@@ -72,26 +73,6 @@ function formatDateThaiBE(ymd: string): string {
   return `${d} ${TH_MONTHS[m - 1]} ${y + 543}`;
 }
 
-function isMacroVehicleName(raw: string): boolean {
-  const s = raw.trim().toLowerCase();
-  if (!s) return false;
-  return (
-    s.includes("แม็คโคร") ||
-    s.includes("แมคโคร") ||
-    s.includes("excavator") ||
-    s.includes("backhoe")
-  );
-}
-
-function vehicleLabel(row: {
-  vehicle_name?: string | null;
-  vehicle_id?: string | null;
-}): string {
-  const name = (row.vehicle_name ?? "").trim();
-  if (name) return name;
-  return (row.vehicle_id ?? "").trim() || "—";
-}
-
 function canonicalLineRecipientId(raw: string): string | null {
   const s = raw.trim();
   const m = s.match(/^([UCR])([a-f0-9]{32})$/i);
@@ -99,7 +80,7 @@ function canonicalLineRecipientId(raw: string): string | null {
   return `${m[1].toUpperCase()}${m[2].toLowerCase()}`;
 }
 
-function parseRecipientIds(raw: string, personalOnly = false): string[] {
+function parseRecipientIds(raw: string, personalOnly: boolean): string[] {
   const all = [
     ...new Set(
       raw
@@ -110,40 +91,6 @@ function parseRecipientIds(raw: string, personalOnly = false): string[] {
   ];
   if (personalOnly) return all.filter((id) => id.startsWith("U"));
   return all;
-}
-
-function empDisplayName(e: {
-  id: string;
-  name?: string | null;
-  nickname?: string | null;
-}): string {
-  const nick = (e.nickname ?? "").trim();
-  if (nick) return nick;
-  const name = (e.name ?? "").trim();
-  if (name) return name;
-  return e.id;
-}
-
-function buildDailyVehicleUsageText(args: {
-  dateYmd: string;
-  drums: { vehicle: string; driverName: string }[];
-  macros: { vehicle: string; driverName: string; work: string }[];
-}): string {
-  const lines: string[] = [
-    `การใช้รถ ${formatDateThaiBE(args.dateYmd)}`,
-    "",
-    `บันทึกรถดรัม จำนวน ${args.drums.length} คัน`,
-  ];
-  args.drums.forEach((it, i) => {
-    lines.push(`คันที่ ${i + 1} : ${it.vehicle} · ${it.driverName}`);
-  });
-  lines.push("", `รถแม็คโคร จำนวน ${args.macros.length} คัน`);
-  args.macros.forEach((it, i) => {
-    lines.push(
-      `คันที่ ${i + 1} : ${it.vehicle} · ${it.driverName} · ${it.work}`,
-    );
-  });
-  return lines.join("\n").trim();
 }
 
 Deno.serve(async (req) => {
@@ -176,7 +123,11 @@ Deno.serve(async (req) => {
     );
   }
 
-  let body: { date?: string; force?: boolean; testPersonalOnly?: boolean } = {};
+  let body: {
+    date?: string;
+    force?: boolean;
+    testPersonalOnly?: boolean;
+  } = {};
   try {
     const raw = await req.text();
     if (raw.trim()) body = JSON.parse(raw);
@@ -208,106 +159,73 @@ Deno.serve(async (req) => {
 
   const admin = createClient(supabaseUrl, serviceKey);
 
-  // idempotency — กันส่งซ้ำในวันเดียวกัน (ยกเว้น force)
   const { data: settingsRow } = await admin
     .from("app_settings")
-    .select("app_defaults")
+    .select("app_defaults, fuel_opening_stock")
     .eq("id", "default")
     .maybeSingle();
+
   const defaults =
     settingsRow?.app_defaults && typeof settingsRow.app_defaults === "object"
       ? { ...(settingsRow.app_defaults as Record<string, unknown>) }
       : {};
-  const lastSent = String(defaults.lineDailyVehicleUsageLastYmd ?? "").trim();
+  const lastSent = String(defaults.lineDailyFuelStockLastYmd ?? "").trim();
   if (!force && !testPersonalOnly && lastSent === dateYmd) {
     return jsonResponse({
       ok: true,
       skipped: true,
       code: "already_sent",
       date: dateYmd,
-      hint_th: "ส่งสรุปการใช้รถวันนี้ไปแล้ว — ส่ง force:true ถ้าต้องการซ้ำ",
+      hint_th: "ส่งน้ำมันคงเหลือวันนี้ไปแล้ว — ส่ง force:true ถ้าต้องการซ้ำ",
     });
   }
 
-  const [tripsRes, vehRes] = await Promise.all([
-    admin
-      .from("transactions")
-      .select("vehicle_id,vehicle_name,driver_id,created_at")
-      .eq("date", dateYmd)
-      .eq("category", "DailyLog")
-      .eq("sub_category", "VehicleTrip")
-      .order("created_at", { ascending: true }),
-    admin
+  const openingRaw = settingsRow?.fuel_opening_stock;
+  const opening =
+    openingRaw && typeof openingRaw === "object"
+      ? (openingRaw as Record<string, unknown>)
+      : {};
+  const num = (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  // ดึงรายการ Fuel ตั้งแต่วันตัดยอด (paginate)
+  const pageSize = 1000;
+  const txs: FuelTx[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const to = from + pageSize - 1;
+    const { data, error } = await admin
       .from("transactions")
       .select(
-        "vehicle_id,vehicle_name,driver_id,work_details,description,created_at",
+        "date,category,type,sub_category,quantity,unit,fuel_type,fuel_tank,fuel_movement,vehicle_id,vehicle_name,work_type",
       )
-      .eq("date", dateYmd)
-      .eq("category", "Vehicle")
-      .order("created_at", { ascending: true }),
-  ]);
-
-  if (tripsRes.error || vehRes.error) {
-    return jsonResponse({
-      ok: false,
-      code: "db_error",
-      tripsError: tripsRes.error?.message,
-      vehicleError: vehRes.error?.message,
-    });
-  }
-
-  const trips = tripsRes.data ?? [];
-  const macros = (vehRes.data ?? []).filter((t) =>
-    isMacroVehicleName(vehicleLabel(t))
-  );
-
-  if (trips.length === 0 && macros.length === 0) {
-    return jsonResponse({
-      ok: true,
-      skipped: true,
-      code: "no_data",
-      date: dateYmd,
-      hint_th: "ยังไม่มีบันทึกรถดรัมหรือแม็คโครวันนี้ — ไม่ส่ง LINE",
-    });
-  }
-
-  const driverIds = [
-    ...new Set(
-      [...trips, ...macros]
-        .map((t) => (t.driver_id ?? "").trim())
-        .filter(Boolean),
-    ),
-  ];
-  const nameById: Record<string, string> = {};
-  if (driverIds.length > 0) {
-    const { data: emps } = await admin
-      .from("employees")
-      .select("id,name,nickname")
-      .in("id", driverIds);
-    for (const e of emps ?? []) {
-      nameById[e.id] = empDisplayName(e);
+      .eq("category", "Fuel")
+      .gte("date", FUEL_STOCK_CUTOVER_YMD)
+      .lte("date", dateYmd)
+      .order("date", { ascending: true })
+      .range(from, to);
+    if (error) {
+      return jsonResponse({
+        ok: false,
+        code: "db_error",
+        message: error.message,
+      });
     }
+    const chunk = (data ?? []) as FuelTx[];
+    txs.push(...chunk);
+    if (chunk.length < pageSize) break;
   }
 
-  const drums = trips.map((t) => ({
-    vehicle: vehicleLabel(t),
-    driverName: nameById[(t.driver_id ?? "").trim()] ||
-      (t.driver_id ?? "").trim() ||
-      "—",
-  }));
-  const macroItems = macros.map((t) => ({
-    vehicle: vehicleLabel(t),
-    driverName: nameById[(t.driver_id ?? "").trim()] ||
-      (t.driver_id ?? "").trim() ||
-      "—",
-    work: ((t.work_details ?? "").trim() || "—"),
-  }));
-
-  const text = buildDailyVehicleUsageText({
-    dateYmd,
-    drums,
-    macros: macroItems,
+  const bal = computeFuelStockBalances(txs, {
+    Diesel: num(opening.Diesel),
+    Benzine: num(opening.Benzine),
+    DieselReserve: num(opening.DieselReserve),
+    BenzineReserve: num(opening.BenzineReserve),
+    asOfYmd: dateYmd,
   });
+
+  const text = buildDailyFuelStockLineText(dateYmd, bal, formatDateThaiBE);
 
   const recipients = parseRecipientIds(
     Deno.env.get("LINE_ADVANCE_NOTIFY_USER_IDS") ?? "",
@@ -320,7 +238,8 @@ Deno.serve(async (req) => {
       message: testPersonalOnly
         ? "No personal U… recipients"
         : "LINE_ADVANCE_NOTIFY_USER_IDS empty",
-      textPreview: text.slice(0, 200),
+      text,
+      balance: bal,
     });
   }
 
@@ -343,11 +262,12 @@ Deno.serve(async (req) => {
       date: dateYmd,
       notify: notifyJson,
       text,
+      balance: bal,
     });
   }
 
   if (!testPersonalOnly) {
-    defaults.lineDailyVehicleUsageLastYmd = dateYmd;
+    defaults.lineDailyFuelStockLastYmd = dateYmd;
     await admin
       .from("app_settings")
       .upsert(
@@ -359,8 +279,7 @@ Deno.serve(async (req) => {
   return jsonResponse({
     ok: true,
     date: dateYmd,
-    drums: drums.length,
-    macros: macroItems.length,
+    balance: bal,
     recipients: recipients.length,
     testPersonalOnly,
     notify: notifyJson,

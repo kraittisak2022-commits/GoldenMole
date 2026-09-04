@@ -12,6 +12,7 @@
 | เช็คชื่อ | เช็คชื่อ · ท่าทราย / คนขับรถ |
 | รถดรัม / จำนวนเที่ยว | สรุปรถและเที่ยว (หลังบันทึก) |
 | **การใช้รถ (อัตโนมัติ 09:00)** | สรุปดรัม + แม็คโครประจำวัน |
+| **น้ำมันคงเหลือ (อัตโนมัติ 09:00)** | ถังหลัก + ถังสำรอง |
 
 ## สิ่งที่ต้องมี
 
@@ -168,6 +169,7 @@ npx supabase functions deploy notify-advance-line
 ```bash
 npx supabase functions deploy notify-advance-line
 npx supabase functions deploy notify-daily-vehicle-usage
+npx supabase functions deploy notify-daily-fuel-stock
 npx supabase secrets set LINE_CHANNEL_ACCESS_TOKEN=your_channel_access_token
 npx supabase secrets set NOTIFY_ADVANCE_INVOKER_SECRET=your_long_random_secret
 npx supabase secrets set LINE_ADVANCE_NOTIFY_USER_IDS=U…,C…
@@ -212,7 +214,35 @@ select vault.create_secret(
 curl -X POST "https://cocvespahjymyrvmqzcs.supabase.co/functions/v1/notify-daily-vehicle-usage" \
   -H "Content-Type: application/json" \
   -H "x-cm-notify-advance-secret: <secret>" \
-  -d '{"force":true}'
+  -d '{"force":true,"testPersonalOnly":true}'
+```
+
+> ตอนทดสอบใส่ `"testPersonalOnly": true` เพื่อส่งเฉพาะแชทส่วนตัว (U…) ไม่เข้ากลุ่ม
+
+## น้ำมันคงเหลืออัตโนมัติ 09:00 (ถังหลัก + ถังสำรอง)
+
+Edge **`notify-daily-fuel-stock`** คำนวณยอดจากรายการ `Fuel` ตั้งแต่วันตัดยอด + `fuel_opening_stock` แล้วส่ง:
+
+```text
+น้ำมันคงเหลือ 4 ก.ย. 2569
+
+ถังหลัก : 5,432 ลิตร
+ถังสำรอง : 320 ลิตร
+
+รวม : 5,752 ลิตร
+```
+
+- เวลาเดียวกับสรุปการใช้รถ: **09:00 Asia/Bangkok**
+- ผู้รับ: `LINE_ADVANCE_NOTIFY_USER_IDS`
+- ไม่ส่งซ้ำในวันเดียวกัน (`app_defaults.lineDailyFuelStockLastYmd`)
+- ทดสอบไม่เข้ากลุ่ม: `{ "force": true, "testPersonalOnly": true }`
+
+```bash
+npx supabase functions deploy notify-daily-fuel-stock
+curl -X POST "https://cocvespahjymyrvmqzcs.supabase.co/functions/v1/notify-daily-fuel-stock" \
+  -H "Content-Type: application/json" \
+  -H "x-cm-notify-advance-secret: <secret>" \
+  -d '{"force":true,"testPersonalOnly":true}'
 ```
 
 ### Migration คอลัมน์พนักงาน

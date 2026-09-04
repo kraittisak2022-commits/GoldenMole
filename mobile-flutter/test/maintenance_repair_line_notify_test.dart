@@ -151,4 +151,16 @@ void main() {
       contains('คันที่ 1 : รถแม็คโคร SK200-10 · ลุงศักดิ์ · ขุดแร่, เปิดหน้าดิน'),
     );
   });
+
+  test('buildDailyFuelStockLineText shows main and reserve tanks', () {
+    final text = buildDailyFuelStockLineText(
+      dateYmd: '2026-09-04',
+      mainDieselLiters: 5432,
+      reserveDieselLiters: 320.5,
+    );
+    expect(text, contains('น้ำมันคงเหลือ 4 ก.ย. 2569'));
+    expect(text, contains('ถังหลัก : 5,432 ลิตร'));
+    expect(text, contains('ถังสำรอง : 320.5 ลิตร'));
+    expect(text, contains('รวม : 5,752.5 ลิตร'));
+  });
 }
