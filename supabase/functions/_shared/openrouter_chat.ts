@@ -145,6 +145,7 @@ export async function openRouterChatWithTools(opts: {
   const maxRounds = opts.maxRounds ?? 3;
   let model = opts.model ?? defaultLineQaModel();
   const deadline = Date.now() + (opts.timeoutMs ?? 55_000);
+  let forcedSnapshot = false;
 
   for (let round = 0; round < maxRounds; round++) {
     const remain = Math.max(8_000, deadline - Date.now());
@@ -156,11 +157,26 @@ export async function openRouterChatWithTools(opts: {
       maxTokens: opts.maxTokens,
       timeoutMs: remain,
       tools: opts.tools,
-      toolChoice: round === 0 ? "auto" : "auto",
+      toolChoice: "auto",
     });
     model = r.model;
 
     if (r.toolCalls.length === 0) {
+      // รอบแรกถ้ายังไม่เรียก tool — บังคับดึง snapshot แล้วถามใหม่
+      if (round === 0 && !forcedSnapshot && used.length === 0) {
+        forcedSnapshot = true;
+        const snap = await opts.runTool("get_ops_snapshot", {});
+        used.push("get_ops_snapshot");
+        const clipped = snap.length > 6000 ? snap.slice(0, 6000) + "\n…" : snap;
+        messages.push({
+          role: "user",
+          content:
+            "ข้อมูลจากระบบ (get_ops_snapshot):\n" +
+            clipped +
+            "\n\nตอบคำถามจากข้อมูลนี้เท่านั้น ถ้ายังไม่พอให้เรียก tool เพิ่ม",
+        });
+        continue;
+      }
       if (!r.text) throw new Error("OpenRouter empty content");
       return { text: r.text, model, toolNames: used };
     }
