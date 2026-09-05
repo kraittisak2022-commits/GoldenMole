@@ -156,7 +156,7 @@ async function lineReply(
   replyToken: string,
   text: string,
   token: string,
-): Promise<void> {
+): Promise<boolean> {
   const resp = await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",
     headers: {
@@ -171,7 +171,9 @@ async function lineReply(
   if (!resp.ok) {
     const body = await resp.text();
     console.error("LINE reply failed", resp.status, body);
+    return false;
   }
+  return true;
 }
 
 async function linePush(
@@ -266,14 +268,10 @@ async function handleUserQa(
       continue;
     }
 
-    // AI อาจช้ากว่า replyToken — ตอบรับก่อน แล้ว push คำตอบ
-    await lineReply(
-      replyToken,
-      "กำลังวิเคราะห์ข้อมูลด้วย AI…\nรอสักครู่",
-      accessToken,
-    );
+    // ตอบคำตอบเดียวตรงๆ (ไม่ขึ้นข้อความรอ) — ถ้า reply token หมดอายุแล้วค่อย push
     const result = await answerLineQaWithAi(client, text);
-    await linePush(userId, result.text, accessToken);
+    const ok = await lineReply(replyToken, result.text, accessToken);
+    if (!ok) await linePush(userId, result.text, accessToken);
     replied++;
   }
   return replied;
