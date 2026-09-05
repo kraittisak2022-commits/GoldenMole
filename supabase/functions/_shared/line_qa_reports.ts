@@ -83,20 +83,88 @@ function stripRecorder(desc: string): string {
 
 export function qaHelpText(): string {
   return [
-    "━━━━ GoldenMole ━━━━",
-    "ถามภาษาธรรมชาติได้ — AI ดึงข้อมูลจากระบบจริง",
+    "สวัสดีครับ ผมเป็นที่ปรึกษาปฏิบัติการ GoldenMole",
+    "คุยกันได้เลย — ถามก็ได้ เล่าสถานการณ์ก็ได้ ผมช่วยดูข้อมูลในระบบแล้วแนะนำให้",
     "",
-    "ถามได้เรื่อง:",
-    "• น้ำมันคงเหลือ / รายการเติม–เบิก",
-    "• เช็คชื่อ / ลางาน",
-    "• เบิกเงิน",
-    "• รถดรัม / แม็คโคร / รายชื่อรถ",
-    "• บำรุงรักษา / แจ้งซ่อม",
-    "• แผนงาน / ท่าทราย / พนักงาน",
-    "",
-    "ตัวอย่าง: ใครเบิกเงินสัปดาห์นี้ / น้ำมันเหลือเท่าไหร่",
-    "รายงานอัตโนมัติ 09:00 ส่งเข้ากลุ่มเท่านั้น",
+    "เช่น น้ำมัน / คนมาทำงาน / ลา / เบิกเงิน / รถ / ซ่อม / แผนงาน",
+    "อยากเริ่มใหม่พิมพ์: เริ่มใหม่",
   ].join("\n");
+}
+
+const HISTORY_FIELD = "lineQaChatHistory";
+const HISTORY_MAX_TURNS = 8;
+
+export type QaChatTurn = {
+  role: "user" | "assistant";
+  content: string;
+  at: string;
+};
+
+async function loadChatHistory(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<QaChatTurn[]> {
+  const { data } = await admin
+    .from("app_settings")
+    .select("app_defaults")
+    .eq("id", "default")
+    .maybeSingle();
+  const defaults = (data?.app_defaults ?? {}) as Record<string, unknown>;
+  const bag = defaults[HISTORY_FIELD];
+  if (!bag || typeof bag !== "object") return [];
+  const entry = (bag as Record<string, unknown>)[userId];
+  if (!entry || typeof entry !== "object") return [];
+  const msgs = (entry as { messages?: unknown }).messages;
+  if (!Array.isArray(msgs)) return [];
+  return msgs
+    .filter((m): m is QaChatTurn =>
+      !!m &&
+      typeof m === "object" &&
+      ((m as QaChatTurn).role === "user" ||
+        (m as QaChatTurn).role === "assistant") &&
+      typeof (m as QaChatTurn).content === "string"
+    )
+    .slice(-HISTORY_MAX_TURNS * 2);
+}
+
+async function saveChatHistory(
+  admin: SupabaseClient,
+  userId: string,
+  turns: QaChatTurn[],
+): Promise<void> {
+  const trimmed = turns.slice(-HISTORY_MAX_TURNS * 2).map((t) => ({
+    role: t.role,
+    content: t.content.slice(0, 2000),
+    at: t.at,
+  }));
+  const { data, error } = await admin
+    .from("app_settings")
+    .select("app_defaults")
+    .eq("id", "default")
+    .maybeSingle();
+  if (error) throw error;
+  const defaults = {
+    ...((data?.app_defaults as Record<string, unknown> | null) ?? {}),
+  };
+  const bag = {
+    ...((defaults[HISTORY_FIELD] as Record<string, unknown> | null) ?? {}),
+    [userId]: {
+      messages: trimmed,
+      updatedAt: new Date().toISOString(),
+    },
+  };
+  defaults[HISTORY_FIELD] = bag;
+  const { error: upErr } = await admin
+    .from("app_settings")
+    .upsert({ id: "default", app_defaults: defaults }, { onConflict: "id" });
+  if (upErr) throw upErr;
+}
+
+export async function clearChatHistory(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  await saveChatHistory(admin, userId, []);
 }
 
 async function resolveOpenRouterApiKey(
@@ -114,20 +182,25 @@ async function resolveOpenRouterApiKey(
 }
 
 const QA_SYSTEM = [
-  "คุณเป็นผู้ช่วยวิเคราะห์ข้อมูลปฏิบัติการของบริษัทก่อสร้าง GoldenMole",
-  "คุณเข้าถึงฐานข้อมูลเดียวกับเว็บแอปผ่านเครื่องมือ (tools) เท่านั้น — ต้องเรียก tool ที่เกี่ยวข้องก่อนตอบ",
-  "ตอบเป็นภาษาไทย สั้น ชัด อ่านง่ายบน LINE (ขึ้นบรรทัดใหม่ได้ ไม่ใช้ markdown หนัก)",
-  "ใช้เฉพาะข้อมูลที่ได้จาก tools ห้ามแต่งตัวเลขหรือชื่อ",
-  "ถ้า tool บอกว่ายังไม่มีข้อมูล ให้บอกตรงๆ",
-  "วันที่อ้างอิง default คือวันนี้ Asia/Bangkok — ถ้าผู้ใช้พูดถึงสัปดาห์นี้/เมื่อวาน ให้ใส่ date_from/date_to เป็น YYYY-MM-DD",
-  "ความยาวรวมไม่เกินประมาณ 3500 ตัวอักษร",
+  "คุณคือที่ปรึกษาปฏิบัติการของบริษัทก่อสร้าง GoldenMole บน LINE",
+  "คุยแบบกันเอง เป็นมิตร ใช้ภาษาไทยธรรมชาติ (ได้ใช้ครับ/นะ/เลย ตามความเหมาะสม) ไม่แข็ง ไม่เป็นรายงานราชการ",
+  "บทบาท: ที่ปรึกษาที่คุยสองทาง — ไม่ใช่แค่ตอบคำถามฝ่ายเดียว",
+  "หลังสรุปข้อมูลสั้นๆ ให้ถามกลับ 1 คำถามที่เป็นประโยชน์ หรือเสนอทางเลือก/สิ่งที่ควรดูต่อ",
+  "ถ้าผู้ใช้เล่าสถานการณ์หรือยังไม่ชัด ให้ถามเพื่อเจาะจงก่อน แล้วค่อยดึงข้อมูล",
+  "ถ้าเห็นจุดเสี่ยงจากข้อมูล (น้ำมันต่ำ คนลาเยอะ ซ่อมค้าง) ให้เตือนแบบสุภาพพร้อมแนะนำสั้นๆ",
+  "เข้าถึงฐานข้อมูลเดียวกับเว็บแอปผ่าน tools เท่านั้น — เรียก tool ที่เกี่ยวข้องก่อนให้ตัวเลข/รายชื่อ",
+  "ใช้เฉพาะข้อมูลจาก tools ห้ามแต่งตัวเลขหรือชื่อ",
+  "ตอบสั้น อ่านง่ายบน LINE ไม่ใช้ markdown หนัก ความยาวโดยรวมประมาณไม่เกิน 2500 ตัวอักษร",
+  "วันที่อ้างอิง default คือวันนี้ Asia/Bangkok — สัปดาห์นี้/เมื่อวาน ใส่ date_from/date_to เป็น YYYY-MM-DD",
 ].join(". ");
 
 export async function answerLineQaWithAi(
   admin: SupabaseClient,
   userText: string,
-  dateYmd = bangkokYmd(),
+  opts?: { userId?: string; dateYmd?: string },
 ): Promise<{ text: string; usedAi: boolean; error?: string }> {
+  const dateYmd = opts?.dateYmd ?? bangkokYmd();
+  const userId = (opts?.userId ?? "").trim();
   const apiKey = await resolveOpenRouterApiKey(admin);
   if (!apiKey) {
     return {
@@ -138,8 +211,14 @@ export async function answerLineQaWithAi(
   }
 
   try {
-    // dynamic import กัน circular กับ line_qa_tools → reports
+    const history = userId ? await loadChatHistory(admin, userId) : [];
     const { LINE_QA_TOOLS, runLineQaTool } = await import("./line_qa_tools.ts");
+
+    const historyMsgs = history.map((t) => ({
+      role: t.role as "user" | "assistant",
+      content: t.content,
+    }));
+
     const { text, model, toolNames } = await openRouterChatWithTools({
       apiKey,
       model: defaultLineQaModel(),
@@ -147,16 +226,18 @@ export async function answerLineQaWithAi(
       runTool: (name, args) => runLineQaTool(admin, name, args),
       messages: [
         { role: "system", content: QA_SYSTEM },
+        ...historyMsgs,
         {
           role: "user",
           content: [
             `วันนี้ (Asia/Bangkok) = ${dateYmd} (${formatDateThaiBE(dateYmd)})`,
-            `คำถาม: ${userText.trim()}`,
-            "ถ้าคำถามกว้าง ให้เริ่มด้วย get_ops_snapshot",
+            `ข้อความจากผู้ใช้: ${userText.trim()}`,
+            "คุยต่อจากบทสนทนาก่อนหน้าได้ ตอบแบบที่ปรึกษา แล้วถามกลับสั้นๆ ถ้าเหมาะสม",
+            "ถ้าต้องการตัวเลข/รายชื่อจากระบบ ให้เรียก tool ก่อน",
           ].join("\n"),
         },
       ],
-      temperature: 0.15,
+      temperature: 0.45,
       maxTokens: 1400,
       timeoutMs: 55_000,
       maxRounds: 3,
@@ -164,13 +245,27 @@ export async function answerLineQaWithAi(
     console.log(
       `LINE QA AI ok model=${model} tools=${toolNames.join(",") || "-"}`,
     );
+
+    if (userId) {
+      const now = new Date().toISOString();
+      try {
+        await saveChatHistory(admin, userId, [
+          ...history,
+          { role: "user", content: userText.trim(), at: now },
+          { role: "assistant", content: text, at: now },
+        ]);
+      } catch (e) {
+        console.warn("saveChatHistory failed", e);
+      }
+    }
+
     return { text, usedAi: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("LINE QA AI failed", msg);
     const fallback = await answerLineQaKeyword(admin, userText, dateYmd);
     return {
-      text: `${fallback}\n\n(หมายเหตุ: AI วิเคราะห์ไม่สำเร็จ — แสดงข้อมูลดิบแทน)`,
+      text: `${fallback}\n\n(หมายเหตุ: ตอนนี้ดึง AI ไม่สำเร็จ — ส่งข้อมูลดิบให้ก่อนนะ)`,
       usedAi: false,
       error: msg.slice(0, 200),
     };

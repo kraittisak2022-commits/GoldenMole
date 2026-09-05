@@ -13,6 +13,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
 import { parseQaUserIds } from "../_shared/line_recipients.ts";
 import {
   answerLineQaWithAi,
+  clearChatHistory,
   qaHelpText,
 } from "../_shared/line_qa_reports.ts";
 
@@ -208,13 +209,37 @@ type LineEvent = {
 function isHelpOnly(text: string): boolean {
   const q = text.trim().toLowerCase();
   return (
-    !q ||
-    q === "?" ||
-    q === "？" ||
-    q.includes("ช่วย") ||
-    q.includes("เมนู") ||
-    q.includes("help") ||
-    q.includes("คำสั่ง")
+    q === "ช่วย" ||
+    q === "เมนู" ||
+    q === "help" ||
+    q === "คำสั่ง" ||
+    q.includes("ช่วยเหลือ")
+  );
+}
+
+function isResetChat(text: string): boolean {
+  const q = text.trim().toLowerCase();
+  return (
+    q === "เริ่มใหม่" ||
+    q === "ล้างแชท" ||
+    q === "ล้างบทสนทนา" ||
+    q === "reset" ||
+    q === "new chat"
+  );
+}
+
+function isGreetingOnly(text: string): boolean {
+  const q = text.trim().toLowerCase().replace(/[!！.。]+$/g, "");
+  return (
+    q === "สวัสดี" ||
+    q === "สวัสดีครับ" ||
+    q === "สวัสดีค่ะ" ||
+    q === "หวัดดี" ||
+    q === "ดีครับ" ||
+    q === "ดีค่ะ" ||
+    q === "hello" ||
+    q === "hi" ||
+    q === "hey"
   );
 }
 
@@ -255,21 +280,44 @@ async function handleUserQa(
     if (!canonical || !allow.has(canonical)) {
       await lineReply(
         replyToken,
-        "บัญชีนี้ยังไม่มีสิทธิ์ถามข้อมูล GoldenMole\nให้แอดมินใส่ LINE User ID (U…) ใน LINE_ADVANCE_NOTIFY_USER_IDS",
+        "บัญชีนี้ยังไม่มีสิทธิ์คุยกับที่ปรึกษา GoldenMole นะ\nให้แอดมินใส่ LINE User ID (U…) ใน LINE_ADVANCE_NOTIFY_USER_IDS",
         accessToken,
       );
       replied++;
       continue;
     }
 
-    if (isHelpOnly(text)) {
-      await lineReply(replyToken, qaHelpText(), accessToken);
+    if (isResetChat(text)) {
+      try {
+        await clearChatHistory(client, canonical);
+      } catch (e) {
+        console.warn("clearChatHistory failed", e);
+      }
+      await lineReply(
+        replyToken,
+        "เริ่มใหม่แล้วครับ เล่าสถานการณ์หรือถามอะไรก็ได้เลย — ผมช่วยดูข้อมูลแล้วคุยเป็นที่ปรึกษาให้",
+        accessToken,
+      );
       replied++;
       continue;
     }
 
-    // ตอบคำตอบเดียวตรงๆ (ไม่ขึ้นข้อความรอ) — ถ้า reply token หมดอายุแล้วค่อย push
-    const result = await answerLineQaWithAi(client, text);
+    if (isHelpOnly(text) || isGreetingOnly(text)) {
+      // ทักทาย/เมนู ก็ให้ AI คุยต่อได้แบบกันเอง (มีประวัติ)
+      const result = await answerLineQaWithAi(client, text, {
+        userId: canonical,
+      });
+      // ถ้า AI พัง ใช่ข้อความต้อนรับแทน
+      const out = result.usedAi ? result.text : qaHelpText();
+      const ok = await lineReply(replyToken, out, accessToken);
+      if (!ok) await linePush(userId, out, accessToken);
+      replied++;
+      continue;
+    }
+
+    const result = await answerLineQaWithAi(client, text, {
+      userId: canonical,
+    });
     const ok = await lineReply(replyToken, result.text, accessToken);
     if (!ok) await linePush(userId, result.text, accessToken);
     replied++;
