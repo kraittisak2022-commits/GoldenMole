@@ -72,7 +72,12 @@ function extractChats(events: unknown[]): SeenChat[] {
     if (!ev || typeof ev !== "object") continue;
     const e = ev as {
       type?: string;
-      source?: { type?: string; groupId?: string; roomId?: string };
+      source?: {
+        type?: string;
+        groupId?: string;
+        roomId?: string;
+        userId?: string;
+      };
     };
     const src = e.source;
     if (!src) continue;
@@ -87,6 +92,13 @@ function extractChats(events: unknown[]): SeenChat[] {
       out.push({
         id: src.roomId,
         type: "room",
+        at: now,
+        eventType: e.type,
+      });
+    } else if (src.type === "user" && src.userId) {
+      out.push({
+        id: src.userId,
+        type: "user",
         at: now,
         eventType: e.type,
       });
@@ -278,9 +290,19 @@ async function handleUserQa(
       ? `U${userId.slice(1).toLowerCase()}`
       : "";
     if (!canonical || !allow.has(canonical)) {
+      const shown = canonical || userId;
+      console.warn(`LINE QA denied userId=${shown}`);
       await lineReply(
         replyToken,
-        "บัญชีนี้ยังไม่มีสิทธิ์คุยกับที่ปรึกษา GoldenMole นะ\nให้แอดมินใส่ LINE User ID (U…) ใน LINE_ADVANCE_NOTIFY_USER_IDS",
+        [
+          "บัญชีนี้ยังไม่มีสิทธิ์คุยกับที่ปรึกษา GoldenMole",
+          "",
+          `LINE User ID ของคุณ:`,
+          shown,
+          "",
+          "ส่งรหัสนี้ให้แอดมิน นำไปใส่ใน LINE_ADVANCE_NOTIFY_USER_IDS (คั่นด้วย comma คู่กับกลุ่ม C…)",
+          "แล้วลองทักใหม่ได้เลย",
+        ].join("\n"),
         accessToken,
       );
       replied++;
@@ -342,13 +364,17 @@ Deno.serve(async (req) => {
     }
     const chats = await loadSeen(client);
     const groups = chats.filter((c) => c.type === "group");
+    const users = chats.filter((c) => c.type === "user");
     return jsonResponse({
       ok: true,
       hint_th:
-        groups.length > 0
-          ? "คัดลอก id ที่ขึ้นต้นด้วย C ไปใส่ LINE_ADVANCE_NOTIFY_USER_IDS (รายงานเข้ากลุ่ม) และใส่ U… สำหรับถาม–ตอบส่วนตัว"
-          : "ยังไม่มี groupId — เชิญบอทเข้ากลุ่ม แล้วพิมพ์ข้อความในกลุ่ม 1 ครั้ง แล้วรีเฟรชหน้านี้",
+        users.length > 0
+          ? "คัดลอก users[].id (U…) ไปใส่ LINE_ADVANCE_NOTIFY_USER_IDS เพื่อเปิดถาม–ตอบส่วนตัว และใส่ C… สำหรับรายงานกลุ่ม"
+          : groups.length > 0
+          ? "คัดลอก id ที่ขึ้นต้นด้วย C ไปใส่ LINE_ADVANCE_NOTIFY_USER_IDS (รายงานเข้ากลุ่ม) — ทัก OA ส่วนตัว 1 ครั้งเพื่อเก็บ U…"
+          : "ยังไม่มี groupId/userId — เชิญบอทเข้ากลุ่ม หรือทัก OA ส่วนตัว 1 ครั้ง แล้วรีเฟรชหน้านี้",
       groups,
+      users,
       rooms: chats.filter((c) => c.type === "room"),
       all: chats,
       qa: "แชทส่วนตัว — ที่ปรึกษา AI คุยสองทาง (พิมพ์ เริ่มใหม่ เพื่อล้างประวัติ)",
