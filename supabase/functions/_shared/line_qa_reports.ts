@@ -11,7 +11,7 @@ import {
 } from "./fuel_stock_balance.ts";
 import {
   defaultLineQaModel,
-  openRouterChat,
+  openRouterChatWithTools,
 } from "./openrouter_chat.ts";
 
 const TH_MONTHS = [
@@ -84,14 +84,17 @@ function stripRecorder(desc: string): string {
 export function qaHelpText(): string {
   return [
     "━━━━ GoldenMole ━━━━",
-    "ถามด้วยภาษาธรรมชาติได้ (AI สรุปจากข้อมูลจริง)",
+    "ถามภาษาธรรมชาติได้ — AI ดึงข้อมูลจากระบบจริง",
     "",
-    "ตัวอย่าง:",
-    "• วันนี้มีใครลาบ้าง",
-    "• น้ำมันเหลือเท่าไหร่ ควรเติมไหม",
-    "• สรุปการใช้รถดรัมกับแม็คโคร",
+    "ถามได้เรื่อง:",
+    "• น้ำมันคงเหลือ / รายการเติม–เบิก",
+    "• เช็คชื่อ / ลางาน",
+    "• เบิกเงิน",
+    "• รถดรัม / แม็คโคร / รายชื่อรถ",
+    "• บำรุงรักษา / แจ้งซ่อม",
+    "• แผนงาน / ท่าทราย / พนักงาน",
     "",
-    "คำลัด: น้ำมัน / เช็คชื่อ / รถ / สรุป",
+    "ตัวอย่าง: ใครเบิกเงินสัปดาห์นี้ / น้ำมันเหลือเท่าไหร่",
     "รายงานอัตโนมัติ 09:00 ส่งเข้ากลุ่มเท่านั้น",
   ].join("\n");
 }
@@ -110,35 +113,13 @@ async function resolveOpenRouterApiKey(
   return String(defaults.openRouterApiKey ?? "").trim();
 }
 
-export async function buildOpsContextPack(
-  admin: SupabaseClient,
-  dateYmd: string,
-): Promise<string> {
-  const [fuel, att, veh] = await Promise.all([
-    buildFuelReportText(admin, dateYmd),
-    buildAttendanceReportText(admin, dateYmd),
-    buildVehicleReportText(admin, dateYmd),
-  ]);
-  return [
-    `วันที่อ้างอิง (Asia/Bangkok): ${dateYmd} = ${formatDateThaiBE(dateYmd)}`,
-    "",
-    "=== น้ำมันคงเหลือ ===",
-    fuel,
-    "",
-    "=== เช็คชื่อ ===",
-    att,
-    "",
-    "=== การใช้รถ ===",
-    veh,
-  ].join("\n");
-}
-
 const QA_SYSTEM = [
   "คุณเป็นผู้ช่วยวิเคราะห์ข้อมูลปฏิบัติการของบริษัทก่อสร้าง GoldenMole",
-  "ตอบเป็นภาษาไทย สั้น ชัด อ่านง่ายบน LINE (ใช้ขึ้นบรรทัดใหม่ ไม่ใช้ markdown หนัก)",
-  "ใช้เฉพาะข้อมูลในบริบทที่ให้มาเท่านั้น ห้ามแต่งตัวเลขหรือชื่อที่ไม่มีในข้อมูล",
-  "ถ้าข้อมูลไม่พอ ให้บอกตรงๆ ว่ายังไม่มีในระบบ และแนะนำว่าควรถามเรื่องใด",
-  "สรุปประเด็นสำคัญก่อน แล้วค่อยรายละเอียดสั้นๆ ถ้าผู้ใช้ขอวิเคราะห์/แนวโน้ม ให้วิเคราะห์จากตัวเลขที่มีอย่างระมัดระวัง",
+  "คุณเข้าถึงฐานข้อมูลเดียวกับเว็บแอปผ่านเครื่องมือ (tools) เท่านั้น — ต้องเรียก tool ที่เกี่ยวข้องก่อนตอบ",
+  "ตอบเป็นภาษาไทย สั้น ชัด อ่านง่ายบน LINE (ขึ้นบรรทัดใหม่ได้ ไม่ใช้ markdown หนัก)",
+  "ใช้เฉพาะข้อมูลที่ได้จาก tools ห้ามแต่งตัวเลขหรือชื่อ",
+  "ถ้า tool บอกว่ายังไม่มีข้อมูล ให้บอกตรงๆ",
+  "วันที่อ้างอิง default คือวันนี้ Asia/Bangkok — ถ้าผู้ใช้พูดถึงสัปดาห์นี้/เมื่อวาน ให้ใส่ date_from/date_to เป็น YYYY-MM-DD",
   "ความยาวรวมไม่เกินประมาณ 3500 ตัวอักษร",
 ].join(". ");
 
@@ -157,27 +138,32 @@ export async function answerLineQaWithAi(
   }
 
   try {
-    const context = await buildOpsContextPack(admin, dateYmd);
-    const { text, model } = await openRouterChat({
+    // dynamic import กัน circular กับ line_qa_tools → reports
+    const { LINE_QA_TOOLS, runLineQaTool } = await import("./line_qa_tools.ts");
+    const { text, model, toolNames } = await openRouterChatWithTools({
       apiKey,
       model: defaultLineQaModel(),
+      tools: LINE_QA_TOOLS,
+      runTool: (name, args) => runLineQaTool(admin, name, args),
       messages: [
         { role: "system", content: QA_SYSTEM },
         {
           role: "user",
           content: [
-            "ข้อมูลจากระบบ (อ้างอิงได้เท่านั้น):",
-            context,
-            "",
-            `คำถามจากผู้ใช้: ${userText.trim()}`,
+            `วันนี้ (Asia/Bangkok) = ${dateYmd} (${formatDateThaiBE(dateYmd)})`,
+            `คำถาม: ${userText.trim()}`,
+            "ถ้าคำถามกว้าง ให้เริ่มด้วย get_ops_snapshot",
           ].join("\n"),
         },
       ],
-      temperature: 0.2,
-      maxTokens: 1200,
+      temperature: 0.15,
+      maxTokens: 1400,
       timeoutMs: 55_000,
+      maxRounds: 3,
     });
-    console.log(`LINE QA AI ok model=${model}`);
+    console.log(
+      `LINE QA AI ok model=${model} tools=${toolNames.join(",") || "-"}`,
+    );
     return { text, usedAi: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

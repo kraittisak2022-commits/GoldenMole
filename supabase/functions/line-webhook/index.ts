@@ -1,13 +1,13 @@
 /**
  * LINE Messaging API webhook
  * - เก็บ groupId จากกลุ่ม
- * - แชทส่วนตัว (user): ถาม–ตอบด้วย AI (OpenRouter gpt-5.6-luna-pro) จากข้อมูลจริง
+ * - แชทส่วนตัว: AI เรียก tool อ่าน DB เดียวกับเว็บแอป แล้วตอบ
  * - รายงานอัตโนมัติส่งเข้ากลุ่มอย่างเดียว (ดู notify-daily-*)
  *
  * Webhook URL: https://<PROJECT_REF>.supabase.co/functions/v1/line-webhook
  * Secrets: LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN,
  *          LINE_ADVANCE_NOTIFY_USER_IDS (U… = คนที่ถามได้, C… = กลุ่มรายงาน),
- *          OPENROUTER_API_KEY (ถาม–ตอบ AI), LINE_QA_AI_MODEL (optional)
+ *          OPENROUTER_API_KEY (ถาม–ตอบ AI + ดึง DB), LINE_QA_AI_MODEL (optional)
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
 import { parseQaUserIds } from "../_shared/line_recipients.ts";
