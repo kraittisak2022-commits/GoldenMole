@@ -1,5 +1,6 @@
 /**
  * สร้างข้อความรายงานสำหรับตอบในแชทส่วนตัว / ใช้ร่วม cron
+ * แชทส่วนตัว: ใช้ AI (OpenRouter) วิเคราะห์จากข้อมูลจริง + fallback คำสั่งเดิม
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
 import {
@@ -8,6 +9,10 @@ import {
   computeFuelStockBalances,
   type FuelTx,
 } from "./fuel_stock_balance.ts";
+import {
+  defaultLineQaModel,
+  openRouterChat,
+} from "./openrouter_chat.ts";
 
 const TH_MONTHS = [
   "ม.ค.",
@@ -79,15 +84,111 @@ function stripRecorder(desc: string): string {
 export function qaHelpText(): string {
   return [
     "━━━━ GoldenMole ━━━━",
-    "ถามข้อมูลได้ในแชทนี้:",
+    "ถามด้วยภาษาธรรมชาติได้ (AI สรุปจากข้อมูลจริง)",
     "",
-    "• น้ำมัน — คงเหลือถังหลัก/สำรอง",
-    "• เช็คชื่อ — มาทำงาน / ลางานวันนี้",
-    "• รถ — สรุปดรัม + แม็คโครวันนี้",
-    "• สรุป — ทั้งสามอย่างสั้นๆ",
+    "ตัวอย่าง:",
+    "• วันนี้มีใครลาบ้าง",
+    "• น้ำมันเหลือเท่าไหร่ ควรเติมไหม",
+    "• สรุปการใช้รถดรัมกับแม็คโคร",
     "",
+    "คำลัด: น้ำมัน / เช็คชื่อ / รถ / สรุป",
     "รายงานอัตโนมัติ 09:00 ส่งเข้ากลุ่มเท่านั้น",
   ].join("\n");
+}
+
+async function resolveOpenRouterApiKey(
+  admin: SupabaseClient,
+): Promise<string> {
+  const fromEnv = (Deno.env.get("OPENROUTER_API_KEY") ?? "").trim();
+  if (fromEnv) return fromEnv;
+  const { data } = await admin
+    .from("app_settings")
+    .select("app_defaults")
+    .eq("id", "default")
+    .maybeSingle();
+  const defaults = (data?.app_defaults ?? {}) as Record<string, unknown>;
+  return String(defaults.openRouterApiKey ?? "").trim();
+}
+
+export async function buildOpsContextPack(
+  admin: SupabaseClient,
+  dateYmd: string,
+): Promise<string> {
+  const [fuel, att, veh] = await Promise.all([
+    buildFuelReportText(admin, dateYmd),
+    buildAttendanceReportText(admin, dateYmd),
+    buildVehicleReportText(admin, dateYmd),
+  ]);
+  return [
+    `วันที่อ้างอิง (Asia/Bangkok): ${dateYmd} = ${formatDateThaiBE(dateYmd)}`,
+    "",
+    "=== น้ำมันคงเหลือ ===",
+    fuel,
+    "",
+    "=== เช็คชื่อ ===",
+    att,
+    "",
+    "=== การใช้รถ ===",
+    veh,
+  ].join("\n");
+}
+
+const QA_SYSTEM = [
+  "คุณเป็นผู้ช่วยวิเคราะห์ข้อมูลปฏิบัติการของบริษัทก่อสร้าง GoldenMole",
+  "ตอบเป็นภาษาไทย สั้น ชัด อ่านง่ายบน LINE (ใช้ขึ้นบรรทัดใหม่ ไม่ใช้ markdown หนัก)",
+  "ใช้เฉพาะข้อมูลในบริบทที่ให้มาเท่านั้น ห้ามแต่งตัวเลขหรือชื่อที่ไม่มีในข้อมูล",
+  "ถ้าข้อมูลไม่พอ ให้บอกตรงๆ ว่ายังไม่มีในระบบ และแนะนำว่าควรถามเรื่องใด",
+  "สรุปประเด็นสำคัญก่อน แล้วค่อยรายละเอียดสั้นๆ ถ้าผู้ใช้ขอวิเคราะห์/แนวโน้ม ให้วิเคราะห์จากตัวเลขที่มีอย่างระมัดระวัง",
+  "ความยาวรวมไม่เกินประมาณ 3500 ตัวอักษร",
+].join(". ");
+
+export async function answerLineQaWithAi(
+  admin: SupabaseClient,
+  userText: string,
+  dateYmd = bangkokYmd(),
+): Promise<{ text: string; usedAi: boolean; error?: string }> {
+  const apiKey = await resolveOpenRouterApiKey(admin);
+  if (!apiKey) {
+    return {
+      text: await answerLineQaKeyword(admin, userText, dateYmd),
+      usedAi: false,
+      error: "missing_openrouter_key",
+    };
+  }
+
+  try {
+    const context = await buildOpsContextPack(admin, dateYmd);
+    const { text, model } = await openRouterChat({
+      apiKey,
+      model: defaultLineQaModel(),
+      messages: [
+        { role: "system", content: QA_SYSTEM },
+        {
+          role: "user",
+          content: [
+            "ข้อมูลจากระบบ (อ้างอิงได้เท่านั้น):",
+            context,
+            "",
+            `คำถามจากผู้ใช้: ${userText.trim()}`,
+          ].join("\n"),
+        },
+      ],
+      temperature: 0.2,
+      maxTokens: 1200,
+      timeoutMs: 55_000,
+    });
+    console.log(`LINE QA AI ok model=${model}`);
+    return { text, usedAi: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("LINE QA AI failed", msg);
+    const fallback = await answerLineQaKeyword(admin, userText, dateYmd);
+    return {
+      text: `${fallback}\n\n(หมายเหตุ: AI วิเคราะห์ไม่สำเร็จ — แสดงข้อมูลดิบแทน)`,
+      usedAi: false,
+      error: msg.slice(0, 200),
+    };
+  }
 }
 
 export async function buildFuelReportText(
@@ -317,7 +418,8 @@ export async function buildAttendanceReportText(
   ].join("\n");
 }
 
-export async function answerLineQa(
+/** คำสั่งลัด / fallback เมื่อไม่มี AI */
+export async function answerLineQaKeyword(
   admin: SupabaseClient,
   userText: string,
   dateYmd = bangkokYmd(),
@@ -366,7 +468,6 @@ export async function answerLineQa(
     if (wantVeh && !wantFuel && !wantAtt) {
       return await buildVehicleReportText(admin, dateYmd);
     }
-    // หลายคำพร้อมกัน
     if (wantFuel || wantAtt || wantVeh) {
       const parts: string[] = [];
       if (wantFuel) parts.push(await buildFuelReportText(admin, dateYmd));
@@ -379,9 +480,27 @@ export async function answerLineQa(
     return `ดึงข้อมูลไม่สำเร็จ: ${msg}`;
   }
 
-  return [
-    "ยังไม่เข้าใจคำถาม",
-    "",
-    qaHelpText(),
-  ].join("\n");
+  return ["ยังไม่เข้าใจคำถาม", "", qaHelpText()].join("\n");
+}
+
+/** ทางหลัก: AI วิเคราะห์ (ยกเว้นเมนูช่วยเหลือ) */
+export async function answerLineQa(
+  admin: SupabaseClient,
+  userText: string,
+  dateYmd = bangkokYmd(),
+): Promise<string> {
+  const q = userText.trim().toLowerCase();
+  if (
+    !q ||
+    q === "?" ||
+    q === "？" ||
+    q.includes("ช่วย") ||
+    q.includes("เมนู") ||
+    q.includes("help") ||
+    q.includes("คำสั่ง")
+  ) {
+    return qaHelpText();
+  }
+  const result = await answerLineQaWithAi(admin, userText, dateYmd);
+  return result.text;
 }

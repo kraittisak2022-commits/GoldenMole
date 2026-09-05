@@ -1,16 +1,20 @@
 /**
  * LINE Messaging API webhook
  * - เก็บ groupId จากกลุ่ม
- * - แชทส่วนตัว (user): ถาม–ตอบข้อมูล (น้ำมัน / เช็คชื่อ / รถ)
+ * - แชทส่วนตัว (user): ถาม–ตอบด้วย AI (OpenRouter gpt-5.6-luna-pro) จากข้อมูลจริง
  * - รายงานอัตโนมัติส่งเข้ากลุ่มอย่างเดียว (ดู notify-daily-*)
  *
  * Webhook URL: https://<PROJECT_REF>.supabase.co/functions/v1/line-webhook
  * Secrets: LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN,
- *          LINE_ADVANCE_NOTIFY_USER_IDS (U… = คนที่ถามได้, C… = กลุ่มรายงาน)
+ *          LINE_ADVANCE_NOTIFY_USER_IDS (U… = คนที่ถามได้, C… = กลุ่มรายงาน),
+ *          OPENROUTER_API_KEY (ถาม–ตอบ AI), LINE_QA_AI_MODEL (optional)
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
 import { parseQaUserIds } from "../_shared/line_recipients.ts";
-import { answerLineQa } from "../_shared/line_qa_reports.ts";
+import {
+  answerLineQaWithAi,
+  qaHelpText,
+} from "../_shared/line_qa_reports.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -170,12 +174,47 @@ async function lineReply(
   }
 }
 
+async function linePush(
+  userId: string,
+  text: string,
+  token: string,
+): Promise<void> {
+  const resp = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      to: userId,
+      messages: [{ type: "text", text: truncateLineText(text) }],
+    }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    console.error("LINE push failed", resp.status, body);
+  }
+}
+
 type LineEvent = {
   type?: string;
   replyToken?: string;
   source?: { type?: string; userId?: string; groupId?: string; roomId?: string };
   message?: { type?: string; text?: string };
 };
+
+function isHelpOnly(text: string): boolean {
+  const q = text.trim().toLowerCase();
+  return (
+    !q ||
+    q === "?" ||
+    q === "？" ||
+    q.includes("ช่วย") ||
+    q.includes("เมนู") ||
+    q.includes("help") ||
+    q.includes("คำสั่ง")
+  );
+}
 
 async function handleUserQa(
   events: unknown[],
@@ -190,7 +229,6 @@ async function handleUserQa(
   const allowUsers = parseQaUserIds(
     Deno.env.get("LINE_ADVANCE_NOTIFY_USER_IDS") ?? "",
   );
-  // ถ้าไม่มี U… ใน env — ไม่ตอบใคร (กันเปิดกว้าง)
   if (allowUsers.length === 0) {
     console.warn("No U… in LINE_ADVANCE_NOTIFY_USER_IDS — QA disabled");
     return 0;
@@ -202,7 +240,7 @@ async function handleUserQa(
     if (!raw || typeof raw !== "object") continue;
     const ev = raw as LineEvent;
     if (ev.type !== "message") continue;
-    if (ev.source?.type !== "user") continue; // ไม่ตอบในกลุ่ม
+    if (ev.source?.type !== "user") continue;
     if (ev.message?.type !== "text") continue;
     const userId = (ev.source.userId ?? "").trim();
     const replyToken = (ev.replyToken ?? "").trim();
@@ -222,8 +260,20 @@ async function handleUserQa(
       continue;
     }
 
-    const answer = await answerLineQa(client, text);
-    await lineReply(replyToken, answer, accessToken);
+    if (isHelpOnly(text)) {
+      await lineReply(replyToken, qaHelpText(), accessToken);
+      replied++;
+      continue;
+    }
+
+    // AI อาจช้ากว่า replyToken — ตอบรับก่อน แล้ว push คำตอบ
+    await lineReply(
+      replyToken,
+      "กำลังวิเคราะห์ข้อมูลด้วย AI…\nรอสักครู่",
+      accessToken,
+    );
+    const result = await answerLineQaWithAi(client, text);
+    await linePush(userId, result.text, accessToken);
     replied++;
   }
   return replied;
@@ -255,7 +305,7 @@ Deno.serve(async (req) => {
       groups,
       rooms: chats.filter((c) => c.type === "room"),
       all: chats,
-      qa: "แชทส่วนตัวกับ OA แล้วพิมพ์ น้ำมัน / เช็คชื่อ / รถ / สรุป / ช่วย",
+      qa: "แชทส่วนตัวกับ OA — ถามภาษาธรรมชาติ (AI) หรือพิมพ์ ช่วย",
     });
   }
 

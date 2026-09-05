@@ -265,23 +265,30 @@ curl -X POST "https://cocvespahjymyrvmqzcs.supabase.co/functions/v1/notify-daily
   -d '{"force":true,"testPersonalOnly":true}'
 ```
 
-## ถาม–ตอบในแชทส่วนตัว (ไม่เข้ากลุ่ม)
+## ถาม–ตอบในแชทส่วนตัว (AI + ข้อมูลจริง)
 
 Webhook **`line-webhook`** ตอบเฉพาะข้อความจาก **User (แชทส่วนตัวกับ OA)**  
 ผู้มีสิทธิ์ = ค่า `U…` ใน `LINE_ADVANCE_NOTIFY_USER_IDS` (ยังคงใส่ `C…` สำหรับรายงานกลุ่ม)
 
-พิมพ์คำเหล่านี้:
+### AI (OpenRouter)
 
-| คำ | ตอบ |
-|----|-----|
-| `น้ำมัน` / `ถัง` | คงเหลือถังหลัก + สำรอง |
-| `เช็คชื่อ` / `มาทำงาน` | สรุปมาทำงาน / ลางานวันนี้ |
-| `รถ` / `ดรัม` / `แม็คโคร` | สรุปการใช้รถวันนี้ |
-| `สรุป` / `วันนี้` | ทั้งสามอย่าง |
-| `ช่วย` / `เมนู` | รายการคำสั่ง |
+- โมเดลเริ่มต้น: **`openai/gpt-5.6-luna-pro`**
+- Secret: **`OPENROUTER_API_KEY`** (หรือใส่ `openRouterApiKey` ในตั้งค่าแอป → `app_settings`)
+- Optional: `LINE_QA_AI_MODEL` ถ้าต้องการเปลี่ยนโมเดล
+- ระบบดึงข้อมูลน้ำมัน / เช็คชื่อ / รถของวันนั้น แล้วให้ AI สรุป–วิเคราะห์ตามคำถาม
+- ตอบรับทันทีว่ากำลังวิเคราะห์ แล้วส่งคำตอบด้วย push (เพราะ AI อาจช้ากว่า reply token)
+
+ถามภาษาธรรมชาติได้ เช่น:
+
+- วันนี้มีใครลาบ้าง
+- น้ำมันเหลือเท่าไหร่ ควรเติมไหม
+- สรุปการใช้รถดรัมกับแม็คโคร
+
+คำลัด (fallback ถ้าไม่มี API key / AI ล้มเหลว): `น้ำมัน` / `เช็คชื่อ` / `รถ` / `สรุป` / `ช่วย`
 
 ```bash
-npx supabase functions deploy line-webhook
+npx supabase secrets set OPENROUTER_API_KEY=sk-or-v1-...
+npx supabase functions deploy line-webhook --project-ref cocvespahjymyrvmqzcs
 # ตรวจว่า LINE Developers → Webhook URL ชี้มาที่ฟังก์ชันนี้ และ Use webhook = On
 ```
 
