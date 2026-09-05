@@ -159,7 +159,8 @@ export async function notifyAdvanceLineSaved(
     const extra = (import.meta.env.VITE_LINE_ADVANCE_NOTIFY_USER_IDS as string | undefined)?.split(',') || [];
     for (const raw of extra) {
         const u = normalizeLineRecipientId(raw) || normalizeLineUserId(raw);
-        if (u) to.add(u);
+        // รายงานแอดมินเข้ากลุ่ม/ห้องเท่านั้น — ส่วนตัวถาม–ตอบผ่าน webhook
+        if (u && (u.startsWith('C') || u.startsWith('R'))) to.add(u);
     }
     if (to.size === 0) return { kind: 'skipped' };
 
@@ -206,7 +207,8 @@ export async function notifyLeaveLineSaved(
     const extra = (import.meta.env.VITE_LINE_ADVANCE_NOTIFY_USER_IDS as string | undefined)?.split(',') || [];
     for (const raw of extra) {
         const u = normalizeLineRecipientId(raw) || normalizeLineUserId(raw);
-        if (u) to.add(u);
+        // รายงานแอดมินเข้ากลุ่ม/ห้องเท่านั้น — ส่วนตัวถาม–ตอบผ่าน webhook
+        if (u && (u.startsWith('C') || u.startsWith('R'))) to.add(u);
     }
     if (to.size === 0) return { kind: 'skipped' };
 

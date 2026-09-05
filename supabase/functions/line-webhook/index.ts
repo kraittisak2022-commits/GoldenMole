@@ -1,15 +1,16 @@
 /**
- * LINE Messaging API webhook — รับอีเวนต์จากกลุ่มเพื่ออ่าน groupId (C…)
+ * LINE Messaging API webhook
+ * - เก็บ groupId จากกลุ่ม
+ * - แชทส่วนตัว (user): ถาม–ตอบข้อมูล (น้ำมัน / เช็คชื่อ / รถ)
+ * - รายงานอัตโนมัติส่งเข้ากลุ่มอย่างเดียว (ดู notify-daily-*)
  *
- * วาง URL นี้ใน LINE Developers → Messaging API → Webhook URL:
- *   https://<PROJECT_REF>.supabase.co/functions/v1/line-webhook
- *
- * Secrets (แนะนำ):
- *   LINE_CHANNEL_SECRET — จากแท็บ Basic settings (ตรวจลายเซ็น)
- *
- * GET เรียกดู groupId ที่เพิ่งเห็นล่าสุด (ไม่ต้อง auth ในโหมดอ่านอย่างเดียว)
+ * Webhook URL: https://<PROJECT_REF>.supabase.co/functions/v1/line-webhook
+ * Secrets: LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN,
+ *          LINE_ADVANCE_NOTIFY_USER_IDS (U… = คนที่ถามได้, C… = กลุ่มรายงาน)
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
+import { parseQaUserIds } from "../_shared/line_recipients.ts";
+import { answerLineQa } from "../_shared/line_qa_reports.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -66,7 +67,7 @@ function extractChats(events: unknown[]): SeenChat[] {
     if (!ev || typeof ev !== "object") continue;
     const e = ev as {
       type?: string;
-      source?: { type?: string; groupId?: string; roomId?: string; userId?: string };
+      source?: { type?: string; groupId?: string; roomId?: string };
     };
     const src = e.source;
     if (!src) continue;
@@ -96,7 +97,9 @@ function adminClient() {
   return createClient(url, key);
 }
 
-async function loadSeen(client: ReturnType<typeof createClient>): Promise<SeenChat[]> {
+async function loadSeen(
+  client: ReturnType<typeof createClient>,
+): Promise<SeenChat[]> {
   const { data, error } = await client
     .from("app_settings")
     .select("app_defaults")
@@ -106,7 +109,11 @@ async function loadSeen(client: ReturnType<typeof createClient>): Promise<SeenCh
   const defaults = (data.app_defaults ?? {}) as Record<string, unknown>;
   const raw = defaults[SETTINGS_FIELD];
   if (Array.isArray(raw)) return raw as SeenChat[];
-  if (raw && typeof raw === "object" && Array.isArray((raw as { chats?: unknown }).chats)) {
+  if (
+    raw &&
+    typeof raw === "object" &&
+    Array.isArray((raw as { chats?: unknown }).chats)
+  ) {
     return (raw as { chats: SeenChat[] }).chats;
   }
   return [];
@@ -136,12 +143,97 @@ async function saveSeen(
   if (upErr) throw upErr;
 }
 
+function truncateLineText(text: string, max = 4900): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max - 1) + "…";
+}
+
+async function lineReply(
+  replyToken: string,
+  text: string,
+  token: string,
+): Promise<void> {
+  const resp = await fetch("https://api.line.me/v2/bot/message/reply", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      replyToken,
+      messages: [{ type: "text", text: truncateLineText(text) }],
+    }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    console.error("LINE reply failed", resp.status, body);
+  }
+}
+
+type LineEvent = {
+  type?: string;
+  replyToken?: string;
+  source?: { type?: string; userId?: string; groupId?: string; roomId?: string };
+  message?: { type?: string; text?: string };
+};
+
+async function handleUserQa(
+  events: unknown[],
+  client: ReturnType<typeof createClient>,
+): Promise<number> {
+  const accessToken = (Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") ?? "").trim();
+  if (!accessToken) {
+    console.warn("LINE_CHANNEL_ACCESS_TOKEN missing — skip QA replies");
+    return 0;
+  }
+
+  const allowUsers = parseQaUserIds(
+    Deno.env.get("LINE_ADVANCE_NOTIFY_USER_IDS") ?? "",
+  );
+  // ถ้าไม่มี U… ใน env — ไม่ตอบใคร (กันเปิดกว้าง)
+  if (allowUsers.length === 0) {
+    console.warn("No U… in LINE_ADVANCE_NOTIFY_USER_IDS — QA disabled");
+    return 0;
+  }
+  const allow = new Set(allowUsers);
+
+  let replied = 0;
+  for (const raw of events) {
+    if (!raw || typeof raw !== "object") continue;
+    const ev = raw as LineEvent;
+    if (ev.type !== "message") continue;
+    if (ev.source?.type !== "user") continue; // ไม่ตอบในกลุ่ม
+    if (ev.message?.type !== "text") continue;
+    const userId = (ev.source.userId ?? "").trim();
+    const replyToken = (ev.replyToken ?? "").trim();
+    const text = (ev.message.text ?? "").trim();
+    if (!userId || !replyToken || !text) continue;
+
+    const canonical = userId.match(/^U([a-f0-9]{32})$/i)
+      ? `U${userId.slice(1).toLowerCase()}`
+      : "";
+    if (!canonical || !allow.has(canonical)) {
+      await lineReply(
+        replyToken,
+        "บัญชีนี้ยังไม่มีสิทธิ์ถามข้อมูล GoldenMole\nให้แอดมินใส่ LINE User ID (U…) ใน LINE_ADVANCE_NOTIFY_USER_IDS",
+        accessToken,
+      );
+      replied++;
+      continue;
+    }
+
+    const answer = await answerLineQa(client, text);
+    await lineReply(replyToken, answer, accessToken);
+    replied++;
+  }
+  return replied;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // อ่าน groupId ที่เคยเห็น — เปิดในเบราว์เซอร์ได้
   if (req.method === "GET") {
     const client = adminClient();
     if (!client) {
@@ -158,16 +250,20 @@ Deno.serve(async (req) => {
       ok: true,
       hint_th:
         groups.length > 0
-          ? "คัดลอก id ที่ขึ้นต้นด้วย C ไปใส่ LINE_ADVANCE_NOTIFY_USER_IDS"
+          ? "คัดลอก id ที่ขึ้นต้นด้วย C ไปใส่ LINE_ADVANCE_NOTIFY_USER_IDS (รายงานเข้ากลุ่ม) และใส่ U… สำหรับถาม–ตอบส่วนตัว"
           : "ยังไม่มี groupId — เชิญบอทเข้ากลุ่ม แล้วพิมพ์ข้อความในกลุ่ม 1 ครั้ง แล้วรีเฟรชหน้านี้",
       groups,
       rooms: chats.filter((c) => c.type === "room"),
       all: chats,
+      qa: "แชทส่วนตัวกับ OA แล้วพิมพ์ น้ำมัน / เช็คชื่อ / รถ / สรุป / ช่วย",
     });
   }
 
   if (req.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
+    return new Response("Method Not Allowed", {
+      status: 405,
+      headers: corsHeaders,
+    });
   }
 
   const rawBody = await req.text();
@@ -177,7 +273,11 @@ Deno.serve(async (req) => {
     const expected = await hmacSha256Base64(channelSecret, rawBody);
     if (!secureCompare(signature, expected)) {
       return jsonResponse(
-        { ok: false, error: "invalid signature", hint_th: "ลายเซ็น LINE ไม่ตรง — ตรวจ LINE_CHANNEL_SECRET" },
+        {
+          ok: false,
+          error: "invalid signature",
+          hint_th: "ลายเซ็น LINE ไม่ตรง — ตรวจ LINE_CHANNEL_SECRET",
+        },
         401,
       );
     }
@@ -190,9 +290,12 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: "invalid json" }, 400);
   }
 
-  const found = extractChats(Array.isArray(payload.events) ? payload.events : []);
+  const events = Array.isArray(payload.events) ? payload.events : [];
+  const found = extractChats(events);
   for (const c of found) {
-    console.log(`LINE webhook chat: type=${c.type} id=${c.id} event=${c.eventType}`);
+    console.log(
+      `LINE webhook chat: type=${c.type} id=${c.id} event=${c.eventType}`,
+    );
   }
 
   const client = adminClient();
@@ -208,10 +311,19 @@ Deno.serve(async (req) => {
     }
   }
 
-  // LINE ต้องการ 200 ภายในเวลาอันสั้น
+  let qaReplies = 0;
+  if (client) {
+    try {
+      qaReplies = await handleUserQa(events, client);
+    } catch (e) {
+      console.error("handleUserQa failed", e);
+    }
+  }
+
   return jsonResponse({
     ok: true,
-    received: Array.isArray(payload.events) ? payload.events.length : 0,
+    received: events.length,
     chats: found,
+    qaReplies,
   });
 });

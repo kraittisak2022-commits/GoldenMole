@@ -77,7 +77,10 @@ Future<List<String>> _adminLineRecipientIds() async {
   final extraRaw = dotenv.env['LINE_ADVANCE_NOTIFY_USER_IDS'] ?? '';
   for (final part in extraRaw.split(',')) {
     final u = normalizeLineRecipientId(part);
-    if (u != null) to.add(u);
+    // รายงานถึงแอดมินส่งเข้ากลุ่ม/ห้องเท่านั้น — แชทส่วนตัวใช้ถาม–ตอบผ่าน webhook
+    if (u != null && (u.startsWith('C') || u.startsWith('R'))) {
+      to.add(u);
+    }
   }
   return to.toList();
 }

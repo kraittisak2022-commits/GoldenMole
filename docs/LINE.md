@@ -178,6 +178,9 @@ npx supabase secrets set LINE_ADVANCE_NOTIFY_USER_IDS=U…,C…
 
 ## สรุปการใช้รถอัตโนมัติ 09:00 (ดรัม + แม็คโคร)
 
+รายงานอัตโนมัติและสำเนาแจ้งเตือนถึงแอดมินส่งเข้า **กลุ่ม/ห้อง (C… / R…) เท่านั้น**  
+แชทส่วนตัว (U…) ใช้ถาม–ตอบกับ OA ผ่าน webhook — ดูหัวข้อด้านล่าง
+
 Edge **`notify-daily-vehicle-usage`** อ่านบันทึกวันนี้แล้วส่งข้อความรูปแบบ:
 
 ```text
@@ -260,6 +263,26 @@ curl -X POST "https://cocvespahjymyrvmqzcs.supabase.co/functions/v1/notify-daily
   -H "Content-Type: application/json" \
   -H "x-cm-notify-advance-secret: <secret>" \
   -d '{"force":true,"testPersonalOnly":true}'
+```
+
+## ถาม–ตอบในแชทส่วนตัว (ไม่เข้ากลุ่ม)
+
+Webhook **`line-webhook`** ตอบเฉพาะข้อความจาก **User (แชทส่วนตัวกับ OA)**  
+ผู้มีสิทธิ์ = ค่า `U…` ใน `LINE_ADVANCE_NOTIFY_USER_IDS` (ยังคงใส่ `C…` สำหรับรายงานกลุ่ม)
+
+พิมพ์คำเหล่านี้:
+
+| คำ | ตอบ |
+|----|-----|
+| `น้ำมัน` / `ถัง` | คงเหลือถังหลัก + สำรอง |
+| `เช็คชื่อ` / `มาทำงาน` | สรุปมาทำงาน / ลางานวันนี้ |
+| `รถ` / `ดรัม` / `แม็คโคร` | สรุปการใช้รถวันนี้ |
+| `สรุป` / `วันนี้` | ทั้งสามอย่าง |
+| `ช่วย` / `เมนู` | รายการคำสั่ง |
+
+```bash
+npx supabase functions deploy line-webhook
+# ตรวจว่า LINE Developers → Webhook URL ชี้มาที่ฟังก์ชันนี้ และ Use webhook = On
 ```
 
 ### Migration คอลัมน์พนักงาน

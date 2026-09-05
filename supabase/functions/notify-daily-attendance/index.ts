@@ -4,8 +4,13 @@
  *
  * Auth: header `x-cm-notify-advance-secret` = NOTIFY_ADVANCE_INVOKER_SECRET
  * Body (optional): { "date": "YYYY-MM-DD", "force": true, "testPersonalOnly": true }
+ *   รายงานปกติส่งเข้ากลุ่ม (C…/R…) เท่านั้น
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
+import {
+  parseGroupReportRecipientIds,
+  parseQaUserIds,
+} from "../_shared/line_recipients.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -66,24 +71,9 @@ function formatDateThaiBE(ymd: string): string {
   return `${d} ${TH_MONTHS[m - 1]} ${y + 543}`;
 }
 
-function canonicalLineRecipientId(raw: string): string | null {
-  const s = raw.trim();
-  const m = s.match(/^([UCR])([a-f0-9]{32})$/i);
-  if (!m) return null;
-  return `${m[1].toUpperCase()}${m[2].toLowerCase()}`;
-}
-
 function parseRecipientIds(raw: string, personalOnly: boolean): string[] {
-  const all = [
-    ...new Set(
-      raw
-        .split(/[,;\s]+/)
-        .map((x) => canonicalLineRecipientId(x))
-        .filter((x): x is string => !!x),
-    ),
-  ];
-  if (personalOnly) return all.filter((id) => id.startsWith("U"));
-  return all;
+  if (personalOnly) return parseQaUserIds(raw);
+  return parseGroupReportRecipientIds(raw);
 }
 
 function empIdsFromRow(raw: unknown): string[] {
@@ -349,7 +339,7 @@ Deno.serve(async (req) => {
       code: "no_recipients",
       message: testPersonalOnly
         ? "No personal U… recipients"
-        : "LINE_ADVANCE_NOTIFY_USER_IDS empty",
+        : "ไม่มี Group/Room ID ใน LINE_ADVANCE_NOTIFY_USER_IDS (รายงานส่งเข้ากลุ่มเท่านั้น)",
       text,
     });
   }
