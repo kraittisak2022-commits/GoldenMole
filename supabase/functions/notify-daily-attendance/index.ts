@@ -18,6 +18,7 @@ import {
 import {
   parseGroupReportRecipientIds,
   parseQaUserIds,
+  resolveLineAdvanceNotifyIdsCsv,
 } from "../_shared/line_recipients.ts";
 
 const DIGEST_KEY = "lineDailyAttendanceDigest";
@@ -364,7 +365,7 @@ Deno.serve(async (req) => {
   );
 
   const recipients = parseRecipientIds(
-    Deno.env.get("LINE_ADVANCE_NOTIFY_USER_IDS") ?? "",
+    await resolveLineAdvanceNotifyIdsCsv(admin),
     testPersonalOnly,
   );
   if (recipients.length === 0) {

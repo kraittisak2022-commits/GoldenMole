@@ -99,6 +99,11 @@ npx supabase secrets set LINE_CHANNEL_SECRET=your_channel_secret
 
 ### 4) ใส่ Group ID ในระบบ
 
+**แนะนำ (เว็บแอป):** ตั้งค่า → **AI LINE กลุ่ม** — เพิ่ม/ลบ Group ID (`C…`) หรือ User ID (`U…`)  
+ค่าจะบันทึกใน `app_settings.app_defaults.lineAdvanceNotifyUserIds` แล้ว Edge อ่านจากที่นี่ก่อน (ถ้ายังว่างจึงใช้ secret `LINE_ADVANCE_NOTIFY_USER_IDS`)
+
+ทางเลือกเดิม — ใส่ใน env / Edge secret:
+
 ใน `mobile-flutter/.env` (และเว็บ `.env` ถ้าใช้):
 
 ```env

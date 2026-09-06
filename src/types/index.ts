@@ -286,6 +286,21 @@ export interface AppDefaults {
         lastBackupStatus?: 'success' | 'error';
         lastBackupError?: string;
     };
+    /**
+     * ผู้รับ LINE แจ้งเตือน / รายงาน / QA (U… C… R…)
+     * ใช้แทน Edge secret LINE_ADVANCE_NOTIFY_USER_IDS เมื่อมีค่า — Edge อ่านจากที่นี่ก่อน
+     */
+    lineAdvanceNotifyUserIds?: string[];
+    /** Group/User ที่ webhook เจอ (เขียนโดย Edge line-webhook) */
+    lineWebhookSeenChats?: {
+        chats?: Array<{
+            id: string;
+            type: 'group' | 'user' | 'room';
+            at?: string;
+            eventType?: string;
+        }>;
+        updatedAt?: string;
+    };
 }
 
 export interface AppSettings {

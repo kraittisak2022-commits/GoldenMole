@@ -6,11 +6,12 @@
  *
  * Webhook URL: https://<PROJECT_REF>.supabase.co/functions/v1/line-webhook
  * Secrets: LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN,
- *          LINE_ADVANCE_NOTIFY_USER_IDS (U… = คนที่ถามได้, C… = กลุ่มรายงาน),
+ *          LINE_ADVANCE_NOTIFY_USER_IDS หรือ app_defaults.lineAdvanceNotifyUserIds
+ *          (U… = คนที่ถามได้, C… = กลุ่มรายงาน),
  *          OPENROUTER_API_KEY (ถาม–ตอบ AI + ดึง DB), LINE_QA_AI_MODEL (optional)
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
-import { parseQaUserIds } from "../_shared/line_recipients.ts";
+import { parseQaUserIds, resolveLineAdvanceNotifyIdsCsv } from "../_shared/line_recipients.ts";
 import {
   answerLineQaWithAi,
   clearChatHistory,
@@ -266,7 +267,7 @@ async function handleUserQa(
   }
 
   const allowUsers = parseQaUserIds(
-    Deno.env.get("LINE_ADVANCE_NOTIFY_USER_IDS") ?? "",
+    await resolveLineAdvanceNotifyIdsCsv(client),
   );
   if (allowUsers.length === 0) {
     console.warn("No U… in LINE_ADVANCE_NOTIFY_USER_IDS — QA disabled");

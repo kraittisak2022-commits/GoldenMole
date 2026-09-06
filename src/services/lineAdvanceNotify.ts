@@ -1,7 +1,8 @@
-import type { Employee, Transaction } from '../types';
+import type { Employee, Transaction, AppSettings } from '../types';
 import { hasSupabaseConfig } from '../lib/supabase';
 import { decodeAdvanceGm } from '../utils/advanceGmWorkDetails';
-import { invokeNotifyAdvanceLine, normalizeLineRecipientId, normalizeLineUserId } from '../utils/lineMessaging';
+import { invokeNotifyAdvanceLine } from '../utils/lineMessaging';
+import { resolveLineAdvanceNotifyRecipientIds } from '../utils/lineAdvanceNotifyRecipients';
 
 function formatBahtTh(value: number): string {
     const isInt = Math.abs(value - Math.round(value)) < 1e-9;
@@ -143,26 +144,22 @@ export type AdvanceLineNotifyResult =
 export async function notifyAdvanceLineSaved(
     tx: Transaction,
     employees: Employee[],
+    settings?: AppSettings | null,
 ): Promise<AdvanceLineNotifyResult> {
     if (!hasSupabaseConfig) return { kind: 'skipped' };
     if (tx.category !== 'Labor' || (tx.subCategory || '').toLowerCase() !== 'advance') {
         return { kind: 'skipped' };
     }
 
-    const to = new Set<string>();
     // แจ้งเฉพาะกลุ่ม LINE (ไม่ส่งแชทส่วนตัวพนักงาน)
-    const extra = (import.meta.env.VITE_LINE_ADVANCE_NOTIFY_USER_IDS as string | undefined)?.split(',') || [];
-    for (const raw of extra) {
-        const u = normalizeLineRecipientId(raw) || normalizeLineUserId(raw);
-        if (u && (u.startsWith('C') || u.startsWith('R'))) to.add(u);
-    }
-    if (to.size === 0) return { kind: 'skipped' };
+    const to = resolveLineAdvanceNotifyRecipientIds(settings, { groupsOnly: true });
+    if (to.length === 0) return { kind: 'skipped' };
 
     const text = buildAdvanceLineText(tx, employees);
     try {
         const { data, error } = await invokeNotifyAdvanceLine({
             text,
-            to: [...to],
+            to,
         });
         if (error) {
             console.warn('notifyAdvanceLineSaved:', error.message);
@@ -186,25 +183,21 @@ export async function notifyAdvanceLineSaved(
 export async function notifyLeaveLineSaved(
     tx: Transaction,
     employees: Employee[],
+    settings?: AppSettings | null,
 ): Promise<AdvanceLineNotifyResult> {
     if (!hasSupabaseConfig) return { kind: 'skipped' };
     const cat = (tx.category || '').trim();
     if (cat !== 'Leave') return { kind: 'skipped' };
 
-    const to = new Set<string>();
     // แจ้งเฉพาะกลุ่ม LINE (ไม่ส่งแชทส่วนตัวพนักงาน)
-    const extra = (import.meta.env.VITE_LINE_ADVANCE_NOTIFY_USER_IDS as string | undefined)?.split(',') || [];
-    for (const raw of extra) {
-        const u = normalizeLineRecipientId(raw) || normalizeLineUserId(raw);
-        if (u && (u.startsWith('C') || u.startsWith('R'))) to.add(u);
-    }
-    if (to.size === 0) return { kind: 'skipped' };
+    const to = resolveLineAdvanceNotifyRecipientIds(settings, { groupsOnly: true });
+    if (to.length === 0) return { kind: 'skipped' };
 
     const text = buildLeaveLineText(tx, employees);
     try {
         const { data, error } = await invokeNotifyAdvanceLine({
             text,
-            to: [...to],
+            to,
         });
         if (error) {
             console.warn('notifyLeaveLineSaved:', error.message);

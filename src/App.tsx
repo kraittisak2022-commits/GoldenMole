@@ -1281,10 +1281,10 @@ function App() {
         }
 
         if (txToSave.category === 'Labor' && (txToSave.subCategory || '').toLowerCase() === 'advance') {
-            void notifyAdvanceLineSaved(txToSave, employees);
+            void notifyAdvanceLineSaved(txToSave, employees, settings);
         }
         if ((txToSave.category || '').trim() === 'Leave') {
-            void notifyLeaveLineSaved(txToSave, employees);
+            void notifyLeaveLineSaved(txToSave, employees, settings);
         }
 
         // Audit log - create transaction (DailyLog / รายการอื่นๆ)

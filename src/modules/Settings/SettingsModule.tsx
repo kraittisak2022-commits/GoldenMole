@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Server, ShieldAlert, Droplets, Building2, SlidersHorizontal, Info, UserCircle, Lock, Sun, Moon, Monitor, Sparkles, Upload, CalendarClock, Smartphone } from 'lucide-react';
+import { Plus, Trash2, Pencil, Check, X, RefreshCw, Globe, Wifi, Database, Server, ShieldAlert, Droplets, Building2, SlidersHorizontal, Info, UserCircle, Lock, Sun, Moon, Monitor, Sparkles, Upload, CalendarClock, Smartphone, MessageSquare, Bot } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
@@ -22,6 +22,12 @@ import {
     mobileErrorHasContext,
     mobileErrorSourceLabel,
 } from '../../utils/mobileErrorReportDisplay';
+import {
+    lineIdKindLabel,
+    normalizeLineIdList,
+    seenChatsFromSettings,
+} from '../../utils/lineAdvanceNotifyRecipients';
+import { normalizeLineRecipientId, normalizeLineUserId } from '../../utils/lineMessaging';
 
 interface SettingsModuleProps {
     settings: AppSettings;
@@ -55,6 +61,7 @@ const TAB_HELP: Record<string, string> = {
     versionNotes: 'สรุปการเปลี่ยนแปลงเวอร์ชันแบบสั้นๆ เพื่อแสดงในหน้าโลโก้และตั้งค่า',
     laborWorkCategories: 'จัดการประเภทงานใน Daily Wizard (บันทึกค่าแรง / OT > ประเภทงาน)',
     aiLogs: 'ประวัติการเรียกใช้งาน AI จากเมนูวางแผนงาน รวมผลลัพธ์สำเร็จ/ผิดพลาด',
+    aiLineGroup: 'จัดการผู้รับ LINE สำหรับรายงานอัตโนมัติ / แจ้งเตือนเบิก-ลา / AI ถาม–ตอบ — บันทึกในตั้งค่าแล้ว Edge อ่านแทน secret LINE_ADVANCE_NOTIFY_USER_IDS',
     mobileAndroid: 'รายงานข้อผิดพลาดและบั๊กจากแอป Android — ส่งจากแอปเมื่อเกิด error หรือรายงานด้วยตนเองจากตั้งค่าแอป · สถานะ: ยังไม่อ่าน / อ่านแล้ว / แก้ไขเรียบร้อย',
     mobileIOS: 'รายงานข้อผิดพลาด/แอปค้าง จากแอป iOS — ส่งอัตโนมัติเมื่อแอปค้าง (hang) แครช (crash) หรือโหลดข้อมูลไม่สำเร็จ · สถานะ: ยังไม่อ่าน / อ่านแล้ว / แก้ไขเรียบร้อย',
 };
@@ -68,8 +75,10 @@ const DIAG_TABLES = ['employees', 'transactions', 'land_projects', 'app_settings
 
 const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes = [], currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
     const defaultDriveClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
-    const [activeTab, setActiveTab] = useState('general');
-    const [newItem, setNewItem] = useState('');
+    const [newLineRecipientId, setNewLineRecipientId] = useState('');
+    const [lineRecipientMsg, setLineRecipientMsg] = useState<string | null>(null);
+    const [lineWebhookLoading, setLineWebhookLoading] = useState(false);
+    const [lineWebhookHint, setLineWebhookHint] = useState<string | null>(null);
     const [newCarName, setNewCarName] = useState('');
     const [newCarDriverId, setNewCarDriverId] = useState('');
     const [editingCar, setEditingCar] = useState<{ index: number; name: string; driverId: string } | null>(null);
@@ -791,6 +800,82 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
             setEditingLaborCategoryLabel('');
         }
     };
+
+    const lineNotifyIds = normalizeLineIdList(settings.appDefaults?.lineAdvanceNotifyUserIds || []);
+    const lineSeenChats = seenChatsFromSettings(settings);
+
+    const persistLineNotifyIds = (ids: string[]) => {
+        const next = normalizeLineIdList(ids);
+        setSettings((prev) => ({
+            ...prev,
+            appDefaults: {
+                ...(prev.appDefaults || {}),
+                lineAdvanceNotifyUserIds: next,
+            },
+        }));
+        setLineRecipientMsg(`บันทึกแล้ว ${next.length} รายการ (Edge จะอ่านจากตั้งค่านี้ก่อน secret)`);
+        window.setTimeout(() => setLineRecipientMsg(null), 3500);
+    };
+
+    const addLineNotifyId = (raw: string) => {
+        const id = normalizeLineRecipientId(raw) || normalizeLineUserId(raw);
+        if (!id) {
+            setLineRecipientMsg('รูปแบบไม่ถูกต้อง — ใช้ U/C/R ตามด้วย hex 32 ตัว');
+            return;
+        }
+        if (lineNotifyIds.includes(id)) {
+            setLineRecipientMsg('มี ID นี้อยู่แล้ว');
+            return;
+        }
+        persistLineNotifyIds([...lineNotifyIds, id]);
+        setNewLineRecipientId('');
+    };
+
+    const removeLineNotifyId = (id: string) => {
+        if (!confirm(`ลบ ${id} ออกจากรายชื่อผู้รับ?`)) return;
+        persistLineNotifyIds(lineNotifyIds.filter((x) => x !== id));
+    };
+
+    const refreshLineWebhookSeen = async () => {
+        setLineWebhookLoading(true);
+        setLineWebhookHint(null);
+        try {
+            const base = String(import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+            if (!base) throw new Error('ไม่มี VITE_SUPABASE_URL');
+            const res = await fetch(`${base}/functions/v1/line-webhook`);
+            const json = (await res.json()) as {
+                ok?: boolean;
+                hint_th?: string;
+                groups?: Array<{ id: string; type?: string; at?: string }>;
+                users?: Array<{ id: string; type?: string; at?: string }>;
+                rooms?: Array<{ id: string; type?: string; at?: string }>;
+            };
+            if (!res.ok || json.ok === false) {
+                throw new Error(json.hint_th || `HTTP ${res.status}`);
+            }
+            const chats = [
+                ...(json.groups || []).map((c) => ({ ...c, type: 'group' as const })),
+                ...(json.users || []).map((c) => ({ ...c, type: 'user' as const })),
+                ...(json.rooms || []).map((c) => ({ ...c, type: 'room' as const })),
+            ];
+            setSettings((prev) => ({
+                ...prev,
+                appDefaults: {
+                    ...(prev.appDefaults || {}),
+                    lineWebhookSeenChats: {
+                        chats,
+                        updatedAt: new Date().toISOString(),
+                    },
+                },
+            }));
+            setLineWebhookHint(json.hint_th || `พบ ${chats.length} รายการจาก webhook`);
+        } catch (e) {
+            setLineWebhookHint(e instanceof Error ? e.message : String(e));
+        } finally {
+            setLineWebhookLoading(false);
+        }
+    };
+
     const dedupeLaborCategories = () => {
         const current = settings.appDefaults?.laborWorkCategories || [];
         const seen = new Set<string>();
@@ -1053,6 +1138,7 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
         { key: 'defaults', l: 'ค่าเริ่มต้นระบบ' },
         { key: 'backupSystem', l: 'ระบบสำรองข้อมูล' },
         { key: 'aiLogs', l: 'AI Logs' },
+        { key: 'aiLineGroup', l: 'AI LINE กลุ่ม' },
         { key: 'laborWorkCategories', l: 'ประเภทงานค่าแรง' },
         { key: 'versionNotes', l: 'เวอร์ชันระบบ' },
         { key: 'systemStatus', l: 'สถานะระบบ' },
@@ -1403,6 +1489,124 @@ const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes
                                 ))}
                                 {(settings.appDefaults?.aiUsageLogs || []).length === 0 && (
                                     <p className="text-sm text-slate-400">ยังไม่มีประวัติการใช้งาน AI</p>
+                                )}
+                            </div>
+                        </div>
+                    ) : activeTab === 'aiLineGroup' ? (
+                        <div className="space-y-5 max-w-2xl">
+                            <div className="flex items-start gap-3">
+                                <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                                    <Bot size={22} />
+                                </div>
+                                <div className="min-w-0">
+                                    <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100">AI LINE กลุ่ม</h3>
+                                    <p className="text-sm text-slate-500 mt-1">{TAB_HELP.aiLineGroup}</p>
+                                    <p className="text-xs text-slate-400 mt-1">
+                                        ฟิลด์ <code className="bg-slate-100 dark:bg-white/10 px-1 rounded">lineAdvanceNotifyUserIds</code>
+                                        {' '}≈ Edge <code className="bg-slate-100 dark:bg-white/10 px-1 rounded">LINE_ADVANCE_NOTIFY_USER_IDS</code>
+                                        {' '}(C…/R… รายงานกลุ่ม · U… AI ถาม–ตอบ)
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-slate-200 dark:border-white/10 p-4 space-y-3">
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                    <Input
+                                        placeholder="วาง Group/User ID เช่น Cxxxxxxxx… หรือ Uxxxxxxxx…"
+                                        value={newLineRecipientId}
+                                        onChange={(e: any) => setNewLineRecipientId(e.target.value)}
+                                        className="flex-1 font-mono text-sm"
+                                    />
+                                    <Button
+                                        type="button"
+                                        onClick={() => addLineNotifyId(newLineRecipientId)}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+                                    >
+                                        <Plus size={16} className="mr-1" /> เพิ่ม
+                                    </Button>
+                                </div>
+                                {lineRecipientMsg ? (
+                                    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{lineRecipientMsg}</p>
+                                ) : null}
+                                {lineNotifyIds.length === 0 ? (
+                                    <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                        ยังไม่มีรายชื่อ — Edge จะใช้ secret LINE_ADVANCE_NOTIFY_USER_IDS (ถ้ามี) จนกว่าจะเพิ่มที่นี่
+                                    </p>
+                                ) : (
+                                    <ul className="space-y-2">
+                                        {lineNotifyIds.map((id) => (
+                                            <li
+                                                key={id}
+                                                className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-white/[0.03] px-3 py-2.5"
+                                            >
+                                                <div className="min-w-0">
+                                                    <span className="inline-flex text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-slate-200/80 text-slate-700 dark:bg-white/10 dark:text-slate-200 mr-2">
+                                                        {lineIdKindLabel(id)}
+                                                    </span>
+                                                    <code className="text-xs sm:text-sm font-mono text-slate-800 dark:text-slate-100 break-all">{id}</code>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeLineNotifyId(id)}
+                                                    className="shrink-0 p-2 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                                                    aria-label={`ลบ ${id}`}
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+
+                            <div className="rounded-xl border border-cyan-200/70 bg-cyan-50/40 dark:border-cyan-500/20 dark:bg-cyan-500/5 p-4 space-y-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-100">
+                                        <MessageSquare size={18} className="text-cyan-700" />
+                                        กลุ่ม/ผู้ใช้ที่ webhook เจอ
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => void refreshLineWebhookSeen()}
+                                        disabled={lineWebhookLoading}
+                                        className="text-sm"
+                                    >
+                                        <RefreshCw size={14} className={`mr-1.5 ${lineWebhookLoading ? 'animate-spin' : ''}`} />
+                                        ดึงจาก line-webhook
+                                    </Button>
+                                </div>
+                                {lineWebhookHint ? <p className="text-xs text-slate-600 dark:text-slate-300">{lineWebhookHint}</p> : null}
+                                {lineSeenChats.length === 0 ? (
+                                    <p className="text-sm text-slate-500">
+                                        ยังไม่มีประวัติ — เชิญบอทเข้ากลุ่มแล้วให้พิมพ์ในกลุ่ม 1 ครั้ง จากนั้นกดดึงจาก webhook
+                                    </p>
+                                ) : (
+                                    <ul className="space-y-2">
+                                        {lineSeenChats.map((chat) => {
+                                            const already = lineNotifyIds.includes(chat.id);
+                                            return (
+                                                <li
+                                                    key={`${chat.type}-${chat.id}`}
+                                                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200/80 dark:border-white/10 bg-white/80 dark:bg-slate-900/40 px-3 py-2"
+                                                >
+                                                    <div className="min-w-0">
+                                                        <span className="text-[10px] font-bold uppercase text-cyan-800 dark:text-cyan-300 mr-2">{chat.type}</span>
+                                                        <code className="text-xs font-mono break-all text-slate-700 dark:text-slate-200">{chat.id}</code>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        disabled={already}
+                                                        onClick={() => addLineNotifyId(chat.id)}
+                                                        className="text-xs"
+                                                    >
+                                                        {already ? 'เพิ่มแล้ว' : 'เพิ่มเข้าผู้รับ'}
+                                                    </Button>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
                                 )}
                             </div>
                         </div>
