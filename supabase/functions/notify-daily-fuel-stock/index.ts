@@ -17,8 +17,9 @@ import {
 import {
   digestSendDecision,
   fingerprintParts,
+  onlyNewKeys,
   readDigestState,
-  withUpdatePrefix,
+  unionSentKeys,
   writeDigestState,
 } from "../_shared/line_hourly_digest.ts";
 import {
@@ -189,7 +190,7 @@ Deno.serve(async (req) => {
     const { data, error } = await admin
       .from("transactions")
       .select(
-        "date,category,type,sub_category,quantity,unit,fuel_type,fuel_tank,fuel_movement,vehicle_id,vehicle_name,work_type",
+        "id,date,category,type,sub_category,quantity,unit,fuel_type,fuel_tank,fuel_movement,vehicle_id,vehicle_name,work_type,created_at",
       )
       .eq("category", "Fuel")
       .gte("date", FUEL_STOCK_CUTOVER_YMD)
@@ -216,11 +217,11 @@ Deno.serve(async (req) => {
     asOfYmd: dateYmd,
   });
 
-  const txsToday = txs.filter((t) => String(t.date ?? "").slice(0, 10) === dateYmd)
-    .length;
+  const txsTodayRows = (txs as Array<FuelTx & { id?: string; created_at?: string }>)
+    .filter((t) => String(t.date ?? "").slice(0, 10) === dateYmd);
+  const txsToday = txsTodayRows.length;
   const mainTotal = bal.mainDiesel + bal.mainBenzine;
   const reserveTotal = bal.reserveDiesel + bal.reserveBenzine;
-  // ยังไม่มีรายการน้ำมันวันนี้ และยอดรวมเป็น 0 → รอรอบถัดไป
   if (!force && !testPersonalOnly && txsToday === 0 && mainTotal === 0 &&
     reserveTotal === 0) {
     return jsonResponse({
@@ -234,14 +235,26 @@ Deno.serve(async (req) => {
     });
   }
 
+  const todayKeys = txsTodayRows.map((t) => {
+    const id = String(t.id ?? "").trim();
+    if (id) return `fuel:${id}`;
+    return `fuel:${t.created_at}|${t.sub_category}|${t.quantity}|${t.fuel_tank}`;
+  });
   const fingerprint = fingerprintParts([
     dateYmd,
     Math.round(bal.mainDiesel * 100),
     Math.round(bal.reserveDiesel * 100),
     Math.round(bal.mainBenzine * 100),
     Math.round(bal.reserveBenzine * 100),
-    txsToday,
+    ...[...todayKeys].sort(),
   ]);
+
+  const forceFull = force || testPersonalOnly;
+  const newKeys = forceFull
+    ? todayKeys
+    : onlyNewKeys(todayKeys, saved, dateYmd);
+  // รอบแรกของวัน (ยังไม่เคยส่ง) — ส่งยอดคงเหลือเต็ม
+  const isFirstOfDay = !(saved && saved.ymd === dateYmd);
 
   const decision = digestSendDecision({
     force,
@@ -249,6 +262,7 @@ Deno.serve(async (req) => {
     dateYmd,
     fingerprint,
     saved,
+    newItemCount: isFirstOfDay ? 1 : newKeys.length,
   });
   if (decision === "skip_unchanged") {
     return jsonResponse({
@@ -258,15 +272,46 @@ Deno.serve(async (req) => {
       date: dateYmd,
       fingerprint,
       balance: bal,
-      hint_th: "ยอดน้ำมันยังไม่เปลี่ยนจากรอบที่ส่งแล้ว — รออัปเดตเมื่อมียอดใหม่",
+      hint_th: "ไม่มีรายการน้ำมันใหม่ — ไม่ส่งซ้ำยอดเดิม",
     });
   }
 
   const isUpdate = decision === "send_update";
-  const text = withUpdatePrefix(
-    buildDailyFuelStockLineText(dateYmd, bal, formatDateThaiBE),
-    isUpdate,
-  );
+  let text: string;
+  if (!isUpdate || forceFull || isFirstOfDay) {
+    text = buildDailyFuelStockLineText(dateYmd, bal, formatDateThaiBE);
+  } else {
+    // อัปเดต: ส่งเฉพาะรายการใหม่ + ยอดล่าสุดสั้นๆ
+    const newKeySet = new Set(newKeys);
+    const newRows = txsTodayRows.filter((t, i) => newKeySet.has(todayKeys[i]));
+    const lines = [
+      `อัปเดตน้ำมัน ${formatDateThaiBE(dateYmd)} (รายการใหม่)`,
+      "",
+    ];
+    if (newRows.length === 0) {
+      return jsonResponse({
+        ok: true,
+        skipped: true,
+        code: "unchanged",
+        date: dateYmd,
+        hint_th: "ไม่มีรายการน้ำมันใหม่ — ไม่ส่งซ้ำ",
+      });
+    }
+    for (const r of newRows) {
+      const qty = Number(r.quantity);
+      const q = Number.isFinite(qty) ? `${qty} ${r.unit || "L"}` : "—";
+      lines.push(
+        `${r.fuel_movement || r.sub_category || "—"} · ${r.fuel_type || "—"} · ถัง ${r.fuel_tank || "—"} · ${q}` +
+          (r.vehicle_name ? ` · ${r.vehicle_name}` : ""),
+      );
+    }
+    lines.push(
+      "",
+      `ยอดล่าสุด ถังหลัก : ${Math.round(mainTotal).toLocaleString("th-TH")} ลิตร`,
+      `ถังสำรอง : ${Math.round(reserveTotal).toLocaleString("th-TH")} ลิตร`,
+    );
+    text = lines.join("\n").trim();
+  }
 
   const recipients = parseRecipientIds(
     await resolveLineAdvanceNotifyIdsCsv(admin),
@@ -308,7 +353,11 @@ Deno.serve(async (req) => {
   }
 
   if (!testPersonalOnly) {
-    writeDigestState(defaults, DIGEST_KEY, { ymd: dateYmd, fingerprint });
+    writeDigestState(defaults, DIGEST_KEY, {
+      ymd: dateYmd,
+      fingerprint,
+      items: unionSentKeys(saved, dateYmd, forceFull ? todayKeys : newKeys),
+    });
     delete defaults.lineDailyFuelStockLastYmd;
     await admin
       .from("app_settings")
@@ -324,6 +373,7 @@ Deno.serve(async (req) => {
     update: isUpdate,
     fingerprint,
     balance: bal,
+    newFuelRows: isUpdate && !forceFull ? newKeys.length : txsToday,
     recipients: recipients.length,
     testPersonalOnly,
     notify: notifyJson,

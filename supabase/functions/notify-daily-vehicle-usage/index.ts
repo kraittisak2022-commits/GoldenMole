@@ -1,18 +1,16 @@
-/**
+﻿/**
  * สรุปการใช้รถดรัม + แม็คโคร → LINE
  * ครอนชั่วโมงละครั้ง 09:00–18:00 Asia/Bangkok
  * - ยังไม่มีข้อมูล (0) → ไม่ส่ง รอรอบถัดไป
- * - มีข้อมูลใหม่/เปลี่ยน → ส่ง (รอบถัดไปติดป้ายอัปเดต)
- *
- * Auth: header `x-cm-notify-advance-secret` = NOTIFY_ADVANCE_INVOKER_SECRET
- * Body: { "date": "YYYY-MM-DD", "force": true, "testPersonalOnly": true }
+ * - มีข้อมูลใหม่ → ส่งเฉพาะรายการใหม่ (ไม่ส่งของที่เคยแจ้งแล้วซ้ำ)
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
 import {
   digestSendDecision,
   fingerprintParts,
+  onlyNewKeys,
   readDigestState,
-  withUpdatePrefix,
+  unionSentKeys,
   writeDigestState,
 } from "../_shared/line_hourly_digest.ts";
 import {
@@ -30,24 +28,11 @@ const corsHeaders: Record<string, string> = {
 };
 
 const TH_MONTHS = [
-  "ม.ค.",
-  "ก.พ.",
-  "มี.ค.",
-  "เม.ย.",
-  "พ.ค.",
-  "มิ.ย.",
-  "ก.ค.",
-  "ส.ค.",
-  "ก.ย.",
-  "ต.ค.",
-  "พ.ย.",
-  "ธ.ค.",
+  "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+  "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
 ];
 
-function jsonResponse(
-  body: Record<string, unknown>,
-  status = 200,
-): Response {
+function jsonResponse(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -64,13 +49,12 @@ function secureCompareStrings(a: string, b: string): boolean {
 }
 
 function bangkokYmd(d = new Date()): string {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  });
-  return fmt.format(d);
+  }).format(d);
 }
 
 function formatDateThaiBE(ymd: string): string {
@@ -120,25 +104,43 @@ function empDisplayName(e: {
   return e.id;
 }
 
-/** ไม่ใส่หมวดที่เป็น 0 — รออัปเดตรอบชั่วโมงเมื่อมีข้อมูล */
-function buildDailyVehicleUsageText(args: {
+type DrumItem = { key: string; vehicle: string; driverName: string };
+type MacroItem = {
+  key: string;
+  vehicle: string;
+  driverName: string;
+  work: string;
+};
+
+function buildVehicleDeltaText(args: {
   dateYmd: string;
-  drums: { vehicle: string; driverName: string }[];
-  macros: { vehicle: string; driverName: string; work: string }[];
+  drums: DrumItem[];
+  macros: MacroItem[];
+  isUpdate: boolean;
 }): string {
   const lines: string[] = [
-    `การใช้รถ ${formatDateThaiBE(args.dateYmd)}`,
+    args.isUpdate
+      ? `อัปเดตการใช้รถ ${formatDateThaiBE(args.dateYmd)} (รายการใหม่)`
+      : `การใช้รถ ${formatDateThaiBE(args.dateYmd)}`,
     "",
   ];
   if (args.drums.length > 0) {
-    lines.push(`บันทึกรถดรัม จำนวน ${args.drums.length} คัน`);
+    lines.push(
+      args.isUpdate
+        ? `รถดรัมเพิ่ม ${args.drums.length} คัน`
+        : `บันทึกรถดรัม จำนวน ${args.drums.length} คัน`,
+    );
     args.drums.forEach((it, i) => {
       lines.push(`คันที่ ${i + 1} : ${it.vehicle} · ${it.driverName}`);
     });
   }
   if (args.macros.length > 0) {
     if (args.drums.length > 0) lines.push("");
-    lines.push(`รถแม็คโคร จำนวน ${args.macros.length} คัน`);
+    lines.push(
+      args.isUpdate
+        ? `รถแม็คโครเพิ่ม ${args.macros.length} คัน`
+        : `รถแม็คโคร จำนวน ${args.macros.length} คัน`,
+    );
     args.macros.forEach((it, i) => {
       lines.push(
         `คันที่ ${i + 1} : ${it.vehicle} · ${it.driverName} · ${it.work}`,
@@ -223,7 +225,7 @@ Deno.serve(async (req) => {
   const [tripsRes, vehRes] = await Promise.all([
     admin
       .from("transactions")
-      .select("vehicle_id,vehicle_name,driver_id,created_at")
+      .select("id,vehicle_id,vehicle_name,driver_id,created_at")
       .eq("date", dateYmd)
       .eq("category", "DailyLog")
       .eq("sub_category", "VehicleTrip")
@@ -231,7 +233,7 @@ Deno.serve(async (req) => {
     admin
       .from("transactions")
       .select(
-        "vehicle_id,vehicle_name,driver_id,work_details,description,created_at",
+        "id,vehicle_id,vehicle_name,driver_id,work_details,description,created_at",
       )
       .eq("date", dateYmd)
       .eq("category", "Vehicle")
@@ -281,62 +283,77 @@ Deno.serve(async (req) => {
     }
   }
 
-  const drums = trips.map((t) => ({
-    vehicle: vehicleLabel(t),
-    driverName: nameById[(t.driver_id ?? "").trim()] ||
+  const drumsAll: DrumItem[] = trips.map((t) => {
+    const vehicle = vehicleLabel(t);
+    const driverName = nameById[(t.driver_id ?? "").trim()] ||
       (t.driver_id ?? "").trim() ||
-      "—",
-  }));
-  const macroItems = macros.map((t) => ({
-    vehicle: vehicleLabel(t),
-    driverName: nameById[(t.driver_id ?? "").trim()] ||
+      "—";
+    const id = String(t.id ?? "").trim();
+    const key = id
+      ? `drum:${id}`
+      : `drum:${vehicle}|${driverName}|${t.created_at ?? ""}`;
+    return { key, vehicle, driverName };
+  });
+  const macrosAll: MacroItem[] = macros.map((t) => {
+    const vehicle = vehicleLabel(t);
+    const driverName = nameById[(t.driver_id ?? "").trim()] ||
       (t.driver_id ?? "").trim() ||
-      "—",
-    work: ((t.work_details ?? "").trim() || "—"),
-  }));
+      "—";
+    const work = ((t.work_details ?? "").trim() || "—");
+    const id = String(t.id ?? "").trim();
+    const key = id
+      ? `macro:${id}`
+      : `macro:${vehicle}|${driverName}|${work}|${t.created_at ?? ""}`;
+    return { key, vehicle, driverName, work };
+  });
 
-  const fingerprint = fingerprintParts([
-    dateYmd,
-    `d${drums.length}`,
-    ...drums.map((d) => `${d.vehicle}:${d.driverName}`),
-    `m${macroItems.length}`,
-    ...macroItems.map((m) => `${m.vehicle}:${m.driverName}:${m.work}`),
-  ]);
-
+  const allKeys = [...drumsAll.map((d) => d.key), ...macrosAll.map((m) => m.key)];
+  const fingerprint = fingerprintParts([dateYmd, ...[...allKeys].sort()]);
   const saved = readDigestState(defaults, DIGEST_KEY);
+
+  const forceFull = force || testPersonalOnly;
+  const newKeys = forceFull ? allKeys : onlyNewKeys(allKeys, saved, dateYmd);
+  const newKeySet = new Set(newKeys);
+  const drums = forceFull ? drumsAll : drumsAll.filter((d) => newKeySet.has(d.key));
+  const macroItems = forceFull
+    ? macrosAll
+    : macrosAll.filter((m) => newKeySet.has(m.key));
+
   const decision = digestSendDecision({
     force,
     testPersonalOnly,
     dateYmd,
     fingerprint,
     saved,
+    newItemCount: newKeys.length,
   });
-  if (decision === "skip_unchanged") {
+  if (
+    decision === "skip_unchanged" ||
+    (drums.length === 0 && macroItems.length === 0)
+  ) {
     return jsonResponse({
       ok: true,
       skipped: true,
       code: "unchanged",
       date: dateYmd,
       fingerprint,
-      drums: drums.length,
-      macros: macroItems.length,
-      hint_th: "ข้อมูลรถยังไม่เปลี่ยนจากรอบที่ส่งแล้ว — รออัปเดตเมื่อมีรายการใหม่",
+      drums: drumsAll.length,
+      macros: macrosAll.length,
+      newItems: newKeys.length,
+      hint_th: "ไม่มีรายการรถใหม่จากรอบที่ส่งแล้ว — ไม่ส่งซ้ำของเก่า",
     });
   }
 
   const isUpdate = decision === "send_update";
-  const text = withUpdatePrefix(
-    buildDailyVehicleUsageText({
-      dateYmd,
-      drums,
-      macros: macroItems,
-    }),
+  const text = buildVehicleDeltaText({
+    dateYmd,
+    drums,
+    macros: macroItems,
     isUpdate,
-  );
+  });
 
-  const recipientsCsv = await resolveLineAdvanceNotifyIdsCsv(admin);
   const recipients = parseRecipientIds(
-    recipientsCsv,
+    await resolveLineAdvanceNotifyIdsCsv(admin),
     testPersonalOnly,
   );
   if (recipients.length === 0) {
@@ -373,7 +390,11 @@ Deno.serve(async (req) => {
   }
 
   if (!testPersonalOnly) {
-    writeDigestState(defaults, DIGEST_KEY, { ymd: dateYmd, fingerprint });
+    writeDigestState(defaults, DIGEST_KEY, {
+      ymd: dateYmd,
+      fingerprint,
+      items: unionSentKeys(saved, dateYmd, newKeys),
+    });
     delete defaults.lineDailyVehicleUsageLastYmd;
     await admin
       .from("app_settings")
@@ -388,8 +409,10 @@ Deno.serve(async (req) => {
     date: dateYmd,
     update: isUpdate,
     fingerprint,
-    drums: drums.length,
-    macros: macroItems.length,
+    drumsTotal: drumsAll.length,
+    macrosTotal: macrosAll.length,
+    drumsNew: drums.length,
+    macrosNew: macroItems.length,
     recipients: recipients.length,
     testPersonalOnly,
     notify: notifyJson,

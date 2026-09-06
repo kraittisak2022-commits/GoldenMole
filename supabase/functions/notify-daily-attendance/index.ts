@@ -11,8 +11,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
 import {
   digestSendDecision,
   fingerprintParts,
+  onlyNewKeys,
   readDigestState,
-  withUpdatePrefix,
+  unionSentKeys,
   writeDigestState,
 } from "../_shared/line_hourly_digest.ts";
 import {
@@ -124,8 +125,29 @@ function buildAttendanceText(args: {
   presentIds: string[];
   leaveIds: string[];
   nameById: Record<string, string>;
+  isUpdate?: boolean;
 }): string {
   const dateLine = `${formatDateThaiBE(args.dateYmd)} (${args.dateYmd})`;
+  if (args.isUpdate) {
+    const lines = [
+      "━━━━ GoldenMole ━━━━",
+      `อัปเดตเช็คชื่อ ${dateLine} (รายการใหม่)`,
+    ];
+    if (args.presentIds.length > 0) {
+      lines.push(
+        `มาทำงานเพิ่ม : ${args.presentIds.length} คน`,
+        joinNames(args.presentIds, args.nameById),
+      );
+    }
+    if (args.leaveIds.length > 0) {
+      if (args.presentIds.length > 0) lines.push("");
+      lines.push(
+        `ลางานเพิ่ม : ${args.leaveIds.length} คน`,
+        joinNames(args.leaveIds, args.nameById),
+      );
+    }
+    return lines.join("\n").trim();
+  }
   const lines = [
     "━━━━ GoldenMole ━━━━",
     `วันที่ : ${dateLine}`,
@@ -310,22 +332,32 @@ Deno.serve(async (req) => {
     leave = sandL;
   }
 
-  const fingerprint = fingerprintParts([
-    dateYmd,
-    title,
-    `p${present.length}`,
-    ...[...present].sort(),
-    `l${leave.length}`,
-    ...[...leave].sort(),
-  ]);
+  const presentKeys = present.map((id) => `p:${id}`);
+  const leaveKeys = leave.map((id) => `l:${id}`);
+  const allKeys = [...presentKeys, ...leaveKeys];
+  const fingerprint = fingerprintParts([dateYmd, title, ...[...allKeys].sort()]);
+  const forceFull = force || testPersonalOnly;
+  const newKeys = forceFull ? allKeys : onlyNewKeys(allKeys, saved, dateYmd);
+  const newKeySet = new Set(newKeys);
+  const presentNew = forceFull
+    ? present
+    : present.filter((id) => newKeySet.has(`p:${id}`));
+  const leaveNew = forceFull
+    ? leave
+    : leave.filter((id) => newKeySet.has(`l:${id}`));
+
   const decision = digestSendDecision({
     force,
     testPersonalOnly,
     dateYmd,
     fingerprint,
     saved,
+    newItemCount: newKeys.length,
   });
-  if (decision === "skip_unchanged") {
+  if (
+    decision === "skip_unchanged" ||
+    (presentNew.length === 0 && leaveNew.length === 0)
+  ) {
     return jsonResponse({
       ok: true,
       skipped: true,
@@ -334,11 +366,12 @@ Deno.serve(async (req) => {
       fingerprint,
       present: present.length,
       leave: leave.length,
-      hint_th: "เช็คชื่อยังไม่เปลี่ยนจากรอบที่ส่งแล้ว — รออัปเดตเมื่อมีรายชื่อใหม่",
+      newItems: newKeys.length,
+      hint_th: "ไม่มีรายชื่อเช็คชื่อใหม่ — ไม่ส่งซ้ำของเก่า",
     });
   }
 
-  const allIds = uniq([...present, ...leave]);
+  const allIds = uniq([...presentNew, ...leaveNew]);
   const nameById: Record<string, string> = {};
   if (allIds.length > 0) {
     const { data: emps } = await admin
@@ -353,16 +386,14 @@ Deno.serve(async (req) => {
   }
 
   const isUpdate = decision === "send_update";
-  const text = withUpdatePrefix(
-    buildAttendanceText({
-      dateYmd,
-      title,
-      presentIds: present,
-      leaveIds: leave,
-      nameById,
-    }),
+  const text = buildAttendanceText({
+    dateYmd,
+    title,
+    presentIds: presentNew,
+    leaveIds: leaveNew,
+    nameById,
     isUpdate,
-  );
+  });
 
   const recipients = parseRecipientIds(
     await resolveLineAdvanceNotifyIdsCsv(admin),
@@ -402,7 +433,11 @@ Deno.serve(async (req) => {
   }
 
   if (!testPersonalOnly) {
-    writeDigestState(defaults, DIGEST_KEY, { ymd: dateYmd, fingerprint });
+    writeDigestState(defaults, DIGEST_KEY, {
+      ymd: dateYmd,
+      fingerprint,
+      items: unionSentKeys(saved, dateYmd, newKeys),
+    });
     delete defaults.lineDailyAttendanceLastYmd;
     await admin
       .from("app_settings")
@@ -420,6 +455,8 @@ Deno.serve(async (req) => {
     title,
     present: present.length,
     leave: leave.length,
+    presentNew: presentNew.length,
+    leaveNew: leaveNew.length,
     sand: { present: sandP.length, leave: sandL.length },
     drivers: { present: drvP.length, leave: drvL.length },
     recipients: recipients.length,
