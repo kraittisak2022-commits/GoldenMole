@@ -12,9 +12,9 @@ import {
   digestSendDecision,
   fingerprintParts,
   onlyNewKeys,
+  persistDigestState,
   readDigestState,
   unionSentKeys,
-  writeDigestState,
 } from "../_shared/line_hourly_digest.ts";
 import {
   parseGroupReportRecipientIds,
@@ -433,18 +433,11 @@ Deno.serve(async (req) => {
   }
 
   if (!testPersonalOnly) {
-    writeDigestState(defaults, DIGEST_KEY, {
+    await persistDigestState(admin, DIGEST_KEY, {
       ymd: dateYmd,
       fingerprint,
       items: unionSentKeys(saved, dateYmd, newKeys),
     });
-    delete defaults.lineDailyAttendanceLastYmd;
-    await admin
-      .from("app_settings")
-      .upsert(
-        { id: "default", app_defaults: defaults },
-        { onConflict: "id" },
-      );
   }
 
   return jsonResponse({

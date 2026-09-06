@@ -18,9 +18,9 @@ import {
   digestSendDecision,
   fingerprintParts,
   onlyNewKeys,
+  persistDigestState,
   readDigestState,
   unionSentKeys,
-  writeDigestState,
 } from "../_shared/line_hourly_digest.ts";
 import {
   parseGroupReportRecipientIds,
@@ -253,8 +253,6 @@ Deno.serve(async (req) => {
   const newKeys = forceFull
     ? todayKeys
     : onlyNewKeys(todayKeys, saved, dateYmd);
-  // รอบแรกของวัน (ยังไม่เคยส่ง) — ส่งยอดคงเหลือเต็ม
-  const isFirstOfDay = !(saved && saved.ymd === dateYmd);
 
   const decision = digestSendDecision({
     force,
@@ -262,7 +260,7 @@ Deno.serve(async (req) => {
     dateYmd,
     fingerprint,
     saved,
-    newItemCount: isFirstOfDay ? 1 : newKeys.length,
+    newItemCount: newKeys.length,
   });
   if (decision === "skip_unchanged") {
     return jsonResponse({
@@ -272,22 +270,17 @@ Deno.serve(async (req) => {
       date: dateYmd,
       fingerprint,
       balance: bal,
-      hint_th: "ไม่มีรายการน้ำมันใหม่ — ไม่ส่งซ้ำยอดเดิม",
+      hint_th: "รายงานน้ำมันวันนี้ส่งแล้ว และไม่มีรายการใหม่ — ไม่ส่งซ้ำ",
     });
   }
 
   const isUpdate = decision === "send_update";
   let text: string;
-  if (!isUpdate || forceFull || isFirstOfDay) {
+  if (!isUpdate || forceFull) {
     text = buildDailyFuelStockLineText(dateYmd, bal, formatDateThaiBE);
   } else {
-    // อัปเดต: ส่งเฉพาะรายการใหม่ + ยอดล่าสุดสั้นๆ
     const newKeySet = new Set(newKeys);
     const newRows = txsTodayRows.filter((t, i) => newKeySet.has(todayKeys[i]));
-    const lines = [
-      `อัปเดตน้ำมัน ${formatDateThaiBE(dateYmd)} (รายการใหม่)`,
-      "",
-    ];
     if (newRows.length === 0) {
       return jsonResponse({
         ok: true,
@@ -297,6 +290,10 @@ Deno.serve(async (req) => {
         hint_th: "ไม่มีรายการน้ำมันใหม่ — ไม่ส่งซ้ำ",
       });
     }
+    const lines = [
+      `อัปเดตน้ำมัน ${formatDateThaiBE(dateYmd)} (รายการใหม่)`,
+      "",
+    ];
     for (const r of newRows) {
       const qty = Number(r.quantity);
       const q = Number.isFinite(qty) ? `${qty} ${r.unit || "L"}` : "—";
@@ -353,18 +350,15 @@ Deno.serve(async (req) => {
   }
 
   if (!testPersonalOnly) {
-    writeDigestState(defaults, DIGEST_KEY, {
+    // รอบแรกไม่มี fuel tx ก็จำว่าส่งแล้วด้วย sentinel
+    const sentKeys = forceFull || decision === "send_first"
+      ? (todayKeys.length > 0 ? todayKeys : [`fuel:balance:${dateYmd}`])
+      : newKeys;
+    await persistDigestState(admin, DIGEST_KEY, {
       ymd: dateYmd,
       fingerprint,
-      items: unionSentKeys(saved, dateYmd, forceFull ? todayKeys : newKeys),
+      items: unionSentKeys(saved, dateYmd, sentKeys),
     });
-    delete defaults.lineDailyFuelStockLastYmd;
-    await admin
-      .from("app_settings")
-      .upsert(
-        { id: "default", app_defaults: defaults },
-        { onConflict: "id" },
-      );
   }
 
   return jsonResponse({
