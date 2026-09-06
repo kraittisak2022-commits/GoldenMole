@@ -1,16 +1,26 @@
 /**
  * สรุปเช็คชื่อประจำวัน (คนขับรถ + ท่าทราย) → LINE
- * เรียกด้วย cron 09:00 Asia/Bangkok (02:00 UTC) หรือ POST เอง
+ * ครอนชั่วโมงละครั้ง 09:00–18:00 Asia/Bangkok
+ * - ยังไม่มีข้อมูล → ไม่ส่ง รอรอบถัดไป
+ * - มีรายชื่อใหม่/เปลี่ยน → ส่งอัปเดต
  *
  * Auth: header `x-cm-notify-advance-secret` = NOTIFY_ADVANCE_INVOKER_SECRET
- * Body (optional): { "date": "YYYY-MM-DD", "force": true, "testPersonalOnly": true }
- *   รายงานปกติส่งเข้ากลุ่ม (C…/R…) เท่านั้น
+ * Body: { "date": "YYYY-MM-DD", "force": true, "testPersonalOnly": true }
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
+import {
+  digestSendDecision,
+  fingerprintParts,
+  readDigestState,
+  withUpdatePrefix,
+  writeDigestState,
+} from "../_shared/line_hourly_digest.ts";
 import {
   parseGroupReportRecipientIds,
   parseQaUserIds,
 } from "../_shared/line_recipients.ts";
+
+const DIGEST_KEY = "lineDailyAttendanceDigest";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -205,16 +215,7 @@ Deno.serve(async (req) => {
     settingsRow?.app_defaults && typeof settingsRow.app_defaults === "object"
       ? { ...(settingsRow.app_defaults as Record<string, unknown>) }
       : {};
-  const lastSent = String(defaults.lineDailyAttendanceLastYmd ?? "").trim();
-  if (!force && !testPersonalOnly && lastSent === dateYmd) {
-    return jsonResponse({
-      ok: true,
-      skipped: true,
-      code: "already_sent",
-      date: dateYmd,
-      hint_th: "ส่งเช็คชื่อวันนี้ไปแล้ว — ส่ง force:true ถ้าต้องการซ้ำ",
-    });
-  }
+  const saved = readDigestState(defaults, DIGEST_KEY);
 
   const { data: rows, error } = await admin
     .from("transactions")
@@ -286,7 +287,8 @@ Deno.serve(async (req) => {
       skipped: true,
       code: "no_data",
       date: dateYmd,
-      hint_th: "ยังไม่มีเช็คชื่อวันนี้ — ไม่ส่ง LINE",
+      hint_th:
+        "ยังไม่มีเช็คชื่อวันนี้ — ไม่ส่ง LINE รออัปเดตรอบชั่วโมงถัดไป",
     });
   }
 
@@ -307,6 +309,34 @@ Deno.serve(async (req) => {
     leave = sandL;
   }
 
+  const fingerprint = fingerprintParts([
+    dateYmd,
+    title,
+    `p${present.length}`,
+    ...[...present].sort(),
+    `l${leave.length}`,
+    ...[...leave].sort(),
+  ]);
+  const decision = digestSendDecision({
+    force,
+    testPersonalOnly,
+    dateYmd,
+    fingerprint,
+    saved,
+  });
+  if (decision === "skip_unchanged") {
+    return jsonResponse({
+      ok: true,
+      skipped: true,
+      code: "unchanged",
+      date: dateYmd,
+      fingerprint,
+      present: present.length,
+      leave: leave.length,
+      hint_th: "เช็คชื่อยังไม่เปลี่ยนจากรอบที่ส่งแล้ว — รออัปเดตเมื่อมีรายชื่อใหม่",
+    });
+  }
+
   const allIds = uniq([...present, ...leave]);
   const nameById: Record<string, string> = {};
   if (allIds.length > 0) {
@@ -321,13 +351,17 @@ Deno.serve(async (req) => {
     }
   }
 
-  const text = buildAttendanceText({
-    dateYmd,
-    title,
-    presentIds: present,
-    leaveIds: leave,
-    nameById,
-  });
+  const isUpdate = decision === "send_update";
+  const text = withUpdatePrefix(
+    buildAttendanceText({
+      dateYmd,
+      title,
+      presentIds: present,
+      leaveIds: leave,
+      nameById,
+    }),
+    isUpdate,
+  );
 
   const recipients = parseRecipientIds(
     Deno.env.get("LINE_ADVANCE_NOTIFY_USER_IDS") ?? "",
@@ -367,7 +401,8 @@ Deno.serve(async (req) => {
   }
 
   if (!testPersonalOnly) {
-    defaults.lineDailyAttendanceLastYmd = dateYmd;
+    writeDigestState(defaults, DIGEST_KEY, { ymd: dateYmd, fingerprint });
+    delete defaults.lineDailyAttendanceLastYmd;
     await admin
       .from("app_settings")
       .upsert(
@@ -379,6 +414,8 @@ Deno.serve(async (req) => {
   return jsonResponse({
     ok: true,
     date: dateYmd,
+    update: isUpdate,
+    fingerprint,
     title,
     present: present.length,
     leave: leave.length,

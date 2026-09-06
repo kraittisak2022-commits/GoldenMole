@@ -1,11 +1,11 @@
 /**
  * สรุปน้ำมันคงเหลือ (ถังหลัก + ถังสำรอง) → LINE
- * เรียกด้วย cron 09:00 Asia/Bangkok (02:00 UTC) หรือ POST เอง
+ * ครอนชั่วโมงละครั้ง 09:00–18:00 Asia/Bangkok
+ * - ยอดไม่เปลี่ยนจากรอบก่อน → ไม่ส่ง
+ * - มีการเติม/เบิกจนยอดเปลี่ยน → ส่งอัปเดต
  *
  * Auth: header `x-cm-notify-advance-secret` = NOTIFY_ADVANCE_INVOKER_SECRET
- * Body (optional): { "date": "YYYY-MM-DD", "force": true, "testPersonalOnly": true }
- *   รายงานปกติส่งเข้ากลุ่ม (C…/R…) เท่านั้น
- *   testPersonalOnly — ส่งเฉพาะ User ID (U…) ตอนทดสอบ
+ * Body: { "date": "YYYY-MM-DD", "force": true, "testPersonalOnly": true }
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
 import {
@@ -15,9 +15,18 @@ import {
   type FuelTx,
 } from "../_shared/fuel_stock_balance.ts";
 import {
+  digestSendDecision,
+  fingerprintParts,
+  readDigestState,
+  withUpdatePrefix,
+  writeDigestState,
+} from "../_shared/line_hourly_digest.ts";
+import {
   parseGroupReportRecipientIds,
   parseQaUserIds,
 } from "../_shared/line_recipients.ts";
+
+const DIGEST_KEY = "lineDailyFuelStockDigest";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -159,16 +168,7 @@ Deno.serve(async (req) => {
     settingsRow?.app_defaults && typeof settingsRow.app_defaults === "object"
       ? { ...(settingsRow.app_defaults as Record<string, unknown>) }
       : {};
-  const lastSent = String(defaults.lineDailyFuelStockLastYmd ?? "").trim();
-  if (!force && !testPersonalOnly && lastSent === dateYmd) {
-    return jsonResponse({
-      ok: true,
-      skipped: true,
-      code: "already_sent",
-      date: dateYmd,
-      hint_th: "ส่งน้ำมันคงเหลือวันนี้ไปแล้ว — ส่ง force:true ถ้าต้องการซ้ำ",
-    });
-  }
+  const saved = readDigestState(defaults, DIGEST_KEY);
 
   const openingRaw = settingsRow?.fuel_opening_stock;
   const opening =
@@ -215,7 +215,57 @@ Deno.serve(async (req) => {
     asOfYmd: dateYmd,
   });
 
-  const text = buildDailyFuelStockLineText(dateYmd, bal, formatDateThaiBE);
+  const txsToday = txs.filter((t) => String(t.date ?? "").slice(0, 10) === dateYmd)
+    .length;
+  const mainTotal = bal.mainDiesel + bal.mainBenzine;
+  const reserveTotal = bal.reserveDiesel + bal.reserveBenzine;
+  // ยังไม่มีรายการน้ำมันวันนี้ และยอดรวมเป็น 0 → รอรอบถัดไป
+  if (!force && !testPersonalOnly && txsToday === 0 && mainTotal === 0 &&
+    reserveTotal === 0) {
+    return jsonResponse({
+      ok: true,
+      skipped: true,
+      code: "no_data",
+      date: dateYmd,
+      hint_th:
+        "ยังไม่มียอดน้ำมัน/รายการวันนี้ — ไม่ส่ง LINE รออัปเดตรอบชั่วโมงถัดไป",
+      balance: bal,
+    });
+  }
+
+  const fingerprint = fingerprintParts([
+    dateYmd,
+    Math.round(bal.mainDiesel * 100),
+    Math.round(bal.reserveDiesel * 100),
+    Math.round(bal.mainBenzine * 100),
+    Math.round(bal.reserveBenzine * 100),
+    txsToday,
+  ]);
+
+  const decision = digestSendDecision({
+    force,
+    testPersonalOnly,
+    dateYmd,
+    fingerprint,
+    saved,
+  });
+  if (decision === "skip_unchanged") {
+    return jsonResponse({
+      ok: true,
+      skipped: true,
+      code: "unchanged",
+      date: dateYmd,
+      fingerprint,
+      balance: bal,
+      hint_th: "ยอดน้ำมันยังไม่เปลี่ยนจากรอบที่ส่งแล้ว — รออัปเดตเมื่อมียอดใหม่",
+    });
+  }
+
+  const isUpdate = decision === "send_update";
+  const text = withUpdatePrefix(
+    buildDailyFuelStockLineText(dateYmd, bal, formatDateThaiBE),
+    isUpdate,
+  );
 
   const recipients = parseRecipientIds(
     Deno.env.get("LINE_ADVANCE_NOTIFY_USER_IDS") ?? "",
@@ -257,7 +307,8 @@ Deno.serve(async (req) => {
   }
 
   if (!testPersonalOnly) {
-    defaults.lineDailyFuelStockLastYmd = dateYmd;
+    writeDigestState(defaults, DIGEST_KEY, { ymd: dateYmd, fingerprint });
+    delete defaults.lineDailyFuelStockLastYmd;
     await admin
       .from("app_settings")
       .upsert(
@@ -269,6 +320,8 @@ Deno.serve(async (req) => {
   return jsonResponse({
     ok: true,
     date: dateYmd,
+    update: isUpdate,
+    fingerprint,
     balance: bal,
     recipients: recipients.length,
     testPersonalOnly,

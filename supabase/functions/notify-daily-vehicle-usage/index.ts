@@ -1,21 +1,26 @@
 /**
- * สรุปการใช้รถดรัม + แม็คโคร ประจำวัน → LINE
- * เรียกด้วย cron 09:00 Asia/Bangkok (02:00 UTC) หรือ POST เอง
+ * สรุปการใช้รถดรัม + แม็คโคร → LINE
+ * ครอนชั่วโมงละครั้ง 09:00–18:00 Asia/Bangkok
+ * - ยังไม่มีข้อมูล (0) → ไม่ส่ง รอรอบถัดไป
+ * - มีข้อมูลใหม่/เปลี่ยน → ส่ง (รอบถัดไปติดป้ายอัปเดต)
  *
  * Auth: header `x-cm-notify-advance-secret` = NOTIFY_ADVANCE_INVOKER_SECRET
- * Secrets: LINE_CHANNEL_ACCESS_TOKEN, LINE_ADVANCE_NOTIFY_USER_IDS,
- *          NOTIFY_ADVANCE_INVOKER_SECRET
- *
- * Body (optional): { "date": "YYYY-MM-DD", "force": true, "testPersonalOnly": true }
- *   force=true — ส่งซ้ำแม้เคยส่งวันนั้นแล้ว
- *   รายงานปกติส่งเข้ากลุ่ม (C…/R…) เท่านั้น
- *   testPersonalOnly — ส่งเฉพาะ User ID (U…) ตอนทดสอบ
+ * Body: { "date": "YYYY-MM-DD", "force": true, "testPersonalOnly": true }
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
+import {
+  digestSendDecision,
+  fingerprintParts,
+  readDigestState,
+  withUpdatePrefix,
+  writeDigestState,
+} from "../_shared/line_hourly_digest.ts";
 import {
   parseGroupReportRecipientIds,
   parseQaUserIds,
 } from "../_shared/line_recipients.ts";
+
+const DIGEST_KEY = "lineDailyVehicleUsageDigest";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -64,7 +69,7 @@ function bangkokYmd(d = new Date()): string {
     month: "2-digit",
     day: "2-digit",
   });
-  return fmt.format(d); // YYYY-MM-DD
+  return fmt.format(d);
 }
 
 function formatDateThaiBE(ymd: string): string {
@@ -98,7 +103,6 @@ function vehicleLabel(row: {
 }
 
 function parseRecipientIds(raw: string, personalOnly = false): string[] {
-  // รายงานปกติ = กลุ่มเท่านั้น; testPersonalOnly = แชทส่วนตัวตอนทดสอบ
   if (personalOnly) return parseQaUserIds(raw);
   return parseGroupReportRecipientIds(raw);
 }
@@ -115,6 +119,7 @@ function empDisplayName(e: {
   return e.id;
 }
 
+/** ไม่ใส่หมวดที่เป็น 0 — รออัปเดตรอบชั่วโมงเมื่อมีข้อมูล */
 function buildDailyVehicleUsageText(args: {
   dateYmd: string;
   drums: { vehicle: string; driverName: string }[];
@@ -123,17 +128,22 @@ function buildDailyVehicleUsageText(args: {
   const lines: string[] = [
     `การใช้รถ ${formatDateThaiBE(args.dateYmd)}`,
     "",
-    `บันทึกรถดรัม จำนวน ${args.drums.length} คัน`,
   ];
-  args.drums.forEach((it, i) => {
-    lines.push(`คันที่ ${i + 1} : ${it.vehicle} · ${it.driverName}`);
-  });
-  lines.push("", `รถแม็คโคร จำนวน ${args.macros.length} คัน`);
-  args.macros.forEach((it, i) => {
-    lines.push(
-      `คันที่ ${i + 1} : ${it.vehicle} · ${it.driverName} · ${it.work}`,
-    );
-  });
+  if (args.drums.length > 0) {
+    lines.push(`บันทึกรถดรัม จำนวน ${args.drums.length} คัน`);
+    args.drums.forEach((it, i) => {
+      lines.push(`คันที่ ${i + 1} : ${it.vehicle} · ${it.driverName}`);
+    });
+  }
+  if (args.macros.length > 0) {
+    if (args.drums.length > 0) lines.push("");
+    lines.push(`รถแม็คโคร จำนวน ${args.macros.length} คัน`);
+    args.macros.forEach((it, i) => {
+      lines.push(
+        `คันที่ ${i + 1} : ${it.vehicle} · ${it.driverName} · ${it.work}`,
+      );
+    });
+  }
   return lines.join("\n").trim();
 }
 
@@ -199,7 +209,6 @@ Deno.serve(async (req) => {
 
   const admin = createClient(supabaseUrl, serviceKey);
 
-  // idempotency — กันส่งซ้ำในวันเดียวกัน (ยกเว้น force)
   const { data: settingsRow } = await admin
     .from("app_settings")
     .select("app_defaults")
@@ -209,16 +218,6 @@ Deno.serve(async (req) => {
     settingsRow?.app_defaults && typeof settingsRow.app_defaults === "object"
       ? { ...(settingsRow.app_defaults as Record<string, unknown>) }
       : {};
-  const lastSent = String(defaults.lineDailyVehicleUsageLastYmd ?? "").trim();
-  if (!force && !testPersonalOnly && lastSent === dateYmd) {
-    return jsonResponse({
-      ok: true,
-      skipped: true,
-      code: "already_sent",
-      date: dateYmd,
-      hint_th: "ส่งสรุปการใช้รถวันนี้ไปแล้ว — ส่ง force:true ถ้าต้องการซ้ำ",
-    });
-  }
 
   const [tripsRes, vehRes] = await Promise.all([
     admin
@@ -258,7 +257,8 @@ Deno.serve(async (req) => {
       skipped: true,
       code: "no_data",
       date: dateYmd,
-      hint_th: "ยังไม่มีบันทึกรถดรัมหรือแม็คโครวันนี้ — ไม่ส่ง LINE",
+      hint_th:
+        "ยังไม่มีบันทึกรถดรัมหรือแม็คโคร — ไม่ส่ง LINE รออัปเดตรอบชั่วโมงถัดไป",
     });
   }
 
@@ -294,11 +294,44 @@ Deno.serve(async (req) => {
     work: ((t.work_details ?? "").trim() || "—"),
   }));
 
-  const text = buildDailyVehicleUsageText({
+  const fingerprint = fingerprintParts([
     dateYmd,
-    drums,
-    macros: macroItems,
+    `d${drums.length}`,
+    ...drums.map((d) => `${d.vehicle}:${d.driverName}`),
+    `m${macroItems.length}`,
+    ...macroItems.map((m) => `${m.vehicle}:${m.driverName}:${m.work}`),
+  ]);
+
+  const saved = readDigestState(defaults, DIGEST_KEY);
+  const decision = digestSendDecision({
+    force,
+    testPersonalOnly,
+    dateYmd,
+    fingerprint,
+    saved,
   });
+  if (decision === "skip_unchanged") {
+    return jsonResponse({
+      ok: true,
+      skipped: true,
+      code: "unchanged",
+      date: dateYmd,
+      fingerprint,
+      drums: drums.length,
+      macros: macroItems.length,
+      hint_th: "ข้อมูลรถยังไม่เปลี่ยนจากรอบที่ส่งแล้ว — รออัปเดตเมื่อมีรายการใหม่",
+    });
+  }
+
+  const isUpdate = decision === "send_update";
+  const text = withUpdatePrefix(
+    buildDailyVehicleUsageText({
+      dateYmd,
+      drums,
+      macros: macroItems,
+    }),
+    isUpdate,
+  );
 
   const recipients = parseRecipientIds(
     Deno.env.get("LINE_ADVANCE_NOTIFY_USER_IDS") ?? "",
@@ -338,7 +371,8 @@ Deno.serve(async (req) => {
   }
 
   if (!testPersonalOnly) {
-    defaults.lineDailyVehicleUsageLastYmd = dateYmd;
+    writeDigestState(defaults, DIGEST_KEY, { ymd: dateYmd, fingerprint });
+    delete defaults.lineDailyVehicleUsageLastYmd;
     await admin
       .from("app_settings")
       .upsert(
@@ -350,6 +384,8 @@ Deno.serve(async (req) => {
   return jsonResponse({
     ok: true,
     date: dateYmd,
+    update: isUpdate,
+    fingerprint,
     drums: drums.length,
     macros: macroItems.length,
     recipients: recipients.length,
