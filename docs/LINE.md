@@ -140,8 +140,8 @@ npx supabase functions deploy notify-advance-line
 
 | ที่มา | รายละเอียด |
 |--------|------------|
-| **พนักงานในรายการเบิกเงิน/ลา** | ฟิลด์ **LINE User ID** ในโปรไฟล์ (`line_user_id`) — เฉพาะ `U…` |
-| **ผู้ดูแล / กลุ่ม** | env **`VITE_LINE_ADVANCE_NOTIFY_USER_IDS`** (เว็บ) / **`LINE_ADVANCE_NOTIFY_USER_IDS`** (มือถือ) — `U…` / `C…` / `R…` คั่นด้วย comma |
+| **พนักงานในรายการเบิกเงิน/ลา** | ไม่แจ้งแชทส่วนตัวแล้ว — แจ้งเข้ากลุ่มอย่างเดียว |
+| **ผู้ดูแล / กลุ่ม** | env **`VITE_LINE_ADVANCE_NOTIFY_USER_IDS`** / **`LINE_ADVANCE_NOTIFY_USER_IDS`** — ใช้เฉพาะ `C…` / `R…` สำหรับแจ้งลางาน·เบิกเงิน (`U…` ใช้ถาม–ตอบส่วนตัว) |
 
 ## Supabase Edge Function `notify-advance-line`
 

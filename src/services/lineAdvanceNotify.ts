@@ -149,17 +149,11 @@ export async function notifyAdvanceLineSaved(
         return { kind: 'skipped' };
     }
 
-    const ids = tx.employeeIds || [];
     const to = new Set<string>();
-    for (const id of ids) {
-        const e = employees.find((x) => x.id === id);
-        const u = normalizeLineUserId(e?.lineUserId || '');
-        if (u) to.add(u);
-    }
+    // แจ้งเฉพาะกลุ่ม LINE (ไม่ส่งแชทส่วนตัวพนักงาน)
     const extra = (import.meta.env.VITE_LINE_ADVANCE_NOTIFY_USER_IDS as string | undefined)?.split(',') || [];
     for (const raw of extra) {
         const u = normalizeLineRecipientId(raw) || normalizeLineUserId(raw);
-        // รายงานแอดมินเข้ากลุ่ม/ห้องเท่านั้น — ส่วนตัวถาม–ตอบผ่าน webhook
         if (u && (u.startsWith('C') || u.startsWith('R'))) to.add(u);
     }
     if (to.size === 0) return { kind: 'skipped' };
@@ -197,17 +191,11 @@ export async function notifyLeaveLineSaved(
     const cat = (tx.category || '').trim();
     if (cat !== 'Leave') return { kind: 'skipped' };
 
-    const ids = tx.employeeIds || [];
     const to = new Set<string>();
-    for (const id of ids) {
-        const e = employees.find((x) => x.id === id);
-        const u = normalizeLineUserId(e?.lineUserId || '');
-        if (u) to.add(u);
-    }
+    // แจ้งเฉพาะกลุ่ม LINE (ไม่ส่งแชทส่วนตัวพนักงาน)
     const extra = (import.meta.env.VITE_LINE_ADVANCE_NOTIFY_USER_IDS as string | undefined)?.split(',') || [];
     for (const raw of extra) {
         const u = normalizeLineRecipientId(raw) || normalizeLineUserId(raw);
-        // รายงานแอดมินเข้ากลุ่ม/ห้องเท่านั้น — ส่วนตัวถาม–ตอบผ่าน webhook
         if (u && (u.startsWith('C') || u.startsWith('R'))) to.add(u);
     }
     if (to.size === 0) return { kind: 'skipped' };

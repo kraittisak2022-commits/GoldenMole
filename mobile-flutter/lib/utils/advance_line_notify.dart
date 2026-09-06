@@ -85,25 +85,6 @@ Future<List<String>> _adminLineRecipientIds() async {
   return to.toList();
 }
 
-List<String> _employeeLineRecipientIds(
-  AppTransaction tx,
-  List<Employee> employees,
-) {
-  final to = <String>{};
-  for (final id in tx.employeeIds) {
-    Employee? e;
-    for (final x in employees) {
-      if (x.id == id) {
-        e = x;
-        break;
-      }
-    }
-    final u = normalizeLineUserId(e?.lineUserId ?? '');
-    if (u != null) to.add(u);
-  }
-  return to.toList();
-}
-
 Future<void> _enqueuePendingLineNotify({
   required String text,
   required List<String> to,
@@ -350,14 +331,12 @@ Future<AdvanceLineNotifyStatus> notifyAdvanceLineAfterSaved(
     return AdvanceLineNotifyStatus.skippedNoRecipients();
   }
 
-  final to = <String>{
-    ..._employeeLineRecipientIds(tx, employees),
-    ...await _adminLineRecipientIds(),
-  };
+  // แจ้งเฉพาะกลุ่ม LINE (ไม่ส่งแชทส่วนตัวพนักงาน)
+  final to = await _adminLineRecipientIds();
   final text = buildAdvanceLineText(tx, employees);
   return _sendOrQueueLineNotify(
     text: text,
-    to: to.toList(),
+    to: to,
     debugTag: 'notifyAdvanceLineAfterSaved',
   );
 }
@@ -443,14 +422,12 @@ Future<AdvanceLineNotifyStatus> notifyLeaveLineAfterSaved(
     return AdvanceLineNotifyStatus.skippedNoRecipients();
   }
 
-  final to = <String>{
-    ..._employeeLineRecipientIds(tx, employees),
-    ...await _adminLineRecipientIds(),
-  };
+  // แจ้งเฉพาะกลุ่ม LINE (ไม่ส่งแชทส่วนตัวพนักงาน)
+  final to = await _adminLineRecipientIds();
   final text = buildLeaveLineText(tx, employees);
   return _sendOrQueueLineNotify(
     text: text,
-    to: to.toList(),
+    to: to,
     debugTag: 'notifyLeaveLineAfterSaved',
   );
 }
