@@ -9,6 +9,7 @@ import { useCountRecordRealtime } from '../../hooks/useCountRecordRealtime';
 import { useMobilePresence } from '../../hooks/useMobilePresence';
 import CountRecordOverview from './CountRecordOverview';
 import DailyOpsCards from './DailyOpsCards';
+import DayOpsBrief from './DayOpsBrief';
 import RealtimeLiveBadge from './RealtimeLiveBadge';
 import MobilePresenceBadge from './MobilePresenceBadge';
 import LiveIncrementOverlay from './LiveIncrementOverlay';
@@ -340,6 +341,14 @@ const DashboardV4 = ({
 
                 <div className="relative p-4 sm:p-5">
                     <LiveIncrementOverlay increments={realtime.increments} />
+                    {shareMode && (
+                        <DayOpsBrief
+                            dayKey={focusDate}
+                            transactions={transactions}
+                            employees={employees}
+                            vehicleCatalog={settings?.vehicleCatalog}
+                        />
+                    )}
                     <DailyOpsCards
                         dayKey={focusDate}
                         transactions={transactions}
