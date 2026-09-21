@@ -320,6 +320,8 @@ struct TripProSnapshot: Sendable {
 
         var out: [IdleVehicle] = []
         for unit in tripUnits {
+            // Support / standby is expected to have 0 trips — don't surface as "ยังไม่วิ่ง".
+            if unit.isSupport { continue }
             if unit.rounds == 0 {
                 out.append(
                     IdleVehicle(

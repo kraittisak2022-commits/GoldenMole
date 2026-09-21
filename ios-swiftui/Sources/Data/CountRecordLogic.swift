@@ -335,8 +335,14 @@ enum CountRecordLogic {
         let s = lap.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let sp = s.firstIndex(of: " ") else { return nil }
         let time = String(s[s.index(after: sp)...])
-        let hourStr = time.split(separator: ":").first.map(String.init) ?? time
-        return Int(hourStr.trimmingCharacters(in: .whitespacesAndNewlines))
+        let hourStr = (time.split(separator: ":").first.map(String.init) ?? time)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // Accept "08" / "8" — never nil solely due to a leading zero.
+        if let h = Int(hourStr), (0...23).contains(h) { return h }
+        let stripped = hourStr.drop(while: { $0 == "0" })
+        let normalized = stripped.isEmpty ? "0" : String(stripped)
+        guard let h = Int(normalized), (0...23).contains(h) else { return nil }
+        return h
     }
 
     static func lapPeriods(_ t: Transaction) -> (morning: Int, afternoon: Int, unknown: Int, ot: Int) {
@@ -357,15 +363,15 @@ enum CountRecordLogic {
     }
 
     static func vehicleTripPeriodSplit(_ t: Transaction) -> (morning: Int, afternoon: Int, ot: Int) {
-        let lapOt = lapPeriods(t).ot
-        let tm = Int(t.tripMorning ?? 0)
-        let ta = Int(t.tripAfternoon ?? 0)
-        if tm != 0 || ta != 0 { return (tm, ta, lapOt) }
-
+        // Prefer real lap stamps when present — drum-form trip_morning/afternoon can be stale/wrong.
         let periods = lapPeriods(t)
         if periods.morning > 0 || periods.afternoon > 0 || periods.unknown > 0 {
             return (periods.morning + periods.unknown, periods.afternoon, periods.ot)
         }
+
+        let tm = Int(t.tripMorning ?? 0)
+        let ta = Int(t.tripAfternoon ?? 0)
+        if tm != 0 || ta != 0 { return (tm, ta, 0) }
 
         let total = Int(t.perCarTrips ?? t.tripCount ?? 0)
         return (total, 0, 0)
@@ -420,6 +426,7 @@ enum CountRecordLogic {
             )
             guard !label.isEmpty, !isMacroVehicleId(label) else { continue }
             let periods = vehicleTripPeriodSplit(t)
+            let support = CountRecordWorkKind.from(workDetails: t.workDetails) == .support
             units.append(
                 CountRecordTripUnit(
                     id: t.id,
@@ -431,11 +438,17 @@ enum CountRecordLogic {
                     afternoon: periods.afternoon,
                     ot: periods.ot,
                     lapTimes: getLapTimes(t),
-                    broken: isWorkDetailsBroken(t.workDetails)
+                    broken: isWorkDetailsBroken(t.workDetails),
+                    isSupport: support
                 )
             )
         }
-        return units
+        // Active trucks first; support / zero-trip last so the grid isn't topped by standby.
+        return units.sorted {
+            if $0.isSupport != $1.isSupport { return !$0.isSupport && $1.isSupport }
+            if $0.rounds != $1.rounds { return $0.rounds > $1.rounds }
+            return $0.vehicleId.localizedStandardCompare($1.vehicleId) == .orderedAscending
+        }
     }
 
     static func buildSandUnit(dayKey: String, transactions: [Transaction]) -> CountRecordSandUnit? {

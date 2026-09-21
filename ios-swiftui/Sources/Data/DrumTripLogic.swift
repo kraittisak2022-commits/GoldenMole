@@ -51,30 +51,10 @@ enum DrumTripLogic {
         }
     }
 
-    /// Flutter `vehicleTripPeriodSplit`.
+    /// Count-record / Flutter `vehicleTripPeriodSplit` — prefer lap stamps when present.
     static func periodSplit(_ t: Transaction) -> PeriodSplit {
-        let tm = t.tripMorning ?? 0
-        let ta = t.tripAfternoon ?? 0
-        if tm != 0 || ta != 0 {
-            return PeriodSplit(morning: tm, afternoon: ta)
-        }
-
-        let laps = CountRecordLogic.getLapTimes(t)
-        if !laps.isEmpty {
-            var morning = 0
-            var afternoon = 0
-            for lap in laps {
-                guard let h = CountRecordLogic.lapHour(lap) else {
-                    morning += 1
-                    continue
-                }
-                if h < 12 { morning += 1 } else { afternoon += 1 }
-            }
-            return PeriodSplit(morning: Double(morning), afternoon: Double(afternoon))
-        }
-
-        let total = t.perCarTrips ?? t.tripCount ?? 0
-        return PeriodSplit(morning: total, afternoon: 0)
+        let periods = CountRecordLogic.vehicleTripPeriodSplit(t)
+        return PeriodSplit(morning: Double(periods.morning), afternoon: Double(periods.afternoon))
     }
 
     static func defaultCubicPerTrip(for vehicleName: String) -> Double {

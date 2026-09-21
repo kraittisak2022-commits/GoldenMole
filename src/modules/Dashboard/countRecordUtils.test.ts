@@ -42,10 +42,24 @@ function sand(partial: Partial<Transaction> & { lapTimes?: string[]; drumsObtain
 }
 
 describe('vehicleTripPeriodSplit', () => {
-    it('uses explicit morning/afternoon when present', () => {
+    it('uses explicit morning/afternoon when no laps', () => {
         const s = vehicleTripPeriodSplit(trip({ tripMorning: 2, tripAfternoon: 3 }));
         expect(s.morning).toBe(2);
         expect(s.afternoon).toBe(3);
+        expect(s.ot).toBe(0);
+    });
+
+    it('prefers lapTimes over stale tripMorning/tripAfternoon', () => {
+        const s = vehicleTripPeriodSplit(
+            trip({
+                tripMorning: 99,
+                tripAfternoon: 1,
+                perCarTrips: 4,
+                lapTimes: ['26/06 08:10:00', '26/06 11:55:00', '26/06 13:05:00', '26/06 15:40:00'],
+            }),
+        );
+        expect(s.morning).toBe(2);
+        expect(s.afternoon).toBe(2);
         expect(s.ot).toBe(0);
     });
 

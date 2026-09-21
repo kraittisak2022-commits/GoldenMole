@@ -34,7 +34,8 @@ struct CountRecordTripPanel: View {
                 afternoon: $0.periodSplit.afternoon,
                 ot: $0.periodSplit.ot,
                 lapTimes: $0.lapTimes,
-                broken: $0.isBroken
+                broken: $0.isBroken,
+                isSupport: $0.isSupport
             )
         }
         return CountRecordAnalytics.computeTripTargetEta(

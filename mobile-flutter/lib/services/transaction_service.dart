@@ -24,7 +24,7 @@ class TransactionService {
       'project_id, location, fuel_type, fuel_movement, fuel_tank, trip_count, '
       'trip_morning, trip_afternoon, cubic_per_trip, total_cubic, per_car_trips, '
       'per_car_cubic, trip_billing_mode, ot_amount, ot_hours, ot_description, '
-      'advance_amount, leave_reason, leave_days, income_payment_status, created_at';
+      'advance_amount, leave_reason, leave_days, income_payment_status, created_at, updated_at';
 
   Future<void> _invalidateAfterMutation({
     required String? affectingDate,
@@ -70,7 +70,7 @@ class TransactionService {
       final rows = await _client
           .from('transactions')
           .select(_transactionColumns)
-          .order('created_at', ascending: false);
+          .order('updated_at', ascending: false);
       final list = rows.map(AppTransaction.fromMap).toList();
       await LocalDataCache.writeTransactionsFull(list);
       return list;
@@ -85,7 +85,7 @@ class TransactionService {
     final rows = await _client
         .from('transactions')
         .select(_transactionColumns)
-        .order('created_at', ascending: false)
+        .order('updated_at', ascending: false)
         .limit(limit);
     return rows.map(AppTransaction.fromMap).toList();
   }
@@ -125,7 +125,7 @@ class TransactionService {
           .from('transactions')
           .select(_transactionColumns)
           .eq('date', ymd)
-          .order('created_at', ascending: false);
+          .order('updated_at', ascending: false);
       final list = rows.map(AppTransaction.fromMap).toList();
       await LocalDataCache.writeTransactionsForDay(ymd, list);
       return list;

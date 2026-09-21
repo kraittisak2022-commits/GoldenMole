@@ -852,6 +852,8 @@ struct CountRecordTripUnit: Identifiable, Sendable {
     let ot: Int
     let lapTimes: [String]
     let broken: Bool
+    /// Standby / support vehicle (work_details «งาน: ชัพพอต») — 0 trips is expected.
+    let isSupport: Bool
 }
 
 struct CountRecordSandUnit: Identifiable, Sendable {

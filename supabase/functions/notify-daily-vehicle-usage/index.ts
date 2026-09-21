@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
   const [tripsRes, vehRes] = await Promise.all([
     admin
       .from("transactions")
-      .select("id,vehicle_id,vehicle_name,driver_id,created_at")
+      .select("id,vehicle_id,vehicle_name,driver_id,work_details,created_at")
       .eq("date", dateYmd)
       .eq("category", "DailyLog")
       .eq("sub_category", "VehicleTrip")
@@ -284,7 +284,14 @@ Deno.serve(async (req) => {
     });
   }
 
-  const trips = tripsRes.data ?? [];
+  const trips = (tripsRes.data ?? []).filter((t) => {
+    const details = String(t.work_details ?? "");
+    const lastSupport = details.lastIndexOf("งาน: ชัพพอต");
+    const lastSand = details.lastIndexOf("งาน: ขนทราย");
+    // Support / standby is not a dump-trip fleet vehicle for LINE digests.
+    if (lastSupport >= 0 && lastSupport > lastSand) return false;
+    return true;
+  });
   const macros = (vehRes.data ?? []).filter((t) =>
     isMacroVehicleName(vehicleLabel(t))
   );

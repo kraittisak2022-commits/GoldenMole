@@ -1530,6 +1530,14 @@ private struct TripVehicleCard: View {
                         .padding(.vertical, 3)
                         .background(Capsule().fill(Color.black.opacity(0.2)))
                     Spacer()
+                    if unit.isSupport {
+                        Text("ชัพพอต")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color(hex: "#E2E8F0"))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.black.opacity(0.35)))
+                    }
                     if unit.broken {
                         Label("รถเสีย", systemImage: "exclamationmark.triangle.fill")
                             .font(.system(size: 10, weight: .bold))

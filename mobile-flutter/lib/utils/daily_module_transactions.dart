@@ -1107,22 +1107,22 @@ int? _countRecordLapHour(String lap) {
 /// แยกจำนวนเที่ยวของแถว VehicleTrip ออกเป็นช่วงเช้า/บ่าย ให้สอดคล้องกันทุกที่
 ///
 /// ลำดับการตัดสิน:
-/// 1) ถ้ามีค่า `tripMorning`/`tripAfternoon` (กรอกจากฟอร์มดรัม) ใช้ค่านั้นตรงๆ
-/// 2) ไม่งั้นแยกจาก `lapTimes` ของตัวนับ — เช้า (ก่อน 12:00) / บ่าย (ตั้งแต่ 12:00)
+/// 1) แยกจาก `lapTimes` ของตัวนับเมื่อมี — เช้า (ก่อน 12:00) / บ่าย (ตั้งแต่ 12:00)
 ///    (lap ที่อ่านเวลาไม่ได้ นับเป็นช่วงเช้า)
+/// 2) ไม่งั้นใช้ `tripMorning`/`tripAfternoon` (กรอกจากฟอร์มดรัม)
 /// 3) ไม่งั้นใช้ยอดรวม `perCarTrips`/`tripCount` ทั้งหมดเป็นช่วงเช้า
 ({double morning, double afternoon}) vehicleTripPeriodSplit(AppTransaction t) {
-  final tm = (t.tripMorning ?? 0).toDouble();
-  final ta = (t.tripAfternoon ?? 0).toDouble();
-  if (tm != 0 || ta != 0) {
-    return (morning: tm, afternoon: ta);
-  }
   final periods = _countRecordLapPeriods(t);
   if (periods.morning > 0 || periods.afternoon > 0 || periods.unknown > 0) {
     return (
       morning: (periods.morning + periods.unknown).toDouble(),
       afternoon: periods.afternoon.toDouble(),
     );
+  }
+  final tm = (t.tripMorning ?? 0).toDouble();
+  final ta = (t.tripAfternoon ?? 0).toDouble();
+  if (tm != 0 || ta != 0) {
+    return (morning: tm, afternoon: ta);
   }
   final total = (t.perCarTrips ?? t.tripCount ?? 0).toDouble();
   return (morning: total, afternoon: 0);

@@ -105,11 +105,7 @@ export function countRecordLapPeriods(t: Transaction): {
 
 /** แยกจำนวนเที่ยวออกเป็นช่วงเช้า/บ่าย — สอดคล้อง mobile; ot จาก lap (>= 17:00) */
 export function vehicleTripPeriodSplit(t: Transaction): { morning: number; afternoon: number; ot: number } {
-    const lapOt = countRecordLapPeriods(t).ot;
-    const tm = Number((t as { tripMorning?: number }).tripMorning ?? 0);
-    const ta = Number((t as { tripAfternoon?: number }).tripAfternoon ?? 0);
-    if (tm !== 0 || ta !== 0) return { morning: tm, afternoon: ta, ot: lapOt };
-
+    // Prefer real lap stamps when present — drum-form trip_morning/afternoon can be stale/wrong.
     const periods = countRecordLapPeriods(t);
     if (periods.morning > 0 || periods.afternoon > 0 || periods.unknown > 0) {
         return {
@@ -118,6 +114,10 @@ export function vehicleTripPeriodSplit(t: Transaction): { morning: number; after
             ot: periods.ot,
         };
     }
+
+    const tm = Number((t as { tripMorning?: number }).tripMorning ?? 0);
+    const ta = Number((t as { tripAfternoon?: number }).tripAfternoon ?? 0);
+    if (tm !== 0 || ta !== 0) return { morning: tm, afternoon: ta, ot: 0 };
 
     const total = Number((t as { perCarTrips?: number; tripCount?: number }).perCarTrips ?? (t as { tripCount?: number }).tripCount ?? 0);
     return { morning: total, afternoon: 0, ot: 0 };
@@ -129,6 +129,15 @@ export function isWorkDetailsBroken(details?: string | null): boolean {
     if (lastBroken < 0) return false;
     const lastNormal = d.lastIndexOf('รถปกติ');
     return lastNormal < lastBroken;
+}
+
+/** Standby / support vehicle from work_details tag (last tag wins). */
+export function isWorkDetailsSupport(details?: string | null): boolean {
+    const d = String(details ?? '');
+    const lastSupport = d.lastIndexOf('งาน: ชัพพอต');
+    const lastSand = d.lastIndexOf('งาน: ขนทราย');
+    if (lastSupport < 0 && lastSand < 0) return false;
+    return lastSupport > lastSand;
 }
 
 export function driverDisplayName(driverId: string, employees: Employee[]): string {
@@ -153,6 +162,8 @@ export interface CountRecordTripUnit {
     ot: number;
     lapTimes: string[];
     broken: boolean;
+    /** Standby / support (work_details «งาน: ชัพพอต») */
+    isSupport: boolean;
 }
 
 export interface CountRecordSandUnit {
@@ -215,9 +226,15 @@ export function buildCountRecordTripUnits(
             ot: periods.ot,
             lapTimes: getLapTimes(t),
             broken: isWorkDetailsBroken(t.workDetails),
+            isSupport: isWorkDetailsSupport(t.workDetails),
         });
     }
-    return units;
+    // Active trucks first; support / zero-trip last.
+    return units.sort((a, b) => {
+        if (a.isSupport !== b.isSupport) return a.isSupport ? 1 : -1;
+        if (a.rounds !== b.rounds) return b.rounds - a.rounds;
+        return a.vehicleId.localeCompare(b.vehicleId, 'th');
+    });
 }
 
 /** ทุกแถวร่อนทราย (count tap) ของวันนั้น — รวม empty เพื่อล้าง orphan ได้ */

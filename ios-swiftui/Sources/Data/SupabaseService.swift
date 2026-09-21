@@ -125,8 +125,8 @@ final class SupabaseService: ObservableObject {
             data = try await client.from("transactions")
                 .select(Self.transactionSelectColumns)
                 .gte("date", value: since)
-                .order("created_at", ascending: false)
-                .limit(limit)
+            .order("updated_at", ascending: false)
+            .limit(limit)
                 .execute()
                 .data
         } catch {
