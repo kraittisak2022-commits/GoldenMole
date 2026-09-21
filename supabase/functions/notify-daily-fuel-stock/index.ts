@@ -23,6 +23,11 @@ import {
   unionSentKeys,
 } from "../_shared/line_hourly_digest.ts";
 import {
+  isLineQuotaBlockedFromDefaults,
+  markLineQuotaBlocked,
+  notifyLooksLikeMonthlyQuota,
+} from "../_shared/line_quota.ts";
+import {
   parseGroupReportRecipientIds,
   parseQaUserIds,
   resolveLineAdvanceNotifyIdsCsv,
@@ -171,6 +176,18 @@ Deno.serve(async (req) => {
       ? { ...(settingsRow.app_defaults as Record<string, unknown>) }
       : {};
   const saved = readDigestState(defaults, DIGEST_KEY);
+
+  if (isLineQuotaBlockedFromDefaults(defaults) && !force) {
+    return jsonResponse({
+      ok: false,
+      skipped: true,
+      code: "line_quota_blocked",
+      date: dateYmd,
+      until: defaults.lineMessagingQuotaBlockUntil ?? null,
+      hint_th:
+        "LINE Messaging API โควตามาตรเดือนเต็มแล้ว — หยุดส่งจนกว่าจะขึ้นเดือนใหม่ (หรืออัปเกรดแพ็กเกจใน LINE Developers)",
+    });
+  }
 
   const openingRaw = settingsRow?.fuel_opening_stock;
   const opening =
@@ -339,6 +356,19 @@ Deno.serve(async (req) => {
   const notifyJson = await notifyRes.json().catch(() => ({}));
 
   if (!notifyJson || notifyJson.ok !== true) {
+    if (notifyLooksLikeMonthlyQuota(notifyJson)) {
+      const until = await markLineQuotaBlocked(admin);
+      return jsonResponse({
+        ok: false,
+        code: "line_quota_exceeded",
+        date: dateYmd,
+        until,
+        notify: notifyJson,
+        balance: bal,
+        hint_th:
+          "LINE โควตามาตรเดือนเต็ม (429) — หยุดยิงซ้ำจนกว่าขึ้นเดือนใหม่ หรืออัปเกรดแพ็กเกจ Messaging API",
+      });
+    }
     return jsonResponse({
       ok: false,
       code: "line_send_failed",

@@ -207,6 +207,7 @@ Edge **`notify-daily-vehicle-usage`** อ่านบันทึกวันน
 - ผู้รับ: secret **`LINE_ADVANCE_NOTIFY_USER_IDS`** บน Edge (เดียวกับแจ้งเตือนอื่น)
 - จำ fingerprint ของรอบล่าสุดใน `app_defaults.lineDailyVehicleUsageDigest` — ส่งซ้ำด้วย `{ "force": true }`
 - ถ้ายังไม่มีข้อมูลดรัมและแม็คโครในวันนั้น จะข้าม (ไม่ส่ง)
+- **โควตา LINE:** แพ็กเกจฟรีมีจำกัดข้อความต่อเดือน — ถ้า API ตอบ `429 You have reached your monthly limit` ระบบจะหยุดยิงซ้ำจนถึงต้นเดือนถัดไป (ดูใน LINE Developers → Messaging API → โควตา / อัปเกรดแพ็กเกจ)
 
 ตั้ง cron (ครั้งแรก) ใน SQL Editor หลัง deploy:
 
