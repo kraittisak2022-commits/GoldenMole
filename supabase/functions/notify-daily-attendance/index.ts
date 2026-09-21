@@ -1,6 +1,6 @@
 /**
  * สรุปเช็คชื่อประจำวัน (คนขับรถ + ท่าทราย) → LINE
- * ครอนชั่วโมงละครั้ง 09:00–18:00 Asia/Bangkok
+ * ครอน 09:10 / 13:10 / 17:10 Asia/Bangkok (ร่วมงบวันละ ≤5 ข้อความกับรายงานอื่น)
  * - ยังไม่มีข้อมูล → ไม่ส่ง รอรอบถัดไป
  * - มีรายชื่อใหม่/เปลี่ยน → ส่งอัปเดต
  *
@@ -17,9 +17,14 @@ import {
   unionSentKeys,
 } from "../_shared/line_hourly_digest.ts";
 import {
+  bangkokYmd,
+  incrementDailySendBudget,
+  isDailySendBudgetExhausted,
   isLineQuotaBlockedFromDefaults,
+  LINE_DAILY_SEND_LIMIT,
   markLineQuotaBlocked,
   notifyLooksLikeMonthlyQuota,
+  readDailySendBudget,
 } from "../_shared/line_quota.ts";
 import {
   parseGroupReportRecipientIds,
@@ -257,6 +262,19 @@ Deno.serve(async (req) => {
     });
   }
 
+  const budgetYmd = bangkokYmd();
+  if (isDailySendBudgetExhausted(defaults, budgetYmd) && !force) {
+    const budget = readDailySendBudget(defaults, budgetYmd);
+    return jsonResponse({
+      ok: false,
+      skipped: true,
+      code: "line_daily_budget_exhausted",
+      date: dateYmd,
+      budget,
+      hint_th: `ครบงบส่ง LINE วันละ ${LINE_DAILY_SEND_LIMIT} ข้อความแล้ว — รอรอบวันถัดไป (หรือส่งด้วย force)`,
+    });
+  }
+
   const { data: rows, error } = await admin
     .from("transactions")
     .select(
@@ -461,12 +479,14 @@ Deno.serve(async (req) => {
     });
   }
 
+  let budget = readDailySendBudget(defaults, budgetYmd);
   if (!testPersonalOnly) {
     await persistDigestState(admin, DIGEST_KEY, {
       ymd: dateYmd,
       fingerprint,
       items: unionSentKeys(saved, dateYmd, newKeys),
     });
+    budget = await incrementDailySendBudget(admin, budgetYmd);
   }
 
   return jsonResponse({
@@ -483,6 +503,7 @@ Deno.serve(async (req) => {
     drivers: { present: drvP.length, leave: drvL.length },
     recipients: recipients.length,
     testPersonalOnly,
+    budget,
     notify: notifyJson,
     text,
   });

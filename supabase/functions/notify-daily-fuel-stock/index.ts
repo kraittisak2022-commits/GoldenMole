@@ -1,6 +1,6 @@
 /**
  * สรุปน้ำมันคงเหลือ (ถังหลัก + ถังสำรอง) → LINE
- * ครอนชั่วโมงละครั้ง 09:00–18:00 Asia/Bangkok
+ * ครอน 09:05 / 13:05 / 17:05 Asia/Bangkok (ร่วมงบวันละ ≤5 ข้อความกับรายงานอื่น)
  * - ยอดไม่เปลี่ยนจากรอบก่อน → ไม่ส่ง
  * - มีการเติม/เบิกจนยอดเปลี่ยน → ส่งอัปเดต
  *
@@ -23,9 +23,14 @@ import {
   unionSentKeys,
 } from "../_shared/line_hourly_digest.ts";
 import {
+  bangkokYmd,
+  incrementDailySendBudget,
+  isDailySendBudgetExhausted,
   isLineQuotaBlockedFromDefaults,
+  LINE_DAILY_SEND_LIMIT,
   markLineQuotaBlocked,
   notifyLooksLikeMonthlyQuota,
+  readDailySendBudget,
 } from "../_shared/line_quota.ts";
 import {
   parseGroupReportRecipientIds,
@@ -186,6 +191,19 @@ Deno.serve(async (req) => {
       until: defaults.lineMessagingQuotaBlockUntil ?? null,
       hint_th:
         "LINE Messaging API โควตามาตรเดือนเต็มแล้ว — หยุดส่งจนกว่าจะขึ้นเดือนใหม่ (หรืออัปเกรดแพ็กเกจใน LINE Developers)",
+    });
+  }
+
+  const budgetYmd = bangkokYmd();
+  if (isDailySendBudgetExhausted(defaults, budgetYmd) && !force) {
+    const budget = readDailySendBudget(defaults, budgetYmd);
+    return jsonResponse({
+      ok: false,
+      skipped: true,
+      code: "line_daily_budget_exhausted",
+      date: dateYmd,
+      budget,
+      hint_th: `ครบงบส่ง LINE วันละ ${LINE_DAILY_SEND_LIMIT} ข้อความแล้ว — รอรอบวันถัดไป (หรือส่งด้วย force)`,
     });
   }
 
@@ -379,6 +397,7 @@ Deno.serve(async (req) => {
     });
   }
 
+  let budget = readDailySendBudget(defaults, budgetYmd);
   if (!testPersonalOnly) {
     // รอบแรกไม่มี fuel tx ก็จำว่าส่งแล้วด้วย sentinel
     const sentKeys = forceFull || decision === "send_first"
@@ -389,6 +408,7 @@ Deno.serve(async (req) => {
       fingerprint,
       items: unionSentKeys(saved, dateYmd, sentKeys),
     });
+    budget = await incrementDailySendBudget(admin, budgetYmd);
   }
 
   return jsonResponse({
@@ -400,6 +420,7 @@ Deno.serve(async (req) => {
     newFuelRows: isUpdate && !forceFull ? newKeys.length : txsToday,
     recipients: recipients.length,
     testPersonalOnly,
+    budget,
     notify: notifyJson,
     text,
   });

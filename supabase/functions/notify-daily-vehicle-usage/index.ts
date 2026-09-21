@@ -1,6 +1,6 @@
 ﻿/**
  * สรุปการใช้รถดรัม + แม็คโคร → LINE
- * ครอนชั่วโมงละครั้ง 09:00–18:00 Asia/Bangkok
+ * ครอน 09:00 / 13:00 / 17:00 Asia/Bangkok (ร่วมงบวันละ ≤5 ข้อความกับรายงานอื่น)
  * - ยังไม่มีข้อมูล (0) → ไม่ส่ง รอรอบถัดไป
  * - มีข้อมูลใหม่ → ส่งเฉพาะรายการใหม่ (ไม่ส่งของที่เคยแจ้งแล้วซ้ำ)
  */
@@ -14,9 +14,14 @@ import {
   unionSentKeys,
 } from "../_shared/line_hourly_digest.ts";
 import {
+  bangkokYmd,
+  incrementDailySendBudget,
+  isDailySendBudgetExhausted,
   isLineQuotaBlockedFromDefaults,
+  LINE_DAILY_SEND_LIMIT,
   markLineQuotaBlocked,
   notifyLooksLikeMonthlyQuota,
+  readDailySendBudget,
 } from "../_shared/line_quota.ts";
 import {
   parseGroupReportRecipientIds,
@@ -239,6 +244,19 @@ Deno.serve(async (req) => {
     });
   }
 
+  const budgetYmd = bangkokYmd();
+  if (isDailySendBudgetExhausted(defaults, budgetYmd) && !force) {
+    const budget = readDailySendBudget(defaults, budgetYmd);
+    return jsonResponse({
+      ok: false,
+      skipped: true,
+      code: "line_daily_budget_exhausted",
+      date: dateYmd,
+      budget,
+      hint_th: `ครบงบส่ง LINE วันละ ${LINE_DAILY_SEND_LIMIT} ข้อความแล้ว — รอรอบวันถัดไป (หรือส่งด้วย force)`,
+    });
+  }
+
   const [tripsRes, vehRes] = await Promise.all([
     admin
       .from("transactions")
@@ -419,12 +437,14 @@ Deno.serve(async (req) => {
     });
   }
 
+  let budget = readDailySendBudget(defaults, budgetYmd);
   if (!testPersonalOnly) {
     await persistDigestState(admin, DIGEST_KEY, {
       ymd: dateYmd,
       fingerprint,
       items: unionSentKeys(saved, dateYmd, newKeys),
     });
+    budget = await incrementDailySendBudget(admin, budgetYmd);
   }
 
   return jsonResponse({
@@ -438,6 +458,7 @@ Deno.serve(async (req) => {
     macrosNew: macroItems.length,
     recipients: recipients.length,
     testPersonalOnly,
+    budget,
     notify: notifyJson,
     text,
   });
