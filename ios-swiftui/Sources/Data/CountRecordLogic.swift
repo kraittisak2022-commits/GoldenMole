@@ -762,6 +762,7 @@ enum CountRecordLogic {
     }
 
     /// Active work hours (first→last lap) with lunch 12:00–13:00 deducted.
+    /// Use for «เวลาทำงานจริง» / labor & fuel — not for คิว/ชม throughput.
     static func activeDurationHours(lapTimes: [String], dayKey: String) -> Double? {
         let span = computeWorkSpan(lapTimes: lapTimes, dayKey: dayKey)
         guard let startStamp = span.startStamp, let endStamp = span.endStamp,
@@ -771,6 +772,18 @@ enum CountRecordLogic {
         else { return nil }
         let active = (end - start) - lunchOverlapSeconds(start: start, end: end, dayKey: dayKey)
         return max(0, active) / 3600
+    }
+
+    /// Wall-clock hours first→last with no lunch deduct.
+    /// Use as the denominator for คิว/ชม · คิว/นาที (matches all counted rounds on the clock).
+    static func wallClockDurationHours(lapTimes: [String], dayKey: String) -> Double? {
+        let span = computeWorkSpan(lapTimes: lapTimes, dayKey: dayKey)
+        guard let startStamp = span.startStamp, let endStamp = span.endStamp,
+              let start = parseLapStamp(startStamp, dayKey: dayKey),
+              let end = parseLapStamp(endStamp, dayKey: dayKey),
+              end > start
+        else { return nil }
+        return (end - start) / 3600
     }
 
     /// Lunch hours deducted from a lap span (0 when span does not cross 12:00–13:00).
@@ -784,8 +797,8 @@ enum CountRecordLogic {
         return lunchOverlapSeconds(start: start, end: end, dayKey: dayKey) / 3600
     }
 
-    /// Split laps for period *hours*: morning ends before 12:00, afternoon starts at/after 13:00
-    /// so the lunch hour is never counted as work in either period bucket.
+    /// Split laps for period *hours* / *rates*: morning ends before 12:00, afternoon starts at/after 13:00
+    /// so the lunch hour is never counted in either period bucket (numerator or denominator).
     static func splitLapsForPeriodHours(_ lapTimes: [String]) -> (morning: [String], afternoon: [String]) {
         var morning: [String] = []
         var afternoon: [String] = []
@@ -799,6 +812,17 @@ enum CountRecordLogic {
             // 12:00–12:59: excluded from both period hour spans (deducted on full-day total)
         }
         return (morning, afternoon)
+    }
+
+    /// Throughput rate: rounds ÷ hours (nil when either side is empty / invalid).
+    static func throughputPerHour(rounds: Int, hours: Double?) -> Double? {
+        guard rounds > 0, let hours, hours > 0, hours.isFinite else { return nil }
+        return Double(rounds) / hours
+    }
+
+    static func throughputPerMinute(rounds: Int, hours: Double?) -> Double? {
+        guard let perHour = throughputPerHour(rounds: rounds, hours: hours) else { return nil }
+        return perHour / 60
     }
 
     static func findPriorDayWithTripData(

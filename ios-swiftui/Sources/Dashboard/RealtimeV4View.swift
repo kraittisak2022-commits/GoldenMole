@@ -56,10 +56,18 @@ struct RealtimeV4Snapshot: Sendable {
     let sandMorningHours: Double?
     let sandAfternoonHours: Double?
     let sandLunchHours: Double
+    /// Wall-clock first→last (no lunch deduct) — denominator for daily คิว/ชม.
+    let sandRateHours: Double?
+    /// Round counts aligned with period-hour split (excludes 12:00–12:59).
+    let sandRateMorningRounds: Int
+    let sandRateAfternoonRounds: Int
     let tripHours: Double?
     let tripMorningHours: Double?
     let tripAfternoonHours: Double?
     let tripLunchHours: Double
+    let tripRateHours: Double?
+    let tripRateMorningRounds: Int
+    let tripRateAfternoonRounds: Int
     let vehicleWorkSpans: [String: String]
     let leaderboard: [CountRecordTripUnit]
     let sandPro: SandProSnapshot
@@ -145,6 +153,7 @@ struct RealtimeV4Snapshot: Sendable {
         let sandSplit = CountRecordLogic.splitLapsForPeriodHours(sandLaps)
         let sandMorningHours = CountRecordLogic.activeDurationHours(lapTimes: sandSplit.morning, dayKey: dayKey)
         let sandAfternoonHours = CountRecordLogic.activeDurationHours(lapTimes: sandSplit.afternoon, dayKey: dayKey)
+        let sandRateHours = CountRecordLogic.wallClockDurationHours(lapTimes: sandLaps, dayKey: dayKey)
 
         let tripLaps = tripAnalytics.lapTimes
         let tripHours = CountRecordLogic.activeDurationHours(lapTimes: tripLaps, dayKey: dayKey)
@@ -153,6 +162,7 @@ struct RealtimeV4Snapshot: Sendable {
         let tripMorningHours = CountRecordLogic.activeDurationHours(lapTimes: tripSplit.morning, dayKey: dayKey)
         let tripAfternoonHours = CountRecordLogic.activeDurationHours(lapTimes: tripSplit.afternoon, dayKey: dayKey)
         let sandLunchHours = CountRecordLogic.lunchDeductedHours(lapTimes: sandLaps, dayKey: dayKey)
+        let tripRateHours = CountRecordLogic.wallClockDurationHours(lapTimes: tripLaps, dayKey: dayKey)
         let leaderboard = Array(
             units
                 .filter { !$0.lapTimes.isEmpty }
@@ -168,7 +178,7 @@ struct RealtimeV4Snapshot: Sendable {
             sandUnit: sand,
             sandAnalytics: sandAnalytics,
             tripTotal: tripTotal,
-            sandHours: sandHours,
+            sandHours: sandRateHours,
             byDay: dayIndex
         )
         let efficiency = CountRecordLogic.vehicleEfficiency(
@@ -187,7 +197,7 @@ struct RealtimeV4Snapshot: Sendable {
             tripAnalytics: tripAnalytics,
             efficiency: efficiency,
             sandRounds: sand?.rounds ?? 0,
-            tripHours: tripHours,
+            tripHours: tripRateHours,
             byDay: dayIndex
         )
 
@@ -220,10 +230,16 @@ struct RealtimeV4Snapshot: Sendable {
             sandMorningHours: sandMorningHours,
             sandAfternoonHours: sandAfternoonHours,
             sandLunchHours: sandLunchHours,
+            sandRateHours: sandRateHours,
+            sandRateMorningRounds: sandSplit.morning.count,
+            sandRateAfternoonRounds: sandSplit.afternoon.count,
             tripHours: tripHours,
             tripMorningHours: tripMorningHours,
             tripAfternoonHours: tripAfternoonHours,
             tripLunchHours: tripLunchHours,
+            tripRateHours: tripRateHours,
+            tripRateMorningRounds: tripSplit.morning.count,
+            tripRateAfternoonRounds: tripSplit.afternoon.count,
             vehicleWorkSpans: vehicleWorkSpans,
             leaderboard: leaderboard,
             sandPro: sandPro,
@@ -374,13 +390,17 @@ struct RealtimeV4View: View {
                     sand: sand,
                     dayKey: focusDateStr,
                     sandHours: snapshot.sandHours,
+                    sandRateHours: snapshot.sandRateHours,
                     sandMorningHours: snapshot.sandMorningHours,
                     sandAfternoonHours: snapshot.sandAfternoonHours,
+                    sandRateMorningRounds: snapshot.sandRateMorningRounds,
+                    sandRateAfternoonRounds: snapshot.sandRateAfternoonRounds,
                     tripTotal: tripTotal,
                     tripVehicleCount: tripUnits.count,
-                    tripMorning: tripMorningTotal,
-                    tripAfternoon: tripAfternoonTotal,
+                    tripMorning: snapshot.tripRateMorningRounds,
+                    tripAfternoon: snapshot.tripRateAfternoonRounds,
                     tripHours: snapshot.tripHours,
+                    tripRateHours: snapshot.tripRateHours,
                     tripMorningHours: snapshot.tripMorningHours,
                     tripAfternoonHours: snapshot.tripAfternoonHours
                 )
@@ -854,13 +874,26 @@ struct RealtimeV4View: View {
     }
 
     private var tripKPI: some View {
-        let hours = snapshot.tripHours
-        let perHour = hours.flatMap { $0 > 0 ? Double(tripTotal) / $0 : nil }
-        let perMin = hours.flatMap { $0 > 0 ? Double(tripTotal) / ($0 * 60) : nil }
-        let morningPerHour = Self.queueRatePerHour(rounds: tripMorningTotal, hours: snapshot.tripMorningHours)
-        let morningPerMin = Self.queueRatePerMinute(rounds: tripMorningTotal, hours: snapshot.tripMorningHours)
-        let afternoonPerHour = Self.queueRatePerHour(rounds: tripAfternoonTotal, hours: snapshot.tripAfternoonHours)
-        let afternoonPerMin = Self.queueRatePerMinute(rounds: tripAfternoonTotal, hours: snapshot.tripAfternoonHours)
+        // Daily throughput uses wall-clock hours (all trips ÷ first→last).
+        // Period rates use the same lap split as period hours (excludes 12:00–12:59).
+        let perHour = CountRecordLogic.throughputPerHour(rounds: tripTotal, hours: snapshot.tripRateHours)
+        let perMin = CountRecordLogic.throughputPerMinute(rounds: tripTotal, hours: snapshot.tripRateHours)
+        let morningPerHour = CountRecordLogic.throughputPerHour(
+            rounds: snapshot.tripRateMorningRounds,
+            hours: snapshot.tripMorningHours
+        )
+        let morningPerMin = CountRecordLogic.throughputPerMinute(
+            rounds: snapshot.tripRateMorningRounds,
+            hours: snapshot.tripMorningHours
+        )
+        let afternoonPerHour = CountRecordLogic.throughputPerHour(
+            rounds: snapshot.tripRateAfternoonRounds,
+            hours: snapshot.tripAfternoonHours
+        )
+        let afternoonPerMin = CountRecordLogic.throughputPerMinute(
+            rounds: snapshot.tripRateAfternoonRounds,
+            hours: snapshot.tripAfternoonHours
+        )
         let target = CountRecordLogic.tripTarget
         let pct = target > 0
             ? min(Double(tripTotal) / Double(target) * 100, 100)
@@ -1051,13 +1084,27 @@ struct RealtimeV4View: View {
     }
 
     private func sandKPI(_ sand: CountRecordSandUnit) -> some View {
-        let hours = snapshot.sandHours
-        let perHour = hours.flatMap { $0 > 0 ? Double(sand.rounds) / $0 : nil }
-        let perMin = hours.flatMap { $0 > 0 ? Double(sand.rounds) / ($0 * 60) : nil }
-        let morningPerHour = Self.queueRatePerHour(rounds: sand.morning, hours: snapshot.sandMorningHours)
-        let morningPerMin = Self.queueRatePerMinute(rounds: sand.morning, hours: snapshot.sandMorningHours)
-        let afternoonPerHour = Self.queueRatePerHour(rounds: sand.afternoon, hours: snapshot.sandAfternoonHours)
-        let afternoonPerMin = Self.queueRatePerMinute(rounds: sand.afternoon, hours: snapshot.sandAfternoonHours)
+        // Daily throughput: all queues ÷ wall-clock span (do not shrink by lunch —
+        // that would inflate คิว/ชม while «เวลาทำงานจริง» already shows the deduction).
+        // Period rates: same lap set as period hours (morning <12, afternoon ≥13).
+        let perHour = CountRecordLogic.throughputPerHour(rounds: sand.rounds, hours: snapshot.sandRateHours)
+        let perMin = CountRecordLogic.throughputPerMinute(rounds: sand.rounds, hours: snapshot.sandRateHours)
+        let morningPerHour = CountRecordLogic.throughputPerHour(
+            rounds: snapshot.sandRateMorningRounds,
+            hours: snapshot.sandMorningHours
+        )
+        let morningPerMin = CountRecordLogic.throughputPerMinute(
+            rounds: snapshot.sandRateMorningRounds,
+            hours: snapshot.sandMorningHours
+        )
+        let afternoonPerHour = CountRecordLogic.throughputPerHour(
+            rounds: snapshot.sandRateAfternoonRounds,
+            hours: snapshot.sandAfternoonHours
+        )
+        let afternoonPerMin = CountRecordLogic.throughputPerMinute(
+            rounds: snapshot.sandRateAfternoonRounds,
+            hours: snapshot.sandAfternoonHours
+        )
         let target = CountRecordLogic.sandTarget
         let pct = target > 0
             ? min(Double(sand.rounds) / Double(target) * 100, 100)
@@ -1269,16 +1316,6 @@ struct RealtimeV4View: View {
                 )
             }
         }
-    }
-
-    private static func queueRatePerHour(rounds: Int, hours: Double?) -> Double? {
-        guard rounds > 0, let hours, hours > 0, hours.isFinite else { return nil }
-        return Double(rounds) / hours
-    }
-
-    private static func queueRatePerMinute(rounds: Int, hours: Double?) -> Double? {
-        guard let perHour = queueRatePerHour(rounds: rounds, hours: hours) else { return nil }
-        return perHour / 60
     }
 
     private static func formatWorkHours(_ hours: Double?) -> String {
@@ -2157,13 +2194,17 @@ private struct SandKPIDetailSheet: View {
     let sand: CountRecordSandUnit
     let dayKey: String
     let sandHours: Double?
+    let sandRateHours: Double?
     let sandMorningHours: Double?
     let sandAfternoonHours: Double?
+    let sandRateMorningRounds: Int
+    let sandRateAfternoonRounds: Int
     let tripTotal: Int
     let tripVehicleCount: Int
     let tripMorning: Int
     let tripAfternoon: Int
     let tripHours: Double?
+    let tripRateHours: Double?
     let tripMorningHours: Double?
     let tripAfternoonHours: Double?
     @Environment(\.dismiss) private var dismiss
@@ -2171,16 +2212,16 @@ private struct SandKPIDetailSheet: View {
     private var queuePerTrip: Int { CountRecordLogic.queuePerTrip }
 
     private var totalQueuePerHour: Double? {
-        Self.queueRate(rounds: sand.rounds, hours: sandHours)
+        CountRecordLogic.throughputPerHour(rounds: sand.rounds, hours: sandRateHours)
     }
     private var totalQueuePerMin: Double? {
-        totalQueuePerHour.map { $0 / 60 }
+        CountRecordLogic.throughputPerMinute(rounds: sand.rounds, hours: sandRateHours)
     }
     private var morningQueuePerHour: Double? {
-        Self.queueRate(rounds: sand.morning, hours: sandMorningHours)
+        CountRecordLogic.throughputPerHour(rounds: sandRateMorningRounds, hours: sandMorningHours)
     }
     private var afternoonQueuePerHour: Double? {
-        Self.queueRate(rounds: sand.afternoon, hours: sandAfternoonHours)
+        CountRecordLogic.throughputPerHour(rounds: sandRateAfternoonRounds, hours: sandAfternoonHours)
     }
 
     /// คัน·เที่ยวเทียบจากอัตราร่อน: คิว/ชม. ÷ คิวต่อเที่ยว
@@ -2204,16 +2245,16 @@ private struct SandKPIDetailSheet: View {
     }
 
     private var actualTripsPerHour: Double? {
-        Self.queueRate(rounds: tripTotal, hours: tripHours)
+        CountRecordLogic.throughputPerHour(rounds: tripTotal, hours: tripRateHours)
     }
     private var actualTripsPerMin: Double? {
-        actualTripsPerHour.map { $0 / 60 }
+        CountRecordLogic.throughputPerMinute(rounds: tripTotal, hours: tripRateHours)
     }
     private var morningActualPerHour: Double? {
-        Self.queueRate(rounds: tripMorning, hours: tripMorningHours)
+        CountRecordLogic.throughputPerHour(rounds: tripMorning, hours: tripMorningHours)
     }
     private var afternoonActualPerHour: Double? {
-        Self.queueRate(rounds: tripAfternoon, hours: tripAfternoonHours)
+        CountRecordLogic.throughputPerHour(rounds: tripAfternoon, hours: tripAfternoonHours)
     }
 
     var body: some View {
@@ -2467,11 +2508,6 @@ private struct SandKPIDetailSheet: View {
         )
     }
 
-    private static func queueRate(rounds: Int, hours: Double?) -> Double? {
-        guard rounds > 0, let hours, hours > 0, hours.isFinite else { return nil }
-        return Double(rounds) / hours
-    }
-
     private static func tripEquivalent(fromQueuePerHour rate: Double?) -> Double? {
         guard let rate, CountRecordLogic.queuePerTrip > 0 else { return nil }
         return rate / Double(CountRecordLogic.queuePerTrip)
@@ -2499,8 +2535,8 @@ private struct SandDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showSandRounds = false
 
-    private var hours: Double? { CountRecordLogic.activeDurationHours(lapTimes: sand.lapTimes, dayKey: dayKey) }
-    private var perHour: Double? { hours.flatMap { $0 > 0 ? Double(sand.rounds) / $0 : nil } }
+    private var rateHours: Double? { CountRecordLogic.wallClockDurationHours(lapTimes: sand.lapTimes, dayKey: dayKey) }
+    private var perHour: Double? { CountRecordLogic.throughputPerHour(rounds: sand.rounds, hours: rateHours) }
 
     var body: some View {
         NavigationStack {

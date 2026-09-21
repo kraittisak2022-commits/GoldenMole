@@ -159,8 +159,12 @@ struct TripProSnapshot: Sendable {
                 dayKey: dayKey,
                 target: target
             )
-        let hours = tripHours ?? tripAnalytics.workDuration?.totalActiveHours
-        let perHour = hours.flatMap { $0 > 0 ? Double(rounds) / $0 : nil }
+        let hours = tripHours
+            ?? CountRecordLogic.wallClockDurationHours(
+                lapTimes: tripAnalytics.lapTimes,
+                dayKey: dayKey
+            )
+        let perHour = CountRecordLogic.throughputPerHour(rounds: rounds, hours: hours)
         let queueCubic = rounds * CountRecordLogic.queuePerTrip
 
         let comparison = tripAnalytics.comparison

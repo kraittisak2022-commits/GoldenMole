@@ -136,6 +136,17 @@ describe('computeSandWorkDurationSummary', () => {
         expect(summary!.lunchDeductedHours).toBe(1);
         expect(formatActiveHours(summary!.totalActiveHours)).toBe('8 ชม.');
     });
+
+    it('throughput rate uses wall-clock hours (active + lunch), not lunch-deducted alone', () => {
+        const laps = ['26/06 08:00:00', '26/06 17:00:00'];
+        const summary = computeSandWorkDurationSummary(laps, '2026-06-26')!;
+        const wallHours = summary.totalActiveHours + summary.lunchDeductedHours;
+        expect(wallHours).toBe(9);
+        // 9 rounds across 9 wall-clock hours → 1 q/h (not 9/8 = 1.125)
+        const rounds = 9;
+        expect(rounds / wallHours).toBe(1);
+        expect(rounds / summary.totalActiveHours).toBe(1.125);
+    });
 });
 
 describe('moving average and sparkline', () => {

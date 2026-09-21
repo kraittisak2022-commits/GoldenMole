@@ -546,13 +546,19 @@ const CountRecordOverview = ({
     }, [priorTripDayKey, transactions, employees, vehicleCatalog]);
 
     const sandSpeedPerHour = useMemo(() => {
-        if (!sandUnit || !sandWorkSummary || sandWorkSummary.totalActiveHours <= 0) return null;
-        return sandUnit.rounds / sandWorkSummary.totalActiveHours;
+        if (!sandUnit || !sandWorkSummary) return null;
+        // Throughput uses wall-clock span (active + lunch). Dividing by lunch-deducted
+        // hours alone would inflate คิว/ชม while work-time already shows the break.
+        const wallHours = sandWorkSummary.totalActiveHours + sandWorkSummary.lunchDeductedHours;
+        if (wallHours <= 0) return null;
+        return sandUnit.rounds / wallHours;
     }, [sandUnit, sandWorkSummary]);
 
     const sandSpeedPerMinute = useMemo(() => {
-        if (!sandUnit || !sandWorkSummary || sandWorkSummary.totalActiveHours <= 0) return null;
-        return sandUnit.rounds / (sandWorkSummary.totalActiveHours * 60);
+        if (!sandUnit || !sandWorkSummary) return null;
+        const wallHours = sandWorkSummary.totalActiveHours + sandWorkSummary.lunchDeductedHours;
+        if (wallHours <= 0) return null;
+        return sandUnit.rounds / (wallHours * 60);
     }, [sandUnit, sandWorkSummary]);
 
     const vehicleEfficiency = useMemo(() => {
