@@ -56,7 +56,22 @@ String? formatLapClock(String stamp) {
   return '$hh:$mm';
 }
 
-({int startMs, int endMs})? _lunchWindowMs(int refMs) {
+({int startMs, int endMs})? _lunchWindowMs(String dayKey, int refMs) {
+  final ymd = dayKey.trim();
+  if (ymd.length >= 10) {
+    final yy = int.tryParse(ymd.substring(0, 4));
+    final mm = int.tryParse(ymd.substring(5, 7));
+    final dd = int.tryParse(ymd.substring(8, 10));
+    if (yy != null && mm != null && dd != null && mm >= 1 && mm <= 12 && dd >= 1) {
+      final startMs =
+          DateTime.utc(yy, mm, dd, kSandLunchStartHour).millisecondsSinceEpoch -
+          _tzOffsetMs;
+      final endMs =
+          DateTime.utc(yy, mm, dd, kSandLunchEndHour).millisecondsSinceEpoch -
+          _tzOffsetMs;
+      return (startMs: startMs, endMs: endMs);
+    }
+  }
   final d = DateTime.fromMillisecondsSinceEpoch(refMs + _tzOffsetMs, isUtc: true);
   final startMs =
       DateTime.utc(d.year, d.month, d.day, kSandLunchStartHour).millisecondsSinceEpoch -
@@ -67,9 +82,9 @@ String? formatLapClock(String stamp) {
   return (startMs: startMs, endMs: endMs);
 }
 
-int lunchOverlapMs(int startMs, int endMs) {
+int lunchOverlapMs(int startMs, int endMs, [String dayKey = '']) {
   if (endMs <= startMs) return 0;
-  final lunch = _lunchWindowMs(startMs);
+  final lunch = _lunchWindowMs(dayKey, startMs);
   if (lunch == null) return 0;
   final overlapStart = startMs > lunch.startMs ? startMs : lunch.startMs;
   final overlapEnd = endMs < lunch.endMs ? endMs : lunch.endMs;
@@ -77,10 +92,10 @@ int lunchOverlapMs(int startMs, int endMs) {
   return o > 0 ? o : 0;
 }
 
-int activeDurationSec(int startMs, int endMs) {
+int activeDurationSec(int startMs, int endMs, [String dayKey = '']) {
   if (endMs <= startMs) return 0;
   final rawMs = endMs - startMs;
-  final lunchMs = lunchOverlapMs(startMs, endMs);
+  final lunchMs = lunchOverlapMs(startMs, endMs, dayKey);
   final activeMs = rawMs - lunchMs;
   if (activeMs <= 0) return 0;
   return (activeMs / 1000).round();
@@ -109,7 +124,7 @@ SandWorkDurationSummary? computeSandWorkDurationSummary(
     );
   }
   final rawSec = ((last.timeMs - first.timeMs) / 1000).round().clamp(0, 1 << 30);
-  final activeSec = activeDurationSec(first.timeMs, last.timeMs);
+  final activeSec = activeDurationSec(first.timeMs, last.timeMs, dayKey);
   final lunchSec = (rawSec - activeSec).clamp(0, rawSec);
   return SandWorkDurationSummary(
     totalActiveHours: activeSec / 3600.0,

@@ -55,9 +55,11 @@ struct RealtimeV4Snapshot: Sendable {
     let sandHours: Double?
     let sandMorningHours: Double?
     let sandAfternoonHours: Double?
+    let sandLunchHours: Double
     let tripHours: Double?
     let tripMorningHours: Double?
     let tripAfternoonHours: Double?
+    let tripLunchHours: Double
     let vehicleWorkSpans: [String: String]
     let leaderboard: [CountRecordTripUnit]
     let sandPro: SandProSnapshot
@@ -140,15 +142,17 @@ struct RealtimeV4Snapshot: Sendable {
         )
         let sandPeriodSpans = CountRecordLogic.periodSpanLabels(lapTimes: sandLaps, dayKey: dayKey)
         let sandHours = CountRecordLogic.activeDurationHours(lapTimes: sandLaps, dayKey: dayKey)
-        let sandSplit = CountRecordLogic.splitLapsByPeriod(sandLaps)
+        let sandSplit = CountRecordLogic.splitLapsForPeriodHours(sandLaps)
         let sandMorningHours = CountRecordLogic.activeDurationHours(lapTimes: sandSplit.morning, dayKey: dayKey)
         let sandAfternoonHours = CountRecordLogic.activeDurationHours(lapTimes: sandSplit.afternoon, dayKey: dayKey)
 
         let tripLaps = tripAnalytics.lapTimes
         let tripHours = CountRecordLogic.activeDurationHours(lapTimes: tripLaps, dayKey: dayKey)
-        let tripSplit = CountRecordLogic.splitLapsByPeriod(tripLaps)
+        let tripLunchHours = CountRecordLogic.lunchDeductedHours(lapTimes: tripLaps, dayKey: dayKey)
+        let tripSplit = CountRecordLogic.splitLapsForPeriodHours(tripLaps)
         let tripMorningHours = CountRecordLogic.activeDurationHours(lapTimes: tripSplit.morning, dayKey: dayKey)
         let tripAfternoonHours = CountRecordLogic.activeDurationHours(lapTimes: tripSplit.afternoon, dayKey: dayKey)
+        let sandLunchHours = CountRecordLogic.lunchDeductedHours(lapTimes: sandLaps, dayKey: dayKey)
         let leaderboard = Array(
             units
                 .filter { !$0.lapTimes.isEmpty }
@@ -215,9 +219,11 @@ struct RealtimeV4Snapshot: Sendable {
             sandHours: sandHours,
             sandMorningHours: sandMorningHours,
             sandAfternoonHours: sandAfternoonHours,
+            sandLunchHours: sandLunchHours,
             tripHours: tripHours,
             tripMorningHours: tripMorningHours,
             tripAfternoonHours: tripAfternoonHours,
+            tripLunchHours: tripLunchHours,
             vehicleWorkSpans: vehicleWorkSpans,
             leaderboard: leaderboard,
             sandPro: sandPro,
@@ -910,7 +916,8 @@ struct RealtimeV4View: View {
                 cellFill: RealtimeV4Palette.tripCellFill,
                 total: snapshot.tripHours,
                 morning: snapshot.tripMorningHours,
-                afternoon: snapshot.tripAfternoonHours
+                afternoon: snapshot.tripAfternoonHours,
+                lunchDeducted: snapshot.tripLunchHours
             )
 
             VStack(alignment: .leading, spacing: 6) {
@@ -1112,7 +1119,8 @@ struct RealtimeV4View: View {
                 cellFill: RealtimeV4Palette.sandCellFill,
                 total: snapshot.sandHours,
                 morning: snapshot.sandMorningHours,
-                afternoon: snapshot.sandAfternoonHours
+                afternoon: snapshot.sandAfternoonHours,
+                lunchDeducted: snapshot.sandLunchHours
             )
 
             VStack(alignment: .leading, spacing: 6) {
@@ -1188,18 +1196,28 @@ struct RealtimeV4View: View {
         .accessibilityHint("แตะเพื่อดูรายละเอียดเชิงลึก เทียบอัตราร่อนกับเที่ยวรถ")
     }
 
-    /// Total + morning + afternoon active work hours (lunch deducted on full-day total).
+    /// Total + morning + afternoon active work hours (lunch 12:00–13:00 deducted from full-day total;
+    /// morning/afternoon buckets exclude the lunch hour so rates stay honest).
     private func workHoursBlock(
         titleColor: Color,
         cellFill: Color,
         total: Double?,
         morning: Double?,
-        afternoon: Double?
+        afternoon: Double?,
+        lunchDeducted: Double = 0
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("เวลาทำงานจริง")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(titleColor)
+            HStack {
+                Text("เวลาทำงานจริง")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(titleColor)
+                Spacer(minLength: 0)
+                if lunchDeducted > 0.01 {
+                    Text("หักพักเที่ยง \(Self.formatWorkHours(lunchDeducted))")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(titleColor.opacity(0.85))
+                }
+            }
             HStack(spacing: 8) {
                 kpiCell(
                     title: "รวม",
@@ -1988,7 +2006,11 @@ private struct FleetTripDetailSheet: View {
         for (index, item) in items.enumerated() {
             var gap: Double?
             if index > 0 {
-                let sec = CountRecordAnalytics.activeDurationSec(startMs: items[index - 1].ms, endMs: item.ms)
+                let sec = CountRecordAnalytics.activeDurationSec(
+                    startMs: items[index - 1].ms,
+                    endMs: item.ms,
+                    dayKey: dayKey
+                )
                 if sec > 0 { gap = sec }
             }
             rows.append(
@@ -2116,7 +2138,7 @@ private struct SandRoundsSheet: View {
                 gap = intervals[index - 1]
             } else if let prev = CountRecordLogic.parseLapStamp(lapTimes[index - 1], dayKey: dayKey),
                       let curr = CountRecordLogic.parseLapStamp(stamp, dayKey: dayKey) {
-                let sec = CountRecordAnalytics.activeDurationSec(startMs: prev, endMs: curr)
+                let sec = CountRecordAnalytics.activeDurationSec(startMs: prev, endMs: curr, dayKey: dayKey)
                 gap = sec > 0 ? sec : nil
             } else {
                 gap = nil

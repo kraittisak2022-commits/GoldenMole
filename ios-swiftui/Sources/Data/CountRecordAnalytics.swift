@@ -141,15 +141,15 @@ enum CountRecordAnalytics {
         hour >= lunchStartHour && hour < lunchEndHour
     }
 
-    static func activeDurationSec(startMs: Double, endMs: Double) -> Double {
+    static func activeDurationSec(startMs: Double, endMs: Double, dayKey: String? = nil) -> Double {
         guard endMs > startMs else { return 0 }
-        let lunch = CountRecordLogic.lunchOverlapSeconds(start: startMs, end: endMs)
+        let lunch = CountRecordLogic.lunchOverlapSeconds(start: startMs, end: endMs, dayKey: dayKey)
         return max(0, (endMs - startMs) - lunch)
     }
 
     static func computeLapIntervals(lapTimes: [String], dayKey: String) -> [Double] {
         let parsed = parseLaps(lapTimes, dayKey: dayKey)
-        return computeLapIntervals(parsed: parsed)
+        return computeLapIntervals(parsed: parsed, dayKey: dayKey)
     }
 
     /// Parsed stamp + epoch (already sorted by time when built via `parseAndSortLaps`).
@@ -168,11 +168,11 @@ enum CountRecordAnalytics {
         parseLaps(lapTimes, dayKey: dayKey).sorted { $0.ms < $1.ms }
     }
 
-    static func computeLapIntervals(parsed: [(stamp: String, ms: Double)]) -> [Double] {
+    static func computeLapIntervals(parsed: [(stamp: String, ms: Double)], dayKey: String? = nil) -> [Double] {
         var intervals: [Double] = []
         guard parsed.count > 1 else { return intervals }
         for i in 1..<parsed.count {
-            let sec = activeDurationSec(startMs: parsed[i - 1].ms, endMs: parsed[i].ms)
+            let sec = activeDurationSec(startMs: parsed[i - 1].ms, endMs: parsed[i].ms, dayKey: dayKey)
             if sec > 0 { intervals.append(sec) }
         }
         return intervals
@@ -272,13 +272,13 @@ enum CountRecordAnalytics {
     }
 
     static func computeWorkDuration(lapTimes: [String], dayKey: String) -> WorkDurationSummary? {
-        computeWorkDuration(parsed: parseAndSortLaps(lapTimes, dayKey: dayKey))
+        computeWorkDuration(parsed: parseAndSortLaps(lapTimes, dayKey: dayKey), dayKey: dayKey)
     }
 
-    static func computeWorkDuration(parsed: [(stamp: String, ms: Double)]) -> WorkDurationSummary? {
+    static func computeWorkDuration(parsed: [(stamp: String, ms: Double)], dayKey: String? = nil) -> WorkDurationSummary? {
         guard let first = parsed.first, let last = parsed.last else { return nil }
         let rawSec = max(0, last.ms - first.ms)
-        let activeSec = activeDurationSec(startMs: first.ms, endMs: last.ms)
+        let activeSec = activeDurationSec(startMs: first.ms, endMs: last.ms, dayKey: dayKey)
         return WorkDurationSummary(
             totalActiveHours: activeSec / 3600,
             lunchDeductedHours: max(0, (rawSec - activeSec) / 3600),
@@ -487,7 +487,7 @@ enum CountRecordAnalytics {
         let rounds = units.reduce(0) { $0 + $1.rounds }
         let morning = units.reduce(0) { $0 + $1.morning }
         let afternoon = units.reduce(0) { $0 + $1.afternoon }
-        let intervals = computeLapIntervals(parsed: parsed)
+        let intervals = computeLapIntervals(parsed: parsed, dayKey: dayKey)
         let stats = computeIntervalStats(intervals)
         let heatmap = light ? [] : computeHourlyHeatmap(parsed: parsed)
         let ref = priorKey
@@ -523,7 +523,7 @@ enum CountRecordAnalytics {
             peak: light ? nil : computePeakHour(heatmap),
             cumulative: light ? [] : computeCumulativeSeries(parsed: parsed),
             hourly: light ? [] : computeHourlyBuckets(parsed: parsed),
-            workDuration: computeWorkDuration(parsed: parsed),
+            workDuration: computeWorkDuration(parsed: parsed, dayKey: dayKey),
             vehicleComparison: vehicleRows,
             eta: nil,
             consistency: computePaceConsistency(intervals),
@@ -548,7 +548,7 @@ enum CountRecordAnalytics {
         let parsed = parseAndSortLaps(rawLaps, dayKey: dayKey)
         let lapTimes = parsed.map(\.stamp)
         let rounds = sand?.rounds ?? 0
-        let intervals = computeLapIntervals(parsed: parsed)
+        let intervals = computeLapIntervals(parsed: parsed, dayKey: dayKey)
         let stats = computeIntervalStats(intervals)
         let heatmap = light ? [] : computeHourlyHeatmap(parsed: parsed)
         let ref = priorKey
@@ -580,7 +580,7 @@ enum CountRecordAnalytics {
             peak: light ? nil : computePeakHour(heatmap),
             cumulative: light ? [] : computeCumulativeSeries(parsed: parsed),
             hourly: light ? [] : computeHourlyBuckets(parsed: parsed),
-            workDuration: computeWorkDuration(parsed: parsed),
+            workDuration: computeWorkDuration(parsed: parsed, dayKey: dayKey),
             vehicleComparison: [],
             eta: computeSandTargetEta(lapTimes: lapTimes, dayKey: dayKey, parsed: parsed, intervals: intervals),
             consistency: computePaceConsistency(intervals),

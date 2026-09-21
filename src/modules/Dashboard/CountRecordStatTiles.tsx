@@ -281,6 +281,11 @@ const CountRecordStatTiles = ({
                                 <p className="mt-1 text-[9px] font-medium text-white/50">
                                     {t('targetHours', { hours: WORK_TARGET_HOURS })}
                                 </p>
+                                {workSummary.lunchDeductedHours > 0.01 && (
+                                    <p className="text-[9px] font-medium text-amber-200/90">
+                                        {t('lunchBreakNote')}
+                                    </p>
+                                )}
                                 {workSummary.startClock && workSummary.endClock && (
                                     <p className="text-[9px] text-white/60">
                                         {workSummary.startClock} – {workSummary.endClock}

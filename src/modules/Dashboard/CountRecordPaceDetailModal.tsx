@@ -221,6 +221,11 @@ const CountRecordPaceDetailModal = ({
                             <p className="mt-2 text-2xl font-black tabular-nums text-slate-900 dark:text-slate-100">
                                 {formatActiveHours(workSummary.totalActiveHours, locale)}
                             </p>
+                            {workSummary.lunchDeductedHours > 0.01 && (
+                                <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                                    {t('lunchBreakNote')}
+                                </p>
+                            )}
                             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                                 {t('targetHours', { hours: WORK_TARGET_HOURS })}
                             </p>

@@ -728,17 +728,40 @@ enum CountRecordLogic {
         periodSpanLabels(lapTimes: units.flatMap(\.lapTimes), dayKey: dayKey)
     }
 
-    static func lunchOverlapSeconds(start: TimeInterval, end: TimeInterval) -> TimeInterval {
+    /// Bangkok lunch window 12:00–13:00 for a civil dayKey (epoch seconds).
+    static func lunchWindowSeconds(dayKey: String) -> (start: TimeInterval, end: TimeInterval)? {
+        let parts = dayKey.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        let start = bangkokEpochSeconds(
+            year: parts[0], month: parts[1], day: parts[2],
+            hour: lunchStartHour, minute: 0, second: 0
+        )
+        let end = bangkokEpochSeconds(
+            year: parts[0], month: parts[1], day: parts[2],
+            hour: lunchEndHour, minute: 0, second: 0
+        )
+        return (start, end)
+    }
+
+    static func lunchOverlapSeconds(start: TimeInterval, end: TimeInterval, dayKey: String? = nil) -> TimeInterval {
         guard end > start else { return 0 }
-        // Lunch window is local to the Bangkok civil day of `start` (same as Calendar-based path).
-        let midnight = bangkokMidnightUTC(containing: start)
-        let lunchStart = midnight + TimeInterval(lunchStartHour * 3_600)
-        let lunchEnd = midnight + TimeInterval(lunchEndHour * 3_600)
+        let lunchStart: TimeInterval
+        let lunchEnd: TimeInterval
+        if let dayKey, let window = lunchWindowSeconds(dayKey: dayKey) {
+            lunchStart = window.start
+            lunchEnd = window.end
+        } else {
+            // Fallback: derive Bangkok civil day from `start`.
+            let midnight = bangkokMidnightUTC(containing: start)
+            lunchStart = midnight + TimeInterval(lunchStartHour * 3_600)
+            lunchEnd = midnight + TimeInterval(lunchEndHour * 3_600)
+        }
         let oStart = max(start, lunchStart)
         let oEnd = min(end, lunchEnd)
         return max(0, oEnd - oStart)
     }
 
+    /// Active work hours (first→last lap) with lunch 12:00–13:00 deducted.
     static func activeDurationHours(lapTimes: [String], dayKey: String) -> Double? {
         let span = computeWorkSpan(lapTimes: lapTimes, dayKey: dayKey)
         guard let startStamp = span.startStamp, let endStamp = span.endStamp,
@@ -746,8 +769,36 @@ enum CountRecordLogic {
               let end = parseLapStamp(endStamp, dayKey: dayKey),
               end > start
         else { return nil }
-        let active = (end - start) - lunchOverlapSeconds(start: start, end: end)
+        let active = (end - start) - lunchOverlapSeconds(start: start, end: end, dayKey: dayKey)
         return max(0, active) / 3600
+    }
+
+    /// Lunch hours deducted from a lap span (0 when span does not cross 12:00–13:00).
+    static func lunchDeductedHours(lapTimes: [String], dayKey: String) -> Double {
+        let span = computeWorkSpan(lapTimes: lapTimes, dayKey: dayKey)
+        guard let startStamp = span.startStamp, let endStamp = span.endStamp,
+              let start = parseLapStamp(startStamp, dayKey: dayKey),
+              let end = parseLapStamp(endStamp, dayKey: dayKey),
+              end > start
+        else { return 0 }
+        return lunchOverlapSeconds(start: start, end: end, dayKey: dayKey) / 3600
+    }
+
+    /// Split laps for period *hours*: morning ends before 12:00, afternoon starts at/after 13:00
+    /// so the lunch hour is never counted as work in either period bucket.
+    static func splitLapsForPeriodHours(_ lapTimes: [String]) -> (morning: [String], afternoon: [String]) {
+        var morning: [String] = []
+        var afternoon: [String] = []
+        for lap in lapTimes {
+            guard let h = lapHour(lap) else { continue }
+            if h < lunchStartHour {
+                morning.append(lap)
+            } else if h >= lunchEndHour {
+                afternoon.append(lap)
+            }
+            // 12:00–12:59: excluded from both period hour spans (deducted on full-day total)
+        }
+        return (morning, afternoon)
     }
 
     static func findPriorDayWithTripData(

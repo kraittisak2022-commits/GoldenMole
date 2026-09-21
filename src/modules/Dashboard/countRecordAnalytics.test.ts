@@ -112,8 +112,16 @@ describe('lunch overlap', () => {
     it('deducts one hour for full-day span crossing lunch', () => {
         const start = parseLapStamp('26/06 08:00:00', '2026-06-26')!;
         const end = parseLapStamp('26/06 17:00:00', '2026-06-26')!;
-        expect(lunchOverlapMs(start, end)).toBe(60 * 60 * 1000);
-        expect(activeDurationSec(start, end)).toBe(8 * 60 * 60);
+        expect(lunchOverlapMs(start, end, '2026-06-26')).toBe(60 * 60 * 1000);
+        expect(activeDurationSec(start, end, '2026-06-26')).toBe(8 * 60 * 60);
+    });
+
+    it('uses dayKey civil day for lunch window', () => {
+        const start = parseLapStamp('21/03 10:45:00', '2026-03-21')!;
+        const end = parseLapStamp('21/03 15:44:00', '2026-03-21')!;
+        expect(lunchOverlapMs(start, end, '2026-03-21')).toBe(60 * 60 * 1000);
+        // 4h59m raw − 1h lunch ≈ 3h59m
+        expect(activeDurationSec(start, end, '2026-03-21')).toBe(3 * 3600 + 59 * 60);
     });
 });
 

@@ -20,30 +20,36 @@ export function isLunchHour(hour: number): boolean {
     return hour >= LUNCH_START_HOUR && hour < LUNCH_END_HOUR;
 }
 
-/** Lunch window on same calendar day as startMs (Bangkok) */
+/** Lunch window on the civil day of `dayKey` when valid; otherwise same calendar day as startMs (Bangkok) */
 export function lunchWindowMs(dayKey: string, refMs: number): { startMs: number; endMs: number } {
+    const base = normalizeDate(dayKey);
+    const [yyStr, mmStr, ddStr] = base.split('-');
+    const yy = parseInt(yyStr ?? '', 10);
+    const mm = parseInt(mmStr ?? '', 10);
+    const dd = parseInt(ddStr ?? '', 10);
+    if (Number.isFinite(yy) && Number.isFinite(mm) && Number.isFinite(dd) && mm >= 1 && mm <= 12 && dd >= 1) {
+        const startMs = Date.UTC(yy, mm - 1, dd, LUNCH_START_HOUR, 0, 0) - TZ_OFFSET_MS;
+        const endMs = Date.UTC(yy, mm - 1, dd, LUNCH_END_HOUR, 0, 0) - TZ_OFFSET_MS;
+        return { startMs, endMs };
+    }
     const d = new Date(refMs + TZ_OFFSET_MS);
-    const yy = d.getUTCFullYear();
-    const mm = d.getUTCMonth();
-    const dd = d.getUTCDate();
-    const startMs = Date.UTC(yy, mm, dd, LUNCH_START_HOUR, 0, 0) - TZ_OFFSET_MS;
-    const endMs = Date.UTC(yy, mm, dd, LUNCH_END_HOUR, 0, 0) - TZ_OFFSET_MS;
-    void dayKey;
+    const startMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), LUNCH_START_HOUR, 0, 0) - TZ_OFFSET_MS;
+    const endMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), LUNCH_END_HOUR, 0, 0) - TZ_OFFSET_MS;
     return { startMs, endMs };
 }
 
-export function lunchOverlapMs(startMs: number, endMs: number): number {
+export function lunchOverlapMs(startMs: number, endMs: number, dayKey = ''): number {
     if (endMs <= startMs) return 0;
-    const { startMs: lunchStart, endMs: lunchEnd } = lunchWindowMs('', startMs);
+    const { startMs: lunchStart, endMs: lunchEnd } = lunchWindowMs(dayKey, startMs);
     const overlapStart = Math.max(startMs, lunchStart);
     const overlapEnd = Math.min(endMs, lunchEnd);
     return Math.max(0, overlapEnd - overlapStart);
 }
 
-export function activeDurationSec(startMs: number, endMs: number): number {
+export function activeDurationSec(startMs: number, endMs: number, dayKey = ''): number {
     if (endMs <= startMs) return 0;
     const rawMs = endMs - startMs;
-    const lunchMs = lunchOverlapMs(startMs, endMs);
+    const lunchMs = lunchOverlapMs(startMs, endMs, dayKey);
     return Math.max(0, Math.round((rawMs - lunchMs) / 1000));
 }
 
@@ -104,7 +110,7 @@ export function computeLapIntervals(
         const prev = parseLapStamp(lapTimes[i - 1]!, dayKey);
         const curr = parseLapStamp(lapTimes[i]!, dayKey);
         if (prev == null || curr == null) continue;
-        const sec = activeDurationSec(prev, curr);
+        const sec = activeDurationSec(prev, curr, dayKey);
         if (sec <= 0) continue;
         intervalsSec.push(sec);
         labels.push(
@@ -291,7 +297,7 @@ export function computeSandWorkDurationSummary(lapTimes: string[], dayKey: strin
     const endMs = parseLapStamp(span.endStamp, dayKey);
     if (startMs == null || endMs == null) return null;
     const rawSec = Math.max(0, Math.round((endMs - startMs) / 1000));
-    const activeSec = activeDurationSec(startMs, endMs);
+    const activeSec = activeDurationSec(startMs, endMs, dayKey);
     const lunchDeductedSec = Math.max(0, rawSec - activeSec);
     return {
         totalActiveHours: activeSec / 3600,
@@ -331,7 +337,7 @@ export function computeHourlyActiveWork(lapTimes: string[], dayKey: string): Hou
         const segEnd = Math.min(endMs, hourEndMs);
         if (segEnd <= segStart) continue;
 
-        const activeSec = activeDurationSec(segStart, segEnd);
+        const activeSec = activeDurationSec(segStart, segEnd, dayKey);
         const activeMinutes = activeSec / 60;
         buckets.push({
             hour,
@@ -617,7 +623,7 @@ export function computeTripFleetWorkDurationSummary(
     const endMs = parseLapStamp(span.endStamp, dayKey);
     if (startMs == null || endMs == null) return null;
     const rawSec = Math.max(0, Math.round((endMs - startMs) / 1000));
-    const activeSec = activeDurationSec(startMs, endMs);
+    const activeSec = activeDurationSec(startMs, endMs, dayKey);
     const lunchDeductedSec = Math.max(0, rawSec - activeSec);
     return {
         totalActiveHours: activeSec / 3600,
@@ -775,12 +781,15 @@ function periodKeyFromHour(hour: number): SandPeriodKey | null {
     return null;
 }
 
-function bucketFromLaps(stamps: { stamp: string; timeMs: number }[]): SandPeriodEfficiencyBucket | null {
+function bucketFromLaps(
+    stamps: { stamp: string; timeMs: number }[],
+    dayKey = '',
+): SandPeriodEfficiencyBucket | null {
     if (stamps.length < 2) return null;
     const sorted = [...stamps].sort((a, b) => a.timeMs - b.timeMs);
     const first = sorted[0]!;
     const last = sorted[sorted.length - 1]!;
-    const activeSec = activeDurationSec(first.timeMs, last.timeMs);
+    const activeSec = activeDurationSec(first.timeMs, last.timeMs, dayKey);
     const activeHours = activeSec / 3600;
     if (activeHours <= 0) return null;
     const rounds = stamps.length;
@@ -808,9 +817,9 @@ export function computeSandPeriodEfficiency(lapTimes: string[], dayKey: string):
         buckets[key].push({ stamp, timeMs });
     }
     return {
-        morning: bucketFromLaps(buckets.morning),
-        afternoon: bucketFromLaps(buckets.afternoon),
-        ot: bucketFromLaps(buckets.ot),
+        morning: bucketFromLaps(buckets.morning, dayKey),
+        afternoon: bucketFromLaps(buckets.afternoon, dayKey),
+        ot: bucketFromLaps(buckets.ot, dayKey),
     };
 }
 
