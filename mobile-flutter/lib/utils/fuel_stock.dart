@@ -267,6 +267,9 @@ bool _isFuelExpenseRow(AppTransaction t) =>
 /// แถวรับน้ำมันเข้าถัง — สอดคล้อง `inferFuelMovement` บนเว็บ (ข้อมูลเก่าที่ไม่มีรถ = รับเข้า)
 bool isFuelStockInRow(AppTransaction t) {
   if (!_isFuelExpenseRow(t)) return false;
+  final sub = (t.subCategory ?? '').trim();
+  // แถว StockIn = รับเข้าเสมอ (กัน fuelMovement ผิด/หายแล้วถังหลักติดลบ)
+  if (sub == kFuelStockInSubCategory) return true;
   final mov = (t.fuelMovement ?? '').trim().toLowerCase();
   if (mov == 'stock_in') return true;
   if (mov == 'stock_out') return false;
@@ -670,10 +673,14 @@ FuelStockBalance computeFuelStockBalance(
       continue;
     }
     if (isFuelWithdrawRow(t)) {
+      // มี Transfer วันเดียวกันแล้ว = แถวเบิกเครื่องจักรเก่าซ้ำ — ไม่หักถังหลักซ้ำ
+      if (fuelWithdrawPurposeCode(t) == 'machine' &&
+          transferMachineDays.contains(day)) {
+        continue;
+      }
       bucket.withdraw += liters;
       // แอปเก่า: เบิกเติมเครื่องจักรเป็นแถวเดียว — ตีความเป็นโอนหลัก→สำรอง
-      if (fuelWithdrawPurposeCode(t) == 'machine' &&
-          !transferMachineDays.contains(day)) {
+      if (fuelWithdrawPurposeCode(t) == 'machine') {
         bucketFor(day, kFuelTankReserve, benzine).stockIn += liters;
       }
       continue;

@@ -13,6 +13,7 @@ const FUEL_WITHDRAW = "Withdraw";
 const FUEL_TRANSFER = "Transfer";
 const FUEL_SAND_SIEVE = "SandSieve";
 const FUEL_VEHICLE_USAGE = "VehicleUsage";
+const FUEL_STOCK_IN = "StockIn";
 
 export type FuelTx = {
   date?: string | null;
@@ -56,6 +57,8 @@ function hasVehicle(t: FuelTx): boolean {
 }
 
 function inferFuelMovement(t: FuelTx): "stock_in" | "stock_out" {
+  const sub = String(t.sub_category ?? "").trim();
+  if (sub === FUEL_STOCK_IN) return "stock_in";
   const mov = String(t.fuel_movement ?? "").trim().toLowerCase();
   if (mov === "stock_in" || mov === "stock_out") return mov;
   return hasVehicle(t) ? "stock_out" : "stock_in";
@@ -175,13 +178,17 @@ export function computeFuelStockBalances(
     const purpose = String(t.work_type ?? "").trim().toLowerCase();
     const movement = inferFuelMovement(t);
 
-    if (movement === "stock_in") {
+    if (movement === "stock_in" || sub === FUEL_STOCK_IN) {
       bucket.stockIn += liters;
       continue;
     }
     if (sub === FUEL_WITHDRAW) {
+      // มี Transfer วันเดียวกันแล้ว = แถวเบิกเครื่องจักรเก่าซ้ำ — ไม่หักถังหลักซ้ำ
+      if (purpose === "machine" && transferMachineDays.has(day)) {
+        continue;
+      }
       bucket.withdraw += liters;
-      if (purpose === "machine" && !transferMachineDays.has(day)) {
+      if (purpose === "machine") {
         bucketFor(day, "reserve", ft).stockIn += liters;
       }
       continue;

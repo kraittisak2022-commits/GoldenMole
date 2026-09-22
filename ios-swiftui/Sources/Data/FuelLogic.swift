@@ -172,6 +172,9 @@ enum FuelLogic {
 
     static func isStockIn(_ t: Transaction) -> Bool {
         guard isFuelExpense(t) else { return false }
+        let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // แถว StockIn = รับเข้าเสมอ (กัน fuelMovement ผิด/หายแล้วถังหลักติดลบ)
+        if sub == stockInSubCategory { return true }
         let mov = (t.fuelMovement ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if mov == "stock_in" { return true }
         if mov == "stock_out" { return false }
@@ -335,9 +338,13 @@ enum FuelLogic {
                 continue
             }
             if isWithdraw(t) {
-                buckets[bucketKey, default: Bucket()].withdraw += lit
                 let purpose = (t.workType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                if purpose == "machine", !transferMachineDays.contains(day) {
+                // มี Transfer วันเดียวกันแล้ว = แถวเบิกเครื่องจักรเก่าซ้ำ — ไม่หักถังหลักซ้ำ
+                if purpose == "machine", transferMachineDays.contains(day) {
+                    continue
+                }
+                buckets[bucketKey, default: Bucket()].withdraw += lit
+                if purpose == "machine" {
                     let reserveKey = key(day: day, tank: tankReserve, benzine: isBenzine)
                     buckets[reserveKey, default: Bucket()].stockIn += lit
                 }

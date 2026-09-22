@@ -125,6 +125,8 @@ enum FuelUsageReportLogic {
 
     static func inferFuelMovement(_ t: Transaction) -> String {
         guard t.category == "Fuel" else { return "stock_out" }
+        let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if sub == FuelLogic.stockInSubCategory { return "stock_in" }
         let mov = (t.fuelMovement ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if mov == "stock_in" || mov == "stock_out" {
             return mov

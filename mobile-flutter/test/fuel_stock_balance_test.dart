@@ -127,7 +127,7 @@ void main() {
       expect(b.reserveDiesel, 619);
     });
 
-    test('legacy Withdraw+machine does not double-credit when Transfer exists', () {
+    test('legacy Withdraw+machine does not double-debit when Transfer exists', () {
       final b = computeFuelStockBalance([
         _fuel(
           id: 'out',
@@ -153,7 +153,8 @@ void main() {
           workType: 'machine',
         ),
       ]);
-      expect(b.mainDiesel, -250);
+      // Transfer ย้าย 200 แล้ว — แถวเบิกเครื่องจักรเก่าไม่หักถังหลักซ้ำ
+      expect(b.mainDiesel, -200);
       expect(b.reserveDiesel, 200);
     });
 
@@ -309,6 +310,29 @@ void main() {
       ]);
       expect(b.mainDiesel, -40);
       expect(b.reserveDiesel, 0);
+    });
+
+    test('StockIn counts even when fuelMovement is wrongly stock_out', () {
+      final b = computeFuelStockBalance([
+        _fuel(
+          id: 'in',
+          sub: kFuelStockInSubCategory,
+          movement: 'stock_out',
+          liters: 12000,
+          tank: kFuelTankMain,
+          date: '2026-08-05',
+        ),
+        _fuel(
+          id: 'car',
+          sub: kFuelWithdrawSubCategory,
+          movement: 'stock_out',
+          liters: 100,
+          tank: kFuelTankMain,
+          workType: 'car',
+          date: '2026-08-06',
+        ),
+      ]);
+      expect(b.mainDiesel, 11900);
     });
 
     test('rows on cutover day 2026-08-01 are counted', () {

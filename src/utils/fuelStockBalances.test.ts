@@ -209,7 +209,7 @@ describe('computeFuelStockBalances', () => {
         expect(bal.DieselReserve).toBe(619);
     });
 
-    it('does not double-credit reserve when Transfer exists same day as legacy withdraw', () => {
+    it('does not double-debit main when Transfer exists same day as legacy withdraw', () => {
         const bal = computeFuelStockBalances([
             fuelTx({
                 id: 'in',
@@ -246,9 +246,33 @@ describe('computeFuelStockBalances', () => {
                 quantity: 100,
             }),
         ]);
-        // main: 2000 - 400 - 100 = 1500; reserve: 400 only (no legacy credit)
-        expect(bal.Diesel).toBe(1500);
+        // main: 2000 - 400 = 1600 (legacy machine withdraw skipped — Transfer already moved oil)
+        // reserve: anchor/opening 100 + transfer in 400 = 500
+        expect(bal.Diesel).toBe(1600);
         expect(bal.DieselReserve).toBe(500);
+    });
+
+    it('StockIn counts even when fuelMovement is wrongly stock_out', () => {
+        const bal = computeFuelStockBalances([
+            fuelTx({
+                id: 'in',
+                date: '2026-08-05',
+                fuelMovement: 'stock_out',
+                subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
+                fuelTank: 'main',
+                quantity: 12000,
+            }),
+            fuelTx({
+                id: 'out',
+                date: '2026-08-06',
+                fuelMovement: 'stock_out',
+                subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+                workType: 'car',
+                fuelTank: 'main',
+                quantity: 100,
+            }),
+        ]);
+        expect(bal.Diesel).toBe(11900);
     });
 
     it('transfer + macro on reserve does not double-deduct main', () => {

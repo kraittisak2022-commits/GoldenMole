@@ -14,6 +14,9 @@ export function fuelTxToLiters(t: Transaction): number {
 /** รับเข้าสต็อก vs เติมรถ — ข้อมูลเก่า: มี vehicleId = เติมรถ, ไม่มี = รับเข้า */
 export function inferFuelMovement(t: Transaction): 'stock_in' | 'stock_out' {
     if (t.category !== 'Fuel') return 'stock_out';
+    const sub = String(t.subCategory ?? '').trim();
+    // แถว StockIn = รับเข้าเสมอ (กัน fuelMovement ผิด/หายแล้วถังหลักติดลบ)
+    if (sub === FUEL_STOCK_IN_SUB_CATEGORY) return 'stock_in';
     if (t.fuelMovement === 'stock_in' || t.fuelMovement === 'stock_out') return t.fuelMovement;
     return t.vehicleId ? 'stock_out' : 'stock_in';
 }
@@ -199,14 +202,18 @@ export function computeFuelStockBalances(
         const purpose = String(t.workType ?? '').trim().toLowerCase();
         const movement = inferFuelMovement(t);
 
-        if (movement === 'stock_in') {
+        if (movement === 'stock_in' || sub === FUEL_STOCK_IN_SUB_CATEGORY) {
             bucket.stockIn += liters;
             continue;
         }
         if (sub === FUEL_WITHDRAW_SUB_CATEGORY) {
+            // มี Transfer วันเดียวกันแล้ว = แถวเบิกเครื่องจักรเก่าซ้ำ — ไม่หักถังหลักซ้ำ
+            if (purpose === 'machine' && transferMachineDays.has(day)) {
+                continue;
+            }
             bucket.withdraw += liters;
             // แอปเก่า: เบิกเติมเครื่องจักรแถวเดียว — ตีความเป็นโอนหลัก→สำรอง
-            if (purpose === 'machine' && !transferMachineDays.has(day)) {
+            if (purpose === 'machine') {
                 bucketFor(day, FUEL_TANK_RESERVE, ft).stockIn += liters;
             }
             continue;

@@ -305,8 +305,8 @@ struct OverviewHubView: View {
         let metrics = snapshot.mobileToday
         let showFuel = metrics.fuelOutLiters > 0
             || metrics.fuelInLiters > 0
-            || todayOps.mainDieselLiters > 0
-            || todayOps.reserveDieselLiters > 0
+            || todayOps.mainDieselLiters != 0
+            || todayOps.reserveDieselLiters != 0
         let showLabor = todayOps.laborBaht > 0 || todayOps.presentCount > 0
         let showVehicle = todayOps.vehicleBaht > 0
         let showAttendance = todayOps.presentCount > 0
@@ -416,13 +416,20 @@ struct OverviewHubView: View {
                 fuelStockChip(
                     title: "ถังหลัก",
                     value: "\(DashboardAggregations.formatNumber(todayOps.mainDieselLiters)) L",
-                    accent: AppTheme.fuel
+                    accent: todayOps.mainDieselLiters < 0 ? AppTheme.expense : AppTheme.fuel
                 )
                 fuelStockChip(
                     title: "ถังสำรอง",
                     value: "\(DashboardAggregations.formatNumber(todayOps.reserveDieselLiters)) L",
-                    accent: Color(hex: "#0F766E")
+                    accent: todayOps.reserveDieselLiters < 0
+                        ? AppTheme.expense
+                        : Color(hex: "#0F766E")
                 )
+            }
+            if todayOps.mainDieselLiters < 0 {
+                Text("ถังหลักติดลบ — ตรวจรายการรับเข้า (StockIn) และการเบิก/โอนซ้ำ")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AppTheme.expense)
             }
 
             HStack(spacing: 10) {
@@ -475,7 +482,7 @@ struct OverviewHubView: View {
                 .lineLimit(1)
             Text(value)
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(AppTheme.ink)
+                .foregroundStyle(accent)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
