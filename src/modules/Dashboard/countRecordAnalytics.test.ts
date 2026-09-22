@@ -150,6 +150,16 @@ describe('computeSandWorkDurationSummary', () => {
     });
 });
 
+describe('formatActiveHours', () => {
+    it('formats as hours and minutes', () => {
+        expect(formatActiveHours(3.75)).toBe('3 ชม. 45 นาที');
+        expect(formatActiveHours(0.5)).toBe('30 นาที');
+        expect(formatActiveHours(2)).toBe('2 ชม.');
+        expect(formatActiveHours(8)).toBe('8 ชม.');
+        expect(formatActiveHours(3.75, 'zh')).toBe('3 小时 45 分钟');
+    });
+});
+
 describe('computeThroughputRate', () => {
     it('daily rate equals time-weighted morning+afternoon rates', () => {
         const rate = computeThroughputRate(

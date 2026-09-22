@@ -452,10 +452,16 @@ enum CountRecordAnalytics {
         return s > 0 ? "\(m):\(String(format: "%02d", s)) นาที" : "\(m) นาที"
     }
 
+    /// Human-readable duration: `3 ชม. 45 นาที` / `45 นาที` / `3 ชม.`
     static func formatDurationHours(_ hours: Double) -> String {
-        guard hours.isFinite, hours > 0 else { return "0 ชม." }
-        if hours < 1 { return "\(Int((hours * 60).rounded())) นาที" }
-        return String(format: "%.1f ชม.", hours)
+        guard hours.isFinite, hours > 0 else { return "0 นาที" }
+        let totalMinutes = Int((hours * 60).rounded())
+        guard totalMinutes > 0 else { return "0 นาที" }
+        let h = totalMinutes / 60
+        let m = totalMinutes % 60
+        if h == 0 { return "\(m) นาที" }
+        if m == 0 { return "\(h) ชม." }
+        return "\(h) ชม. \(m) นาที"
     }
 
     static func formatDeltaPct(_ pct: Double?) -> String {

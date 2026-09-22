@@ -454,14 +454,25 @@ export function computeMinuteSandSpeed(lapTimes: string[], dayKey: string): Spee
         }));
 }
 
+/** Human-readable duration: `3 ชม. 45 นาที` / `45 นาที` / `3 ชม.` */
 export function formatActiveHours(hours: number, locale: FormatLocale = 'th'): string {
-    if (!Number.isFinite(hours) || hours <= 0) return locale === 'zh' ? '0 小时' : '0 ชม.';
-    if (hours < 1) {
-        const mins = Math.round(hours * 60);
-        return locale === 'zh' ? `${mins} 分钟` : `${mins} นาที`;
+    if (!Number.isFinite(hours) || hours <= 0) {
+        return locale === 'zh' ? '0 分钟' : '0 นาที';
     }
-    const rounded = Math.round(hours * 10) / 10;
-    return locale === 'zh' ? `${rounded} 小时` : `${rounded} ชม.`;
+    const totalMinutes = Math.round(hours * 60);
+    if (totalMinutes <= 0) {
+        return locale === 'zh' ? '0 分钟' : '0 นาที';
+    }
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    if (locale === 'zh') {
+        if (h === 0) return `${m} 分钟`;
+        if (m === 0) return `${h} 小时`;
+        return `${h} 小时 ${m} 分钟`;
+    }
+    if (h === 0) return `${m} นาที`;
+    if (m === 0) return `${h} ชม.`;
+    return `${h} ชม. ${m} นาที`;
 }
 
 /** Simple moving average; null until window is full */
