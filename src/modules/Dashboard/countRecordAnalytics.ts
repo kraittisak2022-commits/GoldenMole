@@ -344,8 +344,15 @@ export interface ThroughputRate {
 /**
  * Daily throughput aligned with morning+afternoon:
  * (mRounds+aRounds) / (mHours+aHours) === time-weighted average of period rates.
+ *
+ * For a single sand machine, hours are first→last within each period.
+ * Pass `hourMode: 'sum'` with pre-split per-unit hours when aggregating a fleet.
  */
-export function computeThroughputRate(lapTimes: string[], dayKey: string, totalRoundsFallback = 0): ThroughputRate | null {
+export function computeThroughputRate(
+    lapTimes: string[],
+    dayKey: string,
+    totalRoundsFallback = 0,
+): ThroughputRate | null {
     const split = splitLapsForPeriodHours(lapTimes);
     const morningHours = periodSpanActiveHours(split.morning, dayKey);
     const afternoonHours = periodSpanActiveHours(split.afternoon, dayKey);
@@ -360,6 +367,50 @@ export function computeThroughputRate(lapTimes: string[], dayKey: string, totalR
         rounds = rounds > 0 ? rounds : Math.max(totalRoundsFallback, lapTimes.length);
         hours = wall;
         if (hours <= 0 || rounds <= 0) return null;
+    }
+    const perHour = rounds / hours;
+    return {
+        rounds,
+        hours,
+        perHour,
+        perMinute: perHour / 60,
+        morningRounds,
+        afternoonRounds,
+        morningHours,
+        afternoonHours,
+        morningPerHour: morningHours > 0 && morningRounds > 0 ? morningRounds / morningHours : null,
+        afternoonPerHour: afternoonHours > 0 && afternoonRounds > 0 ? afternoonRounds / afternoonHours : null,
+    };
+}
+
+/** Fleet trip throughput: sum each vehicle's period hours (parallel trucks don't inflate rates). */
+export function computeFleetThroughputRate(
+    unitLapTimes: string[][],
+    dayKey: string,
+    totalRoundsFallback = 0,
+): ThroughputRate | null {
+    let morningRounds = 0;
+    let afternoonRounds = 0;
+    let morningHours = 0;
+    let afternoonHours = 0;
+    for (const laps of unitLapTimes) {
+        const split = splitLapsForPeriodHours(laps);
+        const mH = periodSpanActiveHours(split.morning, dayKey);
+        const aH = periodSpanActiveHours(split.afternoon, dayKey);
+        if (mH > 0) {
+            morningHours += mH;
+            morningRounds += split.morning.length;
+        }
+        if (aH > 0) {
+            afternoonHours += aH;
+            afternoonRounds += split.afternoon.length;
+        }
+    }
+    let rounds = morningRounds + afternoonRounds;
+    let hours = morningHours + afternoonHours;
+    if (hours <= 0 || rounds <= 0) {
+        const flat = unitLapTimes.flat();
+        return computeThroughputRate(flat, dayKey, totalRoundsFallback);
     }
     const perHour = rounds / hours;
     return {

@@ -849,6 +849,53 @@ enum CountRecordLogic {
         return summed > 0 ? summed : max(0, totalRounds)
     }
 
+    /// Per-vehicle period throughput for the trip fleet.
+    /// Hours are **summed across vehicles** (not a merged first→last span) so parallel trucks
+    /// do not inflate เที่ยว/ชม. Rounds are only counted when that vehicle has a valid period span.
+    struct FleetPeriodThroughput: Sendable {
+        let morningRounds: Int
+        let afternoonRounds: Int
+        let morningHours: Double?
+        let afternoonHours: Double?
+
+        var rateRounds: Int { morningRounds + afternoonRounds }
+
+        func rateHours(wallClockFallback: Double?) -> Double? {
+            CountRecordLogic.combinedPeriodRateHours(
+                morningHours: morningHours,
+                afternoonHours: afternoonHours,
+                wallClockHours: wallClockFallback
+            )
+        }
+    }
+
+    static func fleetPeriodThroughput(
+        units: [CountRecordTripUnit],
+        dayKey: String
+    ) -> FleetPeriodThroughput {
+        var morningRounds = 0
+        var afternoonRounds = 0
+        var morningHours = 0.0
+        var afternoonHours = 0.0
+        for unit in units {
+            let split = splitLapsForPeriodHours(unit.lapTimes)
+            if let hours = activeDurationHours(lapTimes: split.morning, dayKey: dayKey), hours > 0 {
+                morningHours += hours
+                morningRounds += split.morning.count
+            }
+            if let hours = activeDurationHours(lapTimes: split.afternoon, dayKey: dayKey), hours > 0 {
+                afternoonHours += hours
+                afternoonRounds += split.afternoon.count
+            }
+        }
+        return FleetPeriodThroughput(
+            morningRounds: morningRounds,
+            afternoonRounds: afternoonRounds,
+            morningHours: morningHours > 0 ? morningHours : nil,
+            afternoonHours: afternoonHours > 0 ? afternoonHours : nil
+        )
+    }
+
     static func findPriorDayWithTripData(
         from dayKey: String,
         transactions: [Transaction],

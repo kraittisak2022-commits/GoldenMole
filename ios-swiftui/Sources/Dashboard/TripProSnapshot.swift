@@ -159,19 +159,17 @@ struct TripProSnapshot: Sendable {
                 dayKey: dayKey,
                 target: target
             )
-        let lapsForRate = tripAnalytics.lapTimes
-        let split = CountRecordLogic.splitLapsForPeriodHours(lapsForRate)
-        let morningH = CountRecordLogic.activeDurationHours(lapTimes: split.morning, dayKey: dayKey)
-        let afternoonH = CountRecordLogic.activeDurationHours(lapTimes: split.afternoon, dayKey: dayKey)
+        let fleetRate = CountRecordLogic.fleetPeriodThroughput(units: tripUnits, dayKey: dayKey)
         let hours = tripHours
-            ?? CountRecordLogic.combinedPeriodRateHours(
-                morningHours: morningH,
-                afternoonHours: afternoonH,
-                wallClockHours: CountRecordLogic.wallClockDurationHours(lapTimes: lapsForRate, dayKey: dayKey)
+            ?? fleetRate.rateHours(
+                wallClockFallback: CountRecordLogic.wallClockDurationHours(
+                    lapTimes: tripAnalytics.lapTimes,
+                    dayKey: dayKey
+                )
             )
         let rateRounds = CountRecordLogic.combinedPeriodRateRounds(
-            morningRounds: split.morning.count,
-            afternoonRounds: split.afternoon.count,
+            morningRounds: fleetRate.morningRounds,
+            afternoonRounds: fleetRate.afternoonRounds,
             totalRounds: rounds
         )
         let perHour = CountRecordLogic.throughputPerHour(rounds: rateRounds, hours: hours)

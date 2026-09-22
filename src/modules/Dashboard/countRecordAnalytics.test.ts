@@ -22,6 +22,7 @@ import {
     computeSandTargetEta,
     computeSandWorkDurationSummary,
     computeThroughputRate,
+    computeFleetThroughputRate,
     computeTripFleetWorkSpan,
     computeWorkSpan,
     findPriorDayWithModeData,
@@ -181,6 +182,21 @@ describe('computeThroughputRate', () => {
         const weighted =
             (rate!.morningRounds + rate!.afternoonRounds) / (rate!.morningHours + rate!.afternoonHours);
         expect(rate!.perHour).toBeCloseTo(weighted, 10);
+    });
+});
+
+describe('computeFleetThroughputRate', () => {
+    it('sums per-vehicle hours so parallel trucks do not inflate rate', () => {
+        const truckA = ['26/06 08:00:00', '26/06 09:00:00', '26/06 10:00:00'];
+        const truckB = ['26/06 08:00:00', '26/06 09:00:00', '26/06 10:00:00'];
+        const fleet = computeFleetThroughputRate([truckA, truckB], '2026-06-26');
+        const merged = computeThroughputRate([...truckA, ...truckB], '2026-06-26');
+        expect(fleet).not.toBeNull();
+        expect(merged).not.toBeNull();
+        // Merged span ≈ 2h with 6 trips → 3/h; fleet sum hours = 4h → 1.5/h
+        expect(merged!.morningPerHour).toBeCloseTo(3, 5);
+        expect(fleet!.morningPerHour).toBeCloseTo(1.5, 5);
+        expect(fleet!.perHour).toBeCloseTo(fleet!.morningPerHour!, 10);
     });
 });
 
