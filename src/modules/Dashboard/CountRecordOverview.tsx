@@ -14,6 +14,7 @@ import CountIncrementPop from './CountIncrementPop';
 import {
     addDaysToYmd,
     computeSandWorkDurationSummary,
+    computeThroughputRate,
     computeTripFleetWorkSpan,
     computeTripTargetEta,
     computeWorkSpan,
@@ -545,21 +546,13 @@ const CountRecordOverview = ({
         return buildCountRecordTripUnits(priorTripDayKey, transactions, employees, vehicleCatalog);
     }, [priorTripDayKey, transactions, employees, vehicleCatalog]);
 
-    const sandSpeedPerHour = useMemo(() => {
-        if (!sandUnit || !sandWorkSummary) return null;
-        // Throughput uses wall-clock span (active + lunch). Dividing by lunch-deducted
-        // hours alone would inflate คิว/ชม while work-time already shows the break.
-        const wallHours = sandWorkSummary.totalActiveHours + sandWorkSummary.lunchDeductedHours;
-        if (wallHours <= 0) return null;
-        return sandUnit.rounds / wallHours;
-    }, [sandUnit, sandWorkSummary]);
+    const sandThroughput = useMemo(
+        () => (sandUnit ? computeThroughputRate(sandUnit.lapTimes, dayKey, sandUnit.rounds) : null),
+        [sandUnit, dayKey],
+    );
 
-    const sandSpeedPerMinute = useMemo(() => {
-        if (!sandUnit || !sandWorkSummary) return null;
-        const wallHours = sandWorkSummary.totalActiveHours + sandWorkSummary.lunchDeductedHours;
-        if (wallHours <= 0) return null;
-        return sandUnit.rounds / (wallHours * 60);
-    }, [sandUnit, sandWorkSummary]);
+    const sandSpeedPerHour = sandThroughput?.perHour ?? null;
+    const sandSpeedPerMinute = sandThroughput?.perMinute ?? null;
 
     const vehicleEfficiency = useMemo(() => {
         const countToday = tripUnits.length;

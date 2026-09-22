@@ -122,12 +122,22 @@ struct SandProSnapshot: Sendable {
         let remaining = max(0, target - rounds)
         let progress = target > 0 ? min(Double(rounds) / Double(target) * 100, 100) : 0
         let eta = sandAnalytics.eta
+        let lapsForRate = sandUnit?.lapTimes ?? sandAnalytics.lapTimes
+        let split = CountRecordLogic.splitLapsForPeriodHours(lapsForRate)
+        let morningH = CountRecordLogic.activeDurationHours(lapTimes: split.morning, dayKey: dayKey)
+        let afternoonH = CountRecordLogic.activeDurationHours(lapTimes: split.afternoon, dayKey: dayKey)
         let hours = sandHours
-            ?? CountRecordLogic.wallClockDurationHours(
-                lapTimes: sandUnit?.lapTimes ?? sandAnalytics.lapTimes,
-                dayKey: dayKey
+            ?? CountRecordLogic.combinedPeriodRateHours(
+                morningHours: morningH,
+                afternoonHours: afternoonH,
+                wallClockHours: CountRecordLogic.wallClockDurationHours(lapTimes: lapsForRate, dayKey: dayKey)
             )
-        let perHour = CountRecordLogic.throughputPerHour(rounds: rounds, hours: hours)
+        let rateRounds = CountRecordLogic.combinedPeriodRateRounds(
+            morningRounds: split.morning.count,
+            afternoonRounds: split.afternoon.count,
+            totalRounds: rounds
+        )
+        let perHour = CountRecordLogic.throughputPerHour(rounds: rateRounds, hours: hours)
 
         let comparison = sandAnalytics.comparison
         let priorLabel = comparison.priorLabel.isEmpty

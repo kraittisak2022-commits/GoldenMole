@@ -825,6 +825,30 @@ enum CountRecordLogic {
         return perHour / 60
     }
 
+    /// Daily throughput denominator that matches morning+afternoon rates:
+    /// sum of period spans (excludes lunch). Falls back to wall-clock when no period span exists.
+    static func combinedPeriodRateHours(
+        morningHours: Double?,
+        afternoonHours: Double?,
+        wallClockHours: Double?
+    ) -> Double? {
+        let summed = (morningHours ?? 0) + (afternoonHours ?? 0)
+        if summed > 0 { return summed }
+        guard let wall = wallClockHours, wall > 0, wall.isFinite else { return nil }
+        return wall
+    }
+
+    /// Daily throughput numerator aligned with period rates (excludes 12:00–12:59 laps).
+    /// Falls back to `totalRounds` when the period split is empty.
+    static func combinedPeriodRateRounds(
+        morningRounds: Int,
+        afternoonRounds: Int,
+        totalRounds: Int
+    ) -> Int {
+        let summed = morningRounds + afternoonRounds
+        return summed > 0 ? summed : max(0, totalRounds)
+    }
+
     static func findPriorDayWithTripData(
         from dayKey: String,
         transactions: [Transaction],

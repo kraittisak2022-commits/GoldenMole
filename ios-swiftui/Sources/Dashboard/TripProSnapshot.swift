@@ -159,12 +159,22 @@ struct TripProSnapshot: Sendable {
                 dayKey: dayKey,
                 target: target
             )
+        let lapsForRate = tripAnalytics.lapTimes
+        let split = CountRecordLogic.splitLapsForPeriodHours(lapsForRate)
+        let morningH = CountRecordLogic.activeDurationHours(lapTimes: split.morning, dayKey: dayKey)
+        let afternoonH = CountRecordLogic.activeDurationHours(lapTimes: split.afternoon, dayKey: dayKey)
         let hours = tripHours
-            ?? CountRecordLogic.wallClockDurationHours(
-                lapTimes: tripAnalytics.lapTimes,
-                dayKey: dayKey
+            ?? CountRecordLogic.combinedPeriodRateHours(
+                morningHours: morningH,
+                afternoonHours: afternoonH,
+                wallClockHours: CountRecordLogic.wallClockDurationHours(lapTimes: lapsForRate, dayKey: dayKey)
             )
-        let perHour = CountRecordLogic.throughputPerHour(rounds: rounds, hours: hours)
+        let rateRounds = CountRecordLogic.combinedPeriodRateRounds(
+            morningRounds: split.morning.count,
+            afternoonRounds: split.afternoon.count,
+            totalRounds: rounds
+        )
+        let perHour = CountRecordLogic.throughputPerHour(rounds: rateRounds, hours: hours)
         let queueCubic = rounds * CountRecordLogic.queuePerTrip
 
         let comparison = tripAnalytics.comparison

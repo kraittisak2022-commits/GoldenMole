@@ -21,6 +21,7 @@ import {
     computeSandPeriodEfficiency,
     computeSandTargetEta,
     computeSandWorkDurationSummary,
+    computeThroughputRate,
     computeTripFleetWorkSpan,
     computeWorkSpan,
     findPriorDayWithModeData,
@@ -146,6 +147,30 @@ describe('computeSandWorkDurationSummary', () => {
         const rounds = 9;
         expect(rounds / wallHours).toBe(1);
         expect(rounds / summary.totalActiveHours).toBe(1.125);
+    });
+});
+
+describe('computeThroughputRate', () => {
+    it('daily rate equals time-weighted morning+afternoon rates', () => {
+        const rate = computeThroughputRate(
+            [
+                '26/06 08:00:00',
+                '26/06 09:00:00',
+                '26/06 10:00:00',
+                '26/06 13:00:00',
+                '26/06 14:00:00',
+                '26/06 15:00:00',
+            ],
+            '2026-06-26',
+        );
+        expect(rate).not.toBeNull();
+        expect(rate!.morningPerHour).toBeCloseTo(1.5, 5);
+        expect(rate!.afternoonPerHour).toBeCloseTo(1.5, 5);
+        expect(rate!.perHour).toBeCloseTo(1.5, 5);
+        // Weighted blend identity: (mR+aR)/(mH+aH) === daily
+        const weighted =
+            (rate!.morningRounds + rate!.afternoonRounds) / (rate!.morningHours + rate!.afternoonHours);
+        expect(rate!.perHour).toBeCloseTo(weighted, 10);
     });
 });
 

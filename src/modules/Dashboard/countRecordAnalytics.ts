@@ -307,6 +307,75 @@ export function computeSandWorkDurationSummary(lapTimes: string[], dayKey: strin
     };
 }
 
+/** Split laps for period rates: morning <12, afternoon ≥13 (excludes lunch hour). */
+export function splitLapsForPeriodHours(lapTimes: string[]): { morning: string[]; afternoon: string[] } {
+    const morning: string[] = [];
+    const afternoon: string[] = [];
+    for (const stamp of lapTimes) {
+        const space = stamp.trim().indexOf(' ');
+        const timePart = space >= 0 ? stamp.trim().slice(space + 1) : stamp.trim();
+        const hour = parseInt(timePart.split(':')[0] ?? '', 10);
+        if (!Number.isFinite(hour) || hour < 0 || hour > 23) continue;
+        if (hour < LUNCH_START_HOUR) morning.push(stamp);
+        else if (hour >= LUNCH_END_HOUR) afternoon.push(stamp);
+    }
+    return { morning, afternoon };
+}
+
+function periodSpanActiveHours(lapTimes: string[], dayKey: string): number {
+    if (lapTimes.length < 2) return 0;
+    const summary = computeSandWorkDurationSummary(lapTimes, dayKey);
+    return summary?.totalActiveHours ?? 0;
+}
+
+export interface ThroughputRate {
+    rounds: number;
+    hours: number;
+    perHour: number;
+    perMinute: number;
+    morningRounds: number;
+    afternoonRounds: number;
+    morningHours: number;
+    afternoonHours: number;
+    morningPerHour: number | null;
+    afternoonPerHour: number | null;
+}
+
+/**
+ * Daily throughput aligned with morning+afternoon:
+ * (mRounds+aRounds) / (mHours+aHours) === time-weighted average of period rates.
+ */
+export function computeThroughputRate(lapTimes: string[], dayKey: string, totalRoundsFallback = 0): ThroughputRate | null {
+    const split = splitLapsForPeriodHours(lapTimes);
+    const morningHours = periodSpanActiveHours(split.morning, dayKey);
+    const afternoonHours = periodSpanActiveHours(split.afternoon, dayKey);
+    const morningRounds = split.morning.length;
+    const afternoonRounds = split.afternoon.length;
+    let rounds = morningRounds + afternoonRounds;
+    let hours = morningHours + afternoonHours;
+    if (hours <= 0 || rounds <= 0) {
+        const summary = computeSandWorkDurationSummary(lapTimes, dayKey);
+        if (!summary) return null;
+        const wall = summary.totalActiveHours + summary.lunchDeductedHours;
+        rounds = rounds > 0 ? rounds : Math.max(totalRoundsFallback, lapTimes.length);
+        hours = wall;
+        if (hours <= 0 || rounds <= 0) return null;
+    }
+    const perHour = rounds / hours;
+    return {
+        rounds,
+        hours,
+        perHour,
+        perMinute: perHour / 60,
+        morningRounds,
+        afternoonRounds,
+        morningHours,
+        afternoonHours,
+        morningPerHour: morningHours > 0 && morningRounds > 0 ? morningRounds / morningHours : null,
+        afternoonPerHour: afternoonHours > 0 && afternoonRounds > 0 ? afternoonRounds / afternoonHours : null,
+    };
+}
+
 export interface HourlyActiveWorkBucket {
     hour: number;
     activeMinutes: number;
