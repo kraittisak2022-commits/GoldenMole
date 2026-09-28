@@ -543,6 +543,7 @@ struct TodayOpsDetailScreen: View {
 
     private func reload() async {
         let txs = appState.transactions
+        let fuelTxs = appState.fuelBalanceTransactions
         let emps = appState.employees
         let settings = appState.settings
         let key = dayKey
@@ -564,6 +565,7 @@ struct TodayOpsDetailScreen: View {
             )
             let ops = TodayOpsSnapshot.build(
                 transactions: txs,
+                fuelTransactions: fuelTxs,
                 employees: emps,
                 settings: settings,
                 dayKey: key

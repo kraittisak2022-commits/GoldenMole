@@ -137,6 +137,27 @@ final class SupabaseService: ObservableObject {
         }.value
     }
 
+    /// Fuel rows + sand logs since the stock cutover — tank balances need the full ledger,
+    /// not the 14/90-day analytics window (older StockIn rows fall outside it).
+    func fetchFuelLedger() async throws -> TransactionFetchResult {
+        let data: Data
+        do {
+            data = try await client.from("transactions")
+                .select(Self.transactionSelectColumns)
+                .gte("date", value: FuelLogic.stockCutoverYmd)
+                .or("category.eq.Fuel,and(category.eq.DailyLog,sub_category.eq.Sand)")
+                .order("date", ascending: false)
+                .limit(5000)
+                .execute()
+                .data
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+        return await Task.detached(priority: .userInitiated) {
+            Self.decodeTransactions(from: data)
+        }.value
+    }
+
     /// Gregorian YMD N days ago (Bangkok calendar), used to bound the main fetch.
     nonisolated static func transactionsWindowStartYMD(daysBack: Int = 90) -> String {
         var cal = Calendar(identifier: .gregorian)

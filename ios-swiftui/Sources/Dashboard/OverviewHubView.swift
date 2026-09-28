@@ -151,6 +151,8 @@ struct OverviewSnapshot: Sendable {
 struct OverviewHubView: View {
     let transactions: [Transaction]
     let allTransactions: [Transaction]
+    /// Full fuel ledger (since cutover) merged with the window — tank balances only.
+    var fuelTransactions: [Transaction]? = nil
     let employees: [Employee]
     let settings: AppSettings
     let dateFilter: DateFilter
@@ -232,6 +234,7 @@ struct OverviewHubView: View {
         let dayKey = DashboardAggregations.focusDayKey(from: filter)
         let txs = transactions
         let all = allTransactions
+        let fuelTxs = fuelTransactions
         let emps = employees
         let settingsCopy = settings
         rebuildTask = Task {
@@ -247,6 +250,7 @@ struct OverviewHubView: View {
                 )
                 let today = TodayOpsSnapshot.build(
                     transactions: all,
+                    fuelTransactions: fuelTxs,
                     employees: emps,
                     settings: settingsCopy,
                     dayKey: dayKey

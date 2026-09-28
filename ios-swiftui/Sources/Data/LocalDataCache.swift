@@ -177,6 +177,27 @@ enum LocalDataCache {
         return meta
     }
 
+    // MARK: - Fuel ledger (full since cutover, independent of the transactions window)
+
+    private static let fuelLedgerFile = "fuel_ledger_v1.json"
+
+    static func loadFuelLedger() async -> [Transaction] {
+        await Task.detached(priority: .utility) {
+            let url = fileURL(fuelLedgerFile)
+            guard let data = try? Data(contentsOf: url) else { return [] }
+            return (try? decoder.decode([Transaction].self, from: data)) ?? []
+        }.value
+    }
+
+    static func saveFuelLedger(_ rows: [Transaction]) async {
+        await Task.detached(priority: .utility) {
+            do {
+                try ensureDirectory()
+                try atomicWrite(encode(rows), to: fileURL(fuelLedgerFile))
+            } catch {}
+        }.value
+    }
+
     static func invalidate() {
         let dir = directoryURL
         try? FileManager.default.removeItem(at: dir)

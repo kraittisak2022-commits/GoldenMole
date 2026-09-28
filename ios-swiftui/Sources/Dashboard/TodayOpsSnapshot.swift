@@ -43,15 +43,17 @@ struct TodayOpsSnapshot: Sendable {
         staffRows: []
     )
 
+    /// - Parameter fuelTransactions: full fuel ledger for tank balances; falls back to `transactions`.
     nonisolated static func build(
         transactions: [Transaction],
+        fuelTransactions: [Transaction]? = nil,
         employees: [Employee],
         settings: AppSettings,
         dayKey: String = DashboardAggregations.todayYMD()
     ) -> TodayOpsSnapshot {
         let stock = FuelUsageReportLogic.stockBalancesThrough(
             endDate: dayKey,
-            transactions: transactions,
+            transactions: fuelTransactions ?? transactions,
             opening: settings.fuelOpeningStockLiters
         )
         let dayTx = transactions.filter { String($0.date.prefix(10)) == dayKey }

@@ -135,7 +135,7 @@ final class FuelSession {
         let needsBalance = force || rev != lastBalanceRevision
         if needsBalance {
             let balance = FuelLogic.computeBalance(
-                transactions: appState.transactions,
+                transactions: appState.fuelBalanceTransactions,
                 opening: appState.settings.fuelOpeningStockLiters,
                 asOfYmd: dayKey.isEmpty ? DashboardAggregations.todayYMD() : dayKey
             )

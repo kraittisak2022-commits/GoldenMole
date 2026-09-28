@@ -55,7 +55,8 @@ enum CategoryReportType: CaseIterable, Identifiable {
         dayKey: String,
         transactions: [Transaction],
         employees: [Employee],
-        settings: AppSettings
+        settings: AppSettings,
+        stockTransactions: [Transaction]? = nil
     ) -> CategoryHubSummary {
         let dayTx = transactions.filter { String($0.date.prefix(10)) == dayKey && matches($0) }
         switch self {
@@ -105,7 +106,7 @@ enum CategoryReportType: CaseIterable, Identifiable {
             let report = FuelUsageReportLogic.dayReport(transactions: transactions, dayKey: dayKey)
             let bal = FuelUsageReportLogic.stockBalancesThrough(
                 endDate: dayKey,
-                transactions: transactions,
+                transactions: stockTransactions ?? transactions,
                 opening: settings.fuelOpeningStockLiters
             )
             let used = report.totals.usageLiters
@@ -202,7 +203,8 @@ struct CategoryReportView: View {
                 dayKey: dateFilter.end,
                 transactions: transactions,
                 employees: employees,
-                settings: settings
+                settings: settings,
+                stockTransactions: fuelStockSource
             )
             banner = rangeBannerValues(fallback: summary)
         }

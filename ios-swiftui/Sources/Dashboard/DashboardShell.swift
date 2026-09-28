@@ -230,6 +230,7 @@ struct DashboardShell: View {
                     OverviewHubView(
                         transactions: appState.filteredTransactions,
                         allTransactions: appState.transactions,
+                        fuelTransactions: appState.fuelBalanceTransactions,
                         employees: appState.employees,
                         settings: appState.settings,
                         dateFilter: appState.dateFilter,
@@ -479,7 +480,8 @@ struct DashboardShell: View {
                     dayKey: todayKey,
                     transactions: appState.transactions,
                     employees: appState.employees,
-                    settings: appState.settings
+                    settings: appState.settings,
+                    stockTransactions: appState.fuelBalanceTransactions
                 )
                 NavigationLink {
                     categoryDetail(type)

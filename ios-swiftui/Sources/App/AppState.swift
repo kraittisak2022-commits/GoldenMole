@@ -50,6 +50,12 @@ final class AppState {
     /// Day-keyed index (`yyyy-MM-dd` → rows) rebuilt with each revision — avoids regrouping on Realtime rebuilds.
     private(set) var transactionsByDay: [String: [Transaction]] = [:]
 
+    /// Fuel + sand-log rows since `FuelLogic.stockCutoverYmd`, fetched separately from the window.
+    private(set) var fuelLedger: [Transaction] = []
+    /// Window rows plus ledger rows the window lacks — use for tank balances (ถังหลัก/สำรอง).
+    private(set) var fuelBalanceTransactions: [Transaction] = []
+    @ObservationIgnored private var fuelLedgerFetchedAt: Date?
+
     var dateFilter: DateFilter {
         DashboardAggregations.dateFilter(preset: datePreset, customStart: customStart, customEnd: customEnd)
     }
@@ -92,6 +98,9 @@ final class AppState {
         employees = []
         settings = .fallback
         transactionsByDay = [:]
+        fuelLedger = []
+        fuelBalanceTransactions = []
+        fuelLedgerFetchedAt = nil
         transactionsRevision += 1
         cacheMeta = nil
         didHydrateFromCache = false
@@ -108,6 +117,11 @@ final class AppState {
     func hydrateFromCacheIfNeeded() async {
         guard !didHydrateFromCache else { return }
         didHydrateFromCache = true
+        let cachedLedger = await LocalDataCache.loadFuelLedger()
+        if fuelLedger.isEmpty, !cachedLedger.isEmpty {
+            fuelLedger = cachedLedger
+            rebuildFuelBalanceTransactions()
+        }
         guard let snap = await LocalDataCache.loadSnapshot() else { return }
 
         cacheMeta = snap.meta
@@ -158,6 +172,36 @@ final class AppState {
     private func bumpTransactionsRevision() {
         transactionsRevision += 1
         rebuildTransactionsByDay()
+        rebuildFuelBalanceTransactions()
+    }
+
+    private func rebuildFuelBalanceTransactions() {
+        guard !fuelLedger.isEmpty else {
+            fuelBalanceTransactions = transactions
+            return
+        }
+        let windowIds = Set(transactions.map(\.id))
+        fuelBalanceTransactions = transactions + fuelLedger.filter { !windowIds.contains($0.id) }
+    }
+
+    /// Refreshes the fuel ledger when missing, stale (~10 min) or forced.
+    private func refreshFuelLedgerIfNeeded(force: Bool) async {
+        guard let dataService else { return }
+        let fresh = !fuelLedger.isEmpty
+            && LocalDataCache.isWithinTTL(fuelLedgerFetchedAt, ttl: LocalDataCache.reconcileTTL)
+        if fresh && !force { return }
+        do {
+            let result = try await dataService.fetchFuelLedger()
+            fuelLedgerFetchedAt = Date()
+            guard !result.transactions.isEmpty || fuelLedger.isEmpty else { return }
+            if fuelLedger != result.transactions {
+                fuelLedger = result.transactions
+                bumpTransactionsRevision()
+                await LocalDataCache.saveFuelLedger(result.transactions)
+            }
+        } catch {
+            // Keep cached ledger; next refresh retries.
+        }
     }
 
     /// Replaces the in-memory transaction list and refreshes the day index.
@@ -200,6 +244,13 @@ final class AppState {
     }
 
     func removeTransaction(id: String, rebuildIndex: Bool = true) {
+        if let ledgerIdx = fuelLedger.firstIndex(where: { $0.id == id }) {
+            fuelLedger.remove(at: ledgerIdx)
+            if !transactions.contains(where: { $0.id == id }) {
+                if rebuildIndex { bumpTransactionsRevision() }
+                return
+            }
+        }
         guard let idx = transactions.firstIndex(where: { $0.id == id }) else { return }
         transactions.remove(at: idx)
         if rebuildIndex {
@@ -375,6 +426,8 @@ final class AppState {
         } catch {
             errors.append("transactions: \(error.localizedDescription)")
         }
+
+        await refreshFuelLedgerIfNeeded(force: forceFull)
 
         // --- Employees ---
         let employeesFresh = !forceFull
