@@ -431,12 +431,29 @@ export function buildFuelUsageReport(transactions: Transaction[], filters: FuelU
     const kindFilter = filters.kind || '';
     const catalog = filters.vehicleCatalog || [];
 
+    // ตรงกับ computeFuelStockBalances: มี Transfer เครื่องจักรวันเดียวกัน = แถวเบิกเครื่องจักรเก่าซ้ำ
+    const transferMachineDays = new Set<string>();
+    for (const t of transactions) {
+        if (
+            t.category === 'Fuel'
+            && String(t.subCategory ?? '').trim() === FUEL_TRANSFER_SUB_CATEGORY
+            && withdrawPurpose(t) === 'machine'
+        ) {
+            transferMachineDays.add(normalizeDate(t.date));
+        }
+    }
+
     const rows: FuelUsageRow[] = [];
     for (const t of transactions) {
         const kind = classifyFuelTx(t);
         if (!kind) continue;
         const date = normalizeDate(t.date);
         if (date < start || date > end) continue;
+        if (
+            kind === 'withdraw'
+            && String(t.subCategory ?? '').trim() === FUEL_WITHDRAW_SUB_CATEGORY
+            && transferMachineDays.has(date)
+        ) continue;
         const rawVehicleId = fuelReportRawVehicleId(t, kind);
         const vehicleId = fuelReportVehicleLabel(t, kind, catalog);
         if (vehicleFilter && vehicleId !== vehicleFilter && rawVehicleId !== vehicleFilter) continue;
@@ -738,8 +755,12 @@ function fuelAllPrintUi(locale: FuelPrintLocale) {
         return {
             title: '燃油使用汇总报表',
             stockIn: '收油（主油箱）',
-            withdraw: '调拨至备用油箱',
+            withdraw: '机械加油 / 调拨至备用油箱',
             withdrawHint: '不计入用油',
+            machineFillCol: '机械加油（升）',
+            machineFillDetail: '机械加油明细（主油箱 → 备用油箱）',
+            machineFillRoute: '主油箱 → 备用油箱',
+            machineFillNote: '机械加油 = 主油箱调拨至备用油箱，油仍在备用油箱，不计入用油',
             usageTotal: '用油总计',
             mainBalance: '主油箱结余',
             reserveBalance: '备用油箱结余',
@@ -759,8 +780,12 @@ function fuelAllPrintUi(locale: FuelPrintLocale) {
     return {
         title: 'รายงานการใช้น้ำมันรวมทั้งหมด',
         stockIn: 'รับเข้า (ถังหลัก)',
-        withdraw: 'เบิกไปถังสำรอง',
+        withdraw: 'เติมเครื่องจักร / เบิกไปถังสำรอง',
         withdrawHint: 'ยังไม่นับเป็นใช้',
+        machineFillCol: 'เติมเครื่องจักร (ลิตร)',
+        machineFillDetail: 'รายละเอียดเติมเครื่องจักร (โอนถังหลัก → ถังสำรอง)',
+        machineFillRoute: 'ถังหลัก → ถังสำรอง',
+        machineFillNote: 'เติมเครื่องจักร = โอนน้ำมันจากถังหลักไปถังสำรอง น้ำมันยังอยู่ในถังสำรอง จึงยังไม่นับเป็นใช้',
         usageTotal: 'รวมใช้น้ำมันทั้งหมด',
         mainBalance: 'คงเหลือถังหลัก',
         reserveBalance: 'คงเหลือถังสำรอง',
@@ -799,6 +824,12 @@ export function fuelUsageAllToPrintHtml(opts: {
 
     const usageRows = opts.report.rows.filter((r) => isUsageKind(r.kind));
     const usageLiters = usageRows.reduce((s, r) => s + r.liters, 0);
+    const machineRows = opts.report.rows
+        .filter((r) => r.kind === 'withdraw')
+        .map((r) => ({ ...r, vehicleId: all.machineFillRoute }));
+    const machineLiters = machineRows.reduce((s, r) => s + r.liters, 0);
+    const machineByDay = new Map<string, number>();
+    for (const r of machineRows) machineByDay.set(r.date, (machineByDay.get(r.date) ?? 0) + r.liters);
 
     const card = (label: string, value: number, hint?: string) =>
         `<div class="card"><p class="card-label">${escHtml(label)}</p><p class="card-value"><strong>${escHtml(fmtLiters(value))}</strong> ${unit}</p>${hint ? `<p class="card-hint">${escHtml(hint)}</p>` : ''}</div>`;
@@ -858,14 +889,16 @@ export function fuelUsageAllToPrintHtml(opts: {
 
     const days = opts.report.byDay;
     const dayBody = days.length === 0
-        ? `<tr><td colspan="4" class="empty">${escHtml(ui.empty)}</td></tr>`
+        ? `<tr><td colspan="5" class="empty">${escHtml(ui.empty)}</td></tr>`
         : days.map((d) => `<tr>
 <td>${escHtml(fmt(d.date))}</td>
 <td class="num">${escHtml(fmtLiters(d.stockInLiters))}</td>
+<td class="num">${escHtml(fmtLiters(machineByDay.get(d.date) ?? 0))}</td>
 <td class="num">${escHtml(fmtLiters(d.usageLiters))}</td>
 <td class="num">${escHtml(d.count)}</td>
 </tr>`).join('');
 
+    const machineDetailRows = buildPrintDetailRowsHtml(machineRows, 'overview', fmt, fmtLiters, locale, ui);
     const detailRows = buildPrintDetailRowsHtml(usageRows, 'overview', fmt, fmtLiters, locale, ui);
 
     return `<!doctype html><html lang="${htmlLang}"><head><meta charset="utf-8"/><title>${escHtml(all.title)}</title>
@@ -909,6 +942,7 @@ ${shortfallHtml}
 <thead><tr>
 <th>${escHtml(ui.dateCol)}</th>
 <th class="num">${escHtml(all.stockInCol)}</th>
+<th class="num">${escHtml(all.machineFillCol)}</th>
 <th class="num">${escHtml(all.usageCol)}</th>
 <th class="num">${escHtml(ui.itemsCol)}</th>
 </tr></thead>
@@ -916,10 +950,28 @@ ${shortfallHtml}
 <tfoot><tr>
 <td>${escHtml(ui.total)}</td>
 <td class="num">${escHtml(fmtLiters(t.stockInLiters))}</td>
+<td class="num">${escHtml(fmtLiters(machineLiters))}</td>
 <td class="num">${escHtml(fmtLiters(t.usageLiters))}</td>
 <td class="num">${escHtml(t.count)}</td>
 </tr></tfoot>
 </table>
+<h2 class="section-title page-break">${escHtml(all.machineFillDetail)}</h2>
+<p class="summary"><span>${escHtml(ui.totalPrefix)} <strong>${escHtml(fmtLiters(machineLiters))} ${unit}</strong></span><span>${escHtml(machineRows.length)} ${escHtml(ui.itemsUnit)}</span></p>
+<table>
+<thead><tr>
+<th>${escHtml(ui.dateCol)}</th>
+<th>${escHtml(ui.tankCol)}</th>
+<th class="num">${escHtml(ui.qtyCol)}</th>
+<th>${escHtml(ui.detailCol)}</th>
+</tr></thead>
+<tbody>${machineDetailRows}</tbody>
+<tfoot><tr>
+<td colspan="2">${escHtml(ui.total)}</td>
+<td class="num">${escHtml(fmtLiters(machineLiters))}</td>
+<td></td>
+</tr></tfoot>
+</table>
+<p class="footer">${escHtml(all.machineFillNote)}</p>
 <h2 class="section-title page-break">${escHtml(all.detail)}</h2>
 <table>
 <thead><tr>

@@ -162,6 +162,50 @@ describe('month / year bounds', () => {
     });
 });
 
+describe('buildFuelUsageReport machine refuel duplicates', () => {
+    it('skips a legacy Withdraw/machine row when a Transfer/machine exists the same day (matches stock balance)', () => {
+        const report = buildFuelUsageReport([
+            fuelTx({
+                id: 'legacy-wd',
+                date: '2026-08-10',
+                subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+                fuelMovement: 'stock_out',
+                workType: 'machine',
+                quantity: 619,
+            }),
+            fuelTx({
+                id: 'xfer-out',
+                date: '2026-08-10',
+                subCategory: FUEL_TRANSFER_SUB_CATEGORY,
+                fuelMovement: 'stock_out',
+                fuelTank: 'main',
+                workType: 'machine',
+                quantity: 619,
+            }),
+            fuelTx({
+                id: 'xfer-in',
+                date: '2026-08-10',
+                subCategory: FUEL_TRANSFER_SUB_CATEGORY,
+                fuelMovement: 'stock_in',
+                fuelTank: 'reserve',
+                workType: 'machine',
+                quantity: 619,
+            }),
+            fuelTx({
+                id: 'legacy-only',
+                date: '2026-08-11',
+                subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+                fuelMovement: 'stock_out',
+                workType: 'machine',
+                quantity: 300,
+            }),
+        ], { start: '2026-08-01', end: '2026-08-31' });
+
+        expect(report.rows.map(r => r.id)).toEqual(['xfer-out', 'legacy-only']);
+        expect(report.totals.withdrawLiters).toBe(919);
+    });
+});
+
 describe('buildFuelUsageReport', () => {
     const rows: Transaction[] = [
         fuelTx({
@@ -796,9 +840,29 @@ describe('fuelUsageAllToPrintHtml', () => {
         expect(html).toContain('ปั่นไฟ');
         expect(html).toContain('10/08/2569');
         expect(html).toContain('11/08/2569');
-        // เบิกไปถังสำรองไม่อยู่ในรายละเอียดการใช้
-        expect(html).not.toContain('เติมเครื่องจักร');
         expect(html).not.toContain('฿');
+    });
+
+    it('lists machine refuels (main → reserve) in their own section, not in usage detail', () => {
+        const html = fuelUsageAllToPrintHtml({
+            appName: 'Goldenmole',
+            rangeLabel: '01/08/2569 – 31/08/2569',
+            report,
+            balances,
+            formatDate: formatDateBE,
+        });
+
+        const machineStart = html.indexOf('รายละเอียดเติมเครื่องจักร');
+        const usageStart = html.indexOf('รายละเอียดการใช้น้ำมันทั้งหมด');
+        expect(machineStart).toBeGreaterThan(-1);
+        const machineSection = html.slice(machineStart, usageStart > machineStart ? usageStart : undefined);
+        expect(machineSection).toContain('ถังหลัก → ถังสำรอง');
+        expect(machineSection).toContain('>100<');
+        expect(machineSection).toContain('10/08/2569');
+
+        const usageSection = html.slice(usageStart);
+        expect(usageSection).not.toContain('เติมเครื่องจักร');
+        expect(html).toContain('เติมเครื่องจักร (ลิตร)');
     });
 
     it('renders a Chinese variant', () => {
