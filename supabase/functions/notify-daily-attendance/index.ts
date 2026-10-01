@@ -1,6 +1,6 @@
 /**
  * สรุปเช็คชื่อประจำวัน (คนขับรถ + ท่าทราย) → LINE
- * ครอน 09:10 / 13:10 / 17:10 Asia/Bangkok (ร่วมงบวันละ ≤5 ข้อความกับรายงานอื่น)
+ * ครอน 09:10 / 13:10 / 17:10 Asia/Bangkok (ร่วมงบปกติวันละ ≤5 ข้อความ · อัปเดตด่วน ≤10)
  * - ยังไม่มีข้อมูล → ไม่ส่ง รอรอบถัดไป
  * - มีรายชื่อใหม่/เปลี่ยน → ส่งอัปเดต
  *
@@ -18,10 +18,11 @@ import {
 } from "../_shared/line_hourly_digest.ts";
 import {
   bangkokYmd,
+  dailyBudgetExhaustedHintTh,
   incrementDailySendBudget,
   isDailySendBudgetExhausted,
   isLineQuotaBlockedFromDefaults,
-  LINE_DAILY_SEND_LIMIT,
+  isUrgentDigestSend,
   markLineQuotaBlocked,
   notifyLooksLikeMonthlyQuota,
   readDailySendBudget,
@@ -207,6 +208,7 @@ Deno.serve(async (req) => {
     date?: string;
     force?: boolean;
     testPersonalOnly?: boolean;
+    urgent?: boolean;
   } = {};
   try {
     const raw = await req.text();
@@ -263,15 +265,14 @@ Deno.serve(async (req) => {
   }
 
   const budgetYmd = bangkokYmd();
-  if (isDailySendBudgetExhausted(defaults, budgetYmd) && !force) {
-    const budget = readDailySendBudget(defaults, budgetYmd);
+  if (isDailySendBudgetExhausted(defaults, budgetYmd, true) && !force) {
     return jsonResponse({
       ok: false,
       skipped: true,
       code: "line_daily_budget_exhausted",
       date: dateYmd,
-      budget,
-      hint_th: `ครบงบส่ง LINE วันละ ${LINE_DAILY_SEND_LIMIT} ข้อความแล้ว — รอรอบวันถัดไป (หรือส่งด้วย force)`,
+      budget: readDailySendBudget(defaults, budgetYmd),
+      hint_th: dailyBudgetExhaustedHintTh(true),
     });
   }
 
@@ -403,6 +404,19 @@ Deno.serve(async (req) => {
       leave: leave.length,
       newItems: newKeys.length,
       hint_th: "ไม่มีรายชื่อเช็คชื่อใหม่ — ไม่ส่งซ้ำของเก่า",
+    });
+  }
+
+  const urgent = isUrgentDigestSend({ decision, explicit: body.urgent === true });
+  if (!force && isDailySendBudgetExhausted(defaults, budgetYmd, urgent)) {
+    return jsonResponse({
+      ok: false,
+      skipped: true,
+      code: "line_daily_budget_exhausted",
+      date: dateYmd,
+      urgent,
+      budget: readDailySendBudget(defaults, budgetYmd),
+      hint_th: dailyBudgetExhaustedHintTh(urgent),
     });
   }
 

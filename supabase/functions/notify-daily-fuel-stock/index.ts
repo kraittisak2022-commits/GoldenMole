@@ -1,17 +1,18 @@
 /**
  * สรุปน้ำมันคงเหลือ (ถังหลัก + ถังสำรอง) → LINE
- * ครอน 09:05 / 13:05 / 17:05 Asia/Bangkok (ร่วมงบวันละ ≤5 ข้อความกับรายงานอื่น)
+ * ครอน 09:05 / 13:05 / 17:05 Asia/Bangkok (ร่วมงบปกติวันละ ≤5 ข้อความ · อัปเดตด่วน ≤10)
  * - ยอดไม่เปลี่ยนจากรอบก่อน → ไม่ส่ง
- * - มีการเติม/เบิกจนยอดเปลี่ยน → ส่งอัปเดต
+ * - มีการเติม/เบิกจนยอดเปลี่ยน → ส่งอัปเดต (รับน้ำมันเข้าถังหลัก = ด่วน)
  *
  * Auth: header `x-cm-notify-advance-secret` = NOTIFY_ADVANCE_INVOKER_SECRET
- * Body: { "date": "YYYY-MM-DD", "force": true, "testPersonalOnly": true }
+ * Body: { "date": "YYYY-MM-DD", "force": true, "testPersonalOnly": true, "urgent": true }
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
 import {
   FUEL_STOCK_CUTOVER_YMD,
   buildDailyFuelStockLineText,
   computeFuelStockBalances,
+  isMainTankFuelDelivery,
   type FuelTx,
 } from "../_shared/fuel_stock_balance.ts";
 import {
@@ -24,10 +25,11 @@ import {
 } from "../_shared/line_hourly_digest.ts";
 import {
   bangkokYmd,
+  dailyBudgetExhaustedHintTh,
   incrementDailySendBudget,
   isDailySendBudgetExhausted,
   isLineQuotaBlockedFromDefaults,
-  LINE_DAILY_SEND_LIMIT,
+  isUrgentDigestSend,
   markLineQuotaBlocked,
   notifyLooksLikeMonthlyQuota,
   readDailySendBudget,
@@ -138,6 +140,7 @@ Deno.serve(async (req) => {
     date?: string;
     force?: boolean;
     testPersonalOnly?: boolean;
+    urgent?: boolean;
   } = {};
   try {
     const raw = await req.text();
@@ -195,15 +198,14 @@ Deno.serve(async (req) => {
   }
 
   const budgetYmd = bangkokYmd();
-  if (isDailySendBudgetExhausted(defaults, budgetYmd) && !force) {
-    const budget = readDailySendBudget(defaults, budgetYmd);
+  if (isDailySendBudgetExhausted(defaults, budgetYmd, true) && !force) {
     return jsonResponse({
       ok: false,
       skipped: true,
       code: "line_daily_budget_exhausted",
       date: dateYmd,
-      budget,
-      hint_th: `ครบงบส่ง LINE วันละ ${LINE_DAILY_SEND_LIMIT} ข้อความแล้ว — รอรอบวันถัดไป (หรือส่งด้วย force)`,
+      budget: readDailySendBudget(defaults, budgetYmd),
+      hint_th: dailyBudgetExhaustedHintTh(true),
     });
   }
 
@@ -306,6 +308,28 @@ Deno.serve(async (req) => {
       fingerprint,
       balance: bal,
       hint_th: "รายงานน้ำมันวันนี้ส่งแล้ว และไม่มีรายการใหม่ — ไม่ส่งซ้ำ",
+    });
+  }
+
+  const newKeySetForUrgency = new Set(newKeys);
+  const hasNewDelivery = txsTodayRows.some(
+    (t, i) => newKeySetForUrgency.has(todayKeys[i]) && isMainTankFuelDelivery(t),
+  );
+  const urgent = isUrgentDigestSend({
+    decision,
+    explicit: body.urgent === true,
+    extra: hasNewDelivery,
+  });
+  if (!force && isDailySendBudgetExhausted(defaults, budgetYmd, urgent)) {
+    return jsonResponse({
+      ok: false,
+      skipped: true,
+      code: "line_daily_budget_exhausted",
+      date: dateYmd,
+      urgent,
+      budget: readDailySendBudget(defaults, budgetYmd),
+      balance: bal,
+      hint_th: dailyBudgetExhaustedHintTh(urgent),
     });
   }
 

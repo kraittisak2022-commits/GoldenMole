@@ -64,6 +64,14 @@ function inferFuelMovement(t: FuelTx): "stock_in" | "stock_out" {
   return hasVehicle(t) ? "stock_out" : "stock_in";
 }
 
+/** รับน้ำมันเข้าถังหลักจริง (ไม่นับคู่โอนเข้าถังสำรอง) */
+export function isMainTankFuelDelivery(t: FuelTx): boolean {
+  const sub = String(t.sub_category ?? "").trim();
+  if (sub === FUEL_STOCK_IN) return true;
+  if (sub === FUEL_TRANSFER) return false;
+  return inferFuelMovement(t) === "stock_in" && normalizeFuelTank(t.fuel_tank) === "main";
+}
+
 function normalizeFuelTank(raw?: string | null): "main" | "reserve" {
   const v = String(raw ?? "").trim().toLowerCase();
   if (v === "reserve" || v === "สำรอง") return "reserve";

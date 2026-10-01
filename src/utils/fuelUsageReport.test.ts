@@ -15,6 +15,7 @@ import {
     fuelPrintGroupTitle,
     fuelPrintOverviewItems,
     fuelPrintOverviewSections,
+    fuelUsageAllToPrintHtml,
     fuelUsageToCsv,
     fuelUsageToPrintHtml,
     monthBoundsFromYmd,
@@ -669,5 +670,106 @@ describe('fuelUsageToPrintHtml', () => {
         expect(overviewZh).toContain('笔');
         expect(overviewZh).not.toContain('สรุปภาพรวมรายงานการใช้น้ำมัน');
         expect(overviewZh).not.toContain('รายงานรับน้ำมันเข้า');
+    });
+});
+
+describe('fuelUsageAllToPrintHtml', () => {
+    const report = buildFuelUsageReport([
+        fuelTx({
+            id: 'in',
+            date: '2026-08-10',
+            subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
+            fuelMovement: 'stock_in',
+            quantity: 500,
+            description: 'เพิ่มน้ำมัน',
+        }),
+        fuelTx({
+            id: 'tr-out',
+            date: '2026-08-10',
+            subCategory: FUEL_TRANSFER_SUB_CATEGORY,
+            fuelMovement: 'stock_out',
+            workType: 'machine',
+            quantity: 100,
+            description: 'เติมเครื่องจักร',
+        }),
+        fuelTx({
+            id: 'macro',
+            date: '2026-08-10',
+            subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+            vehicleId: 'รถแม็คโคร SK200',
+            quantity: 40,
+            description: 'ขุดบ่อ',
+        }),
+        fuelTx({
+            id: 'gen',
+            date: '2026-08-11',
+            subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+            fuelMovement: 'stock_out',
+            workType: 'generator',
+            quantity: 5,
+            description: 'ปั่นไฟ',
+        }),
+        fuelTx({
+            id: 'car',
+            date: '2026-08-11',
+            subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+            fuelMovement: 'stock_out',
+            workType: 'car',
+            vehicleId: 'ไมตี้',
+            quantity: 15,
+            description: 'เติมไมตี้',
+        }),
+    ], { start: '2026-08-01', end: '2026-08-31' });
+
+    const balances = {
+        Diesel: 360,
+        Benzine: 0,
+        DieselReserve: 95,
+        BenzineReserve: 0,
+        reserveShortfallLiters: 0,
+    };
+
+    it('renders one combined document with totals, categories, balances, vehicles, days and usage detail', () => {
+        const html = fuelUsageAllToPrintHtml({
+            appName: 'Goldenmole',
+            rangeLabel: '01/08/2569 – 31/08/2569',
+            report,
+            balances,
+            formatDate: formatDateBE,
+        });
+
+        expect(html).toContain('รายงานการใช้น้ำมันรวมทั้งหมด');
+        expect(html).toContain('รับเข้า (ถังหลัก)');
+        expect(html).toContain('เบิกไปถังสำรอง');
+        expect(html).toContain('รวมใช้น้ำมันทั้งหมด');
+        expect(html).toContain('>60<');
+        expect(html).toContain('คงเหลือถังหลัก');
+        expect(html).toContain('>360<');
+        expect(html).toContain('>95<');
+        expect(html).toContain('สรุปตามหมวด');
+        expect(html).toContain('สรุปตามรถ / เครื่องจักร');
+        expect(html).toContain('สรุปรายวัน');
+        expect(html).toContain('รายละเอียดการใช้น้ำมันทั้งหมด');
+        expect(html).toContain('รถแม็คโคร SK200');
+        expect(html).toContain('ไมตี้');
+        expect(html).toContain('ปั่นไฟ');
+        expect(html).toContain('10/08/2569');
+        expect(html).toContain('11/08/2569');
+        // เบิกไปถังสำรองไม่อยู่ในรายละเอียดการใช้
+        expect(html).not.toContain('เติมเครื่องจักร');
+        expect(html).not.toContain('฿');
+    });
+
+    it('renders a Chinese variant', () => {
+        const html = fuelUsageAllToPrintHtml({
+            appName: 'Goldenmole',
+            rangeLabel: '01/08/2569 – 31/08/2569',
+            report,
+            balances,
+            locale: 'zh',
+        });
+        expect(html).toContain('燃油使用汇总报表');
+        expect(html).toContain('升');
+        expect(html).not.toContain('รายงานการใช้น้ำมันรวมทั้งหมด');
     });
 });

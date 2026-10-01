@@ -1,6 +1,6 @@
 ﻿/**
  * สรุปการใช้รถดรัม + แม็คโคร → LINE
- * ครอน 09:00 / 13:00 / 17:00 Asia/Bangkok (ร่วมงบวันละ ≤5 ข้อความกับรายงานอื่น)
+ * ครอน 09:00 / 13:00 / 17:00 Asia/Bangkok (ร่วมงบปกติวันละ ≤5 ข้อความ · อัปเดตด่วน ≤10)
  * - ยังไม่มีข้อมูล (0) → ไม่ส่ง รอรอบถัดไป
  * - มีข้อมูลใหม่ → ส่งเฉพาะรายการใหม่ (ไม่ส่งของที่เคยแจ้งแล้วซ้ำ)
  */
@@ -15,10 +15,11 @@ import {
 } from "../_shared/line_hourly_digest.ts";
 import {
   bangkokYmd,
+  dailyBudgetExhaustedHintTh,
   incrementDailySendBudget,
   isDailySendBudgetExhausted,
   isLineQuotaBlockedFromDefaults,
-  LINE_DAILY_SEND_LIMIT,
+  isUrgentDigestSend,
   markLineQuotaBlocked,
   notifyLooksLikeMonthlyQuota,
   readDailySendBudget,
@@ -190,7 +191,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  let body: { date?: string; force?: boolean; testPersonalOnly?: boolean } = {};
+  let body: { date?: string; force?: boolean; testPersonalOnly?: boolean; urgent?: boolean } = {};
   try {
     const raw = await req.text();
     if (raw.trim()) body = JSON.parse(raw);
@@ -245,15 +246,14 @@ Deno.serve(async (req) => {
   }
 
   const budgetYmd = bangkokYmd();
-  if (isDailySendBudgetExhausted(defaults, budgetYmd) && !force) {
-    const budget = readDailySendBudget(defaults, budgetYmd);
+  if (isDailySendBudgetExhausted(defaults, budgetYmd, true) && !force) {
     return jsonResponse({
       ok: false,
       skipped: true,
       code: "line_daily_budget_exhausted",
       date: dateYmd,
-      budget,
-      hint_th: `ครบงบส่ง LINE วันละ ${LINE_DAILY_SEND_LIMIT} ข้อความแล้ว — รอรอบวันถัดไป (หรือส่งด้วย force)`,
+      budget: readDailySendBudget(defaults, budgetYmd),
+      hint_th: dailyBudgetExhaustedHintTh(true),
     });
   }
 
@@ -383,6 +383,19 @@ Deno.serve(async (req) => {
       macros: macrosAll.length,
       newItems: newKeys.length,
       hint_th: "ไม่มีรายการรถใหม่จากรอบที่ส่งแล้ว — ไม่ส่งซ้ำของเก่า",
+    });
+  }
+
+  const urgent = isUrgentDigestSend({ decision, explicit: body.urgent === true });
+  if (!force && isDailySendBudgetExhausted(defaults, budgetYmd, urgent)) {
+    return jsonResponse({
+      ok: false,
+      skipped: true,
+      code: "line_daily_budget_exhausted",
+      date: dateYmd,
+      urgent,
+      budget: readDailySendBudget(defaults, budgetYmd),
+      hint_th: dailyBudgetExhaustedHintTh(urgent),
     });
   }
 

@@ -709,6 +709,217 @@ ${summaryBlock}
 </body></html>`;
 }
 
+const USAGE_CATEGORY_LABEL: Record<FuelPrintLocale, Record<'macro' | 'sieve_generator' | 'other_fill', string>> = {
+    th: { macro: 'แม็คโคร', sieve_generator: 'ร่อนทราย / ปั่นไฟ', other_fill: 'เติม/ใช้อื่นๆ' },
+    zh: { macro: '挖掘机', sieve_generator: '筛沙机 / 发电机', other_fill: '其他加油' },
+};
+
+function fuelAllPrintUi(locale: FuelPrintLocale) {
+    if (locale === 'zh') {
+        return {
+            title: '燃油使用汇总报表',
+            stockIn: '收油（主油箱）',
+            withdraw: '调拨至备用油箱',
+            withdrawHint: '不计入用油',
+            usageTotal: '用油总计',
+            mainBalance: '主油箱结余',
+            reserveBalance: '备用油箱结余',
+            asOfEnd: '截至期末',
+            reserveShortfall: (n: string) => `备用油箱为负 — 约缺少 ${n} 升调拨记录`,
+            byCategory: '按类别汇总',
+            category: '类别',
+            share: '占比',
+            byVehicle: '按车辆 / 机械汇总',
+            byDay: '每日汇总',
+            stockInCol: '收油（升）',
+            usageCol: '用油（升）',
+            detail: '全部用油明细',
+            footer: '仅汇总燃油升数，不含费用 · 调拨至备用油箱不计入用油',
+        };
+    }
+    return {
+        title: 'รายงานการใช้น้ำมันรวมทั้งหมด',
+        stockIn: 'รับเข้า (ถังหลัก)',
+        withdraw: 'เบิกไปถังสำรอง',
+        withdrawHint: 'ยังไม่นับเป็นใช้',
+        usageTotal: 'รวมใช้น้ำมันทั้งหมด',
+        mainBalance: 'คงเหลือถังหลัก',
+        reserveBalance: 'คงเหลือถังสำรอง',
+        asOfEnd: 'ณ วันสิ้นช่วง',
+        reserveShortfall: (n: string) => `ถังสำรองติดลบ — ขาดบันทึกโอนเข้าถังสำรองประมาณ ${n} ลิตร`,
+        byCategory: 'สรุปตามหมวด',
+        category: 'หมวด',
+        share: 'สัดส่วน',
+        byVehicle: 'สรุปตามรถ / เครื่องจักร',
+        byDay: 'สรุปรายวัน',
+        stockInCol: 'รับเข้า (ลิตร)',
+        usageCol: 'ใช้ (ลิตร)',
+        detail: 'รายละเอียดการใช้น้ำมันทั้งหมด',
+        footer: 'สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น ไม่รวมค่าใช้จ่าย · เบิกไปถังสำรองไม่นับเป็นใช้',
+    };
+}
+
+/** เอกสารพิมพ์ฉบับเดียว: ยอดรวม · หมวด · คงเหลือ · ตามรถ · รายวัน · รายละเอียดการใช้ทั้งหมด */
+export function fuelUsageAllToPrintHtml(opts: {
+    appName: string;
+    orgSubtitle?: string;
+    rangeLabel: string;
+    report: FuelUsageReport;
+    balances?: FuelStockBalances;
+    formatDate?: (ymd: string) => string;
+    locale?: FuelPrintLocale;
+}): string {
+    const locale: FuelPrintLocale = opts.locale === 'zh' ? 'zh' : 'th';
+    const ui = fuelPrintUi(locale);
+    const all = fuelAllPrintUi(locale);
+    const fmtLiters = (n: number) => n.toLocaleString(locale === 'zh' ? 'zh-CN' : 'th-TH', { maximumFractionDigits: 2 });
+    const fmt = opts.formatDate || ((ymd: string) => ymd);
+    const htmlLang = locale === 'zh' ? 'zh-CN' : 'th';
+    const t = opts.report.totals;
+    const unit = escHtml(ui.litersUnit);
+
+    const usageRows = opts.report.rows.filter((r) => isUsageKind(r.kind));
+    const usageLiters = usageRows.reduce((s, r) => s + r.liters, 0);
+
+    const card = (label: string, value: number, hint?: string) =>
+        `<div class="card"><p class="card-label">${escHtml(label)}</p><p class="card-value"><strong>${escHtml(fmtLiters(value))}</strong> ${unit}</p>${hint ? `<p class="card-hint">${escHtml(hint)}</p>` : ''}</div>`;
+
+    const cards = [
+        card(all.stockIn, t.stockInLiters),
+        card(all.withdraw, t.withdrawLiters, all.withdrawHint),
+        card(all.usageTotal, usageLiters, `${usageRows.length} ${ui.itemsUnit}`),
+    ];
+    if (opts.balances) {
+        cards.push(
+            card(all.mainBalance, opts.balances.Diesel, all.asOfEnd),
+            card(all.reserveBalance, opts.balances.DieselReserve, all.asOfEnd),
+        );
+    }
+    const shortfall = opts.balances
+        ? Math.max(opts.balances.reserveShortfallLiters, opts.balances.DieselReserve < 0 ? -opts.balances.DieselReserve : 0)
+        : 0;
+    const shortfallHtml = shortfall > 0
+        ? `<p class="warn">${escHtml(all.reserveShortfall(fmtLiters(shortfall)))}</p>`
+        : '';
+
+    const categories = (['macro', 'sieve_generator', 'other_fill'] as const).map((group) => {
+        const rows = usageRows.filter((r) => fuelPrintGroupOf(r) === group);
+        return {
+            label: USAGE_CATEGORY_LABEL[locale][group],
+            liters: rows.reduce((s, r) => s + r.liters, 0),
+            count: rows.length,
+        };
+    });
+    const pct = (n: number) => (usageLiters > 0 ? `${((n / usageLiters) * 100).toFixed(1)}%` : '—');
+    const categoryBody = categories.map((c) => `<tr>
+<td>${escHtml(c.label)}</td>
+<td class="num">${escHtml(fmtLiters(c.liters))}</td>
+<td class="num">${escHtml(c.count)}</td>
+<td class="num">${escHtml(pct(c.liters))}</td>
+</tr>`).join('');
+
+    const vehicleMap = new Map<string, { liters: number; count: number }>();
+    for (const r of usageRows) {
+        const key = r.vehicleId || '—';
+        const prev = vehicleMap.get(key) || { liters: 0, count: 0 };
+        prev.liters += r.liters;
+        prev.count += 1;
+        vehicleMap.set(key, prev);
+    }
+    const vehicles = [...vehicleMap.entries()]
+        .sort((a, b) => b[1].liters - a[1].liters || a[0].localeCompare(b[0], 'th'));
+    const vehicleBody = vehicles.length === 0
+        ? `<tr><td colspan="4" class="empty">${escHtml(ui.empty)}</td></tr>`
+        : vehicles.map(([name, v]) => `<tr>
+<td>${escHtml(name)}</td>
+<td class="num">${escHtml(fmtLiters(v.liters))}</td>
+<td class="num">${escHtml(v.count)}</td>
+<td class="num">${escHtml(pct(v.liters))}</td>
+</tr>`).join('');
+
+    const days = opts.report.byDay;
+    const dayBody = days.length === 0
+        ? `<tr><td colspan="4" class="empty">${escHtml(ui.empty)}</td></tr>`
+        : days.map((d) => `<tr>
+<td>${escHtml(fmt(d.date))}</td>
+<td class="num">${escHtml(fmtLiters(d.stockInLiters))}</td>
+<td class="num">${escHtml(fmtLiters(d.usageLiters))}</td>
+<td class="num">${escHtml(d.count)}</td>
+</tr>`).join('');
+
+    const detailRows = buildPrintDetailRowsHtml(usageRows, 'overview', fmt, fmtLiters, locale, ui);
+
+    return `<!doctype html><html lang="${htmlLang}"><head><meta charset="utf-8"/><title>${escHtml(all.title)}</title>
+${printHtmlStyles()}
+</head><body>
+<div class="header">
+${opts.orgSubtitle ? `<p class="org">${escHtml(opts.orgSubtitle)}</p>` : ''}
+<h1>${escHtml(all.title)}</h1>
+<p class="meta">${escHtml(opts.appName)} · ${escHtml(opts.rangeLabel)} · ${escHtml(t.count)} ${escHtml(ui.itemsUnit)}</p>
+</div>
+<div class="cards">${cards.join('')}</div>
+${shortfallHtml}
+<h2 class="section-title">${escHtml(all.byCategory)}</h2>
+<table>
+<thead><tr>
+<th>${escHtml(all.category)}</th>
+<th class="num">${escHtml(ui.qtyCol)}</th>
+<th class="num">${escHtml(ui.itemsCol)}</th>
+<th class="num">${escHtml(all.share)}</th>
+</tr></thead>
+<tbody>${categoryBody}</tbody>
+<tfoot><tr>
+<td>${escHtml(all.usageTotal)}</td>
+<td class="num">${escHtml(fmtLiters(usageLiters))}</td>
+<td class="num">${escHtml(usageRows.length)}</td>
+<td class="num">${usageLiters > 0 ? '100%' : '—'}</td>
+</tr></tfoot>
+</table>
+<h2 class="section-title">${escHtml(all.byVehicle)}</h2>
+<table>
+<thead><tr>
+<th>${escHtml(ui.vehicleCol)}</th>
+<th class="num">${escHtml(ui.qtyCol)}</th>
+<th class="num">${escHtml(ui.itemsCol)}</th>
+<th class="num">${escHtml(all.share)}</th>
+</tr></thead>
+<tbody>${vehicleBody}</tbody>
+</table>
+<h2 class="section-title">${escHtml(all.byDay)}</h2>
+<table>
+<thead><tr>
+<th>${escHtml(ui.dateCol)}</th>
+<th class="num">${escHtml(all.stockInCol)}</th>
+<th class="num">${escHtml(all.usageCol)}</th>
+<th class="num">${escHtml(ui.itemsCol)}</th>
+</tr></thead>
+<tbody>${dayBody}</tbody>
+<tfoot><tr>
+<td>${escHtml(ui.total)}</td>
+<td class="num">${escHtml(fmtLiters(t.stockInLiters))}</td>
+<td class="num">${escHtml(fmtLiters(t.usageLiters))}</td>
+<td class="num">${escHtml(t.count)}</td>
+</tr></tfoot>
+</table>
+<h2 class="section-title page-break">${escHtml(all.detail)}</h2>
+<table>
+<thead><tr>
+<th>${escHtml(ui.dateCol)}</th>
+<th>${escHtml(ui.vehicleCol)}</th>
+<th class="num">${escHtml(ui.qtyCol)}</th>
+<th>${escHtml(ui.detailCol)}</th>
+</tr></thead>
+<tbody>${detailRows}</tbody>
+<tfoot><tr>
+<td colspan="2">${escHtml(ui.total)}</td>
+<td class="num">${escHtml(fmtLiters(usageLiters))}</td>
+<td></td>
+</tr></tfoot>
+</table>
+<p class="footer">${escHtml(all.footer)}</p>
+</body></html>`;
+}
+
 function buildPrintDetailRowsHtml(
     rows: FuelUsageRow[],
     group: FuelPrintGroup,
@@ -778,6 +989,14 @@ td.empty{text-align:center;color:#9ca3af;padding:24px}
 tfoot td{padding:10px;font-weight:600;border-top:2px solid #111827}
 tfoot td.num{text-align:right;font-variant-numeric:tabular-nums}
 .footer{margin-top:24px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr.day-header td{background:#e5e7eb !important}}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:0 0 16px}
+.card{border:1px solid #d1d5db;border-radius:6px;padding:8px 10px}
+.card-label{margin:0;font-size:11px;color:#6b7280}
+.card-value{margin:2px 0 0;font-size:15px;font-variant-numeric:tabular-nums}
+.card-hint{margin:2px 0 0;font-size:10px;color:#9ca3af}
+.warn{margin:0 0 16px;padding:8px 10px;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;font-size:12px;border-radius:6px}
+thead{display:table-header-group}
+tr{page-break-inside:avoid}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}tr.day-header td{background:#e5e7eb !important}h2.page-break{page-break-before:always;margin-top:0}}
 </style>`;
 }

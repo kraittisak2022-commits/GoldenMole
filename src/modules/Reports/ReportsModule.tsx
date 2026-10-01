@@ -20,6 +20,7 @@ import {
     filterFuelUsageReport,
     fuelPrintGroupTitle,
     fuelPrintOverviewSections,
+    fuelUsageAllToPrintHtml,
     fuelUsageToCsv,
     fuelUsageToPrintHtml,
     monthBoundsFromYmd,
@@ -350,6 +351,25 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
         w.print();
     };
 
+    const printFuelAllReport = (locale: FuelPrintLocale = 'th') => {
+        const html = fuelUsageAllToPrintHtml({
+            appName: orgTitle,
+            orgSubtitle: orgLine || undefined,
+            rangeLabel,
+            report: fuelReport,
+            balances: remainingStock,
+            formatDate: formatDateBE,
+            locale,
+        });
+        const w = window.open('', '_blank');
+        if (!w) return;
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+        w.focus();
+        w.print();
+    };
+
     const printVehicleGroupReport = (
         group: VehiclePrintGroup,
         locale: 'th' | 'zh' = 'th',
@@ -438,6 +458,14 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                         description="รับเข้า = เพิ่มเข้าถังหลัก · เบิกไปถังสำรองยังไม่นับเป็นใช้ · ใช้แล้ว = รถ/แม็คโคร, รถยนต์, เครื่องปั่นไฟ, อื่นระบุ, ร่อนทราย"
                         actions={(
                             <>
+                                <Button
+                                    type="button"
+                                    className="w-full justify-center px-3 text-xs sm:text-sm xl:w-auto"
+                                    onClick={() => printFuelAllReport('th')}
+                                >
+                                    <Printer className="h-4 w-4 shrink-0" />
+                                    <span className="whitespace-normal text-center leading-snug">พิมพ์รายงานการใช้น้ำมันรวมทั้งหมด</span>
+                                </Button>
                                 <Button type="button" variant="outline" className="w-full justify-center px-3 xl:w-auto" onClick={exportFuelCsv}>
                                     <FileDown className="h-4 w-4" /> Export CSV
                                 </Button>
@@ -589,6 +617,34 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                                 className="px-2 py-1.5 text-xs inline-flex gap-1"
                                                 aria-label={fuelPrintGroupTitle('overview', 'zh')}
                                                 onClick={() => printFuelGroupReport('overview', 'zh')}
+                                            >
+                                                <Printer className="h-3.5 w-3.5" />
+                                                <span className="text-[10px] font-bold">中文</span>
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                    <tr className="font-semibold text-slate-800 dark:text-slate-100">
+                                        <td className="px-4 py-2.5">พิมพ์รายงานรวมทั้งหมด (ยอดรวม · ตามรถ · รายวัน · รายละเอียด)</td>
+                                        <td className="px-4 py-2.5 text-right tabular-nums">{formatDisplayNumber(fuelReport.totals.usageLiters)}</td>
+                                        <td className="px-4 py-2.5" />
+                                        <td className="px-4 py-2.5 text-right">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                className="px-2 py-1.5 text-xs inline-flex"
+                                                aria-label="พิมพ์รายงานการใช้น้ำมันรวมทั้งหมด"
+                                                onClick={() => printFuelAllReport('th')}
+                                            >
+                                                <Printer className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                className="px-2 py-1.5 text-xs inline-flex gap-1"
+                                                aria-label="พิมพ์燃油使用汇总报表"
+                                                onClick={() => printFuelAllReport('zh')}
                                             >
                                                 <Printer className="h-3.5 w-3.5" />
                                                 <span className="text-[10px] font-bold">中文</span>

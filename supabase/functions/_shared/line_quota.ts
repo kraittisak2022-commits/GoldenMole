@@ -1,15 +1,41 @@
 /**
  * LINE Messaging API free-plan monthly quota guard + daily send budget.
  * When LINE returns 429 "monthly limit", pause digests until next Bangkok month.
- * Daily digests share a soft cap (default 5 messages / day) to save free-plan quota.
+ * Daily digests share a budget: normal sends stop at 5/day, urgent sends may continue up to 10/day.
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.47.10";
 
 const QUOTA_KEY = "lineMessagingQuotaBlockUntil";
 const BUDGET_KEY = "lineDailySendBudget";
 
-/** Soft cap for automatic digest pushes per Bangkok calendar day */
+/** Normal cap for automatic digest pushes per Bangkok calendar day */
 export const LINE_DAILY_SEND_LIMIT = 5;
+/** Hard ceiling on days with urgent updates (first daily report, fuel delivery, explicit urgent) */
+export const LINE_DAILY_URGENT_SEND_LIMIT = 10;
+
+export function dailySendLimitFor(urgent: boolean): number {
+  return urgent ? LINE_DAILY_URGENT_SEND_LIMIT : LINE_DAILY_SEND_LIMIT;
+}
+
+/**
+ * Urgent = may use the 6th–10th slot of the day.
+ * - send_first: the main daily report of a digest must not be starved by routine updates
+ * - explicit: caller passed `{ "urgent": true }`
+ * - extra: digest-specific signal (e.g. fuel delivery into the main tank)
+ */
+export function isUrgentDigestSend(opts: {
+  decision: string;
+  explicit?: boolean;
+  extra?: boolean;
+}): boolean {
+  return opts.explicit === true || opts.extra === true || opts.decision === "send_first";
+}
+
+export function dailyBudgetExhaustedHintTh(urgent: boolean): string {
+  return urgent
+    ? `ครบเพดานส่ง LINE วันละ ${LINE_DAILY_URGENT_SEND_LIMIT} ข้อความ (รวมอัปเดตด่วน) แล้ว — รอวันถัดไป (หรือส่งด้วย force)`
+    : `ครบงบส่ง LINE ปกติวันละ ${LINE_DAILY_SEND_LIMIT} ข้อความแล้ว — อัปเดตทั่วไปรอวันถัดไป (อัปเดตด่วนส่งได้ถึง ${LINE_DAILY_URGENT_SEND_LIMIT})`;
+}
 
 function bangkokYmdParts(d = new Date()): { y: number; m: number; day: number } {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -50,31 +76,42 @@ export function isLineQuotaBlockedFromDefaults(
   return now.getTime() < until;
 }
 
-export type LineDailySendBudget = { ymd: string; count: number; limit: number };
+export type LineDailySendBudget = {
+  ymd: string;
+  count: number;
+  limit: number;
+  urgentLimit: number;
+};
 
 export function readDailySendBudget(
   defaults: Record<string, unknown> | null | undefined,
   ymd: string,
-  limit = LINE_DAILY_SEND_LIMIT,
 ): LineDailySendBudget {
+  const base = {
+    ymd,
+    count: 0,
+    limit: LINE_DAILY_SEND_LIMIT,
+    urgentLimit: LINE_DAILY_URGENT_SEND_LIMIT,
+  };
   const raw = defaults?.[BUDGET_KEY];
   if (raw && typeof raw === "object") {
     const o = raw as Record<string, unknown>;
     const storedYmd = String(o.ymd ?? "").trim();
     const count = Number(o.count);
     if (storedYmd === ymd && Number.isFinite(count) && count >= 0) {
-      return { ymd, count: Math.floor(count), limit };
+      return { ...base, count: Math.floor(count) };
     }
   }
-  return { ymd, count: 0, limit };
+  return base;
 }
 
+/** urgent=false → stop at 5; urgent=true → stop at 10 */
 export function isDailySendBudgetExhausted(
   defaults: Record<string, unknown> | null | undefined,
   ymd: string,
-  limit = LINE_DAILY_SEND_LIMIT,
+  urgent = false,
 ): boolean {
-  return readDailySendBudget(defaults, ymd, limit).count >= limit;
+  return readDailySendBudget(defaults, ymd).count >= dailySendLimitFor(urgent);
 }
 
 async function writeAppDefaultsKey(
@@ -109,7 +146,6 @@ async function writeAppDefaultsKey(
 export async function incrementDailySendBudget(
   admin: SupabaseClient,
   ymd: string,
-  limit = LINE_DAILY_SEND_LIMIT,
 ): Promise<LineDailySendBudget> {
   const { data, error } = await admin
     .from("app_settings")
@@ -118,12 +154,8 @@ export async function incrementDailySendBudget(
     .maybeSingle();
   if (error) throw error;
   const defaults = (data?.app_defaults ?? {}) as Record<string, unknown>;
-  const prev = readDailySendBudget(defaults, ymd, limit);
-  const next: LineDailySendBudget = {
-    ymd,
-    count: prev.count + 1,
-    limit,
-  };
+  const prev = readDailySendBudget(defaults, ymd);
+  const next: LineDailySendBudget = { ...prev, count: prev.count + 1 };
   await writeAppDefaultsKey(admin, BUDGET_KEY, next);
   return next;
 }

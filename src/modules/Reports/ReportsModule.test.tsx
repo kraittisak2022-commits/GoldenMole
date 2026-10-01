@@ -83,6 +83,46 @@ describe('ReportsModule', () => {
         expect(screen.getAllByRole('option', { name: 'สิงหาคม' }).length).toBeGreaterThan(0);
     });
 
+    it('prints one combined fuel usage report document', async () => {
+        const user = userEvent.setup();
+        const write = vi.fn();
+        const printWindow = {
+            document: { open: vi.fn(), write, close: vi.fn() },
+            focus: vi.fn(),
+            print: vi.fn(),
+        };
+        const openSpy = vi.spyOn(window, 'open').mockReturnValue(printWindow as unknown as Window);
+
+        render(
+            <ReportsModule
+                settings={settings}
+                transactions={[
+                    fuelTx({
+                        id: 'v1',
+                        date: '2026-08-10',
+                        fuelMovement: 'stock_out',
+                        vehicleId: 'รถดรัมโอเว่น',
+                        quantity: 60,
+                        description: 'เติมรถดรัม',
+                    }),
+                ]}
+            />
+        );
+
+        const buttons = screen.getAllByRole('button', { name: 'พิมพ์รายงานการใช้น้ำมันรวมทั้งหมด' });
+        expect(buttons.length).toBeGreaterThanOrEqual(2);
+        await user.click(buttons[0]);
+
+        expect(openSpy).toHaveBeenCalled();
+        expect(printWindow.print).toHaveBeenCalled();
+        const html = String(write.mock.calls[0][0]);
+        expect(html).toContain('รายงานการใช้น้ำมันรวมทั้งหมด');
+        expect(html).toContain('รถดรัมโอเว่น');
+        expect(html).toContain('เติมรถดรัม');
+        expect(html).toContain('คงเหลือถังหลัก');
+        openSpy.mockRestore();
+    });
+
     it('filters the table when a vehicle is selected', async () => {
         const user = userEvent.setup();
         render(
