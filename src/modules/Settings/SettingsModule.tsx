@@ -75,6 +75,8 @@ const DIAG_TABLES = ['employees', 'transactions', 'land_projects', 'app_settings
 
 const SettingsModule = ({ settings, setSettings, backupPayload, autoVersionNotes = [], currentAdmin, onUpdateAdminProfile }: SettingsModuleProps) => {
     const defaultDriveClientId = String(import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+    const [activeTab, setActiveTab] = useState('general');
+    const [newItem, setNewItem] = useState('');
     const [newLineRecipientId, setNewLineRecipientId] = useState('');
     const [lineRecipientMsg, setLineRecipientMsg] = useState<string | null>(null);
     const [lineWebhookLoading, setLineWebhookLoading] = useState(false);
