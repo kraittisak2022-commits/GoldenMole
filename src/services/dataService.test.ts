@@ -1,6 +1,36 @@
-import { describe, expect, it } from 'vitest';
-import { prepareTransactionForDb } from './dataService';
+import { describe, expect, it, vi } from 'vitest';
+import { fetchTransactions, prepareTransactionForDb } from './dataService';
 import type { Transaction } from '../types';
+
+const db = vi.hoisted(() => ({
+    rows: [] as Array<Record<string, unknown>>,
+    rangeCalls: [] as Array<[number, number]>,
+}));
+
+vi.mock('../lib/supabase', () => {
+    const builder = {
+        select: () => builder,
+        order: () => builder,
+        range: (from: number, to: number) => {
+            db.rangeCalls.push([from, to]);
+            return Promise.resolve({ data: db.rows.slice(from, to + 1), error: null });
+        },
+    };
+    return { supabase: { from: () => builder } };
+});
+
+describe('fetchTransactions', () => {
+    it('pages past the 1000-row API cap so old rows (e.g. fuel stock-in) are not dropped', async () => {
+        db.rows = Array.from({ length: 2300 }, (_, i) => ({ id: `tx-${i}`, sub_category: 'StockIn' }));
+        db.rangeCalls = [];
+
+        const result = await fetchTransactions();
+
+        expect(result).toHaveLength(2300);
+        expect(result[2299]).toMatchObject({ id: 'tx-2299', subCategory: 'StockIn' });
+        expect(db.rangeCalls).toEqual([[0, 999], [1000, 1999], [2000, 2999]]);
+    });
+});
 
 describe('prepareTransactionForDb', () => {
     it('drops labor_general_work_notes (UI-only; notes are in description)', () => {

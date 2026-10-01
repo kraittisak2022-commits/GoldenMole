@@ -117,10 +117,24 @@ export const prepareTransactionForDb = (t: Transaction): Record<string, unknown>
     return out;
 };
 
+/** PostgREST ตัดผลลัพธ์ที่ 1000 แถวต่อคำขอ — ต้องดึงทีละหน้า ไม่งั้นแถวเก่าหาย */
+const TRANSACTIONS_PAGE_SIZE = 1000;
+
 export const fetchTransactions = async (): Promise<Transaction[]> => {
-    const { data, error } = await supabase.from('transactions').select('*').order('created_at', { ascending: false });
-    if (error) { console.error('fetchTransactions error:', error); return []; }
-    return (data || []).map(keysToCamel);
+    const all: Record<string, unknown>[] = [];
+    for (let from = 0; ; from += TRANSACTIONS_PAGE_SIZE) {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: true })
+            .range(from, from + TRANSACTIONS_PAGE_SIZE - 1);
+        if (error) { console.error('fetchTransactions error:', error); return []; }
+        const page = data || [];
+        all.push(...page);
+        if (page.length < TRANSACTIONS_PAGE_SIZE) break;
+    }
+    return all.map(keysToCamel);
 };
 
 /** Conflict check for offline queue — fetch only the queued ids (not the full table). */
