@@ -8,8 +8,10 @@ import {
     FUEL_WITHDRAW_SUB_CATEGORY,
 } from './index';
 import {
+    FUEL_MAYOR_WITHDRAW_LABEL,
     buildFuelUsageReport,
     classifyFuelTx,
+    fuelReportVehicleLabel,
     filterFuelUsageReport,
     fuelPrintGroupOf,
     fuelPrintGroupTitle,
@@ -310,6 +312,45 @@ describe('buildFuelUsageReport', () => {
         expect(filtered.rows.every(r => r.vehicleId === 'รถดรัมโอเว่น')).toBe(true);
         expect(filtered.totals.vehicleLiters).toBe(100);
         expect(filtered.totals.stockInLiters).toBe(0);
+    });
+
+    it('labels mayor withdrawals without a vehicle as นายกเบิก so the vehicle filter finds them', () => {
+        const mayorRows = [
+            fuelTx({
+                id: 'mayor-legacy',
+                date: '2026-08-29',
+                subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+                fuelMovement: 'stock_out',
+                workType: 'mayor',
+                vehicleId: 'นายกเบิก',
+                quantity: 600,
+            }),
+            fuelTx({
+                id: 'mayor-new',
+                date: '2026-09-28',
+                subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
+                fuelMovement: 'stock_out',
+                workType: 'mayor',
+                quantity: 1000,
+            }),
+        ];
+
+        expect(fuelReportVehicleLabel(mayorRows[1], 'other_out')).toBe(FUEL_MAYOR_WITHDRAW_LABEL);
+
+        const sep = buildFuelUsageReport(mayorRows, {
+            start: '2026-09-01',
+            end: '2026-09-30',
+            vehicleId: FUEL_MAYOR_WITHDRAW_LABEL,
+        });
+        expect(sep.rows.map(r => r.id)).toEqual(['mayor-new']);
+        expect(sep.totals.usageLiters).toBe(1000);
+
+        const both = buildFuelUsageReport(mayorRows, {
+            start: '2026-08-01',
+            end: '2026-09-30',
+            vehicleId: FUEL_MAYOR_WITHDRAW_LABEL,
+        });
+        expect(both.totals.usageLiters).toBe(1600);
     });
 
     it('filters by fuel type and kind', () => {

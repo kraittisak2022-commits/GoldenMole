@@ -156,6 +156,39 @@ describe('ReportsModule', () => {
         expect(screen.getByText('เติมเก๋ง')).toBeInTheDocument();
     });
 
+    it('shows นายกเบิก rows when that option is selected even without a vehicle id', async () => {
+        const user = userEvent.setup();
+        render(
+            <ReportsModule
+                settings={settings}
+                transactions={[
+                    fuelTx({
+                        id: 'mayor',
+                        date: '2026-08-12',
+                        subCategory: 'Withdraw',
+                        fuelMovement: 'stock_out',
+                        fuelTank: 'main',
+                        workType: 'mayor' as Transaction['workType'],
+                        quantity: 1000,
+                        description: 'เบิกน้ำมัน: นายกเบิก 1000 ลิตร',
+                    }),
+                    fuelTx({
+                        id: 'v1',
+                        date: '2026-08-10',
+                        fuelMovement: 'stock_out',
+                        vehicleId: 'รถดรัมโอเว่น',
+                        quantity: 60,
+                        description: 'เติมโอเว่น',
+                    }),
+                ]}
+            />
+        );
+
+        await user.selectOptions(screen.getByLabelText('รถ'), 'นายกเบิก');
+        expect(screen.getByText('เบิกน้ำมัน: นายกเบิก 1000 ลิตร')).toBeInTheDocument();
+        expect(screen.queryByText('เติมโอเว่น')).not.toBeInTheDocument();
+    });
+
     it('recalculates display when the selected month range changes', async () => {
         const user = userEvent.setup();
         render(

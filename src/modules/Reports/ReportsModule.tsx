@@ -17,9 +17,11 @@ import {
 import { estimateSieveUsageByDay } from '../../utils/fuelSieveEstimate';
 import {
     buildFuelUsageReport,
+    classifyFuelTx,
     filterFuelUsageReport,
     fuelPrintGroupTitle,
     fuelPrintOverviewSections,
+    fuelReportVehicleLabel,
     fuelUsageAllToPrintHtml,
     fuelUsageToCsv,
     fuelUsageToPrintHtml,
@@ -43,8 +45,6 @@ import {
     type VehiclePrintGroup,
     type VehicleUsageKind,
 } from '../../utils/vehicleUsageReport';
-import { transactionVehicleLabel } from '../../utils/vehicleCatalog';
-
 const PRINT_GROUPS: FuelPrintGroup[] = ['overview', 'stock_in', 'macro', 'sieve_generator', 'other_fill'];
 
 type ReportMenu = 'fuel' | 'vehicle';
@@ -206,11 +206,9 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
         const catalog = settings.vehicleCatalog || [];
         const names = new Set<string>(settings.cars || []);
         transactions.forEach((t) => {
-            if (t.category !== 'Fuel') return;
-            const label = transactionVehicleLabel(
-                { vehicleId: t.vehicleId, vehicleName: t.vehicleName },
-                catalog,
-            );
+            const kind = classifyFuelTx(t);
+            if (!kind) return;
+            const label = fuelReportVehicleLabel(t, kind, catalog);
             if (label) names.add(label);
         });
         return Array.from(names).sort((a, b) => a.localeCompare(b, 'th'));

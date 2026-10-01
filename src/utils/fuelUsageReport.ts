@@ -72,6 +72,7 @@ export interface FuelUsageReport {
 }
 
 const UNNAMED_VEHICLE = 'ไม่ระบุรถ';
+export const FUEL_MAYOR_WITHDRAW_LABEL = 'นายกเบิก';
 
 /** ชื่อรถเก่า → ชื่อมาตรฐานปัจจุบัน */
 const TAPLIEN_LEGACY_VEHICLE_IDS = new Set([
@@ -397,6 +398,31 @@ export function filterFuelUsageReport(report: FuelUsageReport, group: FuelPrintG
     return { rows, ...aggregateFuelUsageRows(rows) };
 }
 
+function fuelReportRawVehicleId(t: Transaction, kind: FuelUsageKind): string {
+    const hasVehicle = !!(String(t.vehicleId ?? '').trim() || String(t.vehicleName ?? '').trim());
+    const fallback = kind === 'sand_sieve'
+        ? FUEL_SAND_SIEVE_VEHICLE_ID
+        : !hasVehicle && withdrawPurpose(t) === 'mayor'
+            ? FUEL_MAYOR_WITHDRAW_LABEL
+            : kind === 'vehicle' || kind === 'other_out'
+                ? UNNAMED_VEHICLE
+                : '';
+    return normalizeFuelReportVehicleId((t.vehicleId || '').trim() || fallback);
+}
+
+/** ชื่อรถ / ผู้เบิกในรายงาน — dropdown ตัวกรองรถต้องใช้ค่าเดียวกับแถวรายงาน */
+export function fuelReportVehicleLabel(
+    t: Transaction,
+    kind: FuelUsageKind,
+    catalog: VehicleCatalogRow[] = [],
+): string {
+    const rawVehicleId = fuelReportRawVehicleId(t, kind);
+    return transactionVehicleLabel(
+        { vehicleId: rawVehicleId, vehicleName: t.vehicleName },
+        catalog,
+    ) || rawVehicleId;
+}
+
 export function buildFuelUsageReport(transactions: Transaction[], filters: FuelUsageFilters): FuelUsageReport {
     const start = normalizeDate(filters.start);
     const end = normalizeDate(filters.end);
@@ -411,15 +437,8 @@ export function buildFuelUsageReport(transactions: Transaction[], filters: FuelU
         if (!kind) continue;
         const date = normalizeDate(t.date);
         if (date < start || date > end) continue;
-        const rawVehicleId = normalizeFuelReportVehicleId(
-            (t.vehicleId || '').trim()
-                || (kind === 'sand_sieve' ? FUEL_SAND_SIEVE_VEHICLE_ID : '')
-                || (kind === 'vehicle' || kind === 'other_out' ? UNNAMED_VEHICLE : ''),
-        );
-        const vehicleId = transactionVehicleLabel(
-            { vehicleId: rawVehicleId, vehicleName: t.vehicleName },
-            catalog,
-        ) || rawVehicleId;
+        const rawVehicleId = fuelReportRawVehicleId(t, kind);
+        const vehicleId = fuelReportVehicleLabel(t, kind, catalog);
         if (vehicleFilter && vehicleId !== vehicleFilter && rawVehicleId !== vehicleFilter) continue;
         const fuelType = resolveFuelType(t);
         if (fuelTypeFilter && fuelType !== fuelTypeFilter) continue;
