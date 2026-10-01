@@ -118,44 +118,63 @@ final class SupabaseService: ObservableObject {
     /// - Parameters:
     ///   - daysBack: Inclusive lookback from today (Bangkok). Use 14 for cold-start.
     ///   - limit: Max rows (newest first).
-    func fetchTransactions(daysBack: Int = 90, limit: Int = 2000) async throws -> TransactionFetchResult {
+    func fetchTransactions(daysBack: Int = 90, limit: Int = 4000) async throws -> TransactionFetchResult {
         let since = Self.transactionsWindowStartYMD(daysBack: daysBack)
-        let data: Data
-        do {
-            data = try await client.from("transactions")
+        return try await fetchTransactionPages(limit: limit) { client, from, to in
+            try await client.from("transactions")
                 .select(Self.transactionSelectColumns)
                 .gte("date", value: since)
-            .order("updated_at", ascending: false)
-            .limit(limit)
+                .order("updated_at", ascending: false)
+                .order("id", ascending: true)
+                .range(from: from, to: to)
                 .execute()
                 .data
-        } catch {
-            throw DataServiceError.fetchFailed(error.localizedDescription)
         }
-        return await Task.detached(priority: .userInitiated) {
-            Self.decodeTransactions(from: data)
-        }.value
     }
 
     /// Fuel rows + sand logs since the stock cutover — tank balances need the full ledger,
     /// not the 14/90-day analytics window (older StockIn rows fall outside it).
     func fetchFuelLedger() async throws -> TransactionFetchResult {
-        let data: Data
-        do {
-            data = try await client.from("transactions")
+        try await fetchTransactionPages(limit: 20000) { client, from, to in
+            try await client.from("transactions")
                 .select(Self.transactionSelectColumns)
                 .gte("date", value: FuelLogic.stockCutoverYmd)
                 .or("category.eq.Fuel,and(category.eq.DailyLog,sub_category.eq.Sand)")
                 .order("date", ascending: false)
-                .limit(5000)
+                .order("id", ascending: true)
+                .range(from: from, to: to)
                 .execute()
                 .data
-        } catch {
-            throw DataServiceError.fetchFailed(error.localizedDescription)
         }
-        return await Task.detached(priority: .userInitiated) {
-            Self.decodeTransactions(from: data)
-        }.value
+    }
+
+    /// PostgREST returns at most 1000 rows per request; larger reads must page or rows drop silently.
+    private static let pageSize = 1000
+
+    private func fetchTransactionPages(
+        limit: Int,
+        page: (SupabaseClient, Int, Int) async throws -> Data
+    ) async throws -> TransactionFetchResult {
+        var rows: [Transaction] = []
+        var skipped = 0
+        var from = 0
+        while from < limit {
+            let to = min(from + Self.pageSize, limit) - 1
+            let data: Data
+            do {
+                data = try await page(client, from, to)
+            } catch {
+                throw DataServiceError.fetchFailed(error.localizedDescription)
+            }
+            let part = await Task.detached(priority: .userInitiated) {
+                Self.decodeTransactions(from: data)
+            }.value
+            rows.append(contentsOf: part.transactions)
+            skipped += part.skippedCount
+            if part.transactions.count + part.skippedCount < to - from + 1 { break }
+            from = to + 1
+        }
+        return TransactionFetchResult(transactions: rows, skippedCount: skipped)
     }
 
     /// Gregorian YMD N days ago (Bangkok calendar), used to bound the main fetch.
@@ -193,17 +212,29 @@ final class SupabaseService: ObservableObject {
     /// Lightweight index for reconcile: ids + updated_at in the 90-day window (no row body).
     func fetchTransactionIndex() async throws -> [TransactionIndexRow] {
         let since = Self.transactionsWindowStartYMD(daysBack: 90)
-        do {
-            return try await client.from("transactions")
-                .select("id,updated_at")
-                .gte("date", value: since)
-                .order("updated_at", ascending: false)
-                .limit(2000)
-                .execute()
-                .value
-        } catch {
-            throw DataServiceError.fetchFailed(error.localizedDescription)
+        // Must be complete: reconcile treats any local row missing here as deleted remotely.
+        var rows: [TransactionIndexRow] = []
+        var from = 0
+        while true {
+            let to = from + Self.pageSize - 1
+            let page: [TransactionIndexRow]
+            do {
+                page = try await client.from("transactions")
+                    .select("id,updated_at")
+                    .gte("date", value: since)
+                    .order("updated_at", ascending: false)
+                    .order("id", ascending: true)
+                    .range(from: from, to: to)
+                    .execute()
+                    .value
+            } catch {
+                throw DataServiceError.fetchFailed(error.localizedDescription)
+            }
+            rows.append(contentsOf: page)
+            if page.count < Self.pageSize { break }
+            from = to + 1
         }
+        return rows
     }
 
     /// Fetches full transaction bodies for the given ids (chunked for PostgREST URL limits).

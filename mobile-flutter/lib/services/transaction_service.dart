@@ -67,10 +67,19 @@ class TransactionService {
     }
 
     try {
-      final rows = await _client
-          .from('transactions')
-          .select(_transactionColumns)
-          .order('updated_at', ascending: false);
+      // PostgREST คืนสูงสุด 1000 แถวต่อคำขอ — ต้องดึงทีละหน้า ไม่งั้นแถวเก่า (เช่น รับน้ำมันเข้าถัง) หาย
+      const pageSize = 1000;
+      final rows = <Map<String, dynamic>>[];
+      for (var from = 0;; from += pageSize) {
+        final page = await _client
+            .from('transactions')
+            .select(_transactionColumns)
+            .order('updated_at', ascending: false)
+            .order('id', ascending: true)
+            .range(from, from + pageSize - 1);
+        rows.addAll(page);
+        if (page.length < pageSize) break;
+      }
       final list = rows.map(AppTransaction.fromMap).toList();
       await LocalDataCache.writeTransactionsFull(list);
       return list;

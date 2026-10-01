@@ -243,8 +243,9 @@ final class AppState {
         }
     }
 
-    func removeTransaction(id: String, rebuildIndex: Bool = true) {
-        if let ledgerIdx = fuelLedger.firstIndex(where: { $0.id == id }) {
+    /// - Parameter keepFuelLedger: reconcile ghosts only cover the 90-day window; the ledger refetches itself.
+    func removeTransaction(id: String, rebuildIndex: Bool = true, keepFuelLedger: Bool = false) {
+        if !keepFuelLedger, let ledgerIdx = fuelLedger.firstIndex(where: { $0.id == id }) {
             fuelLedger.remove(at: ledgerIdx)
             if !transactions.contains(where: { $0.id == id }) {
                 if rebuildIndex { bumpTransactionsRevision() }
@@ -300,7 +301,7 @@ final class AppState {
                 .filter { $0.date >= windowStart && !remoteIds.contains($0.id) }
                 .map(\.id)
             for id in ghostIds {
-                removeTransaction(id: id)
+                removeTransaction(id: id, keepFuelLedger: true)
                 removed = true
             }
 
@@ -404,7 +405,7 @@ final class AppState {
                     replaceTransactions(recent.transactions)
                     lastSkippedTransactionCount = recent.skippedCount
                 }
-                let fetchResult = try await dataService.fetchTransactions(daysBack: 90, limit: 2000)
+                let fetchResult = try await dataService.fetchTransactions(daysBack: 90)
                 if transactions != fetchResult.transactions {
                     replaceTransactions(fetchResult.transactions)
                 }
@@ -412,7 +413,7 @@ final class AppState {
                 lastSkippedTransactionCount = fetchResult.skippedCount
                 lastReconcileAt = Date()
             } else {
-                let fetchResult = try await dataService.fetchTransactions(daysBack: 90, limit: 2000)
+                let fetchResult = try await dataService.fetchTransactions(daysBack: 90)
                 if transactions != fetchResult.transactions {
                     replaceTransactions(fetchResult.transactions)
                 }
