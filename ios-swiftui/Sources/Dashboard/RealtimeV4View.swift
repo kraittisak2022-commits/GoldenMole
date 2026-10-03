@@ -1369,9 +1369,11 @@ struct RealtimeV4View: View {
         }
     }
 
+    /// Clock-style duration, e.g. 2 h 27 min → `2.27 น.`
     private static func formatWorkHours(_ hours: Double?) -> String {
         guard let hours, hours > 0, hours.isFinite else { return "—" }
-        return CountRecordAnalytics.formatDurationHours(hours)
+        let totalMinutes = Int((hours * 60).rounded())
+        return String(format: "%d.%02d น.", totalMinutes / 60, totalMinutes % 60)
     }
 
     private func kpiCell(
