@@ -405,6 +405,8 @@ struct OverviewHubView: View {
     private var fuelTodayCard: some View {
         let used = snapshot.mobileToday.fuelOutLiters
         let inbound = snapshot.mobileToday.fuelInLiters
+        let mainCapacity = FuelLogic.tankCapacityMainLiters
+        let mainOverCapacity = todayOps.mainDieselLiters > mainCapacity
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label("น้ำมัน", systemImage: "fuelpump.fill")
@@ -420,7 +422,7 @@ struct OverviewHubView: View {
                 fuelStockChip(
                     title: "ถังหลัก",
                     value: "\(DashboardAggregations.formatNumber(todayOps.mainDieselLiters)) L",
-                    accent: todayOps.mainDieselLiters < 0 ? AppTheme.expense : AppTheme.fuel
+                    accent: todayOps.mainDieselLiters < 0 || mainOverCapacity ? AppTheme.expense : AppTheme.fuel
                 )
                 fuelStockChip(
                     title: "ถังสำรอง",
@@ -434,6 +436,11 @@ struct OverviewHubView: View {
                 Text("ถังหลักติดลบ — ตรวจรายการรับเข้า (StockIn) และการเบิก/โอนซ้ำ")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(AppTheme.expense)
+            } else if mainOverCapacity {
+                Text("ถังหลักเกินความจุ \(DashboardAggregations.formatNumber(mainCapacity)) L (เกิน \(DashboardAggregations.formatNumber(todayOps.mainDieselLiters - mainCapacity)) L) — น่าจะมีรายการเบิกจากถังหลักที่ยังไม่ได้บันทึก")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AppTheme.expense)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             HStack(spacing: 10) {
