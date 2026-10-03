@@ -67,7 +67,7 @@ struct RealtimeV4Snapshot: Sendable {
     let tripMorningHours: Double?
     let tripAfternoonHours: Double?
     let tripLunchHours: Double
-    /// Rate denominators: sum of per-vehicle period hours (not merged fleet span).
+    /// Rate denominators: fleet clock span per period (whole-fleet trips per hour).
     let tripRateHours: Double?
     let tripRateMorningHours: Double?
     let tripRateAfternoonHours: Double?
@@ -182,7 +182,7 @@ struct RealtimeV4Snapshot: Sendable {
         let tripAfternoonHours = CountRecordLogic.periodSpanHours(lapTimes: tripSplit.afternoon, dayKey: dayKey)
         let sandLunchHours = CountRecordLogic.lunchDeductedHours(lapTimes: sandLaps, dayKey: dayKey)
         let tripWallHours = CountRecordLogic.wallClockDurationHours(lapTimes: tripLaps, dayKey: dayKey)
-        // Throughput rates: sum per-vehicle hours so parallel trucks don't inflate เที่ยว/ชม.
+        // Throughput rates: whole-fleet trips ÷ fleet clock span per period (not per vehicle).
         let fleetRate = CountRecordLogic.fleetPeriodThroughput(units: units, dayKey: dayKey)
         let tripRateMorningRounds = fleetRate.morningRounds
         let tripRateAfternoonRounds = fleetRate.afternoonRounds

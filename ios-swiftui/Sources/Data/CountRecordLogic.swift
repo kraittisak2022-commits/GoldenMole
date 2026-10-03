@@ -859,9 +859,9 @@ enum CountRecordLogic {
         return summed > 0 ? summed : max(0, totalRounds)
     }
 
-    /// Per-vehicle period throughput for the trip fleet.
-    /// Hours are **summed across vehicles** (not a merged first→last span) so parallel trucks
-    /// do not inflate เที่ยว/ชม. Rounds are only counted when that vehicle has a valid period span.
+    /// Whole-fleet period throughput (เที่ยวรวมทุกคัน / ชม.).
+    /// Hours are the fleet clock span per period (first lap of any truck → last lap of any truck),
+    /// so the rate is total trips per hour, not per vehicle. Rounds count only when the period has a span.
     struct FleetPeriodThroughput: Sendable {
         let morningRounds: Int
         let afternoonRounds: Int
@@ -883,26 +883,14 @@ enum CountRecordLogic {
         units: [CountRecordTripUnit],
         dayKey: String
     ) -> FleetPeriodThroughput {
-        var morningRounds = 0
-        var afternoonRounds = 0
-        var morningHours = 0.0
-        var afternoonHours = 0.0
-        for unit in units {
-            let split = splitLapsForPeriodHours(unit.lapTimes)
-            if let hours = periodSpanHours(lapTimes: split.morning, dayKey: dayKey), hours > 0 {
-                morningHours += hours
-                morningRounds += split.morning.count
-            }
-            if let hours = periodSpanHours(lapTimes: split.afternoon, dayKey: dayKey), hours > 0 {
-                afternoonHours += hours
-                afternoonRounds += split.afternoon.count
-            }
-        }
+        let split = splitLapsForPeriodHours(units.flatMap(\.lapTimes))
+        let morningHours = periodSpanHours(lapTimes: split.morning, dayKey: dayKey).flatMap { $0 > 0 ? $0 : nil }
+        let afternoonHours = periodSpanHours(lapTimes: split.afternoon, dayKey: dayKey).flatMap { $0 > 0 ? $0 : nil }
         return FleetPeriodThroughput(
-            morningRounds: morningRounds,
-            afternoonRounds: afternoonRounds,
-            morningHours: morningHours > 0 ? morningHours : nil,
-            afternoonHours: afternoonHours > 0 ? afternoonHours : nil
+            morningRounds: morningHours == nil ? 0 : split.morning.count,
+            afternoonRounds: afternoonHours == nil ? 0 : split.afternoon.count,
+            morningHours: morningHours,
+            afternoonHours: afternoonHours
         )
     }
 
