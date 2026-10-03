@@ -123,7 +123,7 @@ describe('ReportsModule', () => {
         openSpy.mockRestore();
     });
 
-    it('shows a stock-in section in the detail table', () => {
+    it('shows stock-in and usage together under one day in the detail table', () => {
         render(
             <ReportsModule
                 settings={settings}
@@ -150,10 +150,15 @@ describe('ReportsModule', () => {
         );
 
         const detail = screen.getByRole('table', { name: 'รายละเอียดรายการ' });
-        expect(within(detail).getByText('รายงานรับน้ำมันเข้า')).toBeInTheDocument();
+        const dayHeaders = within(detail).getAllByRole('rowheader');
+        expect(dayHeaders).toHaveLength(1);
+        expect(dayHeaders[0]).toHaveTextContent('รับเข้า 12,000 ลิตร');
+        expect(dayHeaders[0]).toHaveTextContent('จ่ายออก 60 ลิตร');
+        expect(within(detail).getByText('รับน้ำมันเข้า')).toBeInTheDocument();
         expect(within(detail).getByText('เพิ่มน้ำมันเข้าถัง: 12000 ลิตร (ดีเซล)')).toBeInTheDocument();
         expect(within(detail).getByText('ถังหลัก')).toBeInTheDocument();
-        expect(within(detail).getByText('รายงานเติมน้ำมันอื่นๆทั้งหมด')).toBeInTheDocument();
+        expect(within(detail).getByText('เติมน้ำมันอื่นๆ')).toBeInTheDocument();
+        expect(within(detail).queryByText('รายงานรับน้ำมันเข้า')).not.toBeInTheDocument();
     });
 
     it('filters the table when a vehicle is selected', async () => {

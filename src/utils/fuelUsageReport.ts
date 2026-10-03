@@ -398,36 +398,48 @@ export function filterFuelUsageReport(report: FuelUsageReport, group: FuelPrintG
     return { rows, ...aggregateFuelUsageRows(rows) };
 }
 
-export type FuelDetailSectionId = Exclude<FuelPrintGroup, 'overview'> | 'machine_fill';
+export type FuelDetailTypeId = Exclude<FuelPrintGroup, 'overview'> | 'machine_fill';
 
-export interface FuelDetailSection {
-    id: FuelDetailSectionId;
-    title: string;
-    rows: FuelUsageRow[];
-    liters: number;
+export interface FuelDetailRow {
+    row: FuelUsageRow;
+    typeId: FuelDetailTypeId;
+    typeLabel: string;
 }
 
-const DETAIL_SECTION_ORDER: FuelDetailSectionId[] = ['stock_in', 'machine_fill', 'macro', 'sieve_generator', 'other_fill'];
+export interface FuelDetailDay {
+    date: string;
+    rows: FuelDetailRow[];
+    stockInLiters: number;
+    outLiters: number;
+}
 
-/** แยกรายละเอียดรายการตามรายงาน — แถวเติมเครื่องจักร (ไม่มีกลุ่มพิมพ์) อยู่หมวด machine_fill */
-export function fuelDetailSections(report: FuelUsageReport): FuelDetailSection[] {
-    const byId = new Map<FuelDetailSectionId, FuelUsageRow[]>();
+const DETAIL_TYPE_ORDER: FuelDetailTypeId[] = ['stock_in', 'machine_fill', 'macro', 'sieve_generator', 'other_fill'];
+
+const DETAIL_TYPE_LABEL: Record<FuelDetailTypeId, string> = {
+    stock_in: 'รับน้ำมันเข้า',
+    machine_fill: 'เติมเครื่องจักร',
+    macro: 'รถแม็คโคร',
+    sieve_generator: 'ร่อนทราย / ปั่นไฟ',
+    other_fill: 'เติมน้ำมันอื่นๆ',
+};
+
+/** รายละเอียดรายการรวมทุกรายงาน แยกตามวัน — แถวเติมเครื่องจักร (ไม่มีกลุ่มพิมพ์) เป็นประเภท machine_fill */
+export function fuelDetailDays(report: FuelUsageReport): FuelDetailDay[] {
+    const byDate = new Map<string, FuelDetailRow[]>();
     for (const row of report.rows) {
-        const id: FuelDetailSectionId = fuelPrintGroupOf(row) ?? 'machine_fill';
-        const list = byId.get(id) || [];
-        list.push(row);
-        byId.set(id, list);
+        const group = fuelPrintGroupOf(row);
+        const typeId: FuelDetailTypeId = group && group !== 'overview' ? group : 'machine_fill';
+        const list = byDate.get(row.date) || [];
+        list.push({ row, typeId, typeLabel: DETAIL_TYPE_LABEL[typeId] });
+        byDate.set(row.date, list);
     }
-    return DETAIL_SECTION_ORDER
-        .filter(id => (byId.get(id)?.length ?? 0) > 0)
-        .map(id => {
-            const rows = byId.get(id) ?? [];
-            return {
-                id,
-                title: id === 'machine_fill' ? 'เติมเครื่องจักร (โอนถังหลัก → ถังสำรอง)' : fuelPrintGroupTitle(id),
-                rows,
-                liters: rows.reduce((s, r) => s + r.liters, 0),
-            };
+    return [...byDate.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, rows]) => {
+            const sorted = [...rows].sort((a, b) => DETAIL_TYPE_ORDER.indexOf(a.typeId) - DETAIL_TYPE_ORDER.indexOf(b.typeId));
+            const stockInLiters = sorted.filter(r => r.typeId === 'stock_in').reduce((s, r) => s + r.row.liters, 0);
+            const outLiters = sorted.filter(r => r.typeId !== 'stock_in').reduce((s, r) => s + r.row.liters, 0);
+            return { date, rows: sorted, stockInLiters, outLiters };
         });
 }
 
