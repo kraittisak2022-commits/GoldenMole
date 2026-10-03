@@ -19,6 +19,7 @@ import {
     buildFuelUsageReport,
     classifyFuelTx,
     filterFuelUsageReport,
+    fuelDetailSections,
     fuelPrintGroupTitle,
     fuelPrintOverviewSections,
     fuelReportVehicleLabel,
@@ -27,6 +28,7 @@ import {
     fuelUsageToPrintHtml,
     monthBoundsFromYmd,
     shiftMonthBounds,
+    tankLabel,
     yearBoundsFromYmd,
     type FuelPrintGroup,
     type FuelPrintLocale,
@@ -753,47 +755,64 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                             <p className="p-6 text-sm text-slate-400 text-center">ไม่พบรายการน้ำมันในช่วงนี้</p>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className={reportTableClass}>
+                                <table className={reportTableClass} aria-label="รายละเอียดรายการ">
                                     <thead>
                                         <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
                                             <th scope="col" className="px-4 py-2.5 font-semibold">วันที่</th>
-                                            <th scope="col" className="px-4 py-2.5 font-semibold">รถ</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold">รถ / ถัง</th>
                                             <th scope="col" className="px-4 py-2.5 font-semibold text-right">ลิตร</th>
                                             <th scope="col" className="px-4 py-2.5 font-semibold">รายละเอียด</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {(() => {
-                                            const byDate = new Map<string, typeof fuelReport.rows>();
-                                            for (const row of fuelReport.rows) {
+                                        {fuelDetailSections(fuelReport).map((section) => {
+                                            const byDate = new Map<string, typeof section.rows>();
+                                            for (const row of section.rows) {
                                                 const list = byDate.get(row.date) || [];
                                                 list.push(row);
                                                 byDate.set(row.date, list);
                                             }
-                                            return [...byDate.entries()].map(([date, dayRows]) => {
-                                                const dayLiters = dayRows.reduce((s, r) => s + r.liters, 0);
-                                                return (
-                                                    <Fragment key={date}>
-                                                        <tr className="bg-slate-100/80 dark:bg-white/[0.06]">
-                                                            <td colSpan={4} className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                                                                {formatDateBE(date)}
-                                                                <span className="ml-2 font-semibold text-slate-500 dark:text-slate-400">
-                                                                    {formatDisplayNumber(dayLiters)} ลิตร · {dayRows.length} รายการ
-                                                                </span>
-                                                            </td>
-                                                        </tr>
-                                                        {dayRows.map((row, i) => (
-                                                            <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                                                <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{formatDateBE(row.date)}</td>
-                                                                <td className="px-4 py-2.5">{row.vehicleId || '—'}</td>
-                                                                <td className="px-4 py-2.5 text-right tabular-nums font-medium">{formatDisplayNumber(row.liters)}</td>
-                                                                <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">{row.description || '—'}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </Fragment>
-                                                );
-                                            });
-                                        })()}
+                                            const sourceLabel = (row: (typeof section.rows)[number]) => {
+                                                if (section.id === 'stock_in') return tankLabel(row.tank);
+                                                if (section.id === 'machine_fill') return 'ถังหลัก → ถังสำรอง';
+                                                return row.vehicleId || '—';
+                                            };
+                                            return (
+                                                <Fragment key={section.id}>
+                                                    <tr className="bg-slate-200/80 dark:bg-white/[0.1]">
+                                                        <td colSpan={4} className="px-4 py-2.5 text-sm font-bold text-slate-800 dark:text-slate-100">
+                                                            {section.title}
+                                                            <span className="ml-2 font-semibold text-slate-600 dark:text-slate-300">
+                                                                {formatDisplayNumber(section.liters)} ลิตร · {section.rows.length} รายการ
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                    {[...byDate.entries()].map(([date, dayRows]) => {
+                                                        const dayLiters = dayRows.reduce((s, r) => s + r.liters, 0);
+                                                        return (
+                                                            <Fragment key={`${section.id}-${date}`}>
+                                                                <tr className="bg-slate-100/80 dark:bg-white/[0.06]">
+                                                                    <td colSpan={4} className="px-4 py-2 pl-6 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                                        {formatDateBE(date)}
+                                                                        <span className="ml-2 font-semibold text-slate-500 dark:text-slate-400">
+                                                                            {formatDisplayNumber(dayLiters)} ลิตร · {dayRows.length} รายการ
+                                                                        </span>
+                                                                    </td>
+                                                                </tr>
+                                                                {dayRows.map((row, i) => (
+                                                                    <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{formatDateBE(row.date)}</td>
+                                                                        <td className="px-4 py-2.5">{sourceLabel(row)}</td>
+                                                                        <td className="px-4 py-2.5 text-right tabular-nums font-medium">{formatDisplayNumber(row.liters)}</td>
+                                                                        <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">{row.description || '—'}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </Fragment>
+                                                        );
+                                                    })}
+                                                </Fragment>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>

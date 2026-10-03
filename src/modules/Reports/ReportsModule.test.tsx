@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ReportsModule from './ReportsModule';
@@ -121,6 +121,39 @@ describe('ReportsModule', () => {
         expect(html).toContain('เติมรถดรัม');
         expect(html).toContain('คงเหลือถังหลัก');
         openSpy.mockRestore();
+    });
+
+    it('shows a stock-in section in the detail table', () => {
+        render(
+            <ReportsModule
+                settings={settings}
+                transactions={[
+                    fuelTx({
+                        id: 'in',
+                        date: '2026-08-05',
+                        subCategory: 'StockIn',
+                        fuelMovement: 'stock_in',
+                        fuelTank: 'main',
+                        quantity: 12000,
+                        description: 'เพิ่มน้ำมันเข้าถัง: 12000 ลิตร (ดีเซล)',
+                    }),
+                    fuelTx({
+                        id: 'v1',
+                        date: '2026-08-05',
+                        fuelMovement: 'stock_out',
+                        vehicleId: 'รถดรัมโอเว่น',
+                        quantity: 60,
+                        description: 'เติมรถดรัม',
+                    }),
+                ]}
+            />
+        );
+
+        const detail = screen.getByRole('table', { name: 'รายละเอียดรายการ' });
+        expect(within(detail).getByText('รายงานรับน้ำมันเข้า')).toBeInTheDocument();
+        expect(within(detail).getByText('เพิ่มน้ำมันเข้าถัง: 12000 ลิตร (ดีเซล)')).toBeInTheDocument();
+        expect(within(detail).getByText('ถังหลัก')).toBeInTheDocument();
+        expect(within(detail).getByText('รายงานเติมน้ำมันอื่นๆทั้งหมด')).toBeInTheDocument();
     });
 
     it('filters the table when a vehicle is selected', async () => {

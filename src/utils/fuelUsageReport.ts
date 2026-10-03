@@ -398,6 +398,39 @@ export function filterFuelUsageReport(report: FuelUsageReport, group: FuelPrintG
     return { rows, ...aggregateFuelUsageRows(rows) };
 }
 
+export type FuelDetailSectionId = Exclude<FuelPrintGroup, 'overview'> | 'machine_fill';
+
+export interface FuelDetailSection {
+    id: FuelDetailSectionId;
+    title: string;
+    rows: FuelUsageRow[];
+    liters: number;
+}
+
+const DETAIL_SECTION_ORDER: FuelDetailSectionId[] = ['stock_in', 'machine_fill', 'macro', 'sieve_generator', 'other_fill'];
+
+/** แยกรายละเอียดรายการตามรายงาน — แถวเติมเครื่องจักร (ไม่มีกลุ่มพิมพ์) อยู่หมวด machine_fill */
+export function fuelDetailSections(report: FuelUsageReport): FuelDetailSection[] {
+    const byId = new Map<FuelDetailSectionId, FuelUsageRow[]>();
+    for (const row of report.rows) {
+        const id: FuelDetailSectionId = fuelPrintGroupOf(row) ?? 'machine_fill';
+        const list = byId.get(id) || [];
+        list.push(row);
+        byId.set(id, list);
+    }
+    return DETAIL_SECTION_ORDER
+        .filter(id => (byId.get(id)?.length ?? 0) > 0)
+        .map(id => {
+            const rows = byId.get(id) ?? [];
+            return {
+                id,
+                title: id === 'machine_fill' ? 'เติมเครื่องจักร (โอนถังหลัก → ถังสำรอง)' : fuelPrintGroupTitle(id),
+                rows,
+                liters: rows.reduce((s, r) => s + r.liters, 0),
+            };
+        });
+}
+
 function fuelReportRawVehicleId(t: Transaction, kind: FuelUsageKind): string {
     const hasVehicle = !!(String(t.vehicleId ?? '').trim() || String(t.vehicleName ?? '').trim());
     const fallback = kind === 'sand_sieve'

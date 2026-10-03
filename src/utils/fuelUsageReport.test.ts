@@ -13,6 +13,7 @@ import {
     classifyFuelTx,
     fuelReportVehicleLabel,
     filterFuelUsageReport,
+    fuelDetailSections,
     fuelPrintGroupOf,
     fuelPrintGroupTitle,
     fuelPrintOverviewItems,
@@ -159,6 +160,25 @@ describe('month / year bounds', () => {
         expect(monthBoundsFromYmd('2026-02-10')).toEqual({ start: '2026-02-01', end: '2026-02-28' });
         expect(shiftMonthBounds('2026-08-24', -1)).toEqual({ start: '2026-07-01', end: '2026-07-31' });
         expect(yearBoundsFromYmd('2026-08-24')).toEqual({ start: '2026-01-01', end: '2026-12-31' });
+    });
+});
+
+describe('fuelDetailSections', () => {
+    it('groups detail rows by report with stock-in first and keeps every row', () => {
+        const report = buildFuelUsageReport([
+            fuelTx({ id: 'macro', date: '2026-09-10', subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY, vehicleId: 'รถแม็คโคร SK200', quantity: 120 }),
+            fuelTx({ id: 'in', date: '2026-09-10', subCategory: FUEL_STOCK_IN_SUB_CATEGORY, fuelMovement: 'stock_in', fuelTank: 'main', quantity: 12000 }),
+            fuelTx({ id: 'xfer', date: '2026-09-10', subCategory: FUEL_TRANSFER_SUB_CATEGORY, fuelMovement: 'stock_out', fuelTank: 'main', workType: 'machine', quantity: 600 }),
+            fuelTx({ id: 'car', date: '2026-09-11', subCategory: FUEL_WITHDRAW_SUB_CATEGORY, fuelMovement: 'stock_out', workType: 'car', vehicleId: 'ไมตี้', quantity: 20 }),
+        ], { start: '2026-09-01', end: '2026-09-30' });
+
+        const sections = fuelDetailSections(report);
+
+        expect(sections.map(s => s.id)).toEqual(['stock_in', 'machine_fill', 'macro', 'other_fill']);
+        expect(sections[0]).toMatchObject({ title: 'รายงานรับน้ำมันเข้า', liters: 12000 });
+        expect(sections[0].rows.map(r => r.id)).toEqual(['in']);
+        expect(sections[1].title).toBe('เติมเครื่องจักร (โอนถังหลัก → ถังสำรอง)');
+        expect(sections.flatMap(s => s.rows).length).toBe(report.rows.length);
     });
 });
 
