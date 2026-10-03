@@ -2,7 +2,7 @@
  * Shared fuel stock balance — mirrors src/utils/index.ts computeFuelStockBalances
  * (without sand-sieve lap estimate; SandSieve Fuel rows still count).
  */
-export const FUEL_STOCK_CUTOVER_YMD = "2026-08-01";
+export const FUEL_STOCK_CUTOVER_YMD = "2026-08-05";
 export const FUEL_OPENING_RESERVE_DIESEL_LITERS = 100;
 export const FUEL_RESERVE_ANCHOR_YMD = "2026-08-31";
 export const FUEL_RESERVE_ANCHOR_LITERS = 100;

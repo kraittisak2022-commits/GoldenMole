@@ -84,7 +84,7 @@ describe('computeFuelStockBalances', () => {
         const bal = computeFuelStockBalances([
             fuelTx({
                 id: 'in',
-                date: '2026-08-01',
+                date: '2026-08-05',
                 fuelMovement: 'stock_in',
                 subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
                 fuelTank: 'main',
@@ -92,7 +92,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'tr-out',
-                date: '2026-08-02',
+                date: '2026-08-06',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_TRANSFER_SUB_CATEGORY,
                 fuelTank: 'main',
@@ -101,7 +101,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'tr-in',
-                date: '2026-08-02',
+                date: '2026-08-06',
                 fuelMovement: 'stock_in',
                 subCategory: FUEL_TRANSFER_SUB_CATEGORY,
                 fuelTank: 'reserve',
@@ -110,7 +110,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'gen',
-                date: '2026-08-03',
+                date: '2026-08-07',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
                 workType: 'generator',
@@ -119,7 +119,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'mayor',
-                date: '2026-08-03',
+                date: '2026-08-07',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
                 workType: 'mayor',
@@ -128,7 +128,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'other',
-                date: '2026-08-03',
+                date: '2026-08-07',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
                 workType: 'other',
@@ -137,7 +137,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'car',
-                date: '2026-08-03',
+                date: '2026-08-07',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
                 workType: 'car',
@@ -147,7 +147,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'macro-main',
-                date: '2026-08-04',
+                date: '2026-08-08',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
                 fuelTank: 'main',
@@ -156,7 +156,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'macro-res',
-                date: '2026-08-04',
+                date: '2026-08-08',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
                 fuelTank: 'reserve',
@@ -165,7 +165,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'macro-legacy',
-                date: '2026-08-04',
+                date: '2026-08-08',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
                 vehicleId: 'แม็คโคร',
@@ -182,7 +182,7 @@ describe('computeFuelStockBalances', () => {
         const bal = computeFuelStockBalances([
             fuelTx({
                 id: 'in',
-                date: '2026-08-01',
+                date: '2026-08-05',
                 fuelMovement: 'stock_in',
                 subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
                 fuelTank: 'main',
@@ -190,7 +190,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'legacy',
-                date: '2026-08-02',
+                date: '2026-08-06',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
                 workType: 'machine',
@@ -198,7 +198,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'macro',
-                date: '2026-08-02',
+                date: '2026-08-06',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
                 fuelTank: 'reserve',
@@ -213,7 +213,7 @@ describe('computeFuelStockBalances', () => {
         const bal = computeFuelStockBalances([
             fuelTx({
                 id: 'in',
-                date: '2026-08-01',
+                date: '2026-08-05',
                 fuelMovement: 'stock_in',
                 subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
                 fuelTank: 'main',
@@ -221,7 +221,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'tr-out',
-                date: '2026-08-02',
+                date: '2026-08-06',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_TRANSFER_SUB_CATEGORY,
                 fuelTank: 'main',
@@ -230,7 +230,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'tr-in',
-                date: '2026-08-02',
+                date: '2026-08-06',
                 fuelMovement: 'stock_in',
                 subCategory: FUEL_TRANSFER_SUB_CATEGORY,
                 fuelTank: 'reserve',
@@ -239,7 +239,7 @@ describe('computeFuelStockBalances', () => {
             }),
             fuelTx({
                 id: 'legacy',
-                date: '2026-08-02',
+                date: '2026-08-06',
                 fuelMovement: 'stock_out',
                 subCategory: FUEL_WITHDRAW_SUB_CATEGORY,
                 workType: 'machine',
@@ -385,14 +385,14 @@ describe('estimateSieveUsageByDay', () => {
         const txs: Transaction[] = [
             {
                 id: 'sand-1',
-                date: '2026-08-01',
+                date: '2026-08-05',
                 type: 'Expense',
                 category: 'DailyLog',
                 subCategory: 'Sand',
                 description: 'ร่อนทราย',
                 amount: 0,
                 workAssignments: {
-                    lapTimes: ['01/08 08:00:00', '01/08 17:00:00'],
+                    lapTimes: ['05/08 08:00:00', '05/08 17:00:00'],
                 } as Transaction['workAssignments'],
             },
             {
@@ -418,7 +418,30 @@ describe('estimateSieveUsageByDay', () => {
         ];
         const est = estimateSieveUsageByDay(txs);
         // 08:00–17:00 minus 1h lunch = 8h × 18 = 144
-        expect(est['2026-08-01']).toBe(144);
+        expect(est['2026-08-05']).toBe(144);
         expect(est['2026-08-12']).toBeUndefined();
+    });
+
+    it('skips sand laps before the fuel cutover (01–04 ส.ค. archived)', () => {
+        const sandDay = (date: string, dm: string): Transaction => ({
+            id: `sand-${date}`,
+            date,
+            type: 'Expense',
+            category: 'DailyLog',
+            subCategory: 'Sand',
+            description: 'ร่อนทราย',
+            amount: 0,
+            workAssignments: {
+                lapTimes: [`${dm} 08:00:00`, `${dm} 17:00:00`],
+            } as Transaction['workAssignments'],
+        });
+        const est = estimateSieveUsageByDay([
+            sandDay('2026-08-01', '01/08'),
+            sandDay('2026-08-02', '02/08'),
+            sandDay('2026-08-05', '05/08'),
+        ]);
+        expect(est['2026-08-01']).toBeUndefined();
+        expect(est['2026-08-02']).toBeUndefined();
+        expect(est['2026-08-05']).toBe(144);
     });
 });

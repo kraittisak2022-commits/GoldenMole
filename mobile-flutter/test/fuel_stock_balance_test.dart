@@ -335,7 +335,7 @@ void main() {
       expect(b.mainDiesel, 11900);
     });
 
-    test('rows on cutover day 2026-08-01 are counted', () {
+    test('rows on cutover day 2026-08-05 are counted', () {
       final b = computeFuelStockBalance(
         [
           _fuel(
@@ -344,7 +344,7 @@ void main() {
             movement: 'stock_in',
             liters: 500,
             tank: kFuelTankMain,
-            date: '2026-08-01',
+            date: '2026-08-05',
           ),
           _fuel(
             id: 'out',
@@ -353,7 +353,7 @@ void main() {
             liters: 100,
             tank: kFuelTankMain,
             workType: 'car',
-            date: '2026-08-01',
+            date: '2026-08-05',
           ),
         ],
         openingDiesel: 1000,
@@ -361,7 +361,7 @@ void main() {
       expect(b.mainDiesel, 1400); // 1000 + 500 - 100
     });
 
-    test('rows before cutover 2026-07-31 are ignored', () {
+    test('rows before cutover 2026-08-04 are ignored', () {
       final b = computeFuelStockBalance(
         [
           _fuel(
@@ -370,7 +370,7 @@ void main() {
             movement: 'stock_in',
             liters: 9000,
             tank: kFuelTankMain,
-            date: '2026-07-31',
+            date: '2026-08-04',
           ),
           _fuel(
             id: 'out',
@@ -379,7 +379,7 @@ void main() {
             liters: 200,
             tank: kFuelTankMain,
             workType: 'car',
-            date: '2026-07-31',
+            date: '2026-08-04',
           ),
         ],
         openingDiesel: 8500,

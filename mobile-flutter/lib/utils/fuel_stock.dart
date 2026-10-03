@@ -16,8 +16,9 @@ const String kFuelTankMain = 'main';
 const String kFuelTankReserve = 'reserve';
 
 /// วันตัดยอดสต็อก — ก่อนวันนี้ถือว่าน้ำมันในถังเหลือ 0 (ถูกใช้หมดแล้ว)
-/// ตั้งแต่วันนี้หักลบจากถังปกติ · พ.ศ. 1 ส.ค. 2569 = ค.ศ. 2026-08-01
-const String kFuelStockCutoverYmd = '2026-08-01';
+/// ตั้งแต่วันนี้หักลบจากถังปกติ · พ.ศ. 5 ส.ค. 2569 = ค.ศ. 2026-08-05
+/// ข้อมูลน้ำมันถึง 2026-08-04 ย้ายไปตาราง fuel_archive_2026_08_04 แล้ว
+const String kFuelStockCutoverYmd = '2026-08-05';
 
 /// ยอดยกมาถังสำรองดีเซลตั้งแต่วันตัดยอด — ใช้เมื่อยังไม่ตั้งค่าในระบบ
 const double kFuelOpeningReserveDieselLiters = 100;
