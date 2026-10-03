@@ -157,8 +157,8 @@ struct RealtimeV4Snapshot: Sendable {
         let sandPeriodSpans = CountRecordLogic.periodSpanLabels(lapTimes: sandLaps, dayKey: dayKey)
         let sandHours = CountRecordLogic.activeDurationHours(lapTimes: sandLaps, dayKey: dayKey)
         let sandSplit = CountRecordLogic.splitLapsForPeriodHours(sandLaps)
-        let sandMorningHours = CountRecordLogic.activeDurationHours(lapTimes: sandSplit.morning, dayKey: dayKey)
-        let sandAfternoonHours = CountRecordLogic.activeDurationHours(lapTimes: sandSplit.afternoon, dayKey: dayKey)
+        let sandMorningHours = CountRecordLogic.periodSpanHours(lapTimes: sandSplit.morning, dayKey: dayKey)
+        let sandAfternoonHours = CountRecordLogic.periodSpanHours(lapTimes: sandSplit.afternoon, dayKey: dayKey)
         let sandWallHours = CountRecordLogic.wallClockDurationHours(lapTimes: sandLaps, dayKey: dayKey)
         let sandRateMorningRounds = sandSplit.morning.count
         let sandRateAfternoonRounds = sandSplit.afternoon.count
@@ -178,8 +178,8 @@ struct RealtimeV4Snapshot: Sendable {
         let tripLunchHours = CountRecordLogic.lunchDeductedHours(lapTimes: tripLaps, dayKey: dayKey)
         let tripSplit = CountRecordLogic.splitLapsForPeriodHours(tripLaps)
         // Clock spans for «เวลาทำงานจริง» (fleet first→last within each period).
-        let tripMorningHours = CountRecordLogic.activeDurationHours(lapTimes: tripSplit.morning, dayKey: dayKey)
-        let tripAfternoonHours = CountRecordLogic.activeDurationHours(lapTimes: tripSplit.afternoon, dayKey: dayKey)
+        let tripMorningHours = CountRecordLogic.periodSpanHours(lapTimes: tripSplit.morning, dayKey: dayKey)
+        let tripAfternoonHours = CountRecordLogic.periodSpanHours(lapTimes: tripSplit.afternoon, dayKey: dayKey)
         let sandLunchHours = CountRecordLogic.lunchDeductedHours(lapTimes: sandLaps, dayKey: dayKey)
         let tripWallHours = CountRecordLogic.wallClockDurationHours(lapTimes: tripLaps, dayKey: dayKey)
         // Throughput rates: sum per-vehicle hours so parallel trucks don't inflate เที่ยว/ชม.
@@ -2593,8 +2593,8 @@ private struct SandDetailSheet: View {
     private var rateHours: Double? {
         let split = CountRecordLogic.splitLapsForPeriodHours(sand.lapTimes)
         return CountRecordLogic.combinedPeriodRateHours(
-            morningHours: CountRecordLogic.activeDurationHours(lapTimes: split.morning, dayKey: dayKey),
-            afternoonHours: CountRecordLogic.activeDurationHours(lapTimes: split.afternoon, dayKey: dayKey),
+            morningHours: CountRecordLogic.periodSpanHours(lapTimes: split.morning, dayKey: dayKey),
+            afternoonHours: CountRecordLogic.periodSpanHours(lapTimes: split.afternoon, dayKey: dayKey),
             wallClockHours: CountRecordLogic.wallClockDurationHours(lapTimes: sand.lapTimes, dayKey: dayKey)
         )
     }

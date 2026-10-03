@@ -675,13 +675,13 @@ enum CountRecordLogic {
         return formatWorkSpanLabel(computeWorkSpan(lapTimes: allLaps, dayKey: dayKey))
     }
 
-    /// Split lap stamps into morning (hour < 12) and afternoon (hour >= 12), matching `lapPeriods`.
+    /// Split lap stamps for span labels: morning before 12:30, afternoon from 12:30.
     static func splitLapsByPeriod(_ lapTimes: [String]) -> (morning: [String], afternoon: [String]) {
         var morning: [String] = []
         var afternoon: [String] = []
         for lap in lapTimes {
-            guard let h = lapHour(lap) else { continue }
-            if h < 12 {
+            guard let clock = lapClockComponents(lap) else { continue }
+            if clock.hour * 60 + clock.minute < morningPeriodEndMinute {
                 morning.append(lap)
             } else {
                 afternoon.append(lap)
@@ -797,21 +797,31 @@ enum CountRecordLogic {
         return lunchOverlapSeconds(start: start, end: end, dayKey: dayKey) / 3600
     }
 
-    /// Split laps for period *hours* / *rates*: morning ends before 12:00, afternoon starts at/after 13:00
-    /// so the lunch hour is never counted in either period bucket (numerator or denominator).
+    /// Rate periods (site rule): morning 08:00–12:30, afternoon from 13:00.
+    static let morningPeriodEndMinute = 12 * 60 + 30
+    static let afternoonPeriodStartMinute = lunchEndHour * 60
+
+    /// Split laps for period *hours* / *rates*: morning before 12:30, afternoon at/after 13:00.
+    /// Laps 12:30–12:59 fall in neither bucket (numerator or denominator).
     static func splitLapsForPeriodHours(_ lapTimes: [String]) -> (morning: [String], afternoon: [String]) {
         var morning: [String] = []
         var afternoon: [String] = []
         for lap in lapTimes {
-            guard let h = lapHour(lap) else { continue }
-            if h < lunchStartHour {
+            guard let clock = lapClockComponents(lap) else { continue }
+            let minute = clock.hour * 60 + clock.minute
+            if minute < morningPeriodEndMinute {
                 morning.append(lap)
-            } else if h >= lunchEndHour {
+            } else if minute >= afternoonPeriodStartMinute {
                 afternoon.append(lap)
             }
-            // 12:00–12:59: excluded from both period hour spans (deducted on full-day total)
         }
         return (morning, afternoon)
+    }
+
+    /// First→last hours of one period bucket from `splitLapsForPeriodHours`.
+    /// No lunch deduct: the morning period runs to 12:30 and the afternoon starts at 13:00.
+    static func periodSpanHours(lapTimes: [String], dayKey: String) -> Double? {
+        wallClockDurationHours(lapTimes: lapTimes, dayKey: dayKey)
     }
 
     /// Throughput rate: rounds ÷ hours (nil when either side is empty / invalid).
@@ -879,11 +889,11 @@ enum CountRecordLogic {
         var afternoonHours = 0.0
         for unit in units {
             let split = splitLapsForPeriodHours(unit.lapTimes)
-            if let hours = activeDurationHours(lapTimes: split.morning, dayKey: dayKey), hours > 0 {
+            if let hours = periodSpanHours(lapTimes: split.morning, dayKey: dayKey), hours > 0 {
                 morningHours += hours
                 morningRounds += split.morning.count
             }
-            if let hours = activeDurationHours(lapTimes: split.afternoon, dayKey: dayKey), hours > 0 {
+            if let hours = periodSpanHours(lapTimes: split.afternoon, dayKey: dayKey), hours > 0 {
                 afternoonHours += hours
                 afternoonRounds += split.afternoon.count
             }

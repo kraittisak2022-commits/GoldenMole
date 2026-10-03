@@ -307,25 +307,33 @@ export function computeSandWorkDurationSummary(lapTimes: string[], dayKey: strin
     };
 }
 
-/** Split laps for period rates: morning <12, afternoon ≥13 (excludes lunch hour). */
+/** Rate periods (site rule): morning 08:00–12:30, afternoon from 13:00. */
+export const MORNING_PERIOD_END_MINUTE = 12 * 60 + 30;
+export const AFTERNOON_PERIOD_START_MINUTE = LUNCH_END_HOUR * 60;
+
+/** Split laps for period rates: morning <12:30, afternoon ≥13:00 (12:30–12:59 excluded). */
 export function splitLapsForPeriodHours(lapTimes: string[]): { morning: string[]; afternoon: string[] } {
     const morning: string[] = [];
     const afternoon: string[] = [];
     for (const stamp of lapTimes) {
         const space = stamp.trim().indexOf(' ');
         const timePart = space >= 0 ? stamp.trim().slice(space + 1) : stamp.trim();
-        const hour = parseInt(timePart.split(':')[0] ?? '', 10);
+        const [hourStr, minuteStr] = timePart.split(':');
+        const hour = parseInt(hourStr ?? '', 10);
+        const minute = parseInt(minuteStr ?? '0', 10) || 0;
         if (!Number.isFinite(hour) || hour < 0 || hour > 23) continue;
-        if (hour < LUNCH_START_HOUR) morning.push(stamp);
-        else if (hour >= LUNCH_END_HOUR) afternoon.push(stamp);
+        const minuteOfDay = hour * 60 + minute;
+        if (minuteOfDay < MORNING_PERIOD_END_MINUTE) morning.push(stamp);
+        else if (minuteOfDay >= AFTERNOON_PERIOD_START_MINUTE) afternoon.push(stamp);
     }
     return { morning, afternoon };
 }
 
+/** First→last hours of one period bucket — no lunch deduct (morning runs to 12:30, afternoon starts 13:00). */
 function periodSpanActiveHours(lapTimes: string[], dayKey: string): number {
     if (lapTimes.length < 2) return 0;
     const summary = computeSandWorkDurationSummary(lapTimes, dayKey);
-    return summary?.totalActiveHours ?? 0;
+    return summary ? summary.totalActiveHours + summary.lunchDeductedHours : 0;
 }
 
 export interface ThroughputRate {

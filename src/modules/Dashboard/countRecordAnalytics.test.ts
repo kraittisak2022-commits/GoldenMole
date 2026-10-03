@@ -183,6 +183,25 @@ describe('computeThroughputRate', () => {
             (rate!.morningRounds + rate!.afternoonRounds) / (rate!.morningHours + rate!.afternoonHours);
         expect(rate!.perHour).toBeCloseTo(weighted, 10);
     });
+
+    it('morning runs 08:00–12:30 without lunch deduct; afternoon starts 13:00', () => {
+        const rate = computeThroughputRate(
+            [
+                '26/06 10:00:00',
+                '26/06 11:00:00',
+                '26/06 12:20:00',
+                '26/06 12:45:00',
+                '26/06 13:00:00',
+                '26/06 14:00:00',
+            ],
+            '2026-06-26',
+        );
+        expect(rate).not.toBeNull();
+        expect(rate!.morningRounds).toBe(3);
+        expect(rate!.morningHours).toBeCloseTo(140 / 60, 5);
+        expect(rate!.afternoonRounds).toBe(2);
+        expect(rate!.afternoonHours).toBeCloseTo(1, 5);
+    });
 });
 
 describe('computeFleetThroughputRate', () => {

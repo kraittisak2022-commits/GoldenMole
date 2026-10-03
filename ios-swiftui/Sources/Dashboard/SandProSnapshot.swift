@@ -124,8 +124,8 @@ struct SandProSnapshot: Sendable {
         let eta = sandAnalytics.eta
         let lapsForRate = sandUnit?.lapTimes ?? sandAnalytics.lapTimes
         let split = CountRecordLogic.splitLapsForPeriodHours(lapsForRate)
-        let morningH = CountRecordLogic.activeDurationHours(lapTimes: split.morning, dayKey: dayKey)
-        let afternoonH = CountRecordLogic.activeDurationHours(lapTimes: split.afternoon, dayKey: dayKey)
+        let morningH = CountRecordLogic.periodSpanHours(lapTimes: split.morning, dayKey: dayKey)
+        let afternoonH = CountRecordLogic.periodSpanHours(lapTimes: split.afternoon, dayKey: dayKey)
         let hours = sandHours
             ?? CountRecordLogic.combinedPeriodRateHours(
                 morningHours: morningH,
