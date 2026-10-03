@@ -351,7 +351,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                             <div className={`rounded-xl p-4 border ${fuelStock.Diesel < 0 ? 'border-red-300 bg-red-50/80 dark:bg-red-950/30' : 'border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5'}`}>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">ถังหลัก · ดีเซล</p>
                                 <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{Math.round(fuelStock.Diesel * 10) / 10}</p>
-                                <p className="text-[11px] text-slate-400 mt-1">ความจุ 12,000 ลิตร</p>
+                                <p className="text-[11px] text-slate-400 mt-1">ไม่จำกัดความจุ</p>
                                 {fuelStock.Diesel < 0 && <p className="text-[11px] text-red-600 mt-1">ติดลบ — ตรวจสอบยอดยกมาหรือรายการรับเข้า</p>}
                             </div>
                             <div className={`rounded-xl p-4 border ${(fuelStock.DieselReserve ?? 0) < 0 ? 'border-red-300 bg-red-50/80 dark:bg-red-950/30' : 'border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5'}`}>

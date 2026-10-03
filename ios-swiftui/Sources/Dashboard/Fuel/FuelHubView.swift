@@ -165,32 +165,36 @@ struct FuelHubView: View {
     }
 
     private func tankGauge(mainDiesel: Double, reserveDiesel: Double) -> some View {
-        func row(title: String, liters: Double, capacity: Double) -> some View {
-            let pct = min(1, max(0, liters / capacity))
-            return VStack(alignment: .leading, spacing: 8) {
+        /// `capacity` nil = unlimited tank (no fill bar).
+        func row(title: String, liters: Double, capacity: Double?) -> some View {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                     Spacer()
-                    Text("\(FuelLogic.formatLiters(liters)) / \(FuelLogic.formatLiters(capacity)) L")
+                    Text(capacity.map { "\(FuelLogic.formatLiters(liters)) / \(FuelLogic.formatLiters($0)) L" }
+                        ?? "\(FuelLogic.formatLiters(liters)) L")
                         .font(.subheadline.weight(.bold).monospacedDigit())
                         .foregroundStyle(accent)
                 }
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(AppTheme.surfaceSoft)
-                        Capsule()
-                            .fill(accent)
-                            .frame(width: max(8, geo.size.width * pct))
+                if let capacity, capacity > 0 {
+                    let pct = min(1, max(0, liters / capacity))
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(AppTheme.surfaceSoft)
+                            Capsule()
+                                .fill(accent)
+                                .frame(width: max(8, geo.size.width * pct))
+                        }
                     }
+                    .frame(height: 12)
                 }
-                .frame(height: 12)
             }
         }
         return VStack(alignment: .leading, spacing: 12) {
             Text("สต็อกดีเซล")
                 .font(.headline)
-            row(title: "ถังหลัก (ถังหลัง)", liters: mainDiesel, capacity: FuelLogic.tankCapacityMainLiters)
+            row(title: "ถังหลัก (ถังหลัง)", liters: mainDiesel, capacity: nil)
             row(title: "ถังสำรอง", liters: reserveDiesel, capacity: FuelLogic.tankCapacityReserveLiters)
             if mainDiesel < 0 || reserveDiesel < 0 {
                 Text(

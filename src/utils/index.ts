@@ -33,7 +33,7 @@ export const FUEL_STOCK_IN_SUB_CATEGORY = 'StockIn';
 export const FUEL_VEHICLE_USAGE_SUB_CATEGORY = 'VehicleUsage';
 export const FUEL_TANK_MAIN = 'main';
 export const FUEL_TANK_RESERVE = 'reserve';
-export const FUEL_TANK_CAPACITY_MAIN = 12000;
+/** ถังหลักรับน้ำมันได้ไม่จำกัด — มีความจุเฉพาะถังสำรอง */
 export const FUEL_TANK_CAPACITY_RESERVE = 1000;
 
 /**

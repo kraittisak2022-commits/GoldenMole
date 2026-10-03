@@ -14121,16 +14121,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final reserve = _fuelStock.reserveDiesel;
     final mainPreview = main + (mainDelta ?? 0);
     final reservePreview = reserve + (pendingReserveDelta ?? 0);
-    final overMain = mainPreview > kFuelTankCapacityMainLiters;
     final overReserve = reservePreview > kFuelTankCapacityReserveLiters;
     final negMain = mainPreview < 0;
     final negReserve = reservePreview < 0;
-    final warn = overMain || overReserve || negMain || negReserve;
+    final warn = overReserve || negMain || negReserve;
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
 
-    Widget line(String title, double current, double capacity, double? pending) {
+    Widget line(String title, double current, double? capacity, double? pending) {
       final preview = current + (pending ?? 0);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -14138,8 +14137,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           Text(
             phonePortrait
                 ? '$title ${formatFuelLiters(current)} ล.'
-                : '$title ${formatFuelLiters(current)} / '
-                    '${formatFuelLiters(capacity)} ลิตร',
+                : capacity == null
+                    ? '$title ${formatFuelLiters(current)} ลิตร'
+                    : '$title ${formatFuelLiters(current)} / '
+                        '${formatFuelLiters(capacity)} ลิตร',
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -14179,7 +14180,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 child: line(
                   'หลัก',
                   main,
-                  kFuelTankCapacityMainLiters,
+                  null,
                   mainDelta,
                 ),
               ),
@@ -14197,7 +14198,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         : Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              line('ถังหลัก', main, kFuelTankCapacityMainLiters, mainDelta),
+              line('ถังหลัก', main, null, mainDelta),
               const SizedBox(height: 8),
               line(
                 'ถังสำรอง',
@@ -14225,12 +14226,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           lines,
-          if (overMain || overReserve) ...[
+          if (overReserve) ...[
             SizedBox(height: phonePortrait ? 4 : 4),
             Text(
               phonePortrait
-                  ? 'เกินความจุถัง (บันทึกได้)'
-                  : 'เกินความจุถัง — ยังบันทึกได้ (ใช้เป็นคำเตือน)',
+                  ? 'เกินความจุถังสำรอง (บันทึกได้)'
+                  : 'เกินความจุถังสำรอง — ยังบันทึกได้ (ใช้เป็นคำเตือน)',
               textAlign: TextAlign.center,
               style: GoogleFonts.kanit(
                 fontWeight: FontWeight.w700,

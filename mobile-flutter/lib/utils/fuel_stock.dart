@@ -2,14 +2,8 @@ import '../models/app_transaction.dart';
 import 'daily_module_transactions.dart';
 import 'sand_work_duration.dart';
 
-/// ความจุถังสต็อกน้ำมันหลัก (ลิตร)
-const double kFuelTankCapacityMainLiters = 12000;
-
-/// ความจุถังสต็อกน้ำมันสำรอง (ลิตร)
+/// ความจุถังสต็อกน้ำมันสำรอง (ลิตร) — ถังหลักรับน้ำมันได้ไม่จำกัด
 const double kFuelTankCapacityReserveLiters = 1000;
-
-/// alias ความเข้ากันได้ — หมายถึงถังหลัก
-const double kFuelTankCapacityLiters = kFuelTankCapacityMainLiters;
 
 /// รหัสถัง: หลัก / สำรอง
 const String kFuelTankMain = 'main';
@@ -249,9 +243,9 @@ bool fuelTankIsReserve(String? raw) => normalizeFuelTank(raw) == kFuelTankReserv
 String fuelTankLabelOf(String? raw) =>
     fuelTankIsReserve(raw) ? 'ถังสำรอง' : 'ถังหลัก';
 
-double fuelTankCapacityOf(String? raw) => fuelTankIsReserve(raw)
-    ? kFuelTankCapacityReserveLiters
-    : kFuelTankCapacityMainLiters;
+/// `null` = ไม่จำกัดความจุ (ถังหลัก)
+double? fuelTankCapacityOf(String? raw) =>
+    fuelTankIsReserve(raw) ? kFuelTankCapacityReserveLiters : null;
 
 /// ปริมาณน้ำมันของแถวเป็นลิตร — รองรับหน่วยแกลลอนเหมือน `fuelTxToLiters` บนเว็บ
 double fuelTxLiters(AppTransaction t) {

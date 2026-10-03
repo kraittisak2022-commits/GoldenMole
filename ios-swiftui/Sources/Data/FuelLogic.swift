@@ -2,10 +2,8 @@ import Foundation
 
 /// Flutter «น้ำมัน» helpers (`fuel_stock.dart` + classifiers) — dual tank parity.
 enum FuelLogic {
-    static let tankCapacityMainLiters: Double = 12000
+    /// ถังหลักรับน้ำมันได้ไม่จำกัด — มีความจุเฉพาะถังสำรอง
     static let tankCapacityReserveLiters: Double = 1000
-    /// ความเข้ากันได้ — ถังหลัก
-    static let tankCapacityLiters: Double = tankCapacityMainLiters
 
     static let tankMain = "main"
     static let tankReserve = "reserve"

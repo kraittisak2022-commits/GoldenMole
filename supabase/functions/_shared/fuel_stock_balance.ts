@@ -6,7 +6,7 @@ export const FUEL_STOCK_CUTOVER_YMD = "2026-08-05";
 export const FUEL_OPENING_RESERVE_DIESEL_LITERS = 100;
 export const FUEL_RESERVE_ANCHOR_YMD = "2026-08-31";
 export const FUEL_RESERVE_ANCHOR_LITERS = 100;
-export const FUEL_TANK_CAPACITY_MAIN = 12000;
+/** Main tank is unlimited; only the reserve tank has a capacity. */
 export const FUEL_TANK_CAPACITY_RESERVE = 1000;
 
 const FUEL_WITHDRAW = "Withdraw";

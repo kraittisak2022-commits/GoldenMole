@@ -97,16 +97,17 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
   Widget _singleGauge({
     required String title,
     required double liters,
-    required double capacity,
+    /// `null` = ไม่จำกัดความจุ — ไม่แสดงแถบ %
+    required double? capacity,
     required bool isTablet,
     required bool compact,
   }) {
     final p = DailyPalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark ||
         (AppThemeScope.maybeOf(context)?.isDark ?? false);
-    final cap = capacity <= 0 ? 1.0 : capacity;
-    final ratio = (liters / cap).clamp(0.0, 1.0);
-    final low = ratio <= 0.15;
+    final cap = capacity == null || capacity <= 0 ? null : capacity;
+    final ratio = cap == null ? null : (liters / cap).clamp(0.0, 1.0);
+    final low = ratio == null ? liters <= 0 : ratio <= 0.15;
     final barColor = low
         ? const Color(0xFFD14343)
         : (isDark ? p.brand : const Color(0xFF0D98A5));
@@ -152,7 +153,9 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
           Text(
             compact
                 ? '${formatFuelLiters(liters)} ล.'
-                : '${formatFuelLiters(liters)} / ${formatFuelLiters(cap)} ลิตร',
+                : cap == null
+                    ? '${formatFuelLiters(liters)} ลิตร'
+                    : '${formatFuelLiters(liters)} / ${formatFuelLiters(cap)} ลิตร',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -161,17 +164,19 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
               color: barColor,
             ),
           ),
-          SizedBox(height: compact ? 6 : 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: ratio,
-              minHeight: compact ? 6 : (isTablet ? 10 : 8),
-              backgroundColor:
-                  isDark ? const Color(0xFF243444) : const Color(0xFFDDE7F3),
-              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+          if (ratio != null) ...[
+            SizedBox(height: compact ? 6 : 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: ratio,
+                minHeight: compact ? 6 : (isTablet ? 10 : 8),
+                backgroundColor:
+                    isDark ? const Color(0xFF243444) : const Color(0xFFDDE7F3),
+                valueColor: AlwaysStoppedAnimation<Color>(barColor),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -181,7 +186,7 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
     final main = _singleGauge(
       title: 'ถังหลัก',
       liters: widget.mainDieselLiters,
-      capacity: kFuelTankCapacityMainLiters,
+      capacity: null,
       isTablet: isTablet,
       compact: phonePortrait,
     );
