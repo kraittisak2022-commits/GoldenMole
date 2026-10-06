@@ -4337,10 +4337,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   AppTransaction? _dayFuelWithdrawLatest(FuelWithdrawPurpose purpose) {
-    if (purpose == FuelWithdrawPurpose.car) {
-      return latestFuelTaplienFillForDay(
+    final carVehicle = fuelWithdrawCarVehicleOf(purpose);
+    if (carVehicle != null) {
+      return latestFuelCarFillForVehicle(
         dayYmd: _quickYmd(_selectedDate),
         transactions: _moduleDayAllTransactions,
+        vehicleId: fuelCarFillVehicleIdOf(carVehicle),
       );
     }
     return latestFuelWithdrawForPurpose(
@@ -4375,10 +4377,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         (isFuelTransferRow(t)
             ? FuelWithdrawPurpose.machine
             : FuelWithdrawPurpose.other);
-    if (codePurpose == FuelWithdrawPurpose.car &&
-        fuelCarFillVehicleFromId(transactionVehicleLabel(t)) ==
-            FuelCarFillVehicle.taplien) {
+    final rowCarVehicle = codePurpose == FuelWithdrawPurpose.car
+        ? fuelCarFillVehicleFromId(transactionVehicleLabel(t))
+        : null;
+    if (rowCarVehicle == FuelCarFillVehicle.taplien) {
       _fuelWithdrawPurpose = FuelWithdrawPurpose.car;
+      _fuelWithdrawOtherController.clear();
+    } else if (rowCarVehicle == FuelCarFillVehicle.tenWheelerMayor) {
+      _fuelWithdrawPurpose = FuelWithdrawPurpose.tenWheelerMayor;
       _fuelWithdrawOtherController.clear();
     } else if (codePurpose == FuelWithdrawPurpose.other) {
       _fuelWithdrawPurpose = FuelWithdrawPurpose.other;
@@ -4581,13 +4587,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final otherText = _fuelWithdrawOtherController.text.trim();
     const fuelType = 'Diesel';
     final isMachine = purpose == FuelWithdrawPurpose.machine;
-    final isCarTaplien = purpose == FuelWithdrawPurpose.car;
+    final carVehicle = fuelWithdrawCarVehicleOf(purpose);
+    final isCarFill = carVehicle != null;
     var existingId = _fuelWithdrawTxId?.trim();
     if (existingId == null || existingId.isEmpty) {
-      final latest = isCarTaplien
-          ? latestFuelTaplienFillForDay(
+      final latest = carVehicle != null
+          ? latestFuelCarFillForVehicle(
               dayYmd: _quickYmd(_selectedDate),
               transactions: _moduleDayAllTransactions,
+              vehicleId: fuelCarFillVehicleIdOf(carVehicle),
             )
           : latestFuelWithdrawForPurpose(
               dayYmd: _quickYmd(_selectedDate),
@@ -4607,20 +4615,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       successMessage: isUpdate
           ? (isMachine
               ? 'อัปเดตเติมถังสำรองสำเร็จ'
-              : (isCarTaplien
+              : (isCarFill
                   ? 'อัปเดตเติมน้ำมันรถยนต์สำเร็จ'
                   : 'อัปเดตเบิกน้ำมันสำเร็จ'))
           : (isMachine
               ? 'เติมถังสำรองสำเร็จ'
-              : (isCarTaplien
+              : (isCarFill
                   ? 'บันทึกเติมน้ำมันรถยนต์สำเร็จ'
                   : 'บันทึกเบิกน้ำมันสำเร็จ')),
       saveActionLabel: isMachine
           ? 'เติมถังสำรอง'
-          : (isCarTaplien ? 'เติมน้ำมันรถยนต์' : 'เบิกน้ำมันออกจากถังหลัก'),
+          : (isCarFill ? 'เติมน้ำมันรถยนต์' : 'เบิกน้ำมันออกจากถังหลัก'),
       saveButtonLabel: isUpdate
           ? 'อัปเดตรายการนี้'
-          : (isCarTaplien ? 'บันทึกเติมน้ำมันรถยนต์' : 'บันทึกเบิกน้ำมัน'),
+          : (isCarFill ? 'บันทึกเติมน้ำมันรถยนต์' : 'บันทึกเบิกน้ำมัน'),
       requireSignature: false,
       stayOnPage: true,
       onStayOnPageCleared: () {
@@ -4764,7 +4772,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           } else {
             await _applyLocalFuelStockAfterSave([outTx, inTx]);
           }
-        } else if (isCarTaplien) {
+        } else if (carVehicle != null) {
           if (liters > availableMain + 1e-9) {
             _failSave(
               'ถังหลักมีไม่พอ (คงเหลือ ${formatFuelLiters(availableMain)} ลิตร)',
@@ -4776,7 +4784,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           final tx = _buildFuelCarFillTx(
             date: date,
             txId: txId,
-            vehicle: FuelCarFillVehicle.taplien,
+            vehicle: carVehicle,
             liters: liters,
             time: time,
             fuelType: fuelType,
@@ -4785,7 +4793,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _fuelWithdrawTxId = tx.id;
           _fuelWithdrawTransferInTxId = null;
           _fuelCarFillTxId = tx.id;
-          _fuelCarFillVehicle = FuelCarFillVehicle.taplien;
+          _fuelCarFillVehicle = carVehicle;
           if (isUpdate && priorLiters > 0) {
             final oldTx = AppTransaction(
               id: txId,
@@ -14892,6 +14900,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             FuelWithdrawPurpose.car,
             Icons.airport_shuttle_outlined,
           ),
+          const SizedBox(height: 8),
+          purposeTile(
+            FuelWithdrawPurpose.tenWheelerMayor,
+            Icons.local_shipping_outlined,
+          ),
           if (_fuelWithdrawPurpose == FuelWithdrawPurpose.machine) ...[
             const SizedBox(height: 12),
             Container(
@@ -15219,6 +15232,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 8),
           vehicleTile(FuelCarFillVehicle.ahming, Icons.local_taxi_outlined),
+          const SizedBox(height: 8),
+          vehicleTile(
+            FuelCarFillVehicle.tenWheelerMayor,
+            Icons.local_shipping_outlined,
+          ),
           const SizedBox(height: 8),
           vehicleTile(FuelCarFillVehicle.other, Icons.more_horiz_rounded),
           if (_fuelCarFillVehicle == FuelCarFillVehicle.other) ...[

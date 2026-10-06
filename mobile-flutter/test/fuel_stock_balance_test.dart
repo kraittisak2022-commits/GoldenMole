@@ -188,6 +188,31 @@ void main() {
       expect(fuelWithdrawPurposeCodeOf(FuelWithdrawPurpose.mayor), 'mayor');
     });
 
+    test('ten-wheeler (mayor) is a known car-fill vehicle and withdraw purpose', () {
+      expect(
+        fuelCarFillVehicleLabelOf(FuelCarFillVehicle.tenWheelerMayor),
+        'รถสิบล้อ(นายก)',
+      );
+      expect(
+        fuelCarFillVehicleFromId('รถสิบล้อ(นายก)'),
+        FuelCarFillVehicle.tenWheelerMayor,
+      );
+      expect(isKnownFuelCarFillVehicleId('รถสิบล้อ(นายก)'), isTrue);
+      expect(
+        fuelWithdrawPurposeCodeOf(FuelWithdrawPurpose.tenWheelerMayor),
+        'car',
+      );
+      expect(
+        fuelWithdrawCarVehicleOf(FuelWithdrawPurpose.tenWheelerMayor),
+        FuelCarFillVehicle.tenWheelerMayor,
+      );
+      expect(
+        fuelWithdrawCarVehicleOf(FuelWithdrawPurpose.car),
+        FuelCarFillVehicle.taplien,
+      );
+      expect(fuelWithdrawCarVehicleOf(FuelWithdrawPurpose.mayor), isNull);
+    });
+
     test('macro on main deducts main even when machine was filled that day', () {
       final b = computeFuelStockBalance([
         _fuel(

@@ -102,10 +102,20 @@ const String kFuelVehicleUsageSubCategory = 'VehicleUsage';
 const double kFuelSandSieveLitersPerHour = 18;
 
 /// วัตถุประสงค์การเบิกน้ำมันออกจากถัง
-enum FuelWithdrawPurpose { machine, car, generator, mayor, other }
+///
+/// [car] = เติมรถตาเปลื่ยน, [tenWheelerMayor] = เติมรถสิบล้อ(นายก) —
+/// ทั้งคู่บันทึกเป็นแถวเติมน้ำมันรถยนต์ (`workType: car`)
+enum FuelWithdrawPurpose {
+  machine,
+  car,
+  tenWheelerMayor,
+  generator,
+  mayor,
+  other,
+}
 
 /// รถที่เติมจากเมนู «เติมน้ำมันรถยนต์» (หักถังหลัก)
-enum FuelCarFillVehicle { mighty, taplien, ahming, other }
+enum FuelCarFillVehicle { mighty, taplien, ahming, tenWheelerMayor, other }
 
 const String kFuelCarFillMighty = 'ไมตี้';
 const String kFuelCarFillTaplien = 'รถตาเปลื่ยน (ISUZU KB)';
@@ -128,6 +138,7 @@ bool _isTaplienVehicleId(String vehicleId) {
 }
 
 const String kFuelCarFillAhming = 'อาหมิง';
+const String kFuelCarFillTenWheelerMayor = 'รถสิบล้อ(นายก)';
 
 String fuelCarFillVehicleLabelOf(FuelCarFillVehicle vehicle) {
   switch (vehicle) {
@@ -137,6 +148,8 @@ String fuelCarFillVehicleLabelOf(FuelCarFillVehicle vehicle) {
       return kFuelCarFillTaplien;
     case FuelCarFillVehicle.ahming:
       return kFuelCarFillAhming;
+    case FuelCarFillVehicle.tenWheelerMayor:
+      return kFuelCarFillTenWheelerMayor;
     case FuelCarFillVehicle.other:
       return 'อื่นๆ';
   }
@@ -154,8 +167,25 @@ String fuelCarFillVehicleIdOf(
       return kFuelCarFillTaplien;
     case FuelCarFillVehicle.ahming:
       return kFuelCarFillAhming;
+    case FuelCarFillVehicle.tenWheelerMayor:
+      return kFuelCarFillTenWheelerMayor;
     case FuelCarFillVehicle.other:
       return otherText.trim();
+  }
+}
+
+/// รถที่วัตถุประสงค์เบิกน้ำมันเติมให้ — `null` = ไม่ใช่การเติมรถยนต์
+FuelCarFillVehicle? fuelWithdrawCarVehicleOf(FuelWithdrawPurpose purpose) {
+  switch (purpose) {
+    case FuelWithdrawPurpose.car:
+      return FuelCarFillVehicle.taplien;
+    case FuelWithdrawPurpose.tenWheelerMayor:
+      return FuelCarFillVehicle.tenWheelerMayor;
+    case FuelWithdrawPurpose.machine:
+    case FuelWithdrawPurpose.generator:
+    case FuelWithdrawPurpose.mayor:
+    case FuelWithdrawPurpose.other:
+      return null;
   }
 }
 
@@ -164,6 +194,7 @@ String fuelWithdrawPurposeCodeOf(FuelWithdrawPurpose purpose) {
     case FuelWithdrawPurpose.machine:
       return 'machine';
     case FuelWithdrawPurpose.car:
+    case FuelWithdrawPurpose.tenWheelerMayor:
       return 'car';
     case FuelWithdrawPurpose.generator:
       return 'generator';
@@ -180,6 +211,8 @@ String fuelWithdrawPurposeLabelOf(FuelWithdrawPurpose purpose) {
       return 'เติมเครื่องจักร (ถังสำรอง)';
     case FuelWithdrawPurpose.car:
       return 'รถยนต์';
+    case FuelWithdrawPurpose.tenWheelerMayor:
+      return kFuelCarFillTenWheelerMayor;
     case FuelWithdrawPurpose.generator:
       return 'เครื่องปั่นไฟเล็ก';
     case FuelWithdrawPurpose.mayor:
@@ -306,6 +339,7 @@ const Set<String> _kFuelCarFillKnownVehicleIds = {
   kFuelCarFillTaplien,
   ...kFuelCarFillTaplienLegacyIds,
   kFuelCarFillAhming,
+  kFuelCarFillTenWheelerMayor,
 };
 
 bool isKnownFuelCarFillVehicleId(String? vehicleId) {
@@ -319,6 +353,9 @@ FuelCarFillVehicle fuelCarFillVehicleFromId(String? vehicleId) {
   if (v == kFuelCarFillMighty) return FuelCarFillVehicle.mighty;
   if (_isTaplienVehicleId(v)) return FuelCarFillVehicle.taplien;
   if (v == kFuelCarFillAhming) return FuelCarFillVehicle.ahming;
+  if (v == kFuelCarFillTenWheelerMayor) {
+    return FuelCarFillVehicle.tenWheelerMayor;
+  }
   return FuelCarFillVehicle.other;
 }
 
@@ -409,7 +446,7 @@ AppTransaction? latestFuelWithdrawForPurpose({
   required Iterable<AppTransaction> transactions,
   required FuelWithdrawPurpose purpose,
 }) {
-  if (purpose == FuelWithdrawPurpose.car) return null;
+  if (fuelWithdrawCarVehicleOf(purpose) != null) return null;
   final day = dayYmd.trim();
   final code = fuelWithdrawPurposeCodeOf(purpose);
   final matches = <AppTransaction>[];
@@ -484,6 +521,12 @@ AppTransaction? latestFuelWithdrawForDay({
     transactions: transactions,
   );
   if (taplien != null) matches.add(taplien);
+  final tenWheeler = latestFuelCarFillForVehicle(
+    dayYmd: dayYmd,
+    transactions: transactions,
+    vehicleId: kFuelCarFillTenWheelerMayor,
+  );
+  if (tenWheeler != null) matches.add(tenWheeler);
   return _latestFuelRow(matches);
 }
 
