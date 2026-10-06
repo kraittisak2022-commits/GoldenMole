@@ -1238,6 +1238,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           await _applyLocalFuelStockAfterSave(const [], reverseFirst: [oldTx]);
         } else {
           await _refreshFuelStock(allowNetworkFetch: false);
+          unawaited(_refreshFuelStock());
         }
         if (!mounted) return;
         await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
@@ -3032,13 +3033,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     try {
       // อย่าเชื่อ snapshot เป็นคำตอบสุดท้าย — ต้องคิดจากยอดยกมา + รายการ
       // (snapshot ที่แคชตอนยังไม่มี opening จะค้างที่ 0)
+      // แคชเต็มชุดในเครื่องอาจขาดแถวที่เครื่องอื่น/เว็บบันทึก — ออนไลน์ให้ดึงแถวน้ำมันสดก่อน
       List<AppTransaction>? baseRows;
-      if (forceNetwork) {
-        baseRows = await widget.service.fetchTransactions(forceRefresh: true);
-      } else {
-        baseRows = await LocalDataCache.readTransactionsFullAny();
-        if (baseRows == null && allowNetworkFetch) {
-          baseRows = await widget.service.fetchTransactions();
+      if (allowNetworkFetch && widget.serverOnlineHint != false) {
+        try {
+          baseRows = await widget.service
+              .fetchFuelStockTransactions(sinceYmd: kFuelStockCutoverYmd)
+              .timeout(const Duration(seconds: 12));
+        } catch (_) {
+          baseRows = null;
+        }
+      }
+      if (baseRows == null) {
+        if (forceNetwork) {
+          baseRows = await widget.service.fetchTransactions(forceRefresh: true);
+        } else {
+          baseRows = await LocalDataCache.readTransactionsFullAny();
+          if (baseRows == null && allowNetworkFetch) {
+            baseRows = await widget.service.fetchTransactions();
+          }
         }
       }
       if (baseRows == null) {
@@ -3087,6 +3100,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }) async {
     if (_fuelReserveAnchorIsActive()) {
       await _refreshFuelStock(allowNetworkFetch: false);
+      unawaited(_refreshFuelStock());
       return;
     }
     var next = _fuelStock;
@@ -3110,8 +3124,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }
     }
     if (needRecompute) {
-      // VehicleUsage / กรณีซับซ้อน — คำนวณจากแคชในเครื่องเท่านั้น
+      // VehicleUsage / กรณีซับซ้อน — คำนวณจากแคชก่อน แล้วยืนยันกับเซิร์ฟเวอร์ภายหลัง
       await _refreshFuelStock(allowNetworkFetch: false);
+      unawaited(_refreshFuelStock());
       return;
     }
     await _setFuelStockBalance(next);

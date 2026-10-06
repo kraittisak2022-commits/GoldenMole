@@ -90,6 +90,28 @@ class TransactionService {
     }
   }
 
+  /// แถวที่ใช้คิดคงเหลือน้ำมัน (Fuel + บันทึกร่อนทราย) ตั้งแต่ [sinceYmd] — ดึงสดจากเซิร์ฟเวอร์
+  ///
+  /// แคชธุรกรรมเต็มชุดในเครื่องอาจขาดแถวที่เครื่องอื่น/เว็บบันทึก ยอดถังจึงเพี้ยนได้
+  Future<List<AppTransaction>> fetchFuelStockTransactions({
+    required String sinceYmd,
+  }) async {
+    const pageSize = 1000;
+    final rows = <Map<String, dynamic>>[];
+    for (var from = 0;; from += pageSize) {
+      final page = await _client
+          .from('transactions')
+          .select(_transactionColumns)
+          .gte('date', sinceYmd)
+          .or('category.eq.Fuel,and(category.eq.DailyLog,sub_category.eq.Sand)')
+          .order('id', ascending: true)
+          .range(from, from + pageSize - 1);
+      rows.addAll(page);
+      if (page.length < pageSize) break;
+    }
+    return rows.map(AppTransaction.fromMap).toList();
+  }
+
   Future<List<AppTransaction>> fetchRecentTransactions({int limit = 10}) async {
     final rows = await _client
         .from('transactions')
