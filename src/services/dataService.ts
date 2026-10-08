@@ -413,6 +413,7 @@ const mapAdminUserRow = (row: any): AdminUser => ({
     uiTheme: (row.ui_theme as AdminUiTheme | undefined) || 'system',
     sessionActive: !!row.session_active,
     lastClientSurface: (row.last_client_surface as 'select' | 'desktop' | 'mobile' | null) || 'select',
+    allowedApps: Array.isArray(row.allowed_apps) ? row.allowed_apps : null,
 });
 
 export interface AdminFetchResult {
@@ -458,6 +459,19 @@ export const saveAdmin = async (admin: AdminUser): Promise<boolean> => {
     const { error } = await supabase.from('admin_users').upsert(row, { onConflict: 'id' });
     if (error) { console.error('saveAdmin error:', error); return false; }
     return true;
+};
+
+/** saveAdmin never writes allowed_apps: it upserts whole rows, often from a cached admin list. */
+export const saveAdminAllowedApps = async (id: string, allowedApps: string[] | null): Promise<boolean> => {
+    const { error } = await supabase.from('admin_users').update({ allowed_apps: allowedApps }).eq('id', id);
+    if (error) { console.error('saveAdminAllowedApps error:', error); return false; }
+    return true;
+};
+
+export const fetchAdminSiteAccess = async (id: string): Promise<Pick<AdminUser, 'role' | 'allowedApps'> | null> => {
+    const { data, error } = await supabase.from('admin_users').select('role, allowed_apps').eq('id', id).maybeSingle();
+    if (error || !data) return null;
+    return { role: data.role, allowedApps: Array.isArray(data.allowed_apps) ? data.allowed_apps : null };
 };
 
 export const deleteAdmin = async (id: string): Promise<boolean> => {

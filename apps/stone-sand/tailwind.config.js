@@ -9,6 +9,8 @@ export default {
       lg: '1024px',
       xl: '1280px',
       '2xl': '1536px',
+      /** Phones in landscape. */
+      short: { raw: '(max-height: 500px)' },
     },
     extend: {
       colors: {

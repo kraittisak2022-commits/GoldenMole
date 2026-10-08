@@ -1,31 +1,41 @@
-import { useMemo, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { CalendarClock, ClipboardList, Plus, Truck, Wallet } from 'lucide-react';
+import { useMemo, useRef, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import OrderRow from '../components/OrderRow';
 import Card from '../components/ui/Card';
 import { Empty, ErrorBox, Loading } from '../components/ui/States';
 import { listOrders, listUnclearedOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
-import { formatDateTh, formatMoney, formatNumber, toIsoDate } from '../lib/format';
-import { periodStats } from '../lib/stats';
+import { TH_MONTHS, formatDateLongTh, formatMoney, formatNumber, monthRange, shiftIsoDate, toIsoDate } from '../lib/format';
+import { periodStats, type PeriodStats } from '../lib/stats';
 
-const TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const now = new Date();
-  const today = toIsoDate(now);
-  const monthStart = toIsoDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const [params, setParams] = useSearchParams();
+  const today = toIsoDate();
+  const param = params.get('d') ?? '';
+  const date = ISO_DATE.test(param) ? param : today;
+  const isToday = date === today;
+  const { from, to } = monthRange(date);
 
-  const month = useAsync(() => listOrders({ from: monthStart, limit: 2000 }), [monthStart]);
+  const setDate = (next: string) => {
+    const p = new URLSearchParams(params);
+    if (!next || next === today) p.delete('d');
+    else p.set('d', next);
+    setParams(p, { replace: true });
+  };
+
+  const month = useAsync(() => listOrders({ from, to, limit: 3000 }), [from, to]);
   const open = useAsync(() => listUnclearedOrders(), []);
   const waiting = useAsync(() => listOrders({ deliveryStatuses: ['waiting', 'dispatched'], limit: 200 }), []);
 
-  const monthOrders = month.data ?? [];
-  const stats = useMemo(() => periodStats(monthOrders), [monthOrders]);
-  const todayOrders = monthOrders.filter((o) => o.orderDate === today && !o.cancelled);
-  const todayTotal = todayOrders.reduce((s, o) => s + o.total, 0);
+  const monthOrders = useMemo(() => month.data ?? [], [month.data]);
+  const dayOrders = useMemo(() => monthOrders.filter((o) => o.orderDate === date), [monthOrders, date]);
+  const day = useMemo(() => periodStats(dayOrders), [dayOrders]);
+  const monthStats = useMemo(() => periodStats(monthOrders), [monthOrders]);
 
   const openOrders = open.data ?? [];
   const waitingAll = waiting.data ?? [];
@@ -33,171 +43,211 @@ export default function DashboardPage() {
   const creditTotal = openOrders.filter((o) => o.paymentStatus === 'credit').reduce((s, o) => s + o.total, 0);
 
   const error = month.error || open.error || waiting.error;
+  const [y, m] = date.split('-').map(Number);
 
   return (
-    <div>
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-sm text-muted">{formatDateTh(now)}</p>
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">สวัสดี {user?.displayName}</h1>
-        </div>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">สวัสดี {user?.displayName}</h1>
         <Link
           to="/new"
-          className="inline-flex min-h-12 items-center gap-2 rounded bg-primary px-5 text-base font-medium text-primary-foreground hover:bg-primary-hover"
+          className="hidden min-h-12 items-center gap-2 rounded bg-primary px-5 text-base font-medium text-primary-foreground hover:bg-primary-hover md:inline-flex"
         >
           <Plus size={20} aria-hidden /> สร้างออเดอร์
         </Link>
       </div>
 
-      {error ? (
-        <div className="mb-4">
-          <ErrorBox message={error} />
-        </div>
-      ) : null}
+      <DateBar date={date} isToday={isToday} onChange={setDate} />
+
+      {error ? <ErrorBox message={error} /> : null}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi
-          to="/orders?r=today"
-          icon={<ClipboardList size={18} aria-hidden />}
-          label="ออเดอร์วันนี้"
-          value={formatNumber(todayOrders.length)}
-          hint={`${formatMoney(todayTotal)} บาท`}
-        />
-        <Kpi
-          to="/orders?f=waiting&r=all"
-          icon={<Truck size={18} aria-hidden />}
-          label="รอจัดส่ง"
-          value={formatNumber(waitingAll.length)}
-          hint="เที่ยวที่ยังไม่ส่ง"
-          tone={waitingAll.length ? 'warning' : undefined}
-        />
-        <Kpi
-          to="/orders?f=unpaid&r=all"
-          icon={<Wallet size={18} aria-hidden />}
-          label="ยังไม่จ่าย"
-          value={formatMoney(unpaidTotal)}
-          hint="เงินสด/โอน/ปลายทาง"
-          tone={unpaidTotal ? 'warning' : undefined}
-        />
-        <Kpi
-          to="/statements"
-          icon={<CalendarClock size={18} aria-hidden />}
-          label="ค้างเครดิต"
-          value={formatMoney(creditTotal)}
-          hint="รอเคลียร์บิลรายเดือน"
-        />
+        <Kpi label="ออเดอร์" value={formatNumber(day.orderCount)} hint={`${formatMoney(day.net)} บาท`} />
+        <Kpi label="สินค้า" value={`${formatNumber(day.quantity)} คิว`} hint={`${formatNumber(day.trips)} เที่ยว`} />
+        <Kpi label="รับเงินแล้ว" value={formatMoney(day.paid)} hint="บาท" />
+        <Kpi label="ค้างรับ" value={formatMoney(day.outstanding)} hint="ยังไม่จ่าย + เครดิต" warn={day.outstanding > 0} />
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <section>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-muted">รอจัดส่ง</h2>
-            <Link to="/orders?f=waiting&r=all" className="text-sm text-primary">
-              ดูทั้งหมด
-            </Link>
-          </div>
-          {waiting.loading && !waiting.data ? (
+          <SectionTitle>
+            ออเดอร์{isToday ? 'วันนี้' : 'วันที่เลือก'} {dayOrders.length ? `(${dayOrders.length})` : ''}
+          </SectionTitle>
+          {month.loading && !month.data ? (
             <Loading />
           ) : (
             <Card className="overflow-hidden">
-              {waitingAll.length ? (
+              {dayOrders.length ? (
                 <ul className="divide-y divide-border">
-                  {waitingAll.slice(0, 6).map((o) => (
+                  {dayOrders.map((o) => (
                     <li key={o.id}>
                       <OrderRow order={o} />
                     </li>
                   ))}
                 </ul>
               ) : (
-                <Empty title="ไม่มีงานรอจัดส่ง" />
+                <Empty title={isToday ? 'ยังไม่มีออเดอร์วันนี้' : 'ไม่มีออเดอร์ในวันที่เลือก'} />
               )}
             </Card>
           )}
-
-          <div className="mb-2 mt-5 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-muted">ออเดอร์ล่าสุด</h2>
-            <Link to="/orders" className="text-sm text-primary">
-              ดูทั้งหมด
-            </Link>
-          </div>
-          <Card className="overflow-hidden">
-            {monthOrders.length ? (
-              <ul className="divide-y divide-border">
-                {monthOrders.slice(0, 6).map((o) => (
-                  <li key={o.id}>
-                    <OrderRow order={o} />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <Empty title="ยังไม่มีออเดอร์เดือนนี้" />
-            )}
-          </Card>
         </section>
 
         <section>
-          <h2 className="mb-2 text-sm font-semibold text-muted">
-            สรุปเดือน{TH_MONTHS[now.getMonth()]} {now.getFullYear() + 543}
-          </h2>
-          <Card className="p-4">
-            <dl className="flex flex-col gap-2 text-sm">
-              <Row label="จำนวนออเดอร์" value={formatNumber(stats.orderCount)} />
-              <Row label="ค่าสินค้า" value={formatMoney(stats.productSales)} />
-              <Row label="ค่าจัดส่ง" value={formatMoney(stats.deliveryFees)} />
-              {stats.discounts ? <Row label="ส่วนลด" value={`-${formatMoney(stats.discounts)}`} /> : null}
-              <div className="flex items-baseline justify-between border-t border-border pt-2">
-                <dt className="font-semibold">ยอดขายสุทธิ</dt>
-                <dd className="text-lg font-bold tabular-nums text-primary">{formatMoney(stats.net)}</dd>
-              </div>
-              <Row label="รับเงินแล้ว" value={formatMoney(stats.paid)} />
-              <Row label="ค่าจ้างคนขับ" value={formatMoney(stats.driverWages)} />
-            </dl>
-            {stats.quantityByProduct.length ? (
-              <div className="mt-4 border-t border-border pt-3">
-                <p className="mb-2 text-xs font-semibold text-muted">ขายตามสินค้า</p>
-                <ul className="flex flex-col gap-1.5 text-sm">
-                  {stats.quantityByProduct.map((p) => (
-                    <li key={p.name} className="flex justify-between gap-3">
-                      <span className="truncate">{p.name}</span>
-                      <span className="shrink-0 tabular-nums text-muted">
-                        {formatNumber(p.quantity)} {p.unit}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </Card>
+          <SectionTitle>สรุปวัน</SectionTitle>
+          <SummaryCard stats={day} />
         </section>
       </div>
+
+      <section>
+        <SectionTitle action={<Link to="/orders?f=waiting&r=all" className="text-sm text-primary">ดูทั้งหมด</Link>}>
+          งานค้าง (ทุกวัน)
+        </SectionTitle>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Kpi to="/orders?f=waiting&r=all" label="รอจัดส่ง" value={`${formatNumber(waitingAll.length)} ออเดอร์`} warn={waitingAll.length > 0} />
+          <Kpi to="/orders?f=unpaid&r=all" label="ยังไม่จ่าย" value={formatMoney(unpaidTotal)} warn={unpaidTotal > 0} />
+          <Kpi to="/statements" label="ค้างเครดิต" value={formatMoney(creditTotal)} />
+        </div>
+        {waitingAll.length ? (
+          <Card className="mt-3 overflow-hidden">
+            <ul className="divide-y divide-border">
+              {waitingAll.slice(0, 6).map((o) => (
+                <li key={o.id}>
+                  <OrderRow order={o} />
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ) : null}
+      </section>
+
+      <section>
+        <SectionTitle>
+          สรุปเดือน{TH_MONTHS[m - 1]} {y + 543}
+        </SectionTitle>
+        <SummaryCard stats={monthStats} />
+      </section>
     </div>
   );
 }
 
-function Kpi({
-  to,
-  icon,
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  to: string;
-  icon: ReactNode;
-  label: string;
-  value: string;
-  hint: string;
-  tone?: 'warning';
-}) {
+function DateBar({ date, isToday, onChange }: { date: string; isToday: boolean; onChange: (d: string) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const openPicker = () => {
+    const el = input.current;
+    if (!el) return;
+    try {
+      el.showPicker();
+    } catch {
+      el.focus();
+    }
+  };
+  const [weekday, ...rest] = formatDateLongTh(date).split(' ');
+  const dayMonthYear = rest.join(' ');
+  const step = 'inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-subtle text-ink hover:bg-border cursor-pointer';
+
   return (
-    <Link to={to} className="rounded border border-border bg-surface p-4 transition-colors hover:border-primary/40">
-      <p className="flex items-center gap-1.5 text-xs font-medium text-muted">
-        {icon}
-        {label}
-      </p>
-      <p className={['mt-1 text-xl font-bold tabular-nums', tone === 'warning' ? 'text-warning' : 'text-ink'].join(' ')}>{value}</p>
-      <p className="text-xs text-muted">{hint}</p>
+    <div className="flex items-center gap-2">
+      <button type="button" aria-label="วันก่อนหน้า" onClick={() => onChange(shiftIsoDate(date, -1))} className={step}>
+        <ChevronLeft size={22} aria-hidden />
+      </button>
+      <div className="relative min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={openPicker}
+          aria-label={formatDateLongTh(date)}
+          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-border px-3 text-base font-medium cursor-pointer hover:bg-subtle sm:px-4"
+        >
+          <CalendarDays size={18} className="hidden shrink-0 text-muted min-[400px]:block" aria-hidden />
+          <span className="truncate">
+            <span className="hidden sm:inline">{weekday} </span>
+            {dayMonthYear}
+          </span>
+        </button>
+        <input
+          ref={input}
+          type="date"
+          aria-label="เลือกวันที่"
+          value={date}
+          onChange={(e) => onChange(e.target.value)}
+          className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+          tabIndex={-1}
+        />
+      </div>
+      <button type="button" aria-label="วันถัดไป" onClick={() => onChange(shiftIsoDate(date, 1))} className={step}>
+        <ChevronRight size={22} aria-hidden />
+      </button>
+      {isToday ? null : (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          className="min-h-12 shrink-0 rounded-full bg-ink px-4 text-sm font-medium text-white cursor-pointer"
+        >
+          วันนี้
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="mb-2 flex items-center justify-between gap-3">
+      <h2 className="text-sm font-semibold text-muted">{children}</h2>
+      {action}
+    </div>
+  );
+}
+
+function SummaryCard({ stats }: { stats: PeriodStats }) {
+  return (
+    <Card className="p-4">
+      <dl className="flex flex-col gap-2 text-sm">
+        <Row label="จำนวนออเดอร์" value={formatNumber(stats.orderCount)} />
+        <Row label="ค่าสินค้า" value={formatMoney(stats.productSales)} />
+        <Row label="ค่าจัดส่ง" value={formatMoney(stats.deliveryFees)} />
+        {stats.discounts ? <Row label="ส่วนลด" value={`-${formatMoney(stats.discounts)}`} /> : null}
+        <div className="flex items-baseline justify-between border-t border-border pt-2">
+          <dt className="font-semibold">ยอดขายสุทธิ</dt>
+          <dd className="text-lg font-semibold tabular-nums">{formatMoney(stats.net)}</dd>
+        </div>
+        <Row label="รับเงินแล้ว" value={formatMoney(stats.paid)} />
+        <Row label="ค้างรับ" value={formatMoney(stats.outstanding)} />
+        <Row label="ค่าจ้างคนขับ" value={formatMoney(stats.driverWages)} />
+      </dl>
+      {stats.quantityByProduct.length ? (
+        <div className="mt-4 border-t border-border pt-3">
+          <p className="mb-2 text-xs font-semibold text-muted">ขายตามสินค้า</p>
+          <ul className="flex flex-col gap-1.5 text-sm">
+            {stats.quantityByProduct.map((p) => (
+              <li key={p.name} className="flex justify-between gap-3">
+                <span className="truncate">{p.name}</span>
+                <span className="shrink-0 tabular-nums text-muted">
+                  {formatNumber(p.quantity)} {p.unit} · {formatMoney(p.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function Kpi({ label, value, hint, warn, to }: { label: string; value: string; hint?: string; warn?: boolean; to?: string }) {
+  const body = (
+    <>
+      <p className="text-sm text-muted">{label}</p>
+      <p className={['mt-1 truncate text-xl font-semibold tabular-nums', warn ? 'text-warning' : 'text-ink'].join(' ')}>{value}</p>
+      {hint ? <p className="truncate text-xs text-muted">{hint}</p> : null}
+    </>
+  );
+  const cls = 'min-w-0 rounded border border-border bg-surface p-4';
+  return to ? (
+    <Link to={to} className={`${cls} transition-colors hover:border-ink/30`}>
+      {body}
     </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 

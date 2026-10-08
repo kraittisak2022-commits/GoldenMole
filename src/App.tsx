@@ -30,6 +30,7 @@ const AdminModule = lazyWithRetry(() => import('./modules/Admin/AdminModule'));
 
 import { getToday, formatDateBE, normalizeDate, formatDateTimeTH } from './utils';
 import { isExactMockSeedCars } from './utils/appSettingsCarsGuard';
+import { canAccessSite } from './utils/siteAccess';
 import { fuelTxToLiters } from './utils';
 import { hashPasswordForStorage, needsPasswordRehash, validateNewPasswordPolicy, verifyStoredPassword } from './utils/passwordAuth';
 import { readSavedLocale, saveLocale, t, type AppLocale } from './utils/i18n';
@@ -720,7 +721,7 @@ function App() {
     useEffect(() => {
         if (isLoading || isLoggedIn || hasRestoredAuthSession.current) return;
         const activeSessions = admins
-            .filter(a => a.sessionActive)
+            .filter(a => a.sessionActive && canAccessSite(a, 'main'))
             .sort((a, b) => String(b.lastLogin || '').localeCompare(String(a.lastLogin || '')));
         const matchedAdmin = activeSessions[0];
         if (!matchedAdmin) return;

@@ -24,4 +24,11 @@ describe('periodStats', () => {
     expect(s.paid).toBe(1200);
     expect(s.quantityByProduct).toEqual([{ name: 'ทรายถม', unit: 'คิว', quantity: 10, amount: 2200 }]);
   });
+
+  it('totals คิว, trips and money still to collect', () => {
+    const s = periodStats([make({ trips: 2 }), make({ trips: 1, paymentStatus: 'unpaid' }), make({ trips: 3, cancelled: true })]);
+    expect(s.quantity).toBe(10);
+    expect(s.trips).toBe(3);
+    expect(s.outstanding).toBe(1200);
+  });
 });

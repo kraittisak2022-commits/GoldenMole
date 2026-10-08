@@ -1,5 +1,6 @@
 import { hasSupabaseConfig, supabase } from '../lib/supabase';
 import { verifyStoredPassword } from './passwordAuth';
+import { canAccessSite } from './siteAccess';
 import type { AdminRole, StoneSandSession } from './session';
 
 export type SignInErrorCode =
@@ -26,9 +27,8 @@ interface AdminUserRow {
   password: string;
   display_name: string;
   role: AdminRole;
+  allowed_apps: string[] | null;
 }
-
-const ALLOWED_ROLES: AdminRole[] = ['SuperAdmin', 'Admin'];
 
 const normalizeUsername = (raw: string) =>
   raw
@@ -55,7 +55,7 @@ export async function signInWithAdminUsers(
   const normalized = normalizeUsername(u);
   const { data, error } = await supabase
     .from('admin_users')
-    .select('id, username, password, display_name, role')
+    .select('id, username, password, display_name, role, allowed_apps')
     .ilike('username', normalized)
     .maybeSingle();
 
@@ -73,7 +73,7 @@ export async function signInWithAdminUsers(
     throw new SignInError('bad_password', 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
   }
 
-  if (!ALLOWED_ROLES.includes(row.role)) {
+  if (!canAccessSite(row, 'order')) {
     throw new SignInError('forbidden_role', 'บัญชีนี้ไม่มีสิทธิ์เข้าใช้ระบบออเดอร์');
   }
 
@@ -84,4 +84,12 @@ export async function signInWithAdminUsers(
     role: row.role,
     loginAt: new Date().toISOString(),
   };
+}
+
+/** False only when the account is gone or lost access; a failed request keeps the session. */
+export async function sessionStillAllowed(id: string): Promise<boolean> {
+  if (!hasSupabaseConfig) return true;
+  const { data, error } = await supabase.from('admin_users').select('role, allowed_apps').eq('id', id).maybeSingle();
+  if (error) return true;
+  return !!data && canAccessSite(data as Pick<AdminUserRow, 'role' | 'allowed_apps'>, 'order');
 }

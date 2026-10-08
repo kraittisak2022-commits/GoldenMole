@@ -177,7 +177,7 @@ export default function NewOrderPage() {
             {step + 1} / {STEPS.length}
           </span>
         </div>
-        <ol className="mx-auto flex max-w-2xl gap-1.5 px-4 pb-3 pt-1" aria-label="ขั้นตอน">
+        <ol className="mx-auto flex max-w-2xl gap-1.5 px-4 pb-3 pt-1 short:pb-1" aria-label="ขั้นตอน">
           {STEPS.map((s, i) => {
             const done = i < step;
             const current = i === step;
@@ -197,7 +197,7 @@ export default function NewOrderPage() {
                   />
                   <span
                     className={[
-                      'truncate text-xs sm:text-sm',
+                      'truncate text-xs sm:text-sm short:hidden',
                       current ? 'font-semibold text-ink' : 'text-muted',
                     ].join(' ')}
                   >
@@ -245,8 +245,8 @@ export default function NewOrderPage() {
         ) : null}
       </main>
 
-      <footer className="fixed inset-x-0 bottom-0 z-[500] border-t border-border bg-surface/95 pb-safe-bottom backdrop-blur">
-        <div className="mx-auto max-w-2xl px-4 py-3">
+      <footer className="pad-x-safe fixed inset-x-0 bottom-0 z-[500] border-t border-border bg-surface/95 pb-safe-bottom backdrop-blur">
+        <div className="mx-auto max-w-2xl px-4 py-3 short:py-2">
           {stepError ? (
             <p role="alert" className="mb-2 text-sm text-destructive">
               {stepError}

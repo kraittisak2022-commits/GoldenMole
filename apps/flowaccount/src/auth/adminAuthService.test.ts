@@ -78,6 +78,24 @@ describe('signInWithAdminUsers', () => {
     });
   });
 
+  it('lets in any role the SuperAdmin ticked for FlowAccount', async () => {
+    const password = await hashPasswordForStorage('Secret123!');
+    maybeSingle.mockResolvedValue({
+      data: { id: 'u3', username: 'acc', password, display_name: 'Acc', role: 'Admin', allowed_apps: ['flowaccount'] },
+      error: null,
+    });
+    await expect(signInWithAdminUsers('acc', 'Secret123!')).resolves.toMatchObject({ role: 'Admin' });
+  });
+
+  it('rejects a SuperAdmin whose site list leaves FlowAccount out', async () => {
+    const password = await hashPasswordForStorage('Secret123!');
+    maybeSingle.mockResolvedValue({
+      data: { id: 'u4', username: 'boss2', password, display_name: 'B', role: 'SuperAdmin', allowed_apps: ['main'] },
+      error: null,
+    });
+    await expect(signInWithAdminUsers('boss2', 'Secret123!')).rejects.toMatchObject({ code: 'forbidden_role' });
+  });
+
   it('rejects unknown users', async () => {
     maybeSingle.mockResolvedValue({ data: null, error: null });
     await expect(signInWithAdminUsers('ghost', 'x')).rejects.toMatchObject({

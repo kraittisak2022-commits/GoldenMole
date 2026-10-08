@@ -46,9 +46,36 @@
     min-height: 100%;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-page text-ink font-sans antialiased;
     margin: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Landscape notches: fixed bars add the same inset with .pad-x-safe. */
+  #root {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  label {
+    touch-action: manipulation;
+  }
+
+  @media (display-mode: standalone) {
+    body {
+      overscroll-behavior-y: none;
+    }
   }
 
   *:focus-visible {
@@ -62,6 +89,11 @@
 }
 
 @layer components {
+  .pad-x-safe {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
   .step-enter {
     animation: step-enter 0.2s ease-out both;
   }

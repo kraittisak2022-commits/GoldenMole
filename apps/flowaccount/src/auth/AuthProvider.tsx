@@ -2,11 +2,12 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
-import { signInWithAdminUsers } from './adminAuthService';
+import { sessionStillAllowed, signInWithAdminUsers } from './adminAuthService';
 import {
   clearSession,
   readSession,
@@ -38,6 +39,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSession();
     setUser(null);
   }, []);
+
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    void sessionStillAllowed(userId).then((ok) => {
+      if (!ok && !cancelled) signOut();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, signOut]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

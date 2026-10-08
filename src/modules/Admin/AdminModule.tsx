@@ -5,6 +5,8 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import { AdminUser, AdminLog, AppSettings, AdminRole, AdminDataAccess } from '../../types';
 import { hashPasswordForStorage, validateNewPasswordPolicy } from '../../utils/passwordAuth';
+import { effectiveSites, SITES, type SiteKey } from '../../utils/siteAccess';
+import { saveAdminAllowedApps } from '../../services/dataService';
 
 interface AdminModuleProps {
     admins: AdminUser[];
@@ -110,6 +112,8 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog, settings, 
         canCreate: true,
         canEdit: true,
         canDelete: true,
+        allowedApps: [] as SiteKey[],
+        sitesTouched: false,
     });
     // Password form
     const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
@@ -223,7 +227,16 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog, settings, 
                 delete: editForm.canDelete,
             },
         };
-        setAdmins(prev => prev.map(a => a.id === showEditModal.id ? { ...a, displayName, role: editForm.role } : a));
+        const sites = editForm.sitesTouched ? shownSites : null;
+        setAdmins(prev => prev.map(a => a.id === showEditModal.id
+            ? { ...a, displayName, role: editForm.role, ...(sites ? { allowedApps: sites } : {}) }
+            : a));
+        if (sites) {
+            void saveAdminAllowedApps(showEditModal.id, sites).then(ok => {
+                if (!ok) alert('บันทึกสิทธิ์เข้าเว็บไซต์ไม่สำเร็จ ลองใหม่อีกครั้ง');
+            });
+            addLog('site_access_change', `ปรับเว็บไซต์ที่เข้าได้ @${showEditModal.username} | ${sites.join(', ') || 'ไม่มี'}`);
+        }
         setSettings(prev => ({
             ...prev,
             appDefaults: {
@@ -284,6 +297,8 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog, settings, 
             canCreate: access?.transactionPermissions?.create ?? true,
             canEdit: access?.transactionPermissions?.edit ?? true,
             canDelete: access?.transactionPermissions?.delete ?? true,
+            allowedApps: effectiveSites(admin),
+            sitesTouched: false,
         });
         setShowEditModal(admin);
         setCloneSourceAdminId('');
@@ -291,6 +306,16 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog, settings, 
     const toggleFromList = (arr: string[], id: string) => (
         arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id]
     );
+    const editingSelf = showEditModal?.id === currentAdmin.id;
+    const shownSites: SiteKey[] = editForm.sitesTouched || Array.isArray(showEditModal?.allowedApps)
+        ? editForm.allowedApps
+        : effectiveSites({ role: editForm.role });
+    const toggleSite = (key: SiteKey) => {
+        if (editingSelf && key === 'main') return;
+        const next = shownSites.includes(key) ? shownSites.filter(k => k !== key) : [...shownSites, key];
+        if (editingSelf) next.push('main');
+        setEditForm({ ...editForm, allowedApps: SITES.map(s => s.key).filter(k => next.includes(k)), sitesTouched: true });
+    };
 
     const filteredAdmins = admins.filter(a => a.displayName.toLowerCase().includes(search.toLowerCase()) || a.username.toLowerCase().includes(search.toLowerCase()));
     const filteredLogs = logs.filter(l => l.action.includes(logSearch) || l.details.includes(logSearch) || l.adminName.includes(logSearch));
@@ -368,6 +393,9 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog, settings, 
                                         </div>
                                         <p className="text-sm text-slate-500">@{admin.username}</p>
                                         <p className="text-xs text-slate-400 mt-0.5">สร้างเมื่อ {admin.createdAt}{admin.lastLogin ? ` • เข้าใช้ล่าสุด: ${admin.lastLogin}` : ''}</p>
+                                        <p className="text-xs text-slate-500 mt-0.5">
+                                            เข้าเว็บ: {effectiveSites(admin).map(key => SITES.find(s => s.key === key)?.label).join(' · ') || 'ไม่มี'}
+                                        </p>
                                     </div>
                                 </div>
                                 <div className="flex gap-2 shrink-0">
@@ -524,6 +552,24 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog, settings, 
                                     <button onClick={() => { setEditForm({ ...editForm, role: 'Assistant' }); applyTemplateToEditForm('Assistant'); }} className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium transition-all ${editForm.role === 'Assistant' ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white'}`}>Assistant</button>
                                     <button onClick={() => setEditForm({ ...editForm, role: 'SuperAdmin' })} className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium transition-all ${editForm.role === 'SuperAdmin' ? 'bg-purple-50 border-purple-300 text-purple-700' : 'bg-white'}`}>SuperAdmin</button>
                                 </div>
+                            </div>
+                            <div className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">เว็บไซต์ที่เข้าใช้ได้</label>
+                                {SITES.map(site => {
+                                    const locked = editingSelf && site.key === 'main';
+                                    return (
+                                        <label key={site.key} className={`flex items-center gap-2 text-sm text-slate-700 ${locked ? 'opacity-60' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={locked || shownSites.includes(site.key)}
+                                                disabled={locked}
+                                                onChange={() => toggleSite(site.key)}
+                                            />
+                                            <span>{site.label} <span className="text-slate-400">{site.host}</span></span>
+                                        </label>
+                                    );
+                                })}
+                                {editingSelf && <p className="text-xs text-slate-400">ปิดสิทธิ์ระบบหลักของบัญชีตัวเองไม่ได้ เพื่อไม่ให้ล็อกตัวเองออก</p>}
                             </div>
                             {editForm.role !== 'SuperAdmin' && (
                                 <>

@@ -34,12 +34,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-surface px-4">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-surface px-4 py-8 short:py-4">
       <div className="w-full max-w-sm">
-        <div className="mb-10 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground">
-            พ
-          </div>
+        <div className="mb-10 text-center short:mb-4">
+          <img src="/icon-192.png" alt="" className="mx-auto mb-5 h-14 w-14 rounded-2xl short:hidden" />
           <p className="text-sm text-muted">หจก. พีรสิทธิ์ วัสดุก่อสร้าง</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">ระบบออเดอร์หิน-ทราย</h1>
         </div>

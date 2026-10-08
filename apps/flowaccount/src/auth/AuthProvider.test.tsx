@@ -7,6 +7,7 @@ import { RequireAuth } from './RequireAuth';
 import { clearSession, saveSession } from './session';
 
 const signInWithAdminUsers = vi.fn();
+const sessionStillAllowed = vi.fn(() => Promise.resolve(true));
 
 vi.mock('./adminAuthService', async () => {
   class SignInError extends Error {
@@ -21,6 +22,7 @@ vi.mock('./adminAuthService', async () => {
     SignInError,
     signInWithAdminUsers: (username: string, password: string) =>
       signInWithAdminUsers(username, password),
+    sessionStillAllowed: (id: string) => sessionStillAllowed(id),
   };
 });
 
@@ -95,6 +97,22 @@ describe('AuthProvider + RequireAuth', () => {
     });
     renderRoutes('/');
     expect(screen.getByText('private:Boss')).toBeInTheDocument();
+  });
+
+  it('signs out a saved session once its access was removed', async () => {
+    sessionStillAllowed.mockResolvedValueOnce(false);
+    saveSession({
+      id: '1',
+      username: 'boss',
+      displayName: 'Boss',
+      role: 'SuperAdmin',
+      loginAt: new Date().toISOString(),
+    });
+    renderRoutes('/');
+    await waitFor(() => {
+      expect(screen.getByText('login-view')).toBeInTheDocument();
+    });
+    expect(sessionStillAllowed).toHaveBeenCalledWith('1');
   });
 
   it('logs out and clears private content', async () => {

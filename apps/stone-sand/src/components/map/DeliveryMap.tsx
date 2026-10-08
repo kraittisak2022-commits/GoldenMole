@@ -47,7 +47,7 @@ export default function DeliveryMap({ value, onChange, flyTarget = null, height 
   const center = value ?? DISTRICT_CENTER;
 
   return (
-    <div className="overflow-hidden rounded border border-border" style={{ height }}>
+    <div className="overflow-hidden rounded border border-border" style={{ height: `min(${height}px, 60dvh)` }}>
       <MapContainer
         center={[center.lat, center.lng]}
         zoom={value ? 14 : 11}

@@ -48,6 +48,29 @@ export function toIsoDate(d: Date = new Date()): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+export function shiftIsoDate(iso: string, days: number): string {
+  const d = toDate(iso) ?? new Date();
+  return toIsoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + days));
+}
+
+export function monthRange(iso: string): { from: string; to: string } {
+  const d = toDate(iso) ?? new Date();
+  return {
+    from: toIsoDate(new Date(d.getFullYear(), d.getMonth(), 1)),
+    to: toIsoDate(new Date(d.getFullYear(), d.getMonth() + 1, 0)),
+  };
+}
+
+const TH_WEEKDAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+export const TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+
+/** e.g. พฤหัสบดี 8 ตุลาคม 2569 */
+export function formatDateLongTh(value: string | Date): string {
+  const d = toDate(value);
+  if (!d) return '-';
+  return `${TH_WEEKDAYS[d.getDay()]} ${d.getDate()} ${TH_MONTHS[d.getMonth()]} ${d.getFullYear() + 543}`;
+}
+
 export function digitsOnly(phone: string): string {
   return phone.replace(/\D/g, '');
 }

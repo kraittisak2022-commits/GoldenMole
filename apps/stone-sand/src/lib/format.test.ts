@@ -1,4 +1,20 @@
-import { formatDateTh, formatPhone, parseDocNo } from './format';
+import { formatDateLongTh, formatDateTh, formatPhone, monthRange, parseDocNo, shiftIsoDate } from './format';
+
+describe('date helpers', () => {
+  it('moves across month and year ends', () => {
+    expect(shiftIsoDate('2026-10-31', 1)).toBe('2026-11-01');
+    expect(shiftIsoDate('2026-01-01', -1)).toBe('2025-12-31');
+  });
+
+  it('gives the calendar month of a date', () => {
+    expect(monthRange('2026-02-14')).toEqual({ from: '2026-02-01', to: '2026-02-28' });
+    expect(monthRange('2028-02-03')).toEqual({ from: '2028-02-01', to: '2028-02-29' });
+  });
+
+  it('writes the weekday and Buddhist year', () => {
+    expect(formatDateLongTh('2026-10-08')).toBe('พฤหัสบดี 8 ตุลาคม 2569');
+  });
+});
 
 describe('parseDocNo', () => {
   it('parses the three document types', () => {

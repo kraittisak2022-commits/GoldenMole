@@ -338,6 +338,8 @@ export interface AdminUser {
     sessionActive?: boolean;
     /** โหมดหน้าจอล่าสุดที่เลือกไว้ */
     lastClientSurface?: 'select' | 'desktop' | 'mobile';
+    /** เว็บไซต์ที่ล็อกอินได้ (null = ตามบทบาท) — ดู utils/siteAccess */
+    allowedApps?: string[] | null;
 }
 
 export interface AdminDataAccess {

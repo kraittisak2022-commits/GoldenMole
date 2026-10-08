@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Lock, User, Eye, EyeOff, Shield, Loader2, Sun, Moon } from 'lucide-react';
 import { AdminUser } from '../../types';
 import { verifyStoredPassword } from '../../utils/passwordAuth';
-import { fetchAdminsWithStatus } from '../../services/dataService';
+import { fetchAdminSiteAccess, fetchAdminsWithStatus } from '../../services/dataService';
 import { hasSupabaseConfig } from '../../lib/supabase';
+import { canAccessSite } from '../../utils/siteAccess';
 
 interface LoginPageProps {
     admins: AdminUser[];
@@ -251,7 +252,13 @@ const LoginPage = ({ admins, onLogin, appName, appIcon, appVersion, appLastUpdat
                 triggerShake();
                 return;
             }
-            await onLogin(admin, password);
+            const access = (await fetchAdminSiteAccess(admin.id)) ?? admin;
+            if (!canAccessSite(access, 'main')) {
+                setError('บัญชีนี้ไม่มีสิทธิ์เข้าใช้เว็บไซต์นี้');
+                triggerShake();
+                return;
+            }
+            await onLogin({ ...admin, role: access.role, allowedApps: access.allowedApps }, password);
         } finally {
             setIsLoading(false);
         }
