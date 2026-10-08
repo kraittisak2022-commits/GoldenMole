@@ -19,6 +19,7 @@ import {
 import { useAuth } from '../auth/AuthProvider';
 import DeliveryMap from '../components/map/DeliveryMap';
 import OrderEditModal from '../components/OrderEditModal';
+import SourceBadge from '../components/SourceBadge';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -164,7 +165,10 @@ export default function OrderDetailPage() {
             <ArrowLeft size={20} aria-hidden />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold tabular-nums">{o.orderNo}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-semibold tabular-nums">{o.orderNo}</h1>
+              <SourceBadge source={o.source} long />
+            </div>
             <p className="text-sm text-muted">
               {formatDateShort(o.orderDate)}
               {o.receiptNo ? ` · ใบเสร็จ ${o.receiptNo}` : ''}
@@ -285,7 +289,7 @@ export default function OrderDetailPage() {
                   </Link>
                 </p>
               ) : !o.cleared && o.paymentStatus === 'credit' && !o.cancelled ? (
-                <Link to={`/statements?customer=${o.customerId}`} className="text-sm font-medium text-primary underline">
+                <Link to={`/statements?customer=${o.customerId}&source=${o.source}`} className="text-sm font-medium text-primary underline">
                   รวมเข้าใบวางบิลรายเดือน
                 </Link>
               ) : null}

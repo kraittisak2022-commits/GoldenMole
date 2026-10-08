@@ -31,4 +31,16 @@ describe('periodStats', () => {
     expect(s.trips).toBe(3);
     expect(s.outstanding).toBe(1200);
   });
+
+  it('splits live orders by source; orders without a source count as the shop', () => {
+    const s = periodStats([
+      make({ source: 'pit' }),
+      make({ source: 'pit', total: 500 }),
+      make({ source: 'shop' }),
+      make({ source: undefined }),
+      make({ source: 'pit', cancelled: true }),
+    ]);
+    expect(s.bySource.pit).toEqual({ orderCount: 2, net: 1700, quantity: 10 });
+    expect(s.bySource.shop).toEqual({ orderCount: 2, net: 2400, quantity: 10 });
+  });
 });

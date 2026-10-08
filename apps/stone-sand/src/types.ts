@@ -13,6 +13,21 @@ export const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
   sand: 'ทราย',
 };
 
+/** shop = ออเดอร์จากร้านวัสดุก่อสร้าง, pit = สั่งจากท่าทรายโดยตรง (เลขที่ TS). */
+export type OrderSource = 'shop' | 'pit';
+
+export const ORDER_SOURCE_LABEL: Record<OrderSource, string> = {
+  shop: 'ร้านวัสดุก่อสร้าง',
+  pit: 'ท่าทราย',
+};
+
+export const ORDER_SOURCE_SHORT: Record<OrderSource, string> = {
+  shop: 'ร้านวัสดุ',
+  pit: 'ท่าทราย',
+};
+
+export const ORDER_SOURCES = Object.keys(ORDER_SOURCE_LABEL) as OrderSource[];
+
 export interface Product {
   id: string;
   name: string;
@@ -91,6 +106,7 @@ export interface Order {
   id: string;
   orderNo: string;
   receiptNo: string | null;
+  source: OrderSource;
   orderDate: string;
   customerId: string;
   customer: CustomerSnapshot;
@@ -158,6 +174,7 @@ export interface DriverPayout {
 export interface Statement {
   id: string;
   statementNo: string;
+  source: OrderSource;
   customerId: string;
   customer: CustomerSnapshot;
   periodFrom: string;

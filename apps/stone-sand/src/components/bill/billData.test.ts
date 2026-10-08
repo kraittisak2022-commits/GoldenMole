@@ -5,6 +5,7 @@ const order: Order = {
   id: 'o1',
   orderNo: 'DO6910-0001',
   receiptNo: 'RE6910-0001',
+  source: 'shop',
   orderDate: '2026-10-08',
   customerId: 'c1',
   customer: { name: 'สมชาย', phone: '0931234567', address: 'ทุ่งฮั้ว', taxId: '' },
@@ -71,6 +72,7 @@ describe('billFromStatement', () => {
     const s: Statement = {
       id: 's1',
       statementNo: 'BL6910-0001',
+      source: 'shop',
       customerId: 'c1',
       customer: order.customer,
       periodFrom: '2026-10-01',

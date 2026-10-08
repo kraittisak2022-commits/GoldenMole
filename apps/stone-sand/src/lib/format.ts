@@ -91,14 +91,14 @@ export const DOC_TITLE: Record<DocKind, { th: string; en: string }> = {
   statement: { th: 'ใบวางบิล / ใบแจ้งยอด', en: 'BILLING STATEMENT' },
 };
 
-const DOC_NO_RE = /^(DO|RE|BL)(\d{2})(\d{2})-(\d{4,})$/;
+const DOC_NO_RE = /^(DO|TS|RE|BL)(\d{2})(\d{2})-(\d{4,})$/;
 
 export function parseDocNo(docNo: string): { kind: DocKind; year: number; month: number; seq: number } | null {
   const m = DOC_NO_RE.exec(docNo.trim());
   if (!m) return null;
   const month = Number(m[3]);
   if (month < 1 || month > 12) return null;
-  const kind: DocKind = m[1] === 'DO' ? 'delivery' : m[1] === 'RE' ? 'receipt' : 'statement';
+  const kind: DocKind = m[1] === 'DO' || m[1] === 'TS' ? 'delivery' : m[1] === 'RE' ? 'receipt' : 'statement';
   return { kind, year: 2000 + Number(m[2]), month, seq: Number(m[4]) };
 }
 

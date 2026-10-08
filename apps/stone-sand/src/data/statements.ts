@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { Statement } from '../types';
+import type { OrderSource, Statement } from '../types';
 
 const STATEMENT_SELECT = '*, links:ss_statement_orders(order_id)';
 
@@ -7,6 +7,7 @@ export function mapStatement(row: any): Statement {
   return {
     id: row.id,
     statementNo: row.statement_no,
+    source: row.source === 'pit' ? 'pit' : 'shop',
     customerId: row.customer_id,
     customer: {
       name: row.customer_snapshot?.name || '',
@@ -43,6 +44,7 @@ export async function getStatement(id: string): Promise<Statement | null> {
 }
 
 export async function createStatement(input: {
+  source: OrderSource;
   customerId: string;
   orderIds: string[];
   from: string;
@@ -57,6 +59,7 @@ export async function createStatement(input: {
     p_to: input.to,
     p_note: input.note,
     p_by: input.by,
+    p_source: input.source,
   });
   if (error) throw new Error(error.message);
   const s = await getStatement((data as any).id);

@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, FileText, Trash2, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import PayMethodPicker, { type PayMethod } from '../components/PayMethodPicker';
+import SourceBadge from '../components/SourceBadge';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -18,7 +19,15 @@ import { clearStatement, createStatement, deleteStatement, listStatements } from
 import { useAsync } from '../hooks/useAsync';
 import { formatDateShort, formatMoney, formatNumber, formatPhone, toIsoDate } from '../lib/format';
 import { summarizeOutstanding } from '../lib/orderStatus';
-import { PAYMENT_METHOD_LABEL, type Order, type Statement } from '../types';
+import {
+  ORDER_SOURCES,
+  ORDER_SOURCE_LABEL,
+  ORDER_SOURCE_SHORT,
+  PAYMENT_METHOD_LABEL,
+  type Order,
+  type OrderSource,
+  type Statement,
+} from '../types';
 
 type StatusFilter = 'open' | 'cleared' | 'all';
 
@@ -30,6 +39,7 @@ export default function StatementsPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const selectedCustomer = params.get('customer');
+  const sourceParam = params.get('source');
   const highlight = params.get('open');
 
   const uncleared = useAsync(() => listUnclearedOrders(), []);
@@ -41,13 +51,23 @@ export default function StatementsPage() {
   const [actionError, setActionError] = useState('');
 
   const summary = useMemo(() => summarizeOutstanding(uncleared.data ?? []), [uncleared.data]);
+  const selectedSource: OrderSource =
+    ORDER_SOURCES.find((s) => s === sourceParam) ??
+    summary.find((r) => r.customerId === selectedCustomer && r.unbilledCount)?.source ??
+    'shop';
+  const customerUnbilled = useMemo(
+    () => (uncleared.data ?? []).filter((o) => o.customerId === selectedCustomer && !o.statementId),
+    [uncleared.data, selectedCustomer],
+  );
   const visibleStatements = (statements.data ?? []).filter((s) => statusFilter === 'all' || s.status === statusFilter);
   const openTotal = (statements.data ?? []).filter((s) => s.status === 'open').reduce((sum, s) => sum + s.total, 0);
 
-  const selectCustomer = (id: string | null) => {
+  const selectCustomer = (id: string | null, source?: OrderSource) => {
     const next = new URLSearchParams(params);
     if (id) next.set('customer', id);
     else next.delete('customer');
+    if (id && source) next.set('source', source);
+    else next.delete('source');
     setParams(next, { replace: true });
   };
 
@@ -110,17 +130,20 @@ export default function StatementsPage() {
               {summary.length ? (
                 <ul className="divide-y divide-border">
                   {summary.map((row) => (
-                    <li key={row.customerId}>
+                    <li key={`${row.customerId}:${row.source}`}>
                       <button
                         type="button"
-                        onClick={() => selectCustomer(row.customerId)}
+                        onClick={() => selectCustomer(row.customerId, row.source)}
                         className={[
                           'flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-subtle cursor-pointer',
-                          selectedCustomer === row.customerId ? 'bg-primary-soft/60' : '',
+                          selectedCustomer === row.customerId && selectedSource === row.source ? 'bg-primary-soft/60' : '',
                         ].join(' ')}
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium">{row.name}</p>
+                          <div className="flex min-w-0 items-center gap-2">
+                            <p className="truncate font-medium">{row.name}</p>
+                            <SourceBadge source={row.source} />
+                          </div>
                           <p className="text-xs text-muted">
                             {row.count} ออเดอร์ · ตั้งแต่ {formatDateShort(row.oldestDate)}
                             {row.unbilledCount < row.count ? ` · วางบิลแล้ว ${row.count - row.unbilledCount}` : ''}
@@ -150,10 +173,15 @@ export default function StatementsPage() {
             <Loading />
           ) : selectedCustomer ? (
             <CreateStatementPanel
-              key={`${selectedCustomer}-${uncleared.data?.length}`}
+              key={`${selectedCustomer}-${selectedSource}-${uncleared.data?.length}`}
               customerId={selectedCustomer}
-              orders={(uncleared.data ?? []).filter((o) => o.customerId === selectedCustomer && !o.statementId)}
+              source={selectedSource}
+              orders={customerUnbilled.filter((o) => o.source === selectedSource)}
+              sourceCounts={Object.fromEntries(
+                ORDER_SOURCES.map((s) => [s, customerUnbilled.filter((o) => o.source === s).length]),
+              ) as Record<OrderSource, number>}
               by={by}
+              onSource={(s) => selectCustomer(selectedCustomer, s)}
               onClose={() => selectCustomer(null)}
               onCreated={(s) => navigate(`/bill/statement/${s.id}`)}
             />
@@ -191,6 +219,7 @@ export default function StatementsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium tabular-nums">{s.statementNo}</p>
+                        <SourceBadge source={s.source} />
                         {s.status === 'cleared' ? (
                           <Badge tone="success">
                             เคลียร์แล้ว{s.paymentMethod ? ` · ${PAYMENT_METHOD_LABEL[s.paymentMethod]}` : ''}
@@ -259,14 +288,20 @@ export default function StatementsPage() {
 
 function CreateStatementPanel({
   customerId,
+  source,
   orders,
+  sourceCounts,
   by,
+  onSource,
   onClose,
   onCreated,
 }: {
   customerId: string;
+  source: OrderSource;
   orders: Order[];
+  sourceCounts: Record<OrderSource, number>;
   by: string;
+  onSource: (s: OrderSource) => void;
   onClose: () => void;
   onCreated: (s: Statement) => void;
 }) {
@@ -303,7 +338,7 @@ function CreateStatementPanel({
     setSaving(true);
     setError('');
     try {
-      onCreated(await createStatement({ customerId, orderIds: chosen.map((o) => o.id), from, to, note, by }));
+      onCreated(await createStatement({ source, customerId, orderIds: chosen.map((o) => o.id), from, to, note, by }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'สร้างใบวางบิลไม่สำเร็จ');
       setSaving(false);
@@ -313,8 +348,8 @@ function CreateStatementPanel({
   return (
     <Card className="p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-semibold">สร้างใบวางบิล</h2>
+        <div className="min-w-0">
+          <h2 className="font-semibold">สร้างใบวางบิล · {ORDER_SOURCE_SHORT[source]}</h2>
           <p className="text-sm text-muted">
             {name || 'ลูกค้า'}
             {phone ? ` · ${formatPhone(phone)}` : ''}
@@ -330,8 +365,28 @@ function CreateStatementPanel({
         </button>
       </div>
 
+      <div className="mb-4 grid grid-cols-2 gap-1 rounded border border-border p-1" role="radiogroup" aria-label="ประเภทออเดอร์">
+        {ORDER_SOURCES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            role="radio"
+            aria-checked={source === s}
+            onClick={() => onSource(s)}
+            className={[
+              'flex min-h-10 items-center justify-center gap-1.5 rounded-[9px] px-2 text-sm font-medium transition-colors cursor-pointer',
+              source === s ? 'bg-primary text-primary-foreground' : 'text-muted hover:bg-subtle hover:text-ink',
+            ].join(' ')}
+          >
+            {ORDER_SOURCE_SHORT[s]}
+            <span className="text-xs tabular-nums opacity-80">{sourceCounts[s]}</span>
+          </button>
+        ))}
+      </div>
+      <p className="-mt-2 mb-4 text-xs text-muted">ใบวางบิลแยกกันระหว่างออเดอร์ร้านวัสดุก่อสร้างกับออเดอร์ท่าทราย</p>
+
       {!orders.length ? (
-        <p className="text-sm text-muted">ลูกค้ารายนี้ไม่มีออเดอร์ที่ยังไม่วางบิล</p>
+        <p className="text-sm text-muted">ไม่มีออเดอร์{ORDER_SOURCE_LABEL[source]}ที่ยังไม่วางบิล</p>
       ) : (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">

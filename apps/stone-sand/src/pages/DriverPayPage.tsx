@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Check, Trash2, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import PayMethodPicker, { type PayMethod } from '../components/PayMethodPicker';
+import SourceBadge from '../components/SourceBadge';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -334,6 +335,7 @@ function PayoutPanel({
                   <button type="button" className="min-w-0 flex-1 text-left cursor-pointer" onClick={() => toggle(o.id)}>
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <span className="whitespace-nowrap font-medium tabular-nums">{o.orderNo}</span>
+                      <SourceBadge source={o.source} />
                       {o.deliveryStatus !== 'delivered' ? <Badge tone="warning">ยังไม่ส่ง</Badge> : null}
                     </span>
                     {codToCollect(o) ? (

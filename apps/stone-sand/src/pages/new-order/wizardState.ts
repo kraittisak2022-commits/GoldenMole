@@ -1,9 +1,10 @@
 import { lineAmount } from '../../calc/pricing';
 import { totalTrips, truckFits, truckForLoads, type Load } from '../../calc/trips';
 import type { OrderDraft } from '../../data/orders';
-import type { Customer, DiscountType, Fulfillment, OrderItem, PaymentMethod, Product, TruckSize } from '../../types';
+import type { Customer, DiscountType, Fulfillment, OrderItem, OrderSource, PaymentMethod, Product, TruckSize } from '../../types';
 
 export interface WizardState {
+  source: OrderSource | null;
   customer: Customer | null;
   loads: Record<string, Load>;
   fulfillment: Fulfillment | null;
@@ -31,6 +32,7 @@ export interface WizardState {
 }
 
 export const STEPS = [
+  { key: 'source', label: 'ประเภท' },
   { key: 'products', label: 'สินค้า' },
   { key: 'customer', label: 'ลูกค้า' },
   { key: 'fulfillment', label: 'รับสินค้า' },
@@ -43,6 +45,7 @@ export type StepKey = (typeof STEPS)[number]['key'];
 export const stepIndex = (key: StepKey): number => STEPS.findIndex((s) => s.key === key);
 
 export const initialWizardState: WizardState = {
+  source: null,
   customer: null,
   loads: {},
   fulfillment: null,
@@ -116,6 +119,8 @@ export function withDeliveryPlan(s: WizardState): WizardState {
 /** Error message for the step, or '' when the step is complete. */
 export function validateStep(step: number, s: WizardState): string {
   switch (STEPS[step]?.key) {
+    case 'source':
+      return s.source ? '' : 'เลือกประเภทออเดอร์';
     case 'products':
       return totalQuantity(quantitiesOf(s.loads)) > 0 ? '' : 'เลือกสินค้าอย่างน้อย 1 รายการ';
     case 'customer':
@@ -140,9 +145,10 @@ export function defaultPaidNow(method: PaymentMethod): boolean {
 }
 
 export function toDraft(s: WizardState, products: Product[], driverWagePerTrip: number): OrderDraft {
-  if (!s.customer || !s.fulfillment || !s.paymentMethod) throw new Error('ข้อมูลออเดอร์ยังไม่ครบ');
+  if (!s.source || !s.customer || !s.fulfillment || !s.paymentMethod) throw new Error('ข้อมูลออเดอร์ยังไม่ครบ');
   const delivery = s.fulfillment === 'delivery';
   return {
+    source: s.source,
     customer: s.customer,
     items: buildItems(products, quantitiesOf(s.loads)),
     fulfillment: s.fulfillment,

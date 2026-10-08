@@ -1,5 +1,5 @@
 import type { BadgeTone } from '../components/ui/Badge';
-import { DELIVERY_STATUS_LABEL, type Driver, type Order, type Zone } from '../types';
+import { DELIVERY_STATUS_LABEL, type Driver, type Order, type OrderSource, type Zone } from '../types';
 import { formatMoney, formatNumber, formatPhone, googleMapsUrl } from './format';
 
 export type OrderFilter = 'all' | 'unpaid' | 'credit' | 'waiting' | 'delivered' | 'uncleared' | 'cancelled';
@@ -77,8 +77,10 @@ export function outstanding(o: Order): number {
   return o.cancelled || o.cleared ? 0 : o.total;
 }
 
+/** One row per customer and order source: a statement never mixes ร้านวัสดุ and ท่าทราย orders. */
 export interface CustomerOutstanding {
   customerId: string;
+  source: OrderSource;
   name: string;
   phone: string;
   total: number;
@@ -94,8 +96,10 @@ export function summarizeOutstanding(orders: Order[]): CustomerOutstanding[] {
   for (const o of orders) {
     const amount = outstanding(o);
     if (!amount) continue;
-    const row = map.get(o.customerId) ?? {
+    const key = `${o.customerId}:${o.source}`;
+    const row = map.get(key) ?? {
       customerId: o.customerId,
+      source: o.source,
       name: o.customer.name,
       phone: o.customer.phone,
       total: 0,
@@ -111,7 +115,7 @@ export function summarizeOutstanding(orders: Order[]): CustomerOutstanding[] {
       row.unbilledCount += 1;
     }
     if (o.orderDate < row.oldestDate) row.oldestDate = o.orderDate;
-    map.set(o.customerId, row);
+    map.set(key, row);
   }
   return [...map.values()].sort((a, b) => b.total - a.total);
 }

@@ -1,4 +1,10 @@
-import type { Order } from '../types';
+import { ORDER_SOURCES, type Order, type OrderSource } from '../types';
+
+export interface SourceStats {
+  orderCount: number;
+  net: number;
+  quantity: number;
+}
 
 export interface PeriodStats {
   orderCount: number;
@@ -13,6 +19,7 @@ export interface PeriodStats {
   quantity: number;
   trips: number;
   quantityByProduct: { name: string; unit: string; quantity: number; amount: number }[];
+  bySource: Record<OrderSource, SourceStats>;
 }
 
 export function periodStats(orders: Order[]): PeriodStats {
@@ -28,6 +35,16 @@ export function periodStats(orders: Order[]): PeriodStats {
     }
   }
   const sum = (f: (o: Order) => number) => live.reduce((s, o) => s + f(o), 0);
+  const bySource = Object.fromEntries(ORDER_SOURCES.map((s) => [s, { orderCount: 0, net: 0, quantity: 0 }])) as Record<
+    OrderSource,
+    SourceStats
+  >;
+  for (const o of live) {
+    const row = bySource[o.source] ?? bySource.shop;
+    row.orderCount += 1;
+    row.net += o.total;
+    row.quantity += o.items.reduce((s, it) => s + it.quantity, 0);
+  }
   const quantityByProduct = [...byProduct.values()].sort((a, b) => b.amount - a.amount);
   return {
     orderCount: live.length,
@@ -41,5 +58,6 @@ export function periodStats(orders: Order[]): PeriodStats {
     quantity: quantityByProduct.reduce((s, p) => s + p.quantity, 0),
     trips: sum((o) => o.trips || 0),
     quantityByProduct,
+    bySource,
   };
 }

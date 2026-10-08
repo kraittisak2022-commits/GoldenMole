@@ -3,12 +3,14 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import OrderRow from '../components/OrderRow';
+import SourceBadge from '../components/SourceBadge';
 import Card from '../components/ui/Card';
 import { Empty, ErrorBox, Loading } from '../components/ui/States';
 import { listOrders, listUnclearedOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
 import { TH_MONTHS, formatDateLongTh, formatMoney, formatNumber, monthRange, shiftIsoDate, toIsoDate } from '../lib/format';
 import { periodStats, type PeriodStats } from '../lib/stats';
+import { ORDER_SOURCES } from '../types';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -214,6 +216,23 @@ function SummaryCard({ stats }: { stats: PeriodStats }) {
         <Row label="ค้างรับ" value={formatMoney(stats.outstanding)} />
         <Row label="ค่าจ้างคนขับ" value={formatMoney(stats.driverWages)} />
       </dl>
+      <div className="mt-4 border-t border-border pt-3">
+        <p className="mb-2 text-xs font-semibold text-muted">แยกตามประเภทออเดอร์</p>
+        <ul className="grid grid-cols-2 gap-2">
+          {ORDER_SOURCES.map((s) => {
+            const row = stats.bySource[s];
+            return (
+              <li key={s} className="min-w-0 rounded border border-border px-3 py-2">
+                <SourceBadge source={s} />
+                <p className="mt-1.5 truncate text-base font-semibold tabular-nums">{formatMoney(row.net)}</p>
+                <p className="truncate text-xs text-muted tabular-nums">
+                  {formatNumber(row.orderCount)} ออเดอร์ · {formatNumber(row.quantity)} คิว
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
       {stats.quantityByProduct.length ? (
         <div className="mt-4 border-t border-border pt-3">
           <p className="mb-2 text-xs font-semibold text-muted">ขายตามสินค้า</p>

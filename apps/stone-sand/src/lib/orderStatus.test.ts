@@ -5,6 +5,7 @@ const base: Order = {
   id: 'o1',
   orderNo: 'DO6910-0001',
   receiptNo: null,
+  source: 'shop',
   orderDate: '2026-10-08',
   customerId: 'c1',
   customer: { name: 'สมชาย ใจดี', phone: '0931234567', address: '', taxId: '' },
@@ -81,6 +82,15 @@ describe('summarizeOutstanding', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ customerId: 'c1', total: 3600, count: 2, unbilledTotal: 2600, unbilledCount: 1, oldestDate: '2026-10-01' });
     expect(rows[1]).toMatchObject({ customerId: 'c2', total: 500 });
+  });
+
+  it('keeps ร้านวัสดุ and ท่าทราย orders of the same customer in separate rows', () => {
+    const rows = summarizeOutstanding([base, { ...base, id: 'o2', source: 'pit', total: 800 }]);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => [r.customerId, r.source, r.total])).toEqual([
+      ['c1', 'shop', 2600],
+      ['c1', 'pit', 800],
+    ]);
   });
 });
 

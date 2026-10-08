@@ -8,11 +8,12 @@ import { useCatalog } from '../../context/CatalogProvider';
 import { getCustomer } from '../../data/customers';
 import { createOrder, draftTotals } from '../../data/orders';
 import { formatMoney } from '../../lib/format';
-import type { Customer } from '../../types';
+import { ORDER_SOURCE_LABEL, type Customer, type OrderSource } from '../../types';
 import StepConfirm from './StepConfirm';
 import StepCustomer from './StepCustomer';
 import StepFulfillment from './StepFulfillment';
 import StepProducts from './StepProducts';
+import StepSource from './StepSource';
 import StepSummary from './StepSummary';
 import {
   STEPS,
@@ -27,7 +28,7 @@ import {
   type WizardState,
 } from './wizardState';
 
-const DRAFT_KEY = 'stone_sand_new_order_v4';
+const DRAFT_KEY = 'stone_sand_new_order_v5';
 
 interface StoredDraft {
   step: number;
@@ -75,6 +76,11 @@ export default function NewOrderPage() {
       ...(c?.isCredit && !prev.paymentMethod ? { paymentMethod: 'credit' as const, paidNow: false } : {}),
     }));
     if (c) setStep((s) => (s === stepIndex('customer') ? s + 1 : s));
+  }, []);
+
+  const selectSource = useCallback((source: OrderSource) => {
+    setState((prev) => ({ ...prev, source }));
+    setStep((s) => (s === stepIndex('source') ? s + 1 : s));
   }, []);
 
   useEffect(() => {
@@ -179,7 +185,12 @@ export default function NewOrderPage() {
           >
             <X size={22} aria-hidden />
           </button>
-          <h1 className="flex-1 text-lg font-semibold">สร้างออเดอร์</h1>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <h1 className="text-lg font-semibold leading-tight">สร้างออเดอร์</h1>
+            {state.source ? (
+              <p className="truncate text-xs font-medium text-primary">ออเดอร์{ORDER_SOURCE_LABEL[state.source]}</p>
+            ) : null}
+          </div>
           <span className="pr-3 text-sm tabular-nums text-muted">
             {step + 1} / {STEPS.length}
           </span>
@@ -224,6 +235,7 @@ export default function NewOrderPage() {
           </div>
         ) : null}
 
+        {stepKey === 'source' ? <StepSource source={state.source} onSelect={selectSource} /> : null}
         {stepKey === 'products' ? (
           <StepProducts products={products} loads={state.loads} onChange={(l) => patch({ loads: l })} />
         ) : null}

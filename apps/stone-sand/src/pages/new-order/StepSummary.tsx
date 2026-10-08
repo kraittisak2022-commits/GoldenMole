@@ -5,7 +5,7 @@ import Input from '../../components/ui/Input';
 import Textarea from '../../components/ui/Textarea';
 import { draftTotals } from '../../data/orders';
 import { formatMoney, formatNumber } from '../../lib/format';
-import { PAYMENT_METHOD_LABEL, type OrderItem, type PaymentMethod } from '../../types';
+import { ORDER_SOURCE_LABEL, PAYMENT_METHOD_LABEL, type OrderItem, type PaymentMethod } from '../../types';
 import StepTitle from './StepTitle';
 import { defaultPaidNow, type WizardState } from './wizardState';
 
@@ -30,7 +30,7 @@ export default function StepSummary({ state: s, patch, items }: Props) {
 
   return (
     <div className="step-enter flex flex-col gap-5">
-      <StepTitle title="สรุปยอดและการชำระเงิน" />
+      <StepTitle title="สรุปยอดและการชำระเงิน" subtitle={s.source ? `ออเดอร์${ORDER_SOURCE_LABEL[s.source]}` : undefined} />
 
       <section className="rounded border border-border bg-surface">
         <ul className="divide-y divide-border">

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { draftTotals } from '../../data/orders';
 import { formatMoney, formatNumber, formatPhone } from '../../lib/format';
-import { PAYMENT_METHOD_LABEL, type Driver, type OrderItem, type Zone } from '../../types';
+import { ORDER_SOURCE_LABEL, PAYMENT_METHOD_LABEL, type Driver, type OrderItem, type Zone } from '../../types';
 import StepTitle from './StepTitle';
 import { stepIndex, type StepKey, type WizardState } from './wizardState';
 
@@ -26,6 +26,11 @@ export default function StepConfirm({ state: s, items, zone, driver, onEdit }: P
       <StepTitle title="ตรวจสอบก่อนออกบิล" subtitle="แตะ 'แก้ไข' เพื่อกลับไปแก้ขั้นตอนนั้น" />
 
       <div className="divide-y divide-border border-y border-border">
+        <Block title="ประเภทออเดอร์" onEdit={edit('source')}>
+          <p className="font-medium">{s.source ? `ออเดอร์${ORDER_SOURCE_LABEL[s.source]}` : '—'}</p>
+          <p className="text-muted">เลขที่ใบส่งของขึ้นต้นด้วย {s.source === 'pit' ? 'TS' : 'DO'}</p>
+        </Block>
+
         <Block title="สินค้า" onEdit={edit('products')}>
           <ul className="flex flex-col gap-1">
             {items.map((it) => (

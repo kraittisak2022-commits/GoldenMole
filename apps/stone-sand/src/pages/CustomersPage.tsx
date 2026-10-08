@@ -42,7 +42,7 @@ export default function CustomersPage() {
 
   const balances = useMemo(() => {
     const map = new Map<string, number>();
-    for (const row of summarizeOutstanding(uncleared.data ?? [])) map.set(row.customerId, row.total);
+    for (const row of summarizeOutstanding(uncleared.data ?? [])) map.set(row.customerId, (map.get(row.customerId) ?? 0) + row.total);
     return map;
   }, [uncleared.data]);
 

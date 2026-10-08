@@ -12,6 +12,7 @@ import { listOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
 import { formatMoney, toIsoDate } from '../lib/format';
 import { ORDER_FILTERS, matchesFilter, matchesSearch, outstanding, type OrderFilter } from '../lib/orderStatus';
+import { ORDER_SOURCES, ORDER_SOURCE_SHORT, type OrderSource } from '../types';
 
 type Range = 'today' | '7d' | 'month' | '3m' | 'all';
 
@@ -36,18 +37,29 @@ export default function OrdersPage() {
   const [params, setParams] = useSearchParams();
   const filter = (params.get('f') as OrderFilter) || 'all';
   const range = (params.get('r') as Range) || 'month';
+  const sourceParam = params.get('source');
+  const source = ORDER_SOURCES.find((s) => s === sourceParam) ?? null;
   const [query, setQuery] = useState('');
 
-  const setParam = (key: string, value: string) => {
+  const setParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
-    next.set(key, value);
+    if (value) next.set(key, value);
+    else next.delete(key);
     setParams(next, { replace: true });
   };
 
   const { data, error, loading } = useAsync(() => listOrders({ from: rangeFrom(range), limit: 1000 }), [range]);
   const orders = data ?? [];
 
-  const searched = useMemo(() => orders.filter((o) => matchesSearch(o, query)), [orders, query]);
+  const sourceCounts = useMemo(() => {
+    const c = { all: orders.length } as Record<OrderSource | 'all', number>;
+    for (const s of ORDER_SOURCES) c[s] = orders.filter((o) => o.source === s).length;
+    return c;
+  }, [orders]);
+  const searched = useMemo(
+    () => orders.filter((o) => (!source || o.source === source) && matchesSearch(o, query)),
+    [orders, source, query],
+  );
   const counts = useMemo(() => {
     const c = {} as Record<OrderFilter, number>;
     for (const f of ORDER_FILTERS) c[f.id] = searched.filter((o) => matchesFilter(o, f.id)).length;
@@ -90,6 +102,32 @@ export default function OrdersPage() {
             </option>
           ))}
         </Select>
+      </div>
+
+      <div
+        className="mb-3 inline-flex w-full rounded border border-border bg-surface p-1 sm:w-auto"
+        role="radiogroup"
+        aria-label="ประเภทออเดอร์"
+      >
+        {([null, ...ORDER_SOURCES] as (OrderSource | null)[]).map((s) => {
+          const active = source === s;
+          return (
+            <button
+              key={s ?? 'all'}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => setParam('source', s)}
+              className={[
+                'flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-[9px] px-3 text-sm font-medium transition-colors cursor-pointer sm:flex-none',
+                active ? 'bg-primary text-primary-foreground' : 'text-muted hover:bg-subtle hover:text-ink',
+              ].join(' ')}
+            >
+              {s ? ORDER_SOURCE_SHORT[s] : 'ทั้งหมด'}
+              <span className={['tabular-nums text-xs', active ? 'opacity-80' : ''].join(' ')}>{sourceCounts[s ?? 'all']}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">

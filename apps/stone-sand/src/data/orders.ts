@@ -7,6 +7,7 @@ import type {
   Fulfillment,
   Order,
   OrderItem,
+  OrderSource,
   PaymentMethod,
   TruckSize,
 } from '../types';
@@ -37,6 +38,7 @@ export function mapOrder(row: any): Order {
     id: row.id,
     orderNo: row.order_no,
     receiptNo: row.receipt_no,
+    source: row.source === 'pit' ? 'pit' : 'shop',
     orderDate: row.order_date,
     customerId: row.customer_id,
     customer: {
@@ -86,6 +88,7 @@ export interface ListOrdersOptions {
   from?: string;
   to?: string;
   customerId?: string;
+  source?: OrderSource;
   deliveryStatuses?: DeliveryStatus[];
   limit?: number;
 }
@@ -100,6 +103,7 @@ export async function listOrders(opts: ListOrdersOptions = {}): Promise<Order[]>
   if (opts.from) q = q.gte('order_date', opts.from);
   if (opts.to) q = q.lte('order_date', opts.to);
   if (opts.customerId) q = q.eq('customer_id', opts.customerId);
+  if (opts.source) q = q.eq('source', opts.source);
   if (opts.deliveryStatuses?.length) q = q.in('delivery_status', opts.deliveryStatuses).eq('cancelled', false);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
@@ -157,6 +161,7 @@ export async function getOrdersByIds(ids: string[]): Promise<Order[]> {
 }
 
 export interface OrderDraft {
+  source: OrderSource;
   customer: Customer;
   items: OrderItem[];
   fulfillment: Fulfillment;
@@ -195,6 +200,7 @@ export async function createOrder(d: OrderDraft, by: string): Promise<Order> {
   const delivery = d.fulfillment === 'delivery';
   const paymentStatus = d.paidNow ? 'paid' : d.paymentMethod === 'credit' ? 'credit' : 'unpaid';
   const order = {
+    source: d.source,
     customer_id: d.customer.id,
     customer_snapshot: toSnapshot(d.customer),
     fulfillment: d.fulfillment,
