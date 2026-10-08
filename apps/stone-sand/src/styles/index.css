@@ -1,0 +1,131 @@
+:root {
+  --color-page: #f8fafc;
+  --color-surface: #ffffff;
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
+  --color-subtle: #f1f3f5;
+  --color-border: #e4e7eb;
+  --color-primary: #1e3a5f;
+  --color-primary-hover: #16304f;
+  --color-primary-foreground: #ffffff;
+  --color-primary-soft: #eef3f9;
+  --color-success: #059669;
+  --color-success-soft: #ecfdf5;
+  --color-warning: #b45309;
+  --color-warning-soft: #fffbeb;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+  --color-destructive-soft: #fef2f2;
+  --color-ring: #1e3a5f;
+  --color-stamp: #1d4ed8;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-page text-ink font-sans antialiased;
+    margin: 0;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .step-enter {
+    animation: step-enter 0.2s ease-out both;
+  }
+}
+
+@keyframes step-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Bill document */
+.bill-protect {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .bill-sheet {
+    box-shadow: none !important;
+    margin: 0 !important;
+    border: none !important;
+    min-height: 296mm !important;
+  }
+
+  .bill-print-root {
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
+  .bill-scale-outer {
+    height: auto !important;
+  }
+
+  .bill-scale {
+    transform: none !important;
+    width: auto !important;
+  }
+
+  .bill-page + .bill-page {
+    break-before: page;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+.leaflet-container {
+  font-family: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

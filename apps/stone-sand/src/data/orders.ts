@@ -1,0 +1,271 @@
+import { computeTotals } from '../calc/pricing';
+import { supabase } from '../lib/supabase';
+import type {
+  Customer,
+  DeliveryStatus,
+  DiscountType,
+  Fulfillment,
+  Order,
+  OrderItem,
+  PaymentMethod,
+  TruckSize,
+} from '../types';
+import { toSnapshot } from './customers';
+
+const num = (v: unknown) => (v == null ? 0 : Number(v));
+const numOrNull = (v: unknown) => (v == null ? null : Number(v));
+
+const ORDER_SELECT = '*, items:ss_order_items(*), stmt:ss_statement_orders(statement_id)';
+
+function mapItem(row: any): OrderItem {
+  return {
+    id: row.id,
+    productId: row.product_id,
+    name: row.name,
+    unit: row.unit,
+    unitPrice: num(row.unit_price),
+    quantity: num(row.quantity),
+    amount: num(row.amount),
+  };
+}
+
+export function mapOrder(row: any): Order {
+  const stmt = Array.isArray(row.stmt) ? row.stmt[0] : row.stmt;
+  const items = Array.isArray(row.items) ? [...row.items] : [];
+  items.sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  return {
+    id: row.id,
+    orderNo: row.order_no,
+    receiptNo: row.receipt_no,
+    orderDate: row.order_date,
+    customerId: row.customer_id,
+    customer: {
+      name: row.customer_snapshot?.name || '',
+      phone: row.customer_snapshot?.phone || '',
+      address: row.customer_snapshot?.address || '',
+      taxId: row.customer_snapshot?.taxId || '',
+    },
+    fulfillment: row.fulfillment,
+    deliveryAddress: row.delivery_address || '',
+    pinLat: row.pin_lat,
+    pinLng: row.pin_lng,
+    zoneId: row.zone_id,
+    roadDistanceKm: numOrNull(row.road_distance_km),
+    truckSize: row.truck_size,
+    trips: row.trips,
+    driverId: row.driver_id,
+    feePerTrip: num(row.fee_per_trip),
+    remoteSurcharge: num(row.remote_surcharge),
+    discountType: row.discount_type,
+    discountValue: num(row.discount_value),
+    subtotal: num(row.subtotal),
+    deliveryTotal: num(row.delivery_total),
+    discountAmount: num(row.discount_amount),
+    total: num(row.total),
+    paymentMethod: row.payment_method,
+    paymentStatus: row.payment_status,
+    paidAt: row.paid_at,
+    deliveryStatus: row.delivery_status,
+    deliveredAt: row.delivered_at,
+    cleared: !!row.cleared,
+    clearedAt: row.cleared_at,
+    driverWage: num(row.driver_wage),
+    note: row.note || '',
+    cancelled: !!row.cancelled,
+    verifyToken: row.verify_token,
+    statusLog: Array.isArray(row.status_log) ? row.status_log : [],
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    items: items.map(mapItem),
+    statementId: stmt?.statement_id ?? null,
+  };
+}
+
+export interface ListOrdersOptions {
+  from?: string;
+  to?: string;
+  customerId?: string;
+  deliveryStatuses?: DeliveryStatus[];
+  limit?: number;
+}
+
+export async function listOrders(opts: ListOrdersOptions = {}): Promise<Order[]> {
+  let q = supabase
+    .from('ss_orders')
+    .select(ORDER_SELECT)
+    .order('order_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(opts.limit ?? 500);
+  if (opts.from) q = q.gte('order_date', opts.from);
+  if (opts.to) q = q.lte('order_date', opts.to);
+  if (opts.customerId) q = q.eq('customer_id', opts.customerId);
+  if (opts.deliveryStatuses?.length) q = q.in('delivery_status', opts.deliveryStatuses).eq('cancelled', false);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapOrder);
+}
+
+/** Not cleared and not cancelled, oldest first (outstanding balances and monthly statements). */
+export async function listUnclearedOrders(opts: { customerId?: string } = {}): Promise<Order[]> {
+  let q = supabase
+    .from('ss_orders')
+    .select(ORDER_SELECT)
+    .eq('cleared', false)
+    .eq('cancelled', false)
+    .order('order_date')
+    .order('created_at')
+    .limit(2000);
+  if (opts.customerId) q = q.eq('customer_id', opts.customerId);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapOrder);
+}
+
+export async function getOrder(id: string): Promise<Order | null> {
+  const { data, error } = await supabase.from('ss_orders').select(ORDER_SELECT).eq('id', id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? mapOrder(data) : null;
+}
+
+export async function getOrdersByIds(ids: string[]): Promise<Order[]> {
+  if (!ids.length) return [];
+  const { data, error } = await supabase
+    .from('ss_orders')
+    .select(ORDER_SELECT)
+    .in('id', ids)
+    .order('order_date')
+    .order('created_at');
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapOrder);
+}
+
+export interface OrderDraft {
+  customer: Customer;
+  items: OrderItem[];
+  fulfillment: Fulfillment;
+  deliveryAddress: string;
+  pinLat: number | null;
+  pinLng: number | null;
+  zoneId: string | null;
+  roadDistanceKm: number | null;
+  truckSize: TruckSize | null;
+  trips: number;
+  driverId: string | null;
+  feePerTrip: number;
+  remoteSurcharge: number;
+  discountType: DiscountType;
+  discountValue: number;
+  paymentMethod: PaymentMethod;
+  paidNow: boolean;
+  driverWage: number;
+  note: string;
+}
+
+export function draftTotals(d: Pick<OrderDraft, 'items' | 'fulfillment' | 'feePerTrip' | 'trips' | 'remoteSurcharge' | 'discountType' | 'discountValue'>) {
+  const delivery = d.fulfillment === 'delivery';
+  return computeTotals({
+    items: d.items,
+    feePerTrip: delivery ? d.feePerTrip : 0,
+    trips: delivery ? d.trips : 0,
+    remoteSurcharge: delivery ? d.remoteSurcharge : 0,
+    discountType: d.discountType,
+    discountValue: d.discountValue,
+  });
+}
+
+export async function createOrder(d: OrderDraft, by: string): Promise<Order> {
+  const totals = draftTotals(d);
+  const delivery = d.fulfillment === 'delivery';
+  const paymentStatus = d.paidNow ? 'paid' : d.paymentMethod === 'credit' ? 'credit' : 'unpaid';
+  const order = {
+    customer_id: d.customer.id,
+    customer_snapshot: toSnapshot(d.customer),
+    fulfillment: d.fulfillment,
+    delivery_address: delivery ? d.deliveryAddress.trim() : '',
+    pin_lat: delivery ? d.pinLat : null,
+    pin_lng: delivery ? d.pinLng : null,
+    zone_id: delivery ? d.zoneId : null,
+    road_distance_km: delivery ? d.roadDistanceKm : null,
+    truck_size: delivery ? d.truckSize : null,
+    trips: delivery ? d.trips : 0,
+    driver_id: delivery ? d.driverId : null,
+    fee_per_trip: delivery ? d.feePerTrip : 0,
+    remote_surcharge: delivery ? d.remoteSurcharge : 0,
+    discount_type: d.discountType,
+    discount_value: d.discountValue,
+    subtotal: totals.subtotal,
+    delivery_total: totals.deliveryTotal,
+    discount_amount: totals.discountAmount,
+    total: totals.total,
+    payment_method: d.paymentMethod,
+    payment_status: paymentStatus,
+    delivery_status: (delivery ? 'waiting' : 'pickup') as DeliveryStatus,
+    driver_wage: delivery ? d.driverWage : 0,
+    note: d.note.trim(),
+  };
+  const items = d.items
+    .filter((it) => it.quantity > 0)
+    .map((it) => ({
+      product_id: it.productId,
+      name: it.name,
+      unit: it.unit,
+      unit_price: it.unitPrice,
+      quantity: it.quantity,
+      amount: it.amount,
+    }));
+
+  const { data, error } = await supabase.rpc('ss_create_order', { p_order: order, p_items: items, p_by: by });
+  if (error) throw new Error(error.message);
+  const created = await getOrder((data as any).id);
+  if (!created) throw new Error('บันทึกออเดอร์แล้วแต่โหลดข้อมูลไม่ได้');
+  return created;
+}
+
+async function rpcOrder(fn: string, args: Record<string, unknown>): Promise<Order> {
+  const { data, error } = await supabase.rpc(fn, args);
+  if (error) throw new Error(error.message);
+  const order = await getOrder((data as any).id);
+  if (!order) throw new Error('ไม่พบออเดอร์');
+  return order;
+}
+
+export const markOrderPaid = (id: string, method: 'cash' | 'transfer' | 'cod', by: string) =>
+  rpcOrder('ss_mark_order_paid', { p_order_id: id, p_method: method, p_by: by });
+
+export const markOrderUnpaid = (id: string, by: string) =>
+  rpcOrder('ss_mark_order_unpaid', { p_order_id: id, p_by: by });
+
+export const setDeliveryStatus = (id: string, status: DeliveryStatus, by: string) =>
+  rpcOrder('ss_set_delivery_status', { p_order_id: id, p_status: status, p_by: by });
+
+export async function updateOrderFields(
+  id: string,
+  patch: Partial<{ driverId: string | null; driverWage: number; note: string; cancelled: boolean }>,
+  by: string,
+  current: Order,
+): Promise<Order> {
+  const row: Record<string, unknown> = {};
+  const events: string[] = [];
+  if (patch.driverId !== undefined) {
+    row.driver_id = patch.driverId;
+    events.push('driver');
+  }
+  if (patch.driverWage !== undefined) {
+    row.driver_wage = patch.driverWage;
+    events.push(`wage:${patch.driverWage}`);
+  }
+  if (patch.note !== undefined) row.note = patch.note;
+  if (patch.cancelled !== undefined) {
+    row.cancelled = patch.cancelled;
+    events.push(patch.cancelled ? 'cancelled' : 'restored');
+  }
+  if (events.length) {
+    const at = new Date().toISOString();
+    row.status_log = [...current.statusLog, ...events.map((event) => ({ at, by, event }))];
+  }
+  const { error } = await supabase.from('ss_orders').update(row).eq('id', id);
+  if (error) throw new Error(error.message);
+  const order = await getOrder(id);
+  if (!order) throw new Error('ไม่พบออเดอร์');
+  return order;
+}
