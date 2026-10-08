@@ -5,6 +5,7 @@ import { RequireAuth } from './auth/RequireAuth';
 import AppShell from './components/AppShell';
 import { Loading } from './components/ui/States';
 import { CatalogProvider } from './context/CatalogProvider';
+import { retryImport } from './lib/chunkReload';
 import CustomersPage from './pages/CustomersPage';
 import DashboardPage from './pages/DashboardPage';
 import DriverPayPage from './pages/DriverPayPage';
@@ -15,9 +16,9 @@ import SettingsPage from './pages/SettingsPage';
 import StatementsPage from './pages/StatementsPage';
 import VerifyPage from './pages/VerifyPage';
 
-const NewOrderPage = lazy(() => import('./pages/new-order/NewOrderPage'));
-const OrderDetailPage = lazy(() => import('./pages/OrderDetailPage'));
-const BillPage = lazy(() => import('./pages/BillPage'));
+const NewOrderPage = lazy(retryImport(() => import('./pages/new-order/NewOrderPage')));
+const OrderDetailPage = lazy(retryImport(() => import('./pages/OrderDetailPage')));
+const BillPage = lazy(retryImport(() => import('./pages/BillPage')));
 
 const lazyPage = (node: ReactNode) => <Suspense fallback={<Loading />}>{node}</Suspense>;
 
