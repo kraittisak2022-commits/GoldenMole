@@ -140,6 +140,22 @@
       animation-duration: 0.18s;
     }
   }
+
+  .login-hero {
+    background-color: var(--color-primary);
+    background-image:
+      radial-gradient(circle at 15% 0%, rgb(255 255 255 / 0.16), transparent 55%),
+      radial-gradient(rgb(255 255 255 / 0.07) 1px, transparent 1px),
+      linear-gradient(160deg, var(--color-primary), var(--color-primary-hover));
+    background-size:
+      100% 100%,
+      18px 18px,
+      100% 100%;
+  }
+
+  .login-card {
+    animation: step-enter 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
 }
 
 @keyframes fade-in {
