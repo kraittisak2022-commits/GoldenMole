@@ -15,6 +15,7 @@ import {
 import { useAuth } from '../auth/AuthProvider';
 import { isIos, isStandalone, useInstallPrompt } from '../lib/installPrompt';
 import Modal from './ui/Modal';
+import logoUrl from '../assets/pirasit-logo.png';
 
 const navItems = [
   { to: '/', label: 'หน้าหลัก', icon: LayoutDashboard, end: true },
@@ -45,9 +46,12 @@ export default function AppShell() {
     <div className="min-h-[100dvh] bg-page text-ink">
       <div className="flex min-h-[100dvh]">
         <aside className="hidden w-64 shrink-0 border-r border-border bg-surface md:sticky md:top-0 md:flex md:h-[100dvh] md:flex-col md:overflow-y-auto">
-          <div className="border-b border-border px-5 py-5">
-            <p className="text-xs font-medium tracking-wide text-muted">หจก. พีรสิทธิ์ วัสดุก่อสร้าง</p>
-            <h1 className="mt-1 text-lg font-semibold text-ink">ออเดอร์หิน-ทราย</h1>
+          <div className="flex items-center gap-3 border-b border-border px-5 py-4">
+            <img src={logoUrl} alt="" className="h-12 w-auto shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs font-medium tracking-wide text-muted">หจก. พีรสิทธิ์ วัสดุก่อสร้าง</p>
+              <h1 className="mt-0.5 text-lg font-semibold text-ink">ออเดอร์หิน-ทราย</h1>
+            </div>
           </div>
           <div className="p-3">
             <Link
@@ -100,9 +104,12 @@ export default function AppShell() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between border-b border-border bg-surface/95 px-4 pt-safe-top backdrop-blur md:hidden short:hidden">
-            <div>
-              <p className="text-xs text-muted">หจก. พีรสิทธิ์ วัสดุก่อสร้าง</p>
-              <p className="text-sm font-semibold">ออเดอร์หิน-ทราย</p>
+            <div className="flex items-center gap-2.5">
+              <img src={logoUrl} alt="" className="h-9 w-auto shrink-0" />
+              <div>
+                <p className="text-xs text-muted">หจก. พีรสิทธิ์ วัสดุก่อสร้าง</p>
+                <p className="text-sm font-semibold">ออเดอร์หิน-ทราย</p>
+              </div>
             </div>
           </header>
           <main className="mx-auto w-full max-w-6xl flex-1 p-4 pb-28 sm:p-6 md:pb-6 short:pb-20">

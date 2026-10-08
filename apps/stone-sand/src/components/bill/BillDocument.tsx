@@ -3,6 +3,7 @@ import { bahtText } from '../../calc/bahtText';
 import { DOC_TITLE, formatDateShort, formatDateTh, formatDateTime, formatMoney, formatNumber, formatPhone } from '../../lib/format';
 import { promptPayPayload } from '../../lib/promptpay';
 import { PAYMENT_METHOD_LABEL, type CompanySettings, type PaymentSettings } from '../../types';
+import logoUrl from '../../assets/pirasit-logo.png';
 import BillSecurity from './BillSecurity';
 import BillStamp from './BillStamp';
 import QrImage from './QrImage';
@@ -45,9 +46,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
       <div className="relative flex flex-1 flex-col">
         <header className="flex items-start justify-between gap-6 border-b-2 border-[#1e3a5f] pb-3">
           <div className="flex gap-3">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-[#1e3a5f] text-2xl font-bold text-white">
-              พ
-            </div>
+            <img src={logoUrl} alt="" draggable={false} className="h-[72px] w-auto shrink-0" />
             <div>
               <p className="text-[15px] font-bold text-[#1e3a5f]">{company.nameTh}</p>
               <p className="text-[9.5px] font-semibold tracking-wide text-slate-600">{company.nameEn}</p>
@@ -238,12 +237,8 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
           <Signature title={customerSigner} />
           <div className="relative">
             <Signature title={companySigner} org={`ในนาม ${company.nameTh}`} />
-            <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2">
-              <BillStamp
-                size={118}
-                label={b.paid ? 'ชำระเงินแล้ว' : 'พีรสิทธิ์'}
-                sublabel={b.paid ? formatDateTh(b.paidAt || b.date) : 'วัสดุก่อสร้าง'}
-              />
+            <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 ${b.paid ? '-top-24' : '-top-14'}`}>
+              <BillStamp size={140} paidDate={b.paid ? formatDateTh(b.paidAt || b.date) : undefined} />
             </div>
           </div>
         </section>
