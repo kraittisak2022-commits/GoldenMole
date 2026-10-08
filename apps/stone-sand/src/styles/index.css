@@ -118,7 +118,7 @@
 }
 
 @page {
-  size: A4 portrait;
+  size: A4 landscape;
   margin: 0;
 }
 
@@ -132,11 +132,12 @@
     display: none !important;
   }
 
-  .bill-sheet {
+  .bill-spread {
     box-shadow: none !important;
     margin: 0 !important;
-    border: none !important;
-    min-height: 296mm !important;
+    /* a hair under 210mm so rounding never spills onto a second page */
+    height: 209.5mm !important;
+    break-inside: avoid;
   }
 
   .bill-print-root {
@@ -151,10 +152,6 @@
   .bill-scale {
     transform: none !important;
     width: auto !important;
-  }
-
-  .bill-page + .bill-page {
-    break-before: page;
   }
 
   * {

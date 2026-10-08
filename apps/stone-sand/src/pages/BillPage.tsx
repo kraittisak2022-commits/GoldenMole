@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Download, Plus, Printer } from 'lucide-react';
 import BillDocument from '../components/bill/BillDocument';
+import BillSpread from '../components/bill/BillSpread';
 import ScaledSheet from '../components/bill/ScaledSheet';
 import { billFromOrder, billFromStatement, type BillData } from '../components/bill/billData';
 import Button from '../components/ui/Button';
@@ -49,7 +50,6 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
   if (error) return <div className="p-4"><ErrorBox message={error} /></div>;
   if (!bill) return <div className="p-4"><ErrorBox message="ไม่พบเอกสาร" /></div>;
 
-  const verifyUrl = `${window.location.origin}/v/${bill.verifyToken}`;
   const backTo = order ? `/orders/${order.id}` : '/statements';
 
   const savePng = async () => {
@@ -62,8 +62,11 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
         backgroundColor: '#ffffff',
         useCORS: true,
         onclone: (doc) => {
-          doc.querySelectorAll<HTMLElement>('.bill-scale').forEach((el) => {
+          doc.querySelectorAll<HTMLElement>('.bill-scale, .bill-fit').forEach((el) => {
             el.style.transform = 'none';
+          });
+          doc.querySelectorAll<HTMLElement>('.bill-half').forEach((el) => {
+            el.style.overflow = 'visible';
           });
         },
       });
@@ -77,7 +80,7 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-slate-100 print:bg-white">
+    <div className="min-h-[100dvh] bg-slate-100 print:min-h-0 print:bg-white">
       <header className="no-print sticky top-0 z-30 border-b border-border bg-surface/95 pt-safe-top backdrop-blur">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-2 px-3 py-2">
           <Link
@@ -136,26 +139,18 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
         </div>
       ) : null}
 
-      <main className="bill-print-root mx-auto flex max-w-4xl flex-col gap-6 p-3 sm:p-6">
-        <div className="bill-page">
-          <ScaledSheet>
-            <BillDocument
-              ref={sheetRef}
-              bill={bill}
-              copy="original"
-              company={settings.company}
-              payment={settings.payment}
-              verifyUrl={verifyUrl}
-            />
-          </ScaledSheet>
-        </div>
-        {copies === 'both' ? (
-          <div className="bill-page">
-            <ScaledSheet>
-              <BillDocument bill={bill} copy="copy" company={settings.company} payment={settings.payment} verifyUrl={verifyUrl} />
-            </ScaledSheet>
-          </div>
-        ) : null}
+      <main className="bill-print-root mx-auto max-w-6xl p-3 sm:p-6">
+        <p className="no-print mb-2 text-center text-xs text-muted">กระดาษ A4 แนวนอน · ต้นฉบับซ้าย สำเนาขวา (ขนาด A5) ตัดตามเส้นประ</p>
+        <ScaledSheet>
+          <BillSpread
+            left={<BillDocument ref={sheetRef} bill={bill} copy="original" company={settings.company} payment={settings.payment} />}
+            right={
+              copies === 'both' ? (
+                <BillDocument bill={bill} copy="copy" company={settings.company} payment={settings.payment} />
+              ) : null
+            }
+          />
+        </ScaledSheet>
       </main>
     </div>
   );

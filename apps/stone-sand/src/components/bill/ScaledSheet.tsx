@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
-/** 210mm at 96dpi */
-const SHEET_PX = 794;
+/** 297mm (landscape A4) at 96dpi */
+const SHEET_PX = 1123;
 
-/** Shrinks an A4 sheet to the available width on screen; print CSS removes the transform. */
+/** Shrinks a landscape A4 sheet to the available width on screen; print CSS removes the transform. */
 export default function ScaledSheet({ children }: { children: ReactNode }) {
   const outer = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);

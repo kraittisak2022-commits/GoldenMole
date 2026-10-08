@@ -14,8 +14,11 @@ interface Props {
   copy: 'original' | 'copy';
   company: CompanySettings;
   payment: PaymentSettings;
-  verifyUrl: string;
 }
+
+/** Designed narrower than A4 so it stays legible when fitted onto half an A4 sheet (A5). */
+const SHEET_WIDTH = '160mm';
+const SHEET_HEIGHT = '226.3mm';
 
 const SIGNERS: Record<BillData['kind'], [string, string]> = {
   delivery: ['ผู้รับสินค้า', 'ผู้ส่งสินค้า'],
@@ -23,7 +26,7 @@ const SIGNERS: Record<BillData['kind'], [string, string]> = {
   statement: ['ผู้รับวางบิล', 'ผู้วางบิล'],
 };
 
-const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ bill: b, copy, company, payment, verifyUrl }, ref) {
+const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ bill: b, copy, company, payment }, ref) {
   const title = DOC_TITLE[b.kind];
   const statement = b.kind === 'statement';
   const showPromptPay =
@@ -35,8 +38,8 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
   return (
     <div
       ref={ref}
-      className="bill-sheet bill-protect relative mx-auto flex flex-col overflow-hidden bg-white text-[12.5px] leading-snug text-slate-900 shadow-lg"
-      style={{ width: '210mm', minHeight: '297mm', padding: '13mm 14mm 11mm' }}
+      className="bill-sheet bill-protect relative flex flex-col overflow-hidden bg-white text-[12.5px] leading-snug text-slate-900"
+      style={{ width: SHEET_WIDTH, minHeight: SHEET_HEIGHT, padding: '9mm 9mm 7mm' }}
       onContextMenu={(e) => e.preventDefault()}
       onCopy={(e) => e.preventDefault()}
       onDragStart={(e) => e.preventDefault()}
@@ -44,9 +47,9 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
       <BillSecurity docNo={b.docNo} label={copy === 'original' ? 'ORIGINAL' : 'COPY'} />
 
       <div className="relative flex flex-1 flex-col">
-        <header className="flex items-start justify-between gap-6 border-b-2 border-[#1e3a5f] pb-3">
+        <header className="flex items-start justify-between gap-4 border-b-2 border-[#1e3a5f] pb-3">
           <div className="flex gap-3">
-            <img src={logoUrl} alt="" draggable={false} className="h-[72px] w-auto shrink-0" />
+            <img src={logoUrl} alt="" draggable={false} className="h-[60px] w-auto shrink-0" />
             <div>
               <p className="text-[15px] font-bold text-[#1e3a5f]">{company.nameTh}</p>
               <p className="text-[9.5px] font-semibold tracking-wide text-slate-600">{company.nameEn}</p>
@@ -57,7 +60,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
             </div>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-[22px] font-bold leading-tight text-[#1e3a5f]">{title.th}</p>
+            <p className="text-[20px] font-bold leading-tight text-[#1e3a5f]">{title.th}</p>
             <p className="text-[11px] font-semibold tracking-[0.2em] text-slate-500">{title.en}</p>
             <span className="mt-1.5 inline-block rounded border border-[#1e3a5f] px-2 py-0.5 text-[10.5px] font-semibold text-[#1e3a5f]">
               {copyLabel}
@@ -65,7 +68,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
           </div>
         </header>
 
-        <section className="mt-3 grid grid-cols-[1fr_15.5rem] gap-3">
+        <section className="mt-3 grid grid-cols-[1fr_13rem] gap-3">
           <div className="rounded-md border border-slate-300 px-3 py-2">
             <p className="text-[10.5px] font-semibold text-slate-500">ลูกค้า / CUSTOMER</p>
             <p className="text-[14px] font-semibold">{b.customer.name}</p>
@@ -145,7 +148,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
                 <Td className="text-right tabular-nums">{formatMoney(l.amount)}</Td>
               </tr>
             ))}
-            {Array.from({ length: Math.max(0, (statement ? 6 : 5) - b.lines.length) }).map((_, i) => (
+            {Array.from({ length: Math.max(0, (statement ? 4 : 3) - b.lines.length) }).map((_, i) => (
               <tr key={`pad-${i}`} className="border-b border-slate-100">
                 <td className="h-7" colSpan={statement ? 4 : 6} />
               </tr>
@@ -153,7 +156,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
           </tbody>
         </table>
 
-        <section className="mt-3 grid grid-cols-[1fr_16rem] gap-4">
+        <section className="mt-3 grid grid-cols-[1fr_14rem] gap-4">
           <div className="flex flex-col gap-2">
             <div className="rounded-md bg-slate-100 px-3 py-2 text-center text-[12.5px] font-semibold">
               ({bahtText(b.total)})
@@ -233,25 +236,18 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
 
         <div className="flex-1" />
 
-        <section className="mt-6 grid grid-cols-2 gap-8">
+        <section className="mt-4 grid grid-cols-2 gap-6">
           <Signature title={customerSigner} />
           <div className="relative">
             <Signature title={companySigner} org={`ในนาม ${company.nameTh}`} />
-            <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 ${b.paid ? '-top-24' : '-top-14'}`}>
-              <BillStamp size={140} paidDate={b.paid ? formatDateTh(b.paidAt || b.date) : undefined} />
+            <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 ${b.paid ? '-top-20' : '-top-12'}`}>
+              <BillStamp size={112} paidDate={b.paid ? formatDateTh(b.paidAt || b.date) : undefined} />
             </div>
           </div>
         </section>
 
-        <footer className="mt-5 flex items-end justify-between gap-4 border-t border-slate-300 pt-2">
-          <div className="flex items-center gap-2.5">
-            <QrImage value={verifyUrl} size={58} label="QR ตรวจสอบเอกสาร" />
-            <div className="text-[10px] leading-tight text-slate-600">
-              <p className="font-semibold text-slate-800">สแกนเพื่อตรวจสอบความถูกต้องของเอกสาร</p>
-              <p className="break-all">{verifyUrl}</p>
-              <p>พิมพ์เมื่อ {formatDateTime(new Date())}</p>
-            </div>
-          </div>
+        <footer className="mt-4 flex items-center justify-between gap-4 border-t border-slate-300 pt-2">
+          <p className="text-[10px] text-slate-600">พิมพ์เมื่อ {formatDateTime(new Date())}</p>
           <p className="shrink-0 rounded border border-slate-400 px-2 py-1 text-[10.5px] font-semibold text-slate-700">
             เอกสารนี้ไม่ใช่ใบกำกับภาษี
           </p>
@@ -300,7 +296,7 @@ function TotalRow({ label, value }: { label: string; value: string }) {
 function Signature({ title, org }: { title: string; org?: string }) {
   return (
     <div className="text-center text-[11.5px]">
-      <div className="mx-auto mt-10 w-52 border-b border-dotted border-slate-500" />
+      <div className="mx-auto mt-8 w-44 border-b border-dotted border-slate-500" />
       <p className="mt-1">( ........................................ )</p>
       <p className="font-semibold">{title}</p>
       {org ? <p className="text-[10px] text-slate-500">{org}</p> : null}
