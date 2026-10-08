@@ -39,6 +39,7 @@ export function matchesSearch(o: Order, query: string): boolean {
   const digits = q.replace(/\D/g, '');
   return (
     o.customer.name.toLowerCase().includes(q) ||
+    (o.customerAliases ?? []).some((a) => a.toLowerCase().includes(q)) ||
     o.orderNo.toLowerCase().includes(q) ||
     (o.receiptNo ?? '').toLowerCase().includes(q) ||
     (digits.length >= 3 && o.customer.phone.replace(/\D/g, '').includes(digits))

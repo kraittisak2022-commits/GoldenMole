@@ -173,7 +173,7 @@ export default function StepCustomer({ customer, onSelect }: Props) {
           <Field id="c-name" label="ชื่อลูกค้า / ชื่อร้าน *">
             <Input id="c-name" autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <Field id="c-aliases" label="ชื่อเรียกอื่น / ชื่อเล่น (ถ้ามี)" hint="คั่นหลายชื่อด้วย , เช่น เสี่ยบาส, บาส">
+          <Field id="c-aliases" label="ชื่อเรียก (ถ้ามี · ไว้ค้นหา ไม่แสดงในบิล)" hint="คั่นหลายชื่อด้วย , เช่น เสี่ยบาส, บาส">
             <Input id="c-aliases" value={form.aliasText} onChange={(e) => setForm({ ...form, aliasText: e.target.value })} />
           </Field>
           <Field id="c-phone" label="เบอร์โทร">

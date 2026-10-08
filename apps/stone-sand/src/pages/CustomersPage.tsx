@@ -327,7 +327,7 @@ function CustomerForm({
         <Field id="cf-name" label="ชื่อลูกค้า / ชื่อร้าน *">
           <Input id="cf-name" autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         </Field>
-        <Field id="cf-aliases" label="ชื่อเรียกอื่น / ชื่อเล่น" hint="ใช้ค้นหาได้ คั่นหลายชื่อด้วย , เช่น เสี่ยบาส, บาส">
+        <Field id="cf-aliases" label="ชื่อเรียก (ไว้ค้นหา ไม่แสดงในบิล)" hint="คั่นหลายชื่อด้วย , เช่น เสี่ยบาส, บาส">
           <Input id="cf-aliases" value={aliasText} onChange={(e) => setAliasText(e.target.value)} placeholder="เสี่ยบาส, บาส" />
         </Field>
         <Field id="cf-phone" label="เบอร์โทร">

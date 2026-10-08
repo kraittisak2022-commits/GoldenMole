@@ -1,4 +1,5 @@
 import { computeTotals, lineAmount } from '../calc/pricing';
+import { parseAliases } from '../lib/customerSearch';
 import { supabase } from '../lib/supabase';
 import { scoped } from './sourceScope';
 import type {
@@ -17,7 +18,7 @@ import { toSnapshot } from './customers';
 const num = (v: unknown) => (v == null ? 0 : Number(v));
 const numOrNull = (v: unknown) => (v == null ? null : Number(v));
 
-const ORDER_SELECT = '*, items:ss_order_items(*), stmt:ss_statement_orders(statement_id)';
+const ORDER_SELECT = '*, items:ss_order_items(*), stmt:ss_statement_orders(statement_id), cust:ss_customers(aliases)';
 
 function mapItem(row: any): OrderItem {
   return {
@@ -49,6 +50,7 @@ export function mapOrder(row: any): Order {
       address: row.customer_snapshot?.address || '',
       taxId: row.customer_snapshot?.taxId || '',
     },
+    customerAliases: parseAliases(row.cust?.aliases || ''),
     fulfillment: row.fulfillment,
     deliveryAddress: row.delivery_address || '',
     pinLat: row.pin_lat,

@@ -69,6 +69,10 @@ describe('matchesSearch', () => {
     expect(matchesSearch(base, '093-123')).toBe(true);
     expect(matchesSearch(base, 'สมหญิง')).toBe(false);
   });
+
+  it('finds by the customer ชื่อเรียก', () => {
+    expect(matchesSearch({ ...base, customerAliases: ['เสี่ยบาส'] }, 'บาส')).toBe(true);
+  });
 });
 
 describe('summarizeOutstanding', () => {

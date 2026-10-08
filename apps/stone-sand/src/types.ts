@@ -115,6 +115,8 @@ export interface Order {
   orderDate: string;
   customerId: string;
   customer: CustomerSnapshot;
+  /** From the live customer record, for search only; never part of the bill snapshot. */
+  customerAliases?: string[];
   fulfillment: Fulfillment;
   deliveryAddress: string;
   pinLat: number | null;

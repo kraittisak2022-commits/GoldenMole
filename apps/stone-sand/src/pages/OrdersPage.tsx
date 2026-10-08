@@ -91,7 +91,7 @@ export default function OrdersPage() {
           <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden />
           <Input
             aria-label="ค้นหาออเดอร์"
-            placeholder="ค้นหาชื่อลูกค้า เบอร์โทร หรือเลขที่บิล"
+            placeholder="ค้นหาชื่อ ชื่อเรียก เบอร์โทร หรือเลขที่บิล"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="pl-10"
