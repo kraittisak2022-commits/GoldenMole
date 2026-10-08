@@ -14,11 +14,12 @@ import { useCatalog } from '../context/CatalogProvider';
 import { createDriverPayout, deleteDriverPayout, listDriverPayouts } from '../data/driverPayouts';
 import { listDriverUnpaidOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
-import { suggestedDriverPay, summarizeDriverDues } from '../lib/driverPay';
+import { codToCollect, suggestedDriverPay, summarizeDriverDues } from '../lib/driverPay';
 import { formatDateShort, formatDateTime, formatMoney, formatNumber, toIsoDate } from '../lib/format';
 import { PAYMENT_METHOD_LABEL, type DriverPayout, type Order } from '../types';
 
 const PAY_HINTS: Record<PayMethod, string> = { cash: 'จ่ายเงินสดให้คนขับ', transfer: 'โอนเข้าบัญชีคนขับ' };
+const DRIVER_PAYS_HINTS: Record<PayMethod, string> = { cash: 'คนขับส่งเงินสด', transfer: 'คนขับโอนเข้าบัญชีร้าน' };
 
 export default function DriverPayPage() {
   const { user, isSuperAdmin } = useAuth();
@@ -102,7 +103,14 @@ export default function DriverPayPage() {
                             {row.count} ออเดอร์ · {formatNumber(row.trips)} เที่ยว · ตั้งแต่ {formatDateShort(row.oldestDate)}
                           </p>
                         </div>
-                        <p className="font-semibold tabular-nums">{formatMoney(row.total)}</p>
+                        <div className="text-right">
+                          <p className="font-semibold tabular-nums">{formatMoney(row.total)}</p>
+                          {row.cash ? (
+                            <p className="text-xs text-warning">เก็บปลายทาง {formatMoney(row.cash)}</p>
+                          ) : (
+                            <p className="text-xs text-muted">ค่ารถ</p>
+                          )}
+                        </div>
                       </button>
                     </li>
                   ))}
@@ -170,7 +178,19 @@ export default function DriverPayPage() {
                       </p>
                       {p.note ? <p className="mt-1 text-xs text-muted">หมายเหตุ: {p.note}</p> : null}
                     </div>
-                    <p className="font-semibold tabular-nums">{formatMoney(p.total)}</p>
+                    <div className="text-right text-sm">
+                      <p className="font-semibold tabular-nums">ค่ารถ {formatMoney(p.total)}</p>
+                      {p.cashCollected ? (
+                        <>
+                          <p className="text-xs text-muted tabular-nums">รับเงินสดจากคนขับ {formatMoney(p.cashCollected)}</p>
+                          <p className="text-xs font-medium tabular-nums">
+                            {p.total >= p.cashCollected
+                              ? `ร้านจ่ายคนขับ ${formatMoney(p.total - p.cashCollected)}`
+                              : `คนขับส่งร้าน ${formatMoney(p.cashCollected - p.total)}`}
+                          </p>
+                        </>
+                      ) : null}
+                    </div>
                     {isSuperAdmin ? (
                       <Button variant="ghost" aria-label={`ลบ ${p.payoutNo}`} onClick={() => remove(p)}>
                         <Trash2 size={16} aria-hidden />
@@ -227,6 +247,15 @@ function PayoutPanel({
   const chosen = inRange.filter((o) => selected.has(o.id));
   const total = chosen.reduce((s, o) => s + (amounts[o.id] ?? 0), 0);
   const trips = chosen.reduce((s, o) => s + o.trips, 0);
+  const cash = chosen.reduce((s, o) => s + codToCollect(o), 0);
+  const codCount = chosen.filter((o) => codToCollect(o) > 0).length;
+  const net = total - cash;
+  const needsMethod = net !== 0;
+  const [cashConfirmed, setCashConfirmed] = useState(false);
+
+  useEffect(() => {
+    setCashConfirmed(false);
+  }, [cash]);
 
   const toggle = (id: string) => {
     const next = new Set(selected);
@@ -237,16 +266,18 @@ function PayoutPanel({
 
   const submit = async () => {
     if (!chosen.length) return setError('เลือกออเดอร์อย่างน้อย 1 รายการ');
-    if (!method) return setError('เลือกช่องทางการจ่ายเงิน');
+    if (needsMethod && !method) return setError('เลือกช่องทางการจ่ายเงิน');
+    if (cash > 0 && !cashConfirmed) return setError('ยืนยันการรับเงินสดจากคนขับก่อน');
     setSaving(true);
     setError('');
     try {
       const no = await createDriverPayout({
         driverId,
         lines: chosen.map((o) => ({ orderId: o.id, amount: amounts[o.id] ?? 0 })),
-        method,
+        method: method ?? 'cash',
         note,
         by,
+        cashExpected: cash,
       });
       onPaid(no);
     } catch (err) {
@@ -305,6 +336,9 @@ function PayoutPanel({
                       <span className="whitespace-nowrap font-medium tabular-nums">{o.orderNo}</span>
                       {o.deliveryStatus !== 'delivered' ? <Badge tone="warning">ยังไม่ส่ง</Badge> : null}
                     </span>
+                    {codToCollect(o) ? (
+                      <span className="block text-xs font-medium text-primary">เก็บเงินปลายทาง {formatNumber(codToCollect(o))}</span>
+                    ) : null}
                     <span className="block truncate text-xs text-muted">
                       {formatDateShort(o.orderDate)} · {o.customer.name}
                     </span>
@@ -334,14 +368,59 @@ function PayoutPanel({
             </p>
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded bg-subtle px-4 py-3">
-            <span className="text-sm text-muted">
-              {chosen.length} ออเดอร์ · {formatNumber(trips)} เที่ยว
-            </span>
-            <span className="text-xl font-bold tabular-nums text-primary">{formatMoney(total)}</span>
-          </div>
+          {cash ? (
+            <dl className="flex flex-col gap-1.5 rounded bg-subtle px-4 py-3 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">
+                  ค่ารถ · {chosen.length} ออเดอร์ · {formatNumber(trips)} เที่ยว
+                </dt>
+                <dd className="tabular-nums">{formatMoney(total)}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">หัก เงินเก็บปลายทาง ({codCount} ออเดอร์)</dt>
+                <dd className="tabular-nums text-destructive">-{formatMoney(cash)}</dd>
+              </div>
+              <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-border pt-2">
+                <dt className="font-semibold">{net >= 0 ? 'ร้านจ่ายคนขับ' : 'คนขับต้องส่งเงินให้ร้าน'}</dt>
+                <dd className={['text-xl font-bold tabular-nums', net >= 0 ? 'text-primary' : 'text-warning'].join(' ')}>
+                  {formatMoney(Math.abs(net))}
+                </dd>
+              </div>
+            </dl>
+          ) : (
+            <div className="flex items-center justify-between gap-3 rounded bg-subtle px-4 py-3">
+              <span className="text-sm text-muted">
+                {chosen.length} ออเดอร์ · {formatNumber(trips)} เที่ยว
+              </span>
+              <span className="text-xl font-bold tabular-nums text-primary">{formatMoney(total)}</span>
+            </div>
+          )}
 
-          <PayMethodPicker value={method} onChange={setMethod} hints={PAY_HINTS} label="จ่ายค่ารถด้วย" />
+          {cash ? (
+            <label className="flex cursor-pointer items-start gap-3 rounded border-2 border-amber-300 bg-warning-soft px-4 py-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary)]"
+                checked={cashConfirmed}
+                onChange={(e) => setCashConfirmed(e.target.checked)}
+              />
+              <span>
+                <span className="block font-semibold">ได้รับเงินสด {formatMoney(cash)} บาท จากคนขับแล้ว</span>
+                <span className="block text-muted">
+                  เงินค่าสินค้าที่คนขับเก็บจากลูกค้า ออเดอร์เก็บปลายทางจะเปลี่ยนเป็น "จ่ายแล้ว" และออกใบเสร็จให้อัตโนมัติ
+                </span>
+              </span>
+            </label>
+          ) : null}
+
+          {needsMethod ? (
+            <PayMethodPicker
+              value={method}
+              onChange={setMethod}
+              hints={net > 0 ? PAY_HINTS : DRIVER_PAYS_HINTS}
+              label={net < 0 ? 'คนขับส่งเงินส่วนต่างด้วย' : cash ? 'จ่ายส่วนต่างให้คนขับด้วย' : 'จ่ายค่ารถด้วย'}
+            />
+          ) : null}
 
           <Field id="dp-note" label="หมายเหตุ">
             <Input id="dp-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="เช่น โอนเข้าบัญชีภรรยา" />
@@ -349,8 +428,13 @@ function PayoutPanel({
 
           {error ? <ErrorBox message={error} /> : null}
 
-          <Button variant="success" size="lg" onClick={submit} disabled={saving || !chosen.length || !method}>
-            <Check size={18} aria-hidden /> {saving ? 'กำลังบันทึก…' : 'ยืนยันจ่ายค่ารถ'}
+          <Button
+            variant="success"
+            size="lg"
+            onClick={submit}
+            disabled={saving || !chosen.length || (needsMethod && !method) || (cash > 0 && !cashConfirmed)}
+          >
+            <Check size={18} aria-hidden /> {saving ? 'กำลังบันทึก…' : cash ? 'ยืนยันเคลียร์ค่ารถ' : 'ยืนยันจ่ายค่ารถ'}
           </Button>
         </div>
       )}

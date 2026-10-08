@@ -7,13 +7,14 @@ import Card from '../components/ui/Card';
 import Field from '../components/ui/Field';
 import Input from '../components/ui/Input';
 import PageHeader from '../components/ui/PageHeader';
+import Select from '../components/ui/Select';
 import { ErrorBox, Loading } from '../components/ui/States';
 import Textarea from '../components/ui/Textarea';
 import { useCatalog } from '../context/CatalogProvider';
 import { createProduct, createZone, deleteProduct, deleteZone, saveProduct, saveSetting, saveZone } from '../data/catalog';
 import { formatNumber } from '../lib/format';
 import { promptPayTarget } from '../lib/promptpay';
-import type { AppSettings, Product, Zone } from '../types';
+import { PRODUCT_CATEGORY_LABEL, type AppSettings, type Product, type ProductCategory, type Zone } from '../types';
 
 export default function SettingsPage() {
   const { products, zones, settings, loading, error, reload } = useCatalog();
@@ -123,7 +124,10 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
   const saver = useSaver(onSaved);
   const update = (id: string, patch: Partial<Product>) => setRows(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const add = () =>
-    setRows([...rows, { id: `${NEW_PREFIX}${Date.now()}`, name: '', unit: 'คิว', pricePerUnit: 0, sortOrder: nextSort(rows), active: true }]);
+    setRows([
+      ...rows,
+      { id: `${NEW_PREFIX}${Date.now()}`, name: '', category: 'stone', unit: 'คิว', pricePerUnit: 0, sortOrder: nextSort(rows), active: true },
+    ]);
   const remove = (p: Product) => {
     if (isNew(p.id) || window.confirm(`ลบสินค้า "${p.name}"? (ออเดอร์เก่ายังแสดงชื่อเดิม) กดบันทึกเพื่อยืนยัน`)) {
       setRows(rows.filter((r) => r.id !== p.id));
@@ -148,7 +152,13 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
               continue;
             }
             const before = products.find((p) => p.id === r.id);
-            if (before && (before.pricePerUnit !== r.pricePerUnit || before.name !== r.name || before.active !== r.active)) {
+            if (
+              before &&
+              (before.pricePerUnit !== r.pricePerUnit ||
+                before.name !== r.name ||
+                before.category !== r.category ||
+                before.active !== r.active)
+            ) {
               await saveProduct(r);
             }
           }
@@ -160,12 +170,29 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
           <li
             key={p.id}
             className={[
-              'grid items-end gap-3',
-              isSuperAdmin ? 'grid-cols-[1fr_7rem_auto] sm:grid-cols-[1fr_7rem_auto_auto]' : 'grid-cols-[1fr_7rem] sm:grid-cols-[1fr_7rem_auto]',
+              'grid items-end gap-3 border-b border-border pb-3 last:border-0 last:pb-0 sm:border-0 sm:pb-0',
+              isSuperAdmin
+                ? 'grid-cols-[1fr_7rem_auto] sm:grid-cols-[1fr_6rem_7rem_auto_auto]'
+                : 'grid-cols-[1fr_7rem] sm:grid-cols-[1fr_6rem_7rem_auto]',
             ].join(' ')}
           >
-            <Field id={`p-name-${p.id}`} label="ชื่อสินค้า">
-              <Input id={`p-name-${p.id}`} value={p.name} onChange={(e) => update(p.id, { name: e.target.value })} />
+            <div className="col-span-full sm:col-span-1">
+              <Field id={`p-name-${p.id}`} label="ชื่อสินค้า">
+                <Input id={`p-name-${p.id}`} value={p.name} onChange={(e) => update(p.id, { name: e.target.value })} />
+              </Field>
+            </div>
+            <Field id={`p-cat-${p.id}`} label="หมวด">
+              <Select
+                id={`p-cat-${p.id}`}
+                value={p.category}
+                onChange={(e) => update(p.id, { category: e.target.value as ProductCategory })}
+              >
+                {(Object.keys(PRODUCT_CATEGORY_LABEL) as ProductCategory[]).map((c) => (
+                  <option key={c} value={c}>
+                    {PRODUCT_CATEGORY_LABEL[c]}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field id={`p-price-${p.id}`} label="บาท/คิว">
               <Input

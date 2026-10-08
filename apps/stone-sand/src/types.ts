@@ -6,9 +6,17 @@ export type PaymentStatus = 'unpaid' | 'paid' | 'credit';
 export type DeliveryStatus = 'pickup' | 'waiting' | 'dispatched' | 'delivered';
 export type DiscountType = 'baht' | 'percent';
 
+export type ProductCategory = 'stone' | 'sand';
+
+export const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
+  stone: 'หิน',
+  sand: 'ทราย',
+};
+
 export interface Product {
   id: string;
   name: string;
+  category: ProductCategory;
   unit: string;
   pricePerUnit: number;
   sortOrder: number;
@@ -136,7 +144,10 @@ export interface DriverPayout {
   payoutNo: string;
   driverId: string;
   driverName: string;
+  /** ค่ารถ paid to the driver. */
   total: number;
+  /** COD money the driver handed over in this payout. */
+  cashCollected: number;
   method: 'cash' | 'transfer';
   note: string;
   createdBy: string | null;

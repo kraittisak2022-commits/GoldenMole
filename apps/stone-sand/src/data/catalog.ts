@@ -8,6 +8,7 @@ const toNum = (v: unknown) => Number(v ?? 0);
 const mapProduct = (row: any): Product => ({
   id: row.id,
   name: row.name,
+  category: row.category === 'sand' ? 'sand' : 'stone',
   unit: row.unit,
   pricePerUnit: toNum(row.price_per_unit),
   sortOrder: row.sort_order,
@@ -28,18 +29,19 @@ export async function listProducts(): Promise<Product[]> {
   return (data || []).map(mapProduct);
 }
 
-export async function saveProduct(p: Pick<Product, 'id' | 'name' | 'pricePerUnit' | 'active'>): Promise<void> {
+export async function saveProduct(p: Pick<Product, 'id' | 'name' | 'category' | 'pricePerUnit' | 'active'>): Promise<void> {
   const { error } = await supabase
     .from('ss_products')
-    .update({ name: p.name.trim(), price_per_unit: p.pricePerUnit, active: p.active })
+    .update({ name: p.name.trim(), category: p.category, price_per_unit: p.pricePerUnit, active: p.active })
     .eq('id', p.id);
   if (error) throw new Error(error.message);
 }
 
-export async function createProduct(p: Pick<Product, 'name' | 'unit' | 'pricePerUnit' | 'sortOrder'>): Promise<void> {
+export async function createProduct(p: Pick<Product, 'name' | 'category' | 'unit' | 'pricePerUnit' | 'sortOrder'>): Promise<void> {
   const { error } = await supabase.from('ss_products').insert({
     id: newId('prd'),
     name: p.name.trim(),
+    category: p.category,
     unit: p.unit.trim() || 'คิว',
     price_per_unit: p.pricePerUnit,
     sort_order: p.sortOrder,
