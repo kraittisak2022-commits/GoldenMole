@@ -6,6 +6,7 @@ import {
   quantitiesOf,
   toDraft,
   validateStep,
+  withDeliveryPlan,
   type WizardState,
 } from './wizardState';
 
@@ -89,6 +90,37 @@ describe('toDraft', () => {
 
   it('skips products with zero quantity', () => {
     expect(buildItems(products, { 'small-stone': 0, 'fill-sand': 1 })).toHaveLength(1);
+  });
+});
+
+describe('withDeliveryPlan', () => {
+  it('takes trips from the products and the smallest truck that fits', () => {
+    const s = withDeliveryPlan(state({ loads: { 'small-stone': { perTrip: 3, trips: 2 }, 'fill-sand': { perTrip: 2, trips: 1 } } }));
+    expect(s.trips).toBe(3);
+    expect(s.truckSize).toBe(3);
+  });
+
+  it('keeps a bigger truck the user chose, but never one that is too small', () => {
+    const loads = { 'small-stone': { perTrip: 3, trips: 2 } };
+    expect(withDeliveryPlan(state({ loads, truckSize: 5, truckTouched: true })).truckSize).toBe(5);
+    const grown = withDeliveryPlan(state({ loads: { 'small-stone': { perTrip: 5, trips: 2 } }, truckSize: 3, truckTouched: true }));
+    expect(grown.truckSize).toBe(5);
+    expect(grown.truckTouched).toBe(false);
+  });
+
+  it('drops a driver whose truck no longer carries the load', () => {
+    const picked = state({ driverId: 'drv-ko', driverTruckSize: 3, driverConfirmed: true, truckSize: 3, truckTouched: true });
+    const fits = withDeliveryPlan({ ...picked, loads: { 'small-stone': { perTrip: 3, trips: 1 } } });
+    expect(fits.driverId).toBe('drv-ko');
+    const tooBig = withDeliveryPlan({ ...picked, loads: { 'small-stone': { perTrip: 5, trips: 1 } } });
+    expect(tooBig.driverId).toBeNull();
+    expect(tooBig.driverConfirmed).toBe(false);
+    expect(tooBig.truckSize).toBe(5);
+  });
+
+  it('returns the same object when nothing changes', () => {
+    const s = withDeliveryPlan(state({ loads: { 'small-stone': { perTrip: 3, trips: 1 } } }));
+    expect(withDeliveryPlan(s)).toBe(s);
   });
 });
 

@@ -1,5 +1,5 @@
 import { lineAmount } from '../../calc/pricing';
-import type { Load } from '../../calc/trips';
+import { totalTrips, truckFits, truckForLoads, type Load } from '../../calc/trips';
 import type { OrderDraft } from '../../data/orders';
 import type { Customer, DiscountType, Fulfillment, OrderItem, PaymentMethod, Product, TruckSize } from '../../types';
 
@@ -17,11 +17,11 @@ export interface WizardState {
   truckSize: TruckSize;
   truckTouched: boolean;
   trips: number;
-  tripsTouched: boolean;
   feePerTrip: number;
   feeTouched: boolean;
   remoteSurcharge: number;
   driverId: string | null;
+  driverTruckSize: TruckSize | null;
   driverConfirmed: boolean;
   discountType: DiscountType;
   discountValue: number;
@@ -55,12 +55,12 @@ export const initialWizardState: WizardState = {
   roadLabel: '',
   truckSize: 5,
   truckTouched: false,
-  trips: 1,
-  tripsTouched: false,
+  trips: 0,
   feePerTrip: 0,
   feeTouched: false,
   remoteSurcharge: 0,
   driverId: null,
+  driverTruckSize: null,
   driverConfirmed: false,
   discountType: 'baht',
   discountValue: 0,
@@ -92,6 +92,27 @@ export function quantitiesOf(loads: Record<string, Load>): Record<string, number
   );
 }
 
+/**
+ * Keeps the delivery step in line with the products step: trips are the trips entered per product,
+ * and the truck (and selected driver's truck) must carry the largest คิวต่อเที่ยว.
+ */
+export function withDeliveryPlan(s: WizardState): WizardState {
+  const loads = Object.values(s.loads);
+  const trips = totalTrips(loads);
+  const keepTruck = s.truckTouched && truckFits(s.truckSize, loads);
+  const truckSize = keepTruck ? s.truckSize : truckForLoads(loads);
+  const dropDriver = !!s.driverId && s.driverTruckSize != null && !truckFits(s.driverTruckSize, loads);
+
+  if (trips === s.trips && truckSize === s.truckSize && keepTruck === s.truckTouched && !dropDriver) return s;
+  return {
+    ...s,
+    trips,
+    truckSize,
+    truckTouched: keepTruck,
+    ...(dropDriver ? { driverId: null, driverTruckSize: null, driverConfirmed: false } : {}),
+  };
+}
+
 /** Error message for the step, or '' when the step is complete. */
 export function validateStep(step: number, s: WizardState): string {
   switch (STEPS[step]?.key) {
@@ -104,7 +125,6 @@ export function validateStep(step: number, s: WizardState): string {
       if (s.fulfillment === 'delivery') {
         if (!s.pin && !s.deliveryAddress.trim()) return 'ปักหมุดหรือใส่ที่อยู่จัดส่ง';
         if (!s.zoneId) return 'เลือกตำบลที่จัดส่ง';
-        if (!(s.trips >= 1)) return 'จำนวนเที่ยวต้องอย่างน้อย 1';
         if (s.driverId && !s.driverConfirmed) return 'ยืนยันว่ารถเข้าหน้างานได้และมีคิวว่าง';
       }
       return '';

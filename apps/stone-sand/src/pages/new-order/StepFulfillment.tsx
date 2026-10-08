@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, Crosshair, Link2, MapPin, Minus, Phone, Plus, Store, Truck } from 'lucide-react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { AlertTriangle, Crosshair, Link2, MapPin, Pencil, Phone, Store, Truck } from 'lucide-react';
 import { suggestDeliveryFee } from '../../calc/deliveryFee';
-import { tripsForLoads, truckForLoads, type Load } from '../../calc/trips';
+import { truckFits, type Load } from '../../calc/trips';
 import DeliveryMap, { type LatLng } from '../../components/map/DeliveryMap';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
@@ -32,13 +32,18 @@ interface Props {
   zones: Zone[];
   drivers: Driver[];
   settings: AppSettings;
-  totalQty: number;
-  loads: Load[];
+  loadLines: LoadLine[];
+  onEditProducts: () => void;
+}
+
+export interface LoadLine extends Load {
+  id: string;
+  name: string;
 }
 
 type GroupFilter = 'all' | RouteGroup;
 
-export default function StepFulfillment({ state: s, patch, customer, zones, drivers, settings, totalQty, loads }: Props) {
+export default function StepFulfillment({ state: s, patch, customer, zones, drivers, settings, loadLines, onEditProducts }: Props) {
   const [flyTarget, setFlyTarget] = useState<LatLng | null>(null);
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState('');
@@ -46,18 +51,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
   const [group, setGroup] = useState<GroupFilter>('all');
 
   const zone = zones.find((z) => z.id === s.zoneId);
-
-  useEffect(() => {
-    if (s.fulfillment !== 'delivery') return;
-    const next: Partial<WizardState> = {};
-    const size = s.truckTouched ? s.truckSize : truckForLoads(loads);
-    if (size !== s.truckSize) next.truckSize = size;
-    if (!s.tripsTouched) {
-      const trips = tripsForLoads(loads, size);
-      if (trips !== s.trips) next.trips = trips;
-    }
-    if (Object.keys(next).length) patch(next);
-  }, [s.fulfillment, loads, s.truckTouched, s.tripsTouched, s.truckSize, s.trips, patch]);
+  const largestPerTrip = Math.max(0, ...loadLines.map((l) => l.perTrip));
 
   const chooseFulfillment = (f: 'pickup' | 'delivery') => {
     const next: Partial<WizardState> = { fulfillment: f };
@@ -134,21 +128,16 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
     if (zone) patch({ feePerTrip: suggestDeliveryFee(zone, s.roadDistanceKm, settings.delivery), feeTouched: false });
   };
 
+  const noDriver: Partial<WizardState> = { driverId: null, driverTruckSize: null, driverConfirmed: false };
+
   const setTruck = (size: TruckSize) => {
-    const next: Partial<WizardState> = { truckSize: size, truckTouched: true };
-    if (!s.tripsTouched) next.trips = tripsForLoads(loads, size);
-    patch(next);
+    const keepDriver = s.driverTruckSize === size;
+    patch({ truckSize: size, truckTouched: true, ...(keepDriver ? {} : noDriver) });
   };
 
   const chooseDriver = (d: Driver) => {
-    if (s.driverId === d.id) return patch({ driverId: null, driverConfirmed: false });
-    const next: Partial<WizardState> = { driverId: d.id, driverConfirmed: false };
-    if (d.truckSize !== s.truckSize) {
-      next.truckSize = d.truckSize;
-      next.truckTouched = true;
-      if (!s.tripsTouched) next.trips = tripsForLoads(loads, d.truckSize);
-    }
-    patch(next);
+    if (s.driverId === d.id) return patch(noDriver);
+    patch({ driverId: d.id, driverTruckSize: d.truckSize, driverConfirmed: false, truckSize: d.truckSize, truckTouched: true });
   };
 
   const activeDrivers = useMemo(() => {
@@ -275,9 +264,10 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                     type="button"
                     role="radio"
                     aria-checked={s.truckSize === size}
+                    disabled={!truckFits(size, loadLines)}
                     onClick={() => setTruck(size)}
                     className={[
-                      'min-h-11 rounded border px-3 text-sm font-medium transition-colors cursor-pointer',
+                      'min-h-11 rounded border px-3 text-sm font-medium transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40',
                       s.truckSize === size ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-subtle',
                     ].join(' ')}
                   >
@@ -285,37 +275,34 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                   </button>
                 ))}
               </div>
+              {!truckFits(3, loadLines) ? (
+                <p className="mt-1.5 text-xs text-muted">สินค้าเที่ยวละ {formatNumber(largestPerTrip)} คิว ต้องใช้รถ 5 คิว</p>
+              ) : null}
             </div>
 
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">จำนวนเที่ยว</p>
-                <p className="text-xs text-muted">
-                  สินค้า {formatNumber(totalQty)} คิว · แนะนำ {tripsForLoads(loads, s.truckSize)} เที่ยว
+            <div className="rounded bg-subtle px-3 py-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">
+                  จำนวนเที่ยว <span className="text-base font-semibold tabular-nums">{s.trips}</span> เที่ยว
                 </p>
-              </div>
-              <div className="flex items-center rounded border border-border">
                 <button
                   type="button"
-                  aria-label="ลดเที่ยว"
-                  disabled={s.trips <= 1}
-                  onClick={() => patch({ trips: Math.max(1, s.trips - 1), tripsTouched: true })}
-                  className="inline-flex min-h-11 min-w-11 items-center justify-center text-muted hover:text-ink disabled:opacity-40 cursor-pointer"
+                  onClick={onEditProducts}
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded px-2 text-sm font-medium text-primary hover:bg-surface cursor-pointer"
                 >
-                  <Minus size={16} aria-hidden />
-                </button>
-                <span className="w-10 text-center text-base font-semibold tabular-nums" aria-live="polite">
-                  {s.trips}
-                </span>
-                <button
-                  type="button"
-                  aria-label="เพิ่มเที่ยว"
-                  onClick={() => patch({ trips: s.trips + 1, tripsTouched: true })}
-                  className="inline-flex min-h-11 min-w-11 items-center justify-center text-muted hover:text-ink cursor-pointer"
-                >
-                  <Plus size={16} aria-hidden />
+                  <Pencil size={14} aria-hidden /> แก้ที่สินค้า
                 </button>
               </div>
+              <ul className="flex flex-col gap-0.5 text-sm text-muted">
+                {loadLines.map((l) => (
+                  <li key={l.id} className="flex justify-between gap-3">
+                    <span className="truncate">{l.name}</span>
+                    <span className="shrink-0 tabular-nums">
+                      {formatNumber(l.perTrip)} คิว × {l.trips} เที่ยว
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -380,6 +367,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
             <ul className="flex flex-col divide-y divide-border overflow-hidden rounded border border-border bg-surface">
               {activeDrivers.map((d) => {
                 const selected = s.driverId === d.id;
+                const fits = truckFits(d.truckSize, loadLines);
                 return (
                   <li key={d.id} className={selected ? 'bg-primary-soft/60' : ''}>
                     <div className="flex items-center gap-3 px-3 py-2.5">
@@ -387,7 +375,8 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                         type="button"
                         onClick={() => chooseDriver(d)}
                         aria-pressed={selected}
-                        className="flex min-h-11 flex-1 items-center gap-3 text-left cursor-pointer"
+                        disabled={!fits}
+                        className="flex min-h-11 flex-1 items-center gap-3 text-left cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <span
                           className={[
@@ -401,7 +390,9 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                         <span className="min-w-0">
                           <span className="block font-medium">{d.name}</span>
                           <span className="block truncate text-xs text-muted">
-                            {[d.village, ROUTE_GROUP_LABEL[d.routeGroup]].filter(Boolean).join(' · ')}
+                            {fits
+                              ? [d.village, ROUTE_GROUP_LABEL[d.routeGroup]].filter(Boolean).join(' · ')
+                              : `รถเล็กเกิน (สินค้าเที่ยวละ ${formatNumber(largestPerTrip)} คิว)`}
                           </span>
                         </span>
                       </button>

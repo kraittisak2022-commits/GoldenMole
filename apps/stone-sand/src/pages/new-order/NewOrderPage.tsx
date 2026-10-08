@@ -23,10 +23,11 @@ import {
   toDraft,
   totalQuantity,
   validateStep,
+  withDeliveryPlan,
   type WizardState,
 } from './wizardState';
 
-const DRAFT_KEY = 'stone_sand_new_order_v3';
+const DRAFT_KEY = 'stone_sand_new_order_v4';
 
 interface StoredDraft {
   step: number;
@@ -38,7 +39,7 @@ function readDraft(): StoredDraft | null {
     const raw = sessionStorage.getItem(DRAFT_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredDraft;
-    return { step: Math.min(Math.max(0, parsed.step || 0), STEPS.length - 1), state: { ...initialWizardState, ...parsed.state } };
+    return { step: Math.min(Math.max(0, parsed.step || 0), STEPS.length - 1), state: withDeliveryPlan({ ...initialWizardState, ...parsed.state }) };
   } catch {
     return null;
   }
@@ -65,7 +66,7 @@ export default function NewOrderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
-  const patch = useCallback((p: Partial<WizardState>) => setState((prev) => ({ ...prev, ...p })), []);
+  const patch = useCallback((p: Partial<WizardState>) => setState((prev) => withDeliveryPlan({ ...prev, ...p })), []);
 
   const selectCustomer = useCallback((c: Customer | null) => {
     setState((prev) => ({
@@ -100,7 +101,13 @@ export default function NewOrderPage() {
   }, [step]);
 
   const quantities = useMemo(() => quantitiesOf(state.loads), [state.loads]);
-  const loads = useMemo(() => Object.values(state.loads), [state.loads]);
+  const loadLines = useMemo(
+    () =>
+      products
+        .filter((p) => (state.loads[p.id]?.perTrip ?? 0) > 0 && (state.loads[p.id]?.trips ?? 0) > 0)
+        .map((p) => ({ id: p.id, name: p.name, ...state.loads[p.id] })),
+    [products, state.loads],
+  );
   const items = useMemo(() => buildItems(products, quantities), [products, quantities]);
   const totals = draftTotals({ ...state, fulfillment: state.fulfillment ?? 'pickup', items });
   const zone = zoneById(state.zoneId);
@@ -229,8 +236,8 @@ export default function NewOrderPage() {
             zones={zones}
             drivers={drivers}
             settings={settings}
-            totalQty={totalQuantity(quantities)}
-            loads={loads}
+            loadLines={loadLines}
+            onEditProducts={() => setStep(stepIndex('products'))}
           />
         ) : null}
         {stepKey === 'summary' ? <StepSummary state={state} patch={patch} items={items} /> : null}

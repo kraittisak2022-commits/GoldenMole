@@ -1,6 +1,6 @@
 import { Minus, Plus } from 'lucide-react';
 import { lineAmount } from '../../calc/pricing';
-import type { Load } from '../../calc/trips';
+import { totalTrips, truckForLoads, type Load } from '../../calc/trips';
 import { formatMoney, formatNumber } from '../../lib/format';
 import type { Product } from '../../types';
 import StepTitle from './StepTitle';
@@ -38,7 +38,8 @@ export default function StepProducts({ products, loads, onChange }: Props) {
   const quantities = quantitiesOf(loads);
   const sum = active.reduce((s, p) => s + lineAmount(p.pricePerUnit, quantities[p.id] || 0), 0);
   const count = totalQuantity(quantities);
-  const tripCount = Object.values(loads).reduce((s, l) => s + l.trips, 0);
+  const tripCount = totalTrips(Object.values(loads));
+  const truck = truckForLoads(Object.values(loads));
 
   return (
     <div className="step-enter flex flex-col gap-6">
@@ -130,7 +131,7 @@ export default function StepProducts({ products, loads, onChange }: Props) {
       {count > 0 ? (
         <div className="flex items-baseline justify-between px-1">
           <span className="text-muted">
-            รวม {formatNumber(count)} คิว · {tripCount} เที่ยว
+            รวม {formatNumber(count)} คิว · {tripCount} เที่ยว · รถ {truck} คิว
           </span>
           <span className="text-lg font-semibold tabular-nums">{formatMoney(sum)} บาท</span>
         </div>
