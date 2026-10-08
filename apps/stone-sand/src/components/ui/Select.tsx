@@ -6,7 +6,7 @@ const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElem
       <select
         ref={ref}
         className={[
-          'w-full min-h-11 rounded border border-border bg-surface px-3 py-2.5 text-base sm:text-sm text-ink transition-colors duration-200 focus:border-primary',
+          'w-full min-h-12 rounded border border-border bg-surface px-4 py-2.5 text-base text-ink transition-colors duration-200 focus:border-primary',
           className,
         ].join(' ')}
         {...props}

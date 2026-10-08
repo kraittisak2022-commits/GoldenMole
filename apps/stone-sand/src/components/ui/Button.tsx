@@ -15,8 +15,8 @@ const variants: Record<NonNullable<ButtonProps['variant']>, string> = {
 };
 
 const sizes = {
-  md: 'min-h-11 px-4 py-2.5 text-sm',
-  lg: 'min-h-12 px-5 py-3 text-base',
+  md: 'min-h-11 px-4 py-2 text-base',
+  lg: 'min-h-[3.25rem] px-6 py-3 text-base font-semibold',
 };
 
 export default function Button({

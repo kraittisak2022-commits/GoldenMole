@@ -1,5 +1,5 @@
 import type { Customer, Product } from '../../types';
-import { buildItems, initialWizardState, toDraft, validateStep, type WizardState } from './wizardState';
+import { STEPS, buildItems, initialWizardState, toDraft, validateStep, type WizardState } from './wizardState';
 
 const products: Product[] = [
   { id: 'small-stone', name: 'หินเล็กคละ เบอร์ 1-3', unit: 'คิว', pricePerUnit: 400, sortOrder: 1, active: true },
@@ -23,11 +23,12 @@ const customer: Customer = {
 const state = (patch: Partial<WizardState>): WizardState => ({ ...initialWizardState, ...patch });
 
 describe('validateStep', () => {
-  it('requires a customer then products', () => {
-    expect(validateStep(0, state({}))).not.toBe('');
-    expect(validateStep(0, state({ customer }))).toBe('');
-    expect(validateStep(1, state({ quantities: { 'small-stone': 0 } }))).not.toBe('');
-    expect(validateStep(1, state({ quantities: { 'small-stone': 3 } }))).toBe('');
+  it('asks for products first, then the customer', () => {
+    expect(STEPS.map((s) => s.key)).toEqual(['products', 'customer', 'fulfillment', 'summary', 'confirm']);
+    expect(validateStep(0, state({ quantities: { 'small-stone': 0 } }))).toMatch(/สินค้า/);
+    expect(validateStep(0, state({ quantities: { 'small-stone': 3 } }))).toBe('');
+    expect(validateStep(1, state({}))).toMatch(/ลูกค้า/);
+    expect(validateStep(1, state({ customer }))).toBe('');
   });
 
   it('pickup needs nothing else; delivery needs tambon and location', () => {

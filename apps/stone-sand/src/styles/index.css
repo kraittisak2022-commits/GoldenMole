@@ -1,10 +1,10 @@
 :root {
-  --color-page: #f8fafc;
+  --color-page: #ffffff;
   --color-surface: #ffffff;
-  --color-ink: #0f172a;
-  --color-muted: #64748b;
-  --color-subtle: #f1f3f5;
-  --color-border: #e4e7eb;
+  --color-ink: #111827;
+  --color-muted: #6b7280;
+  --color-subtle: #f4f5f7;
+  --color-border: #eceef1;
   --color-primary: #1e3a5f;
   --color-primary-hover: #16304f;
   --color-primary-foreground: #ffffff;
@@ -25,6 +25,21 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    font-size: 17px;
+  }
+
+  @media (min-width: 768px) {
+    html {
+      font-size: 18px;
+    }
+  }
+
+  /* The A4 bill is laid out in rem at a 16px base. */
+  html:has(.bill-sheet) {
+    font-size: 16px;
+  }
+
   html,
   body,
   #root {

@@ -14,10 +14,10 @@ export default function Chip({ active, onClick, children, count }: ChipProps) {
       onClick={onClick}
       aria-pressed={active}
       className={[
-        'inline-flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-sm transition-colors duration-200 cursor-pointer',
+        'inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-sm transition-colors duration-200 cursor-pointer',
         active
-          ? 'border-primary bg-primary text-primary-foreground'
-          : 'border-border bg-surface text-ink hover:bg-subtle',
+          ? 'border-ink bg-ink text-white'
+          : 'border-transparent bg-subtle text-ink hover:bg-border',
       ].join(' ')}
     >
       {children}

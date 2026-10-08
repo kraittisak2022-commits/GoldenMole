@@ -30,12 +30,16 @@ export interface WizardState {
 }
 
 export const STEPS = [
-  { key: 'customer', label: 'ลูกค้า' },
   { key: 'products', label: 'สินค้า' },
+  { key: 'customer', label: 'ลูกค้า' },
   { key: 'fulfillment', label: 'รับสินค้า' },
   { key: 'summary', label: 'สรุป' },
   { key: 'confirm', label: 'ยืนยัน' },
 ] as const;
+
+export type StepKey = (typeof STEPS)[number]['key'];
+
+export const stepIndex = (key: StepKey): number => STEPS.findIndex((s) => s.key === key);
 
 export const initialWizardState: WizardState = {
   customer: null,
@@ -83,12 +87,12 @@ export function totalQuantity(quantities: Record<string, number>): number {
 
 /** Error message for the step, or '' when the step is complete. */
 export function validateStep(step: number, s: WizardState): string {
-  switch (step) {
-    case 0:
-      return s.customer ? '' : 'เลือกหรือเพิ่มลูกค้าก่อน';
-    case 1:
+  switch (STEPS[step]?.key) {
+    case 'products':
       return totalQuantity(s.quantities) > 0 ? '' : 'ใส่จำนวนสินค้าอย่างน้อย 1 รายการ';
-    case 2:
+    case 'customer':
+      return s.customer ? '' : 'เลือกหรือเพิ่มลูกค้าก่อน';
+    case 'fulfillment':
       if (!s.fulfillment) return 'เลือกว่ามารับเองหรือจัดส่ง';
       if (s.fulfillment === 'delivery') {
         if (!s.pin && !s.deliveryAddress.trim()) return 'ปักหมุดหรือใส่ที่อยู่จัดส่ง';
@@ -97,7 +101,7 @@ export function validateStep(step: number, s: WizardState): string {
         if (s.driverId && !s.driverConfirmed) return 'ยืนยันว่ารถเข้าหน้างานได้และมีคิวว่าง';
       }
       return '';
-    case 3:
+    case 'summary':
       return s.paymentMethod ? '' : 'เลือกวิธีชำระเงิน';
     default:
       return '';

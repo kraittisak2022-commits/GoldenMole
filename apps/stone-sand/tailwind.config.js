@@ -44,7 +44,7 @@ export default {
         sans: ['"Noto Sans Thai"', 'Tahoma', 'sans-serif'],
       },
       borderRadius: {
-        DEFAULT: '10px',
+        DEFAULT: '12px',
       },
       spacing: {
         'safe-top': 'env(safe-area-inset-top)',

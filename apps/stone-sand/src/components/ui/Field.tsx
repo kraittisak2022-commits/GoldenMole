@@ -10,12 +10,12 @@ interface FieldProps {
 
 export default function Field({ id, label, hint, error, children }: FieldProps) {
   return (
-    <div className="flex w-full flex-col gap-1.5">
+    <div className="flex w-full flex-col gap-2">
       <label htmlFor={id} className="text-sm font-medium text-ink">
         {label}
       </label>
       {children}
-      {hint && !error ? <p className="text-xs text-muted">{hint}</p> : null}
+      {hint && !error ? <p className="text-sm text-muted">{hint}</p> : null}
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}

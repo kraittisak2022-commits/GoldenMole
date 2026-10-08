@@ -14,9 +14,18 @@ import StepCustomer from './StepCustomer';
 import StepFulfillment from './StepFulfillment';
 import StepProducts from './StepProducts';
 import StepSummary from './StepSummary';
-import { STEPS, buildItems, initialWizardState, toDraft, totalQuantity, validateStep, type WizardState } from './wizardState';
+import {
+  STEPS,
+  buildItems,
+  initialWizardState,
+  stepIndex,
+  toDraft,
+  totalQuantity,
+  validateStep,
+  type WizardState,
+} from './wizardState';
 
-const DRAFT_KEY = 'stone_sand_new_order_v1';
+const DRAFT_KEY = 'stone_sand_new_order_v2';
 
 interface StoredDraft {
   step: number;
@@ -63,7 +72,7 @@ export default function NewOrderPage() {
       customer: c,
       ...(c?.isCredit && !prev.paymentMethod ? { paymentMethod: 'credit' as const, paidNow: false } : {}),
     }));
-    if (c) setStep((s) => (s === 0 ? 1 : s));
+    if (c) setStep((s) => (s === stepIndex('customer') ? s + 1 : s));
   }, []);
 
   useEffect(() => {
@@ -93,6 +102,7 @@ export default function NewOrderPage() {
   const totals = draftTotals({ ...state, fulfillment: state.fulfillment ?? 'pickup', items });
   const zone = zoneById(state.zoneId);
   const driver = driverById(state.driverId);
+  const stepKey = STEPS[step].key;
 
   const next = () => {
     const err = validateStep(step, state);
@@ -149,22 +159,22 @@ export default function NewOrderPage() {
 
   return (
     <div className="min-h-[100dvh] bg-page">
-      <header className="sticky top-0 z-[500] border-b border-border bg-surface/95 pt-safe-top backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center gap-2 px-2 py-2">
+      <header className="sticky top-0 z-[500] bg-surface/95 pt-safe-top backdrop-blur">
+        <div className="mx-auto flex max-w-2xl items-center gap-2 px-2 pt-2">
           <button
             type="button"
             onClick={close}
             aria-label="ปิด"
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded text-muted hover:bg-subtle hover:text-ink cursor-pointer"
+            className="inline-flex min-h-12 min-w-12 items-center justify-center rounded-full text-muted hover:bg-subtle hover:text-ink cursor-pointer"
           >
-            <X size={20} aria-hidden />
+            <X size={22} aria-hidden />
           </button>
-          <h1 className="flex-1 text-base font-semibold">สร้างออเดอร์</h1>
-          <span className="pr-2 text-sm text-muted">
-            ขั้นที่ {step + 1}/{STEPS.length}
+          <h1 className="flex-1 text-lg font-semibold">สร้างออเดอร์</h1>
+          <span className="pr-3 text-sm tabular-nums text-muted">
+            {step + 1} / {STEPS.length}
           </span>
         </div>
-        <ol className="mx-auto flex max-w-2xl gap-1 px-4 pb-3" aria-label="ขั้นตอน">
+        <ol className="mx-auto flex max-w-2xl gap-1.5 px-4 pb-3 pt-1" aria-label="ขั้นตอน">
           {STEPS.map((s, i) => {
             const done = i < step;
             const current = i === step;
@@ -174,21 +184,20 @@ export default function NewOrderPage() {
                   type="button"
                   onClick={() => (i < step ? setStep(i) : goTo(i))}
                   aria-current={current ? 'step' : undefined}
-                  className="flex w-full flex-col items-stretch gap-1.5 text-left cursor-pointer"
+                  className="flex w-full flex-col items-stretch gap-2 py-1 text-left cursor-pointer"
                 >
                   <span
                     className={[
-                      'h-1.5 rounded-full transition-colors',
+                      'h-1 rounded-full transition-colors',
                       done || current ? 'bg-primary' : 'bg-border',
                     ].join(' ')}
                   />
                   <span
                     className={[
-                      'flex items-center gap-1 truncate text-[11px] sm:text-xs',
-                      current ? 'font-semibold text-primary' : done ? 'text-ink' : 'text-muted',
+                      'truncate text-xs sm:text-sm',
+                      current ? 'font-semibold text-ink' : 'text-muted',
                     ].join(' ')}
                   >
-                    {done ? <Check size={12} aria-hidden /> : null}
                     {s.label}
                   </span>
                 </button>
@@ -198,18 +207,18 @@ export default function NewOrderPage() {
         </ol>
       </header>
 
-      <main className="mx-auto max-w-2xl px-4 pb-40 pt-5">
+      <main className="mx-auto max-w-2xl px-4 pb-44 pt-4">
         {error ? (
           <div className="mb-4">
             <ErrorBox message={error} />
           </div>
         ) : null}
 
-        {step === 0 ? <StepCustomer customer={state.customer} onSelect={selectCustomer} /> : null}
-        {step === 1 ? (
+        {stepKey === 'products' ? (
           <StepProducts products={products} quantities={state.quantities} onChange={(q) => patch({ quantities: q })} />
         ) : null}
-        {step === 2 ? (
+        {stepKey === 'customer' ? <StepCustomer customer={state.customer} onSelect={selectCustomer} /> : null}
+        {stepKey === 'fulfillment' ? (
           <StepFulfillment
             state={state}
             patch={patch}
@@ -220,8 +229,10 @@ export default function NewOrderPage() {
             totalQty={totalQuantity(state.quantities)}
           />
         ) : null}
-        {step === 3 ? <StepSummary state={state} patch={patch} items={items} /> : null}
-        {step === 4 ? <StepConfirm state={state} items={items} zone={zone} driver={driver} onEdit={setStep} /> : null}
+        {stepKey === 'summary' ? <StepSummary state={state} patch={patch} items={items} /> : null}
+        {stepKey === 'confirm' ? (
+          <StepConfirm state={state} items={items} zone={zone} driver={driver} onEdit={setStep} />
+        ) : null}
 
         {submitError ? (
           <div className="mt-4">
@@ -238,13 +249,12 @@ export default function NewOrderPage() {
             </p>
           ) : null}
           <div className="flex items-center gap-3">
-            <Button variant="secondary" size="lg" onClick={back} aria-label={step === 0 ? 'ยกเลิก' : 'ย้อนกลับ'}>
-              <ArrowLeft size={18} aria-hidden />
-              <span className="hidden xs:inline">{step === 0 ? 'ยกเลิก' : 'ย้อนกลับ'}</span>
+            <Button variant="ghost" size="lg" onClick={back} aria-label={step === 0 ? 'ยกเลิก' : 'ย้อนกลับ'} className="px-3">
+              <ArrowLeft size={22} aria-hidden />
             </Button>
-            <div className="min-w-0 flex-1 text-right">
+            <div className="min-w-0 flex-1">
               <p className="text-xs text-muted">ยอดสุทธิ</p>
-              <p className="truncate text-lg font-bold tabular-nums text-primary">{formatMoney(totals.total)}</p>
+              <p className="truncate text-xl font-semibold tabular-nums text-ink">{formatMoney(totals.total)}</p>
             </div>
             {step < STEPS.length - 1 ? (
               <Button size="lg" onClick={next}>

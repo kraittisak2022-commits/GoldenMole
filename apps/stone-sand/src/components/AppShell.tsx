@@ -98,7 +98,7 @@ export default function AppShell() {
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between border-b border-border bg-surface/95 px-4 pt-safe-top backdrop-blur md:hidden">
             <div>
-              <p className="text-[11px] text-muted">หจก. พีรสิทธิ์ วัสดุก่อสร้าง</p>
+              <p className="text-xs text-muted">หจก. พีรสิทธิ์ วัสดุก่อสร้าง</p>
               <p className="text-sm font-semibold">ออเดอร์หิน-ทราย</p>
             </div>
           </header>
@@ -135,7 +135,7 @@ export default function AppShell() {
                 end={item.end}
                 className={({ isActive }) =>
                   [
-                    'flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px]',
+                    'flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs',
                     isActive ? 'font-medium text-primary' : 'text-muted',
                   ].join(' ')
                 }
@@ -148,7 +148,7 @@ export default function AppShell() {
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
-            className="flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] text-muted cursor-pointer"
+            className="flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs text-muted cursor-pointer"
           >
             <Menu size={20} aria-hidden />
             เมนู
