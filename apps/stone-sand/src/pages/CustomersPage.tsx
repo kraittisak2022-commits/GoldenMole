@@ -36,8 +36,8 @@ const emptyInput: CustomerInput = {
 export default function CustomersPage() {
   const [params, setParams] = useSearchParams();
   const openId = params.get('open');
-  const customers = useAsync(() => listCustomers(), []);
-  const uncleared = useAsync(() => listUnclearedOrders(), []);
+  const customers = useAsync(() => listCustomers(), [], 'customers');
+  const uncleared = useAsync(() => listUnclearedOrders(), [], 'orders-uncleared');
   const [query, setQuery] = useState('');
   const [onlyOutstanding, setOnlyOutstanding] = useState(false);
   const [editing, setEditing] = useState<CustomerInput | null>(null);
@@ -182,7 +182,7 @@ function CustomerDetail({
   onDeleted: () => void;
 }) {
   const { isSuperAdmin } = useAuth();
-  const { data: orders, loading, error } = useAsync(() => listOrders({ customerId: c.id, limit: 100 }), [c.id]);
+  const { data: orders, loading, error } = useAsync(() => listOrders({ customerId: c.id, limit: 100 }), [c.id], 'customer-orders');
   const totalSpent = (orders ?? []).filter((o) => !o.cancelled).reduce((s, o) => s + o.total, 0);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');

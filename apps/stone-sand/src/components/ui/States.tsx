@@ -1,13 +1,27 @@
-import { AlertCircle, Inbox, Loader2 } from 'lucide-react';
+import { AlertCircle, Inbox } from 'lucide-react';
 import { ReactNode } from 'react';
+import Skeleton from './Skeleton';
 
-export function Loading({ label = 'กำลังโหลด…' }: { label?: string }) {
-  return (
-    <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted" role="status">
-      <Loader2 size={18} className="animate-spin" aria-hidden />
-      {label}
+/** Placeholder rows shaped like the lists they stand in for, so the page does not jump when data arrives. */
+export function Loading({ label = 'กำลังโหลด…', rows = 3, page = false }: { label?: string; rows?: number; page?: boolean }) {
+  const list = (
+    <div role="status" className="overflow-hidden rounded border border-border bg-surface">
+      <span className="sr-only">{label}</span>
+      <ul className="divide-y divide-border">
+        {Array.from({ length: rows }, (_, i) => (
+          <li key={i} className="flex items-center gap-3 px-4 py-3.5">
+            <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <Skeleton className={`h-3.5 ${i % 2 ? 'w-1/2' : 'w-2/3'}`} />
+              <Skeleton className="h-3 w-1/3" />
+            </div>
+            <Skeleton className="h-4 w-16 shrink-0" />
+          </li>
+        ))}
+      </ul>
     </div>
   );
+  return page ? <div className="mx-auto w-full max-w-3xl p-4 sm:p-6">{list}</div> : list;
 }
 
 export function ErrorBox({ message }: { message: string }) {

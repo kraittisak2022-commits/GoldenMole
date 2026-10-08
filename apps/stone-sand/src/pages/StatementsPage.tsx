@@ -44,8 +44,8 @@ export default function StatementsPage() {
   const sourceParam = params.get('source');
   const highlight = params.get('open');
 
-  const uncleared = useAsync(() => listUnclearedOrders(), []);
-  const statements = useAsync(() => listStatements(), []);
+  const uncleared = useAsync(() => listUnclearedOrders(), [], 'orders-uncleared');
+  const statements = useAsync(() => listStatements(), [], 'statements');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
   const [clearing, setClearing] = useState<Statement | null>(null);
   const [clearMethod, setClearMethod] = useState<PayMethod | null>(null);

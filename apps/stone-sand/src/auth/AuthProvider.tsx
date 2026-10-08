@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { checkSession, signInWithAdminUsers } from './adminAuthService';
 import { setLockedSource } from '../data/sourceScope';
+import { clearAsyncCache } from '../hooks/useAsync';
 import type { OrderSource } from '../types';
 import { clearSession, readSession, saveSession, type StoneSandSession } from './session';
 
@@ -40,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(() => {
+    clearAsyncCache();
     clearSession();
     setUser(null);
   }, []);

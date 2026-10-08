@@ -14,7 +14,7 @@ export default function Chip({ active, onClick, children, count }: ChipProps) {
       onClick={onClick}
       aria-pressed={active}
       className={[
-        'inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-sm transition-colors duration-200 cursor-pointer',
+        'inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-sm transition duration-150 cursor-pointer select-none active:scale-[0.97]',
         active
           ? 'border-ink bg-ink text-white'
           : 'border-transparent bg-subtle text-ink hover:bg-border',

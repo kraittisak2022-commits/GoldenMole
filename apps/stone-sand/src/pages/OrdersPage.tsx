@@ -50,7 +50,7 @@ export default function OrdersPage() {
     setParams(next, { replace: true });
   };
 
-  const { data, error, loading } = useAsync(() => listOrders({ from: rangeFrom(range), limit: 1000 }), [range]);
+  const { data, error, loading } = useAsync(() => listOrders({ from: rangeFrom(range), limit: 1000 }), [range], 'orders-range');
   const orders = data ?? [];
 
   const sourceCounts = useMemo(() => {

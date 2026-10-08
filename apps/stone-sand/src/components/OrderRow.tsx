@@ -13,7 +13,7 @@ export default function OrderRow({ order: o }: { order: Order }) {
   return (
     <Link
       to={`/orders/${o.id}`}
-      className="flex min-h-16 items-center gap-3 px-4 py-3 transition-colors hover:bg-subtle"
+      className="flex min-h-16 items-center gap-3 px-4 py-3 transition-colors hover:bg-subtle active:bg-border/60"
     >
       <span
         className={[

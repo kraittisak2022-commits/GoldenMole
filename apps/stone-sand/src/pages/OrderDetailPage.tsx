@@ -52,7 +52,7 @@ export default function OrderDetailPage() {
   const by = user?.displayName || user?.username || '';
   const navigate = useNavigate();
   const { zoneById, driverById, drivers } = useCatalog();
-  const { data: order, error, loading, setData } = useAsync(() => getOrder(id), [id]);
+  const { data: order, error, loading, setData } = useAsync(() => getOrder(id), [id], 'order');
   const { data: statement } = useAsync(
     () => (order?.statementId ? getStatement(order.statementId) : Promise.resolve(null)),
     [order?.statementId, order?.total],

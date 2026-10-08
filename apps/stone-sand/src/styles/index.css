@@ -1,23 +1,44 @@
+/* Colours are RGB channels so Tailwind opacity modifiers (bg-ink/50) work; --color-* is the plain colour. */
 :root {
-  --color-page: #ffffff;
-  --color-surface: #ffffff;
-  --color-ink: #111827;
-  --color-muted: #6b7280;
-  --color-subtle: #f4f5f7;
-  --color-border: #eceef1;
-  --color-primary: #1e3a5f;
-  --color-primary-hover: #16304f;
-  --color-primary-foreground: #ffffff;
-  --color-primary-soft: #eef3f9;
-  --color-success: #059669;
-  --color-success-soft: #ecfdf5;
-  --color-warning: #b45309;
-  --color-warning-soft: #fffbeb;
-  --color-destructive: #dc2626;
-  --color-destructive-foreground: #ffffff;
-  --color-destructive-soft: #fef2f2;
-  --color-ring: #1e3a5f;
-  --color-stamp: #1d4ed8;
+  --rgb-page: 255 255 255;
+  --rgb-surface: 255 255 255;
+  --rgb-ink: 17 24 39;
+  --rgb-muted: 107 114 128;
+  --rgb-subtle: 244 245 247;
+  --rgb-border: 236 238 241;
+  --rgb-primary: 30 58 95;
+  --rgb-primary-hover: 22 48 79;
+  --rgb-primary-foreground: 255 255 255;
+  --rgb-primary-soft: 238 243 249;
+  --rgb-success: 5 150 105;
+  --rgb-success-soft: 236 253 245;
+  --rgb-warning: 180 83 9;
+  --rgb-warning-soft: 255 251 235;
+  --rgb-destructive: 220 38 38;
+  --rgb-destructive-foreground: 255 255 255;
+  --rgb-destructive-soft: 254 242 242;
+  --rgb-ring: 30 58 95;
+  --rgb-stamp: 29 78 216;
+
+  --color-page: rgb(var(--rgb-page));
+  --color-surface: rgb(var(--rgb-surface));
+  --color-ink: rgb(var(--rgb-ink));
+  --color-muted: rgb(var(--rgb-muted));
+  --color-subtle: rgb(var(--rgb-subtle));
+  --color-border: rgb(var(--rgb-border));
+  --color-primary: rgb(var(--rgb-primary));
+  --color-primary-hover: rgb(var(--rgb-primary-hover));
+  --color-primary-foreground: rgb(var(--rgb-primary-foreground));
+  --color-primary-soft: rgb(var(--rgb-primary-soft));
+  --color-success: rgb(var(--rgb-success));
+  --color-success-soft: rgb(var(--rgb-success-soft));
+  --color-warning: rgb(var(--rgb-warning));
+  --color-warning-soft: rgb(var(--rgb-warning-soft));
+  --color-destructive: rgb(var(--rgb-destructive));
+  --color-destructive-foreground: rgb(var(--rgb-destructive-foreground));
+  --color-destructive-soft: rgb(var(--rgb-destructive-soft));
+  --color-ring: rgb(var(--rgb-ring));
+  --color-stamp: rgb(var(--rgb-stamp));
 }
 
 @tailwind base;
@@ -98,6 +119,46 @@
 
   .step-enter {
     animation: step-enter 0.2s ease-out both;
+  }
+
+  /* Opacity only: a transform here would trap position:fixed children of the page. */
+  .page-enter {
+    animation: fade-in 0.18s ease-out backwards;
+  }
+
+  .modal-backdrop {
+    animation: fade-in 0.18s ease-out backwards;
+  }
+
+  .modal-panel {
+    animation: sheet-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+
+  @media (min-width: 640px) {
+    .modal-panel {
+      animation-name: pop-in;
+      animation-duration: 0.18s;
+    }
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(32px);
+    opacity: 0.6;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    transform: scale(0.97);
+    opacity: 0;
   }
 }
 

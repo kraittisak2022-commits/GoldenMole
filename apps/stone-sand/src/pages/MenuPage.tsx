@@ -38,7 +38,7 @@ function useMenuCounts(): MenuCounts {
       openStatements: value(statements)?.filter((s) => s.status === 'open').length,
       driverUnpaid: value(driverUnpaid)?.length,
     };
-  }, []);
+  }, [], 'menu-counts');
   return data ?? {};
 }
 
@@ -98,7 +98,7 @@ function MenuCard({ item, hint, active }: { item: NavItem; hint: string; active:
       to={item.to}
       aria-current={active ? 'page' : undefined}
       className={[
-        'flex min-h-36 flex-col items-center justify-center gap-3 rounded border p-4 text-center transition-colors duration-200',
+        'flex min-h-36 flex-col items-center justify-center gap-3 rounded border p-4 text-center transition duration-150 select-none active:scale-[0.97]',
         active
           ? 'border-primary bg-primary text-primary-foreground shadow-lg'
           : 'border-border bg-surface text-ink hover:border-primary/40 hover:bg-subtle',

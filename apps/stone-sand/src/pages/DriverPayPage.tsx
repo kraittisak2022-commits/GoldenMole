@@ -29,8 +29,8 @@ export default function DriverPayPage() {
   const [params, setParams] = useSearchParams();
   const selectedDriver = params.get('driver');
 
-  const unpaid = useAsync(() => listDriverUnpaidOrders(), []);
-  const payouts = useAsync(() => listDriverPayouts(), []);
+  const unpaid = useAsync(() => listDriverUnpaidOrders(), [], 'driver-unpaid');
+  const payouts = useAsync(() => listDriverPayouts(), [], 'driver-payouts');
   const [actionError, setActionError] = useState('');
   const [paidNo, setPaidNo] = useState('');
 

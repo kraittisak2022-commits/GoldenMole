@@ -50,7 +50,7 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
     return null;
   }, [data, kind, zoneById, driverById]);
 
-  if (loading && !data) return <Loading />;
+  if (loading && !data) return <Loading page />;
   if (error) return <div className="p-4"><ErrorBox message={error} /></div>;
   if (!bill) return <div className="p-4"><ErrorBox message="ไม่พบเอกสาร" /></div>;
 

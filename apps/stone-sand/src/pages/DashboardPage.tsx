@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider';
 import OrderRow from '../components/OrderRow';
 import SourceBadge from '../components/SourceBadge';
 import Card from '../components/ui/Card';
+import Skeleton from '../components/ui/Skeleton';
 import { Empty, ErrorBox, Loading } from '../components/ui/States';
 import { listOrders, listUnclearedOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
@@ -30,9 +31,9 @@ export default function DashboardPage() {
     setParams(p, { replace: true });
   };
 
-  const month = useAsync(() => listOrders({ from, to, limit: 3000 }), [from, to]);
-  const open = useAsync(() => listUnclearedOrders(), []);
-  const waiting = useAsync(() => listOrders({ deliveryStatuses: ['waiting', 'dispatched'], limit: 200 }), []);
+  const month = useAsync(() => listOrders({ from, to, limit: 3000 }), [from, to], 'orders-month');
+  const open = useAsync(() => listUnclearedOrders(), [], 'orders-uncleared');
+  const waiting = useAsync(() => listOrders({ deliveryStatuses: ['waiting', 'dispatched'], limit: 200 }), [], 'orders-waiting');
 
   const monthOrders = useMemo(() => month.data ?? [], [month.data]);
   const dayOrders = useMemo(() => monthOrders.filter((o) => o.orderDate === date), [monthOrders, date]);
@@ -45,6 +46,9 @@ export default function DashboardPage() {
   const creditTotal = openOrders.filter((o) => o.paymentStatus === 'credit').reduce((s, o) => s + o.total, 0);
 
   const error = month.error || open.error || waiting.error;
+  const monthPending = month.loading && !month.data;
+  const openPending = open.loading && !open.data;
+  const waitingPending = waiting.loading && !waiting.data;
   const [y, m] = date.split('-').map(Number);
 
   return (
@@ -64,10 +68,16 @@ export default function DashboardPage() {
       {error ? <ErrorBox message={error} /> : null}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="ออเดอร์" value={formatNumber(day.orderCount)} hint={`${formatMoney(day.net)} บาท`} />
-        <Kpi label="สินค้า" value={`${formatNumber(day.quantity)} คิว`} hint={`${formatNumber(day.trips)} เที่ยว`} />
-        <Kpi label="รับเงินแล้ว" value={formatMoney(day.paid)} hint="บาท" />
-        <Kpi label="ค้างรับ" value={formatMoney(day.outstanding)} hint="ยังไม่จ่าย + เครดิต" warn={day.outstanding > 0} />
+        <Kpi label="ออเดอร์" value={formatNumber(day.orderCount)} hint={`${formatMoney(day.net)} บาท`} pending={monthPending} />
+        <Kpi label="สินค้า" value={`${formatNumber(day.quantity)} คิว`} hint={`${formatNumber(day.trips)} เที่ยว`} pending={monthPending} />
+        <Kpi label="รับเงินแล้ว" value={formatMoney(day.paid)} hint="บาท" pending={monthPending} />
+        <Kpi
+          label="ค้างรับ"
+          value={formatMoney(day.outstanding)}
+          hint="ยังไม่จ่าย + เครดิต"
+          warn={day.outstanding > 0}
+          pending={monthPending}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -96,7 +106,7 @@ export default function DashboardPage() {
 
         <section>
           <SectionTitle>สรุปวัน</SectionTitle>
-          <SummaryCard stats={day} />
+          {monthPending ? <Loading rows={2} /> : <SummaryCard stats={day} />}
         </section>
       </div>
 
@@ -105,9 +115,15 @@ export default function DashboardPage() {
           งานค้าง (ทุกวัน)
         </SectionTitle>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Kpi to="/orders?f=waiting&r=all" label="รอจัดส่ง" value={`${formatNumber(waitingAll.length)} ออเดอร์`} warn={waitingAll.length > 0} />
-          <Kpi to="/orders?f=unpaid&r=all" label="ยังไม่จ่าย" value={formatMoney(unpaidTotal)} warn={unpaidTotal > 0} />
-          <Kpi to="/statements" label="ค้างเครดิต" value={formatMoney(creditTotal)} />
+          <Kpi
+            to="/orders?f=waiting&r=all"
+            label="รอจัดส่ง"
+            value={`${formatNumber(waitingAll.length)} ออเดอร์`}
+            warn={waitingAll.length > 0}
+            pending={waitingPending}
+          />
+          <Kpi to="/orders?f=unpaid&r=all" label="ยังไม่จ่าย" value={formatMoney(unpaidTotal)} warn={unpaidTotal > 0} pending={openPending} />
+          <Kpi to="/statements" label="ค้างเครดิต" value={formatMoney(creditTotal)} pending={openPending} />
         </div>
         {waitingAll.length ? (
           <Card className="mt-3 overflow-hidden">
@@ -126,7 +142,7 @@ export default function DashboardPage() {
         <SectionTitle>
           สรุปเดือน{TH_MONTHS[m - 1]} {y + 543}
         </SectionTitle>
-        <SummaryCard stats={monthStats} />
+        {monthPending ? <Loading rows={2} /> : <SummaryCard stats={monthStats} />}
       </section>
     </div>
   );
@@ -255,17 +271,41 @@ function SummaryCard({ stats }: { stats: PeriodStats }) {
   );
 }
 
-function Kpi({ label, value, hint, warn, to }: { label: string; value: string; hint?: string; warn?: boolean; to?: string }) {
+function Kpi({
+  label,
+  value,
+  hint,
+  warn,
+  to,
+  pending,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  warn?: boolean;
+  to?: string;
+  /** Data not loaded yet: show a placeholder instead of a misleading 0. */
+  pending?: boolean;
+}) {
   const body = (
     <>
       <p className="text-sm text-muted">{label}</p>
-      <p className={['mt-1 truncate text-xl font-semibold tabular-nums', warn ? 'text-warning' : 'text-ink'].join(' ')}>{value}</p>
-      {hint ? <p className="truncate text-xs text-muted">{hint}</p> : null}
+      {pending ? (
+        <>
+          <Skeleton className="mt-2 h-6 w-24" />
+          {hint !== undefined ? <Skeleton className="mt-2 h-3 w-16" /> : null}
+        </>
+      ) : (
+        <>
+          <p className={['mt-1 truncate text-xl font-semibold tabular-nums', warn ? 'text-warning' : 'text-ink'].join(' ')}>{value}</p>
+          {hint ? <p className="truncate text-xs text-muted">{hint}</p> : null}
+        </>
+      )}
     </>
   );
   const cls = 'min-w-0 rounded border border-border bg-surface p-4';
   return to ? (
-    <Link to={to} className={`${cls} transition-colors hover:border-ink/30`}>
+    <Link to={to} className={`${cls} transition duration-150 hover:border-ink/30 active:scale-[0.98]`}>
       {body}
     </Link>
   ) : (

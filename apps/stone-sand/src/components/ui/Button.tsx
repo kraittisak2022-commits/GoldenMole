@@ -33,8 +33,8 @@ export default function Button({
       type={type}
       disabled={disabled}
       className={[
-        'inline-flex items-center justify-center gap-2 rounded font-medium transition-colors duration-200 cursor-pointer',
-        'disabled:opacity-50 disabled:cursor-not-allowed',
+        'inline-flex items-center justify-center gap-2 rounded font-medium transition duration-150 cursor-pointer select-none',
+        'active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100',
         sizes[size],
         variants[variant],
         className,

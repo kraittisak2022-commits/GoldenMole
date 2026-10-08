@@ -1,4 +1,5 @@
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigationType } from 'react-router-dom';
 import { LayoutGrid, LogOut, Plus } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import InstallApp from './InstallApp';
@@ -10,15 +11,20 @@ const mobileTabs = [NAV_ITEMS[0], NAV_ITEMS[1], null, NAV_ITEMS[3]];
 
 const mobileTabClass = ({ isActive }: { isActive: boolean }) =>
   [
-    'flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs short:min-h-11 short:flex-row short:gap-1.5',
+    'flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs transition duration-150 select-none active:scale-95 short:min-h-11 short:flex-row short:gap-1.5',
     isActive ? 'font-medium text-primary' : 'text-muted',
   ].join(' ');
 
 export default function AppShell() {
   const { user, signOut, lockedSource } = useAuth();
   const location = useLocation();
+  const navigationType = useNavigationType();
   const isFullscreen = location.pathname.startsWith('/bill') || location.pathname.startsWith('/new');
   const onMenu = location.pathname === '/menu';
+
+  useEffect(() => {
+    if (navigationType !== 'POP') window.scrollTo(0, 0);
+  }, [location.pathname, navigationType]);
 
   if (isFullscreen) {
     return (
@@ -105,7 +111,9 @@ export default function AppShell() {
             {lockedSource ? <SourceBadge source={lockedSource} long /> : null}
           </header>
           <main className="mx-auto w-full max-w-6xl flex-1 p-4 pb-28 sm:p-6 md:pb-6 short:pb-20">
-            <Outlet />
+            <div key={location.pathname} className="page-enter">
+              <Outlet />
+            </div>
           </main>
         </div>
       </div>
@@ -122,7 +130,7 @@ export default function AppShell() {
                   <Link
                     to="/new"
                     aria-label="สร้างออเดอร์"
-                    className="-mt-6 flex h-14 w-14 short:-mt-3 short:h-11 short:w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
+                    className="-mt-6 flex h-14 w-14 short:-mt-3 short:h-11 short:w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-surface transition duration-150 active:scale-90"
                   >
                     <Plus size={26} aria-hidden />
                   </Link>

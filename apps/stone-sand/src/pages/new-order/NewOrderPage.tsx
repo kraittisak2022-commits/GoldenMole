@@ -176,7 +176,7 @@ export default function NewOrderPage() {
     }
   };
 
-  if (loading) return <Loading />;
+  if (loading) return <Loading page />;
 
   return (
     <div className="min-h-[100dvh] bg-page">

@@ -20,6 +20,15 @@ export default function Modal({ open, title, onClose, children, footer, wide }: 
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (!open) return;
+    const { overflow } = document.body.style;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = overflow;
+    };
+  }, [open]);
+
   if (!open) return null;
 
   return (
@@ -31,13 +40,13 @@ export default function Modal({ open, title, onClose, children, footer, wide }: 
     >
       <button
         type="button"
-        className="absolute inset-0 bg-ink/50 cursor-pointer"
+        className="modal-backdrop absolute inset-0 bg-ink/50 backdrop-blur-[2px] cursor-pointer"
         aria-label="ปิด"
         onClick={onClose}
       />
       <div
         className={[
-          'relative z-10 flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-border bg-surface shadow-lg sm:rounded',
+          'modal-panel relative z-10 flex max-h-[92dvh] w-full flex-col rounded-t-2xl border border-border bg-surface shadow-2xl sm:rounded',
           wide ? 'sm:max-w-2xl' : 'sm:max-w-lg',
         ].join(' ')}
       >
