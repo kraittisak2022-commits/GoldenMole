@@ -11,6 +11,7 @@ import {
   Settings,
   Truck,
   Users,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { isIos, isStandalone, useInstallPrompt } from '../lib/installPrompt';
@@ -22,6 +23,7 @@ const navItems = [
   { to: '/orders', label: 'ออเดอร์', icon: ClipboardList },
   { to: '/customers', label: 'ลูกค้า', icon: Users },
   { to: '/statements', label: 'เคลียร์บิล', icon: FileCheck2 },
+  { to: '/driver-pay', label: 'เคลียร์ค่ารถ', icon: Wallet },
   { to: '/drivers', label: 'รถ / คนขับ', icon: Truck },
   { to: '/settings', label: 'ตั้งค่า', icon: Settings },
 ];

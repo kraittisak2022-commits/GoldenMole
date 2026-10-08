@@ -78,6 +78,7 @@ export function mapOrder(row: any): Order {
     createdAt: row.created_at,
     items: items.map(mapItem),
     statementId: stmt?.statement_id ?? null,
+    driverPayoutId: row.driver_payout_id ?? null,
   };
 }
 
@@ -117,6 +118,22 @@ export async function listUnclearedOrders(opts: { customerId?: string } = {}): P
     .limit(2000);
   if (opts.customerId) q = q.eq('customer_id', opts.customerId);
   const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapOrder);
+}
+
+/** Delivery orders with a driver whose ค่ารถ has not been paid yet, oldest first. */
+export async function listDriverUnpaidOrders(): Promise<Order[]> {
+  const { data, error } = await supabase
+    .from('ss_orders')
+    .select(ORDER_SELECT)
+    .eq('fulfillment', 'delivery')
+    .eq('cancelled', false)
+    .not('driver_id', 'is', null)
+    .is('driver_payout_id', null)
+    .order('order_date')
+    .order('created_at')
+    .limit(2000);
   if (error) throw new Error(error.message);
   return (data || []).map(mapOrder);
 }

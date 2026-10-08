@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Banknote, Check, FileText, Landmark, Trash2, X } from 'lucide-react';
+import { Check, FileText, Trash2, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
+import PayMethodPicker, { type PayMethod } from '../components/PayMethodPicker';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -20,12 +21,8 @@ import { summarizeOutstanding } from '../lib/orderStatus';
 import { PAYMENT_METHOD_LABEL, type Order, type Statement } from '../types';
 
 type StatusFilter = 'open' | 'cleared' | 'all';
-type ClearMethod = 'cash' | 'transfer';
 
-const CLEAR_METHODS: { value: ClearMethod; icon: typeof Banknote; hint: string }[] = [
-  { value: 'cash', icon: Banknote, hint: 'รับเป็นเงินสด' },
-  { value: 'transfer', icon: Landmark, hint: 'โอนเข้าบัญชี / พร้อมเพย์' },
-];
+const CLEAR_HINTS: Record<PayMethod, string> = { cash: 'รับเป็นเงินสด', transfer: 'โอนเข้าบัญชี / พร้อมเพย์' };
 
 export default function StatementsPage() {
   const { user, isSuperAdmin } = useAuth();
@@ -39,7 +36,7 @@ export default function StatementsPage() {
   const statements = useAsync(() => listStatements(), []);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
   const [clearing, setClearing] = useState<Statement | null>(null);
-  const [clearMethod, setClearMethod] = useState<ClearMethod | null>(null);
+  const [clearMethod, setClearMethod] = useState<PayMethod | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
 
@@ -243,31 +240,7 @@ export default function StatementsPage() {
               {clearing.statementNo} · {clearing.customer.name}
               <span className="mt-1 block text-2xl font-bold tabular-nums text-primary">{formatMoney(clearing.total)} บาท</span>
             </p>
-            <div>
-              <p className="mb-2 text-sm font-medium">ช่องทางการชำระเงิน</p>
-              <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="ช่องทางการชำระเงิน">
-                {CLEAR_METHODS.map(({ value, icon: Icon, hint }) => {
-                  const active = clearMethod === value;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => setClearMethod(value)}
-                      className={[
-                        'flex min-h-20 flex-col items-center justify-center gap-1 rounded border-2 p-3 text-center transition-colors cursor-pointer',
-                        active ? 'border-primary bg-primary-soft text-primary' : 'border-border hover:border-ink/30',
-                      ].join(' ')}
-                    >
-                      <Icon size={22} aria-hidden />
-                      <span className="font-semibold">{PAYMENT_METHOD_LABEL[value]}</span>
-                      <span className="text-xs text-muted">{hint}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            <PayMethodPicker value={clearMethod} onChange={setClearMethod} hints={CLEAR_HINTS} />
             <p className="text-sm text-muted">ทุกออเดอร์ในใบวางบิลนี้จะเปลี่ยนเป็น "จ่ายแล้ว" และออกเลขใบเสร็จให้อัตโนมัติ</p>
             <div className="grid grid-cols-2 gap-3">
               <Button variant="secondary" size="lg" disabled={busy} onClick={() => setClearing(null)}>

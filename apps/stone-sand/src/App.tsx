@@ -7,6 +7,7 @@ import { Loading } from './components/ui/States';
 import { CatalogProvider } from './context/CatalogProvider';
 import CustomersPage from './pages/CustomersPage';
 import DashboardPage from './pages/DashboardPage';
+import DriverPayPage from './pages/DriverPayPage';
 import DriversPage from './pages/DriversPage';
 import LoginPage from './pages/LoginPage';
 import OrdersPage from './pages/OrdersPage';
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="orders/:id" element={lazyPage(<OrderDetailPage />)} />
             <Route path="customers" element={<CustomersPage />} />
             <Route path="statements" element={<StatementsPage />} />
+            <Route path="driver-pay" element={<DriverPayPage />} />
             <Route path="drivers" element={<DriversPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="new" element={lazyPage(<NewOrderPage />)} />

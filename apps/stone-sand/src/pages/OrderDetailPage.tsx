@@ -83,6 +83,7 @@ export default function OrderDetailPage() {
   const del = deliveryBadge(o);
   const inOpenStatement = !!statement && statement.status === 'open';
   const inClearedStatement = !!statement && statement.status === 'cleared';
+  const wagePaid = !!o.driverPayoutId;
 
   const run = async (key: string, fn: () => Promise<Order>) => {
     setBusy(key);
@@ -377,7 +378,7 @@ export default function OrderDetailPage() {
             <div className="flex flex-col gap-3 border-t border-border pt-3">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
                 <Field id="d-driver" label="คนขับ">
-                  <Select id="d-driver" value={driverId} onChange={(e) => pickDriver(e.target.value)} disabled={o.cancelled}>
+                  <Select id="d-driver" value={driverId} onChange={(e) => pickDriver(e.target.value)} disabled={o.cancelled || wagePaid}>
                     <option value="">— ยังไม่ระบุ —</option>
                     {drivers
                       .filter((d) => d.active || d.id === o.driverId)
@@ -397,10 +398,25 @@ export default function OrderDetailPage() {
                     value={wage || ''}
                     placeholder="0"
                     onChange={(e) => setWage(Math.max(0, Number(e.target.value) || 0))}
-                    disabled={o.cancelled}
+                    disabled={o.cancelled || wagePaid}
                   />
                 </Field>
               </div>
+              {o.driverId ? (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  {wagePaid ? (
+                    <>
+                      <Badge tone="success">จ่ายค่ารถแล้ว</Badge>
+                      <span className="text-muted">ลบรายการจ่ายในหน้าเคลียร์ค่ารถก่อน ถ้าต้องการแก้คนขับหรือค่าจ้าง</span>
+                    </>
+                  ) : (
+                    <Badge tone="warning">ค่ารถยังไม่จ่าย</Badge>
+                  )}
+                  <Link to={`/driver-pay?driver=${o.driverId}`} className="font-medium text-primary underline">
+                    เคลียร์ค่ารถ
+                  </Link>
+                </div>
+              ) : null}
               {driver?.contacts.length ? (
                 <div className="flex flex-wrap gap-2">
                   {driver.contacts.map((c) => (
@@ -526,6 +542,10 @@ function logLabel(e: StatusLogEntry, driverById: (id: string) => { name: string 
       return `ลบใบวางบิล ${arg} (กลับเป็นยังไม่เคลียร์)`;
     case 'restored':
       return 'กู้คืนออเดอร์';
+    case 'wage_paid':
+      return `จ่ายค่ารถให้คนขับแล้ว (${arg})`;
+    case 'wage_unpaid':
+      return `ลบรายการจ่ายค่ารถ ${arg} (กลับเป็นค่ารถยังไม่จ่าย)`;
     default:
       return driverById(arg)?.name ?? e.event;
   }

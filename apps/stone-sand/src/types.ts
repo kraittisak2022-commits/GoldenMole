@@ -119,6 +119,29 @@ export interface Order {
   createdAt: string;
   items: OrderItem[];
   statementId?: string | null;
+  driverPayoutId?: string | null;
+}
+
+export interface DriverPayoutOrder {
+  id: string;
+  orderNo: string;
+  orderDate: string;
+  customerName: string;
+  trips: number;
+  amount: number;
+}
+
+export interface DriverPayout {
+  id: string;
+  payoutNo: string;
+  driverId: string;
+  driverName: string;
+  total: number;
+  method: 'cash' | 'transfer';
+  note: string;
+  createdBy: string | null;
+  createdAt: string;
+  orders: DriverPayoutOrder[];
 }
 
 export interface Statement {
