@@ -15,6 +15,10 @@ import { formatMoney } from '../lib/format';
 
 type CopyMode = 'original' | 'both';
 
+/** A4 sides at 96dpi */
+const A4_SHORT_PX = 794;
+const A4_LONG_PX = 1123;
+
 export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
   const { id = '' } = useParams();
   const [params] = useSearchParams();
@@ -139,18 +143,28 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
         </div>
       ) : null}
 
+      <style>{`@page { size: A4 ${copies === 'both' ? 'landscape' : 'portrait'}; }`}</style>
       <main className="bill-print-root mx-auto max-w-6xl p-3 sm:p-6">
-        <p className="no-print mb-2 text-center text-xs text-muted">กระดาษ A4 แนวนอน · ต้นฉบับซ้าย สำเนาขวา (ขนาด A5) ตัดตามเส้นประ</p>
-        <ScaledSheet>
-          <BillSpread
-            left={<BillDocument ref={sheetRef} bill={bill} copy="original" company={settings.company} payment={settings.payment} />}
-            right={
-              copies === 'both' ? (
-                <BillDocument bill={bill} copy="copy" company={settings.company} payment={settings.payment} />
-              ) : null
-            }
-          />
-        </ScaledSheet>
+        {copies === 'both' ? (
+          <>
+            <p className="no-print mb-2 text-center text-xs text-muted">กระดาษ A4 แนวนอน · ต้นฉบับซ้าย สำเนาขวา (ขนาด A5) ตัดตามเส้นประ</p>
+            <ScaledSheet widthPx={A4_LONG_PX}>
+              <BillSpread
+                left={<BillDocument ref={sheetRef} bill={bill} copy="original" company={settings.company} payment={settings.payment} />}
+                right={<BillDocument bill={bill} copy="copy" company={settings.company} payment={settings.payment} />}
+              />
+            </ScaledSheet>
+          </>
+        ) : (
+          <>
+            <p className="no-print mb-2 text-center text-xs text-muted">กระดาษ A4 แนวตั้ง · ต้นฉบับเต็มแผ่น</p>
+            <div className="mx-auto max-w-4xl">
+              <ScaledSheet widthPx={A4_SHORT_PX}>
+                <BillDocument ref={sheetRef} bill={bill} copy="original" company={settings.company} payment={settings.payment} size="a4" />
+              </ScaledSheet>
+            </div>
+          </>
+        )}
       </main>
     </div>
   );

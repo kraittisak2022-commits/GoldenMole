@@ -14,11 +14,44 @@ interface Props {
   copy: 'original' | 'copy';
   company: CompanySettings;
   payment: PaymentSettings;
+  size?: BillSize;
 }
 
-/** Designed narrower than A4 so it stays legible when fitted onto half an A4 sheet (A5). */
-const SHEET_WIDTH = '160mm';
-const SHEET_HEIGHT = '226.3mm';
+export type BillSize = 'a4' | 'a5';
+
+/** a5 is laid out narrower than A4 (same 1:√2 ratio) so it stays legible when fitted onto half an A4 sheet. */
+const LAYOUT = {
+  a4: {
+    sheet: 'bill-sheet-a4 mx-auto shadow-lg',
+    style: { width: '210mm', minHeight: '297mm', padding: '13mm 14mm 11mm' },
+    headerGap: 'gap-6',
+    logo: 'h-[72px]',
+    title: 'text-[22px]',
+    infoCols: 'grid-cols-[1fr_15.5rem]',
+    totalsCols: 'grid-cols-[1fr_16rem]',
+    padRows: 5,
+    signers: 'mt-6 gap-8',
+    stampSize: 140,
+    stampTop: ['-top-24', '-top-14'],
+    signLine: 'mt-10 w-52',
+    footer: 'mt-5',
+  },
+  a5: {
+    sheet: '',
+    style: { width: '160mm', minHeight: '226.3mm', padding: '9mm 9mm 7mm' },
+    headerGap: 'gap-4',
+    logo: 'h-[60px]',
+    title: 'text-[20px]',
+    infoCols: 'grid-cols-[1fr_13rem]',
+    totalsCols: 'grid-cols-[1fr_14rem]',
+    padRows: 3,
+    signers: 'mt-4 gap-6',
+    stampSize: 112,
+    stampTop: ['-top-20', '-top-12'],
+    signLine: 'mt-8 w-44',
+    footer: 'mt-4',
+  },
+} as const;
 
 const SIGNERS: Record<BillData['kind'], [string, string]> = {
   delivery: ['ผู้รับสินค้า', 'ผู้ส่งสินค้า'],
@@ -26,7 +59,8 @@ const SIGNERS: Record<BillData['kind'], [string, string]> = {
   statement: ['ผู้รับวางบิล', 'ผู้วางบิล'],
 };
 
-const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ bill: b, copy, company, payment }, ref) {
+const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ bill: b, copy, company, payment, size = 'a5' }, ref) {
+  const L = LAYOUT[size];
   const title = DOC_TITLE[b.kind];
   const statement = b.kind === 'statement';
   const showPromptPay =
@@ -38,8 +72,8 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
   return (
     <div
       ref={ref}
-      className="bill-sheet bill-protect relative flex flex-col overflow-hidden bg-white text-[12.5px] leading-snug text-slate-900"
-      style={{ width: SHEET_WIDTH, minHeight: SHEET_HEIGHT, padding: '9mm 9mm 7mm' }}
+      className={`bill-sheet bill-protect relative flex flex-col overflow-hidden bg-white text-[12.5px] leading-snug text-slate-900 ${L.sheet}`}
+      style={L.style}
       onContextMenu={(e) => e.preventDefault()}
       onCopy={(e) => e.preventDefault()}
       onDragStart={(e) => e.preventDefault()}
@@ -47,9 +81,9 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
       <BillSecurity docNo={b.docNo} label={copy === 'original' ? 'ORIGINAL' : 'COPY'} />
 
       <div className="relative flex flex-1 flex-col">
-        <header className="flex items-start justify-between gap-4 border-b-2 border-[#1e3a5f] pb-3">
+        <header className={`flex items-start justify-between ${L.headerGap} border-b-2 border-[#1e3a5f] pb-3`}>
           <div className="flex gap-3">
-            <img src={logoUrl} alt="" draggable={false} className="h-[60px] w-auto shrink-0" />
+            <img src={logoUrl} alt="" draggable={false} className={`${L.logo} w-auto shrink-0`} />
             <div>
               <p className="text-[15px] font-bold text-[#1e3a5f]">{company.nameTh}</p>
               <p className="text-[9.5px] font-semibold tracking-wide text-slate-600">{company.nameEn}</p>
@@ -60,7 +94,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
             </div>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-[20px] font-bold leading-tight text-[#1e3a5f]">{title.th}</p>
+            <p className={`${L.title} font-bold leading-tight text-[#1e3a5f]`}>{title.th}</p>
             <p className="text-[11px] font-semibold tracking-[0.2em] text-slate-500">{title.en}</p>
             <span className="mt-1.5 inline-block rounded border border-[#1e3a5f] px-2 py-0.5 text-[10.5px] font-semibold text-[#1e3a5f]">
               {copyLabel}
@@ -68,7 +102,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
           </div>
         </header>
 
-        <section className="mt-3 grid grid-cols-[1fr_13rem] gap-3">
+        <section className={`mt-3 grid ${L.infoCols} gap-3`}>
           <div className="rounded-md border border-slate-300 px-3 py-2">
             <p className="text-[10.5px] font-semibold text-slate-500">ลูกค้า / CUSTOMER</p>
             <p className="text-[14px] font-semibold">{b.customer.name}</p>
@@ -148,7 +182,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
                 <Td className="text-right tabular-nums">{formatMoney(l.amount)}</Td>
               </tr>
             ))}
-            {Array.from({ length: Math.max(0, (statement ? 4 : 3) - b.lines.length) }).map((_, i) => (
+            {Array.from({ length: Math.max(0, L.padRows + (statement ? 1 : 0) - b.lines.length) }).map((_, i) => (
               <tr key={`pad-${i}`} className="border-b border-slate-100">
                 <td className="h-7" colSpan={statement ? 4 : 6} />
               </tr>
@@ -156,7 +190,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
           </tbody>
         </table>
 
-        <section className="mt-3 grid grid-cols-[1fr_14rem] gap-4">
+        <section className={`mt-3 grid ${L.totalsCols} gap-4`}>
           <div className="flex flex-col gap-2">
             <div className="rounded-md bg-slate-100 px-3 py-2 text-center text-[12.5px] font-semibold">
               ({bahtText(b.total)})
@@ -236,17 +270,17 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
 
         <div className="flex-1" />
 
-        <section className="mt-4 grid grid-cols-2 gap-6">
-          <Signature title={customerSigner} />
+        <section className={`grid grid-cols-2 ${L.signers}`}>
+          <Signature title={customerSigner} line={L.signLine} />
           <div className="relative">
-            <Signature title={companySigner} org={`ในนาม ${company.nameTh}`} />
-            <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 ${b.paid ? '-top-20' : '-top-12'}`}>
-              <BillStamp size={112} paidDate={b.paid ? formatDateTh(b.paidAt || b.date) : undefined} />
+            <Signature title={companySigner} org={`ในนาม ${company.nameTh}`} line={L.signLine} />
+            <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 ${L.stampTop[b.paid ? 0 : 1]}`}>
+              <BillStamp size={L.stampSize} paidDate={b.paid ? formatDateTh(b.paidAt || b.date) : undefined} />
             </div>
           </div>
         </section>
 
-        <footer className="mt-4 flex items-center justify-between gap-4 border-t border-slate-300 pt-2">
+        <footer className={`${L.footer} flex items-center justify-between gap-4 border-t border-slate-300 pt-2`}>
           <p className="text-[10px] text-slate-600">พิมพ์เมื่อ {formatDateTime(new Date())}</p>
           <p className="shrink-0 rounded border border-slate-400 px-2 py-1 text-[10.5px] font-semibold text-slate-700">
             เอกสารนี้ไม่ใช่ใบกำกับภาษี
@@ -293,10 +327,10 @@ function TotalRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Signature({ title, org }: { title: string; org?: string }) {
+function Signature({ title, org, line }: { title: string; org?: string; line: string }) {
   return (
     <div className="text-center text-[11.5px]">
-      <div className="mx-auto mt-8 w-44 border-b border-dotted border-slate-500" />
+      <div className={`mx-auto ${line} border-b border-dotted border-slate-500`} />
       <p className="mt-1">( ........................................ )</p>
       <p className="font-semibold">{title}</p>
       {org ? <p className="text-[10px] text-slate-500">{org}</p> : null}
