@@ -1,3 +1,5 @@
+import type { OrderSource } from '../types';
+
 export type AdminRole = 'SuperAdmin' | 'Admin' | 'Assistant';
 
 export interface StoneSandSession {
@@ -5,6 +7,8 @@ export interface StoneSandSession {
   username: string;
   displayName: string;
   role: AdminRole;
+  /** Only this order source is visible; null = both. Missing in sessions saved before it existed. */
+  orderSource?: OrderSource | null;
   loginAt: string;
 }
 

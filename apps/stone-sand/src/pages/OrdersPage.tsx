@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
+import { useAuth } from '../auth/AuthProvider';
 import OrderRow from '../components/OrderRow';
 import Card from '../components/ui/Card';
 import Chip from '../components/ui/Chip';
@@ -35,10 +36,11 @@ function rangeFrom(r: Range): string | undefined {
 
 export default function OrdersPage() {
   const [params, setParams] = useSearchParams();
+  const { lockedSource } = useAuth();
   const filter = (params.get('f') as OrderFilter) || 'all';
   const range = (params.get('r') as Range) || 'month';
   const sourceParam = params.get('source');
-  const source = ORDER_SOURCES.find((s) => s === sourceParam) ?? null;
+  const source = lockedSource ? null : (ORDER_SOURCES.find((s) => s === sourceParam) ?? null);
   const [query, setQuery] = useState('');
 
   const setParam = (key: string, value: string | null) => {
@@ -104,31 +106,35 @@ export default function OrdersPage() {
         </Select>
       </div>
 
-      <div
-        className="mb-3 inline-flex w-full rounded border border-border bg-surface p-1 sm:w-auto"
-        role="radiogroup"
-        aria-label="ประเภทออเดอร์"
-      >
-        {([null, ...ORDER_SOURCES] as (OrderSource | null)[]).map((s) => {
-          const active = source === s;
-          return (
-            <button
-              key={s ?? 'all'}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => setParam('source', s)}
-              className={[
-                'flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-[9px] px-3 text-sm font-medium transition-colors cursor-pointer sm:flex-none',
-                active ? 'bg-primary text-primary-foreground' : 'text-muted hover:bg-subtle hover:text-ink',
-              ].join(' ')}
-            >
-              {s ? ORDER_SOURCE_SHORT[s] : 'ทั้งหมด'}
-              <span className={['tabular-nums text-xs', active ? 'opacity-80' : ''].join(' ')}>{sourceCounts[s ?? 'all']}</span>
-            </button>
-          );
-        })}
-      </div>
+      {lockedSource ? null : (
+        <div
+          className="mb-3 inline-flex w-full rounded border border-border bg-surface p-1 sm:w-auto"
+          role="radiogroup"
+          aria-label="ประเภทออเดอร์"
+        >
+          {([null, ...ORDER_SOURCES] as (OrderSource | null)[]).map((s) => {
+            const active = source === s;
+            return (
+              <button
+                key={s ?? 'all'}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setParam('source', s)}
+                className={[
+                  'flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-[9px] px-3 text-sm font-medium transition-colors cursor-pointer sm:flex-none',
+                  active ? 'bg-primary text-primary-foreground' : 'text-muted hover:bg-subtle hover:text-ink',
+                ].join(' ')}
+              >
+                {s ? ORDER_SOURCE_SHORT[s] : 'ทั้งหมด'}
+                <span className={['tabular-nums text-xs', active ? 'opacity-80' : ''].join(' ')}>
+                  {sourceCounts[s ?? 'all']}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
         {ORDER_FILTERS.map((f) => (

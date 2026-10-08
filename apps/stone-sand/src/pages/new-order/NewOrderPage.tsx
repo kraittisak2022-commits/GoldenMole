@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, X } from 'lucide-react';
 import { useAuth } from '../../auth/AuthProvider';
+import { useVisibleSources } from '../../auth/useVisibleSources';
 import Button from '../../components/ui/Button';
 import { ErrorBox, Loading } from '../../components/ui/States';
 import { useCatalog } from '../../context/CatalogProvider';
@@ -55,14 +56,18 @@ function clearDraft() {
 }
 
 export default function NewOrderPage() {
-  const { user } = useAuth();
+  const { user, lockedSource } = useAuth();
+  const sources = useVisibleSources();
   const { products, zones, drivers, settings, loading, error, zoneById, driverById } = useCatalog();
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
   const [initial] = useState(() => (params.get('customer') ? null : readDraft()));
   const [step, setStep] = useState(initial?.step ?? 0);
-  const [state, setState] = useState<WizardState>(initial?.state ?? initialWizardState);
+  const [state, setState] = useState<WizardState>(() => {
+    const s = initial?.state ?? initialWizardState;
+    return lockedSource ? { ...s, source: lockedSource } : s;
+  });
   const [stepError, setStepError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -240,6 +245,7 @@ export default function NewOrderPage() {
 
         {stepKey === 'source' ? (
           <StepSource
+            sources={sources}
             source={state.source}
             onSelect={selectSource}
             orderDate={state.orderDate}

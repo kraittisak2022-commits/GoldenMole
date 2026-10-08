@@ -1,5 +1,6 @@
 import { computeTotals, lineAmount } from '../calc/pricing';
 import { supabase } from '../lib/supabase';
+import { scoped } from './sourceScope';
 import type {
   Customer,
   DeliveryStatus,
@@ -95,9 +96,7 @@ export interface ListOrdersOptions {
 }
 
 export async function listOrders(opts: ListOrdersOptions = {}): Promise<Order[]> {
-  let q = supabase
-    .from('ss_orders')
-    .select(ORDER_SELECT)
+  let q = scoped(supabase.from('ss_orders').select(ORDER_SELECT))
     .order('order_date', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(opts.limit ?? 500);
@@ -113,9 +112,7 @@ export async function listOrders(opts: ListOrdersOptions = {}): Promise<Order[]>
 
 /** Not cleared and not cancelled, oldest first (outstanding balances and monthly statements). */
 export async function listUnclearedOrders(opts: { customerId?: string } = {}): Promise<Order[]> {
-  let q = supabase
-    .from('ss_orders')
-    .select(ORDER_SELECT)
+  let q = scoped(supabase.from('ss_orders').select(ORDER_SELECT))
     .eq('cleared', false)
     .eq('cancelled', false)
     .order('order_date')
@@ -129,9 +126,7 @@ export async function listUnclearedOrders(opts: { customerId?: string } = {}): P
 
 /** Delivery orders with a driver whose ค่ารถ has not been paid yet, oldest first. */
 export async function listDriverUnpaidOrders(): Promise<Order[]> {
-  const { data, error } = await supabase
-    .from('ss_orders')
-    .select(ORDER_SELECT)
+  const { data, error } = await scoped(supabase.from('ss_orders').select(ORDER_SELECT))
     .eq('fulfillment', 'delivery')
     .eq('cancelled', false)
     .not('driver_id', 'is', null)
@@ -144,16 +139,14 @@ export async function listDriverUnpaidOrders(): Promise<Order[]> {
 }
 
 export async function getOrder(id: string): Promise<Order | null> {
-  const { data, error } = await supabase.from('ss_orders').select(ORDER_SELECT).eq('id', id).maybeSingle();
+  const { data, error } = await scoped(supabase.from('ss_orders').select(ORDER_SELECT)).eq('id', id).maybeSingle();
   if (error) throw new Error(error.message);
   return data ? mapOrder(data) : null;
 }
 
 export async function getOrdersByIds(ids: string[]): Promise<Order[]> {
   if (!ids.length) return [];
-  const { data, error } = await supabase
-    .from('ss_orders')
-    .select(ORDER_SELECT)
+  const { data, error } = await scoped(supabase.from('ss_orders').select(ORDER_SELECT))
     .in('id', ids)
     .order('order_date')
     .order('created_at');

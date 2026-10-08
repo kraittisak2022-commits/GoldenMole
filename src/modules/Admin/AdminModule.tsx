@@ -3,10 +3,10 @@ import { Shield, Pencil, Key, Trash2, XCircle, Clock, UserPlus, ShieldCheck, Sea
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { AdminUser, AdminLog, AppSettings, AdminRole, AdminDataAccess } from '../../types';
+import { AdminUser, AdminLog, AppSettings, AdminRole, AdminDataAccess, OrderSourceLimit } from '../../types';
 import { hashPasswordForStorage, validateNewPasswordPolicy } from '../../utils/passwordAuth';
-import { effectiveSites, SITES, type SiteKey } from '../../utils/siteAccess';
-import { saveAdminAllowedApps } from '../../services/dataService';
+import { effectiveSites, ORDER_SOURCE_OPTIONS, SITES, type SiteKey } from '../../utils/siteAccess';
+import { saveAdminAllowedApps, saveAdminOrderSource } from '../../services/dataService';
 
 interface AdminModuleProps {
     admins: AdminUser[];
@@ -114,6 +114,7 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog, settings, 
         canDelete: true,
         allowedApps: [] as SiteKey[],
         sitesTouched: false,
+        orderSource: null as OrderSourceLimit | null,
     });
     // Password form
     const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
@@ -228,14 +229,22 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog, settings, 
             },
         };
         const sites = editForm.sitesTouched ? shownSites : null;
+        const orderSourceChanged = editForm.orderSource !== (showEditModal.orderSource ?? null);
         setAdmins(prev => prev.map(a => a.id === showEditModal.id
-            ? { ...a, displayName, role: editForm.role, ...(sites ? { allowedApps: sites } : {}) }
+            ? { ...a, displayName, role: editForm.role, orderSource: editForm.orderSource, ...(sites ? { allowedApps: sites } : {}) }
             : a));
         if (sites) {
             void saveAdminAllowedApps(showEditModal.id, sites).then(ok => {
                 if (!ok) alert('บันทึกสิทธิ์เข้าเว็บไซต์ไม่สำเร็จ ลองใหม่อีกครั้ง');
             });
             addLog('site_access_change', `ปรับเว็บไซต์ที่เข้าได้ @${showEditModal.username} | ${sites.join(', ') || 'ไม่มี'}`);
+        }
+        if (orderSourceChanged) {
+            void saveAdminOrderSource(showEditModal.id, editForm.orderSource).then(ok => {
+                if (!ok) alert('บันทึกประเภทออเดอร์ที่เห็นไม่สำเร็จ ลองใหม่อีกครั้ง');
+            });
+            const label = ORDER_SOURCE_OPTIONS.find(o => o.value === editForm.orderSource)?.label;
+            addLog('site_access_change', `ปรับประเภทออเดอร์หิน-ทรายที่เห็น @${showEditModal.username} | ${label}`);
         }
         setSettings(prev => ({
             ...prev,
@@ -299,6 +308,7 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog, settings, 
             canDelete: access?.transactionPermissions?.delete ?? true,
             allowedApps: effectiveSites(admin),
             sitesTouched: false,
+            orderSource: admin.orderSource ?? null,
         });
         setShowEditModal(admin);
         setCloneSourceAdminId('');
@@ -394,7 +404,11 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog, settings, 
                                         <p className="text-sm text-slate-500">@{admin.username}</p>
                                         <p className="text-xs text-slate-400 mt-0.5">สร้างเมื่อ {admin.createdAt}{admin.lastLogin ? ` • เข้าใช้ล่าสุด: ${admin.lastLogin}` : ''}</p>
                                         <p className="text-xs text-slate-500 mt-0.5">
-                                            เข้าเว็บ: {effectiveSites(admin).map(key => SITES.find(s => s.key === key)?.label).join(' · ') || 'ไม่มี'}
+                                            เข้าเว็บ: {effectiveSites(admin).map(key => {
+                                                const label = SITES.find(s => s.key === key)?.label;
+                                                const limit = key === 'order' ? ORDER_SOURCE_OPTIONS.find(o => o.value && o.value === admin.orderSource)?.label : undefined;
+                                                return limit ? `${label} (${limit})` : label;
+                                            }).join(' · ') || 'ไม่มี'}
                                         </p>
                                     </div>
                                 </div>
@@ -570,6 +584,29 @@ const AdminModule = ({ admins, setAdmins, currentAdmin, logs, addLog, settings, 
                                     );
                                 })}
                                 {editingSelf && <p className="text-xs text-slate-400">ปิดสิทธิ์ระบบหลักของบัญชีตัวเองไม่ได้ เพื่อไม่ให้ล็อกตัวเองออก</p>}
+                                {shownSites.includes('order') && (
+                                    <div className="mt-1 flex flex-col gap-1.5 border-t border-slate-100 pt-2">
+                                        <span className="text-xs font-semibold text-slate-500">ออเดอร์หิน-ทราย: ประเภทออเดอร์ที่เห็น</span>
+                                        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3" role="radiogroup" aria-label="ประเภทออเดอร์ที่เห็น">
+                                            {ORDER_SOURCE_OPTIONS.map(opt => {
+                                                const active = editForm.orderSource === opt.value;
+                                                return (
+                                                    <button
+                                                        key={opt.value ?? 'all'}
+                                                        type="button"
+                                                        role="radio"
+                                                        aria-checked={active}
+                                                        onClick={() => setEditForm({ ...editForm, orderSource: opt.value })}
+                                                        className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all ${active ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white text-slate-600'}`}
+                                                    >
+                                                        {opt.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="text-xs text-slate-400">เลือก "เฉพาะ..." แล้วบัญชีนี้จะเห็นและสร้างได้เฉพาะออเดอร์ประเภทนั้น (ออเดอร์ ใบวางบิล ยอดค้าง ค่ารถ)</p>
+                                    </div>
+                                )}
                             </div>
                             {editForm.role !== 'SuperAdmin' && (
                                 <>

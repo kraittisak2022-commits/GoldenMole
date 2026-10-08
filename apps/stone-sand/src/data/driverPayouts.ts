@@ -1,27 +1,38 @@
 import { supabase } from '../lib/supabase';
 import type { DriverPayout } from '../types';
+import { canSeeSource, lockedSource, parseOrderSource } from './sourceScope';
 
 const PAYOUT_SELECT =
-  '*, orders:ss_orders!ss_orders_driver_payout_id_fkey(id, order_no, order_date, customer_snapshot, trips, driver_wage),' +
-  ' cash:ss_payments!ss_payments_driver_payout_id_fkey(amount)';
+  '*, orders:ss_orders!ss_orders_driver_payout_id_fkey(id, order_no, order_date, source, customer_snapshot, trips, driver_wage),' +
+  ' cash:ss_payments!ss_payments_driver_payout_id_fkey(amount, order:ss_orders!ss_payments_order_id_fkey(source))';
+
+const visible = (source: unknown) => {
+  const s = parseOrderSource(source);
+  return s ? canSeeSource(s) : !lockedSource();
+};
 
 function mapPayout(row: any): DriverPayout {
-  const orders = (row.orders || []).map((o: any) => ({
-    id: o.id,
-    orderNo: o.order_no,
-    orderDate: o.order_date,
-    customerName: o.customer_snapshot?.name || '',
-    trips: Number(o.trips || 0),
-    amount: Number(o.driver_wage || 0),
-  }));
+  // A payout can mix both sources; a limited account sees only its own part of it.
+  const limited = !!lockedSource();
+  const orders = (row.orders || [])
+    .filter((o: any) => visible(o.source))
+    .map((o: any) => ({
+      id: o.id,
+      orderNo: o.order_no,
+      orderDate: o.order_date,
+      customerName: o.customer_snapshot?.name || '',
+      trips: Number(o.trips || 0),
+      amount: Number(o.driver_wage || 0),
+    }));
   orders.sort((a: { orderNo: string }, b: { orderNo: string }) => a.orderNo.localeCompare(b.orderNo));
+  const cash = (row.cash || []).filter((p: any) => visible(p.order?.source));
   return {
     id: row.id,
     payoutNo: row.payout_no,
     driverId: row.driver_id,
     driverName: row.driver_name || '',
-    total: Number(row.total || 0),
-    cashCollected: (row.cash || []).reduce((s: number, p: any) => s + Number(p.amount || 0), 0),
+    total: limited ? orders.reduce((s: number, o: { amount: number }) => s + o.amount, 0) : Number(row.total || 0),
+    cashCollected: cash.reduce((s: number, p: any) => s + Number(p.amount || 0), 0),
     method: row.method,
     note: row.note || '',
     createdBy: row.created_by,
@@ -37,7 +48,7 @@ export async function listDriverPayouts(): Promise<DriverPayout[]> {
     .order('created_at', { ascending: false })
     .limit(300);
   if (error) throw new Error(error.message);
-  return (data || []).map(mapPayout);
+  return (data || []).map(mapPayout).filter((p) => !lockedSource() || p.orders.length > 0);
 }
 
 export async function createDriverPayout(input: {

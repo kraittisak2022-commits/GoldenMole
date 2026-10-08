@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { scoped } from './sourceScope';
 import type { OrderSource, Statement } from '../types';
 
 const STATEMENT_SELECT = '*, links:ss_statement_orders(order_id)';
@@ -30,7 +31,7 @@ export function mapStatement(row: any): Statement {
 }
 
 export async function listStatements(opts: { customerId?: string } = {}): Promise<Statement[]> {
-  let q = supabase.from('ss_statements').select(STATEMENT_SELECT).order('created_at', { ascending: false }).limit(300);
+  let q = scoped(supabase.from('ss_statements').select(STATEMENT_SELECT)).order('created_at', { ascending: false }).limit(300);
   if (opts.customerId) q = q.eq('customer_id', opts.customerId);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
@@ -38,7 +39,7 @@ export async function listStatements(opts: { customerId?: string } = {}): Promis
 }
 
 export async function getStatement(id: string): Promise<Statement | null> {
-  const { data, error } = await supabase.from('ss_statements').select(STATEMENT_SELECT).eq('id', id).maybeSingle();
+  const { data, error } = await scoped(supabase.from('ss_statements').select(STATEMENT_SELECT)).eq('id', id).maybeSingle();
   if (error) throw new Error(error.message);
   return data ? mapStatement(data) : null;
 }

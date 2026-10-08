@@ -7,6 +7,8 @@ import { ORDER_SOURCE_LABEL, type OrderSource } from '../../types';
 import StepTitle from './StepTitle';
 
 interface Props {
+  /** Sources this account may create; one means it is fixed. */
+  sources: OrderSource[];
   source: OrderSource | null;
   onSelect: (source: OrderSource) => void;
   /** '' means today. */
@@ -19,7 +21,7 @@ const OPTIONS: { value: OrderSource; icon: ReactNode; hint: string; docNo: strin
   { value: 'pit', icon: <Mountain size={32} aria-hidden />, hint: 'ลูกค้าสั่งกับท่าทรายโดยตรง', docNo: 'เลขที่ TS…' },
 ];
 
-export default function StepSource({ source, onSelect, orderDate, onDateChange }: Props) {
+export default function StepSource({ sources, source, onSelect, orderDate, onDateChange }: Props) {
   const today = toIsoDate();
   const yesterday = shiftIsoDate(today, -1);
   const date = orderDate || today;
@@ -56,8 +58,11 @@ export default function StepSource({ source, onSelect, orderDate, onDateChange }
         </p>
       </section>
 
+      {sources.length === 1 ? (
+        <p className="-mb-2 text-sm text-muted">บัญชีนี้สร้างได้เฉพาะออเดอร์{ORDER_SOURCE_LABEL[sources[0]]}</p>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="ประเภทออเดอร์">
-        {OPTIONS.map((o) => {
+        {OPTIONS.filter((o) => sources.includes(o.value)).map((o) => {
           const active = source === o.value;
           return (
             <button

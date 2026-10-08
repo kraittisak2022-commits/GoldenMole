@@ -340,7 +340,11 @@ export interface AdminUser {
     lastClientSurface?: 'select' | 'desktop' | 'mobile';
     /** เว็บไซต์ที่ล็อกอินได้ (null = ตามบทบาท) — ดู utils/siteAccess */
     allowedApps?: string[] | null;
+    /** ออเดอร์หิน-ทราย: เห็นเฉพาะประเภทนี้ (null = ทั้งร้านวัสดุและท่าทราย) */
+    orderSource?: OrderSourceLimit | null;
 }
+
+export type OrderSourceLimit = 'shop' | 'pit';
 
 export interface AdminDataAccess {
     /** เมนูที่อนุญาตให้เห็น */

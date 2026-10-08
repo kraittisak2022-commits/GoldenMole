@@ -201,6 +201,7 @@ function SectionTitle({ children, action }: { children: ReactNode; action?: Reac
 }
 
 function SummaryCard({ stats }: { stats: PeriodStats }) {
+  const { lockedSource } = useAuth();
   return (
     <Card className="p-4">
       <dl className="flex flex-col gap-2 text-sm">
@@ -216,23 +217,25 @@ function SummaryCard({ stats }: { stats: PeriodStats }) {
         <Row label="ค้างรับ" value={formatMoney(stats.outstanding)} />
         <Row label="ค่าจ้างคนขับ" value={formatMoney(stats.driverWages)} />
       </dl>
-      <div className="mt-4 border-t border-border pt-3">
-        <p className="mb-2 text-xs font-semibold text-muted">แยกตามประเภทออเดอร์</p>
-        <ul className="grid grid-cols-2 gap-2">
-          {ORDER_SOURCES.map((s) => {
-            const row = stats.bySource[s];
-            return (
-              <li key={s} className="min-w-0 rounded border border-border px-3 py-2">
-                <SourceBadge source={s} />
-                <p className="mt-1.5 truncate text-base font-semibold tabular-nums">{formatMoney(row.net)}</p>
-                <p className="truncate text-xs text-muted tabular-nums">
-                  {formatNumber(row.orderCount)} ออเดอร์ · {formatNumber(row.quantity)} คิว
-                </p>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+      {lockedSource ? null : (
+        <div className="mt-4 border-t border-border pt-3">
+          <p className="mb-2 text-xs font-semibold text-muted">แยกตามประเภทออเดอร์</p>
+          <ul className="grid grid-cols-2 gap-2">
+            {ORDER_SOURCES.map((s) => {
+              const row = stats.bySource[s];
+              return (
+                <li key={s} className="min-w-0 rounded border border-border px-3 py-2">
+                  <SourceBadge source={s} />
+                  <p className="mt-1.5 truncate text-base font-semibold tabular-nums">{formatMoney(row.net)}</p>
+                  <p className="truncate text-xs text-muted tabular-nums">
+                    {formatNumber(row.orderCount)} ออเดอร์ · {formatNumber(row.quantity)} คิว
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
       {stats.quantityByProduct.length ? (
         <div className="mt-4 border-t border-border pt-3">
           <p className="mb-2 text-xs font-semibold text-muted">ขายตามสินค้า</p>

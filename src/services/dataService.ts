@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
-import { Employee, Transaction, LandProject, AppSettings, AdminUser, AdminLog, AdminUiTheme, WorkPlan } from '../types';
+import { Employee, Transaction, LandProject, AppSettings, AdminUser, AdminLog, AdminUiTheme, WorkPlan, OrderSourceLimit } from '../types';
+import { parseOrderSourceLimit } from '../utils/siteAccess';
 import { coercePositionSources } from '../utils/advanceEmployeeFilter';
 import { resolveCarsForSave } from '../utils/appSettingsCarsGuard';
 import { visibleIncomeTypes } from '../utils/incomeTypes';
@@ -414,6 +415,7 @@ const mapAdminUserRow = (row: any): AdminUser => ({
     sessionActive: !!row.session_active,
     lastClientSurface: (row.last_client_surface as 'select' | 'desktop' | 'mobile' | null) || 'select',
     allowedApps: Array.isArray(row.allowed_apps) ? row.allowed_apps : null,
+    orderSource: parseOrderSourceLimit(row.order_source),
 });
 
 export interface AdminFetchResult {
@@ -465,6 +467,13 @@ export const saveAdmin = async (admin: AdminUser): Promise<boolean> => {
 export const saveAdminAllowedApps = async (id: string, allowedApps: string[] | null): Promise<boolean> => {
     const { error } = await supabase.from('admin_users').update({ allowed_apps: allowedApps }).eq('id', id);
     if (error) { console.error('saveAdminAllowedApps error:', error); return false; }
+    return true;
+};
+
+/** Like allowed_apps, saveAdmin never writes order_source. */
+export const saveAdminOrderSource = async (id: string, orderSource: OrderSourceLimit | null): Promise<boolean> => {
+    const { error } = await supabase.from('admin_users').update({ order_source: orderSource }).eq('id', id);
+    if (error) { console.error('saveAdminOrderSource error:', error); return false; }
     return true;
 };
 

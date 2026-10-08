@@ -1,4 +1,6 @@
+import { parseOrderSource } from '../data/sourceScope';
 import { hasSupabaseConfig, supabase } from '../lib/supabase';
+import type { OrderSource } from '../types';
 import { verifyStoredPassword } from './passwordAuth';
 import { canAccessSite } from './siteAccess';
 import type { AdminRole, StoneSandSession } from './session';
@@ -28,6 +30,7 @@ interface AdminUserRow {
   display_name: string;
   role: AdminRole;
   allowed_apps: string[] | null;
+  order_source: string | null;
 }
 
 const normalizeUsername = (raw: string) =>
@@ -55,7 +58,7 @@ export async function signInWithAdminUsers(
   const normalized = normalizeUsername(u);
   const { data, error } = await supabase
     .from('admin_users')
-    .select('id, username, password, display_name, role, allowed_apps')
+    .select('id, username, password, display_name, role, allowed_apps, order_source')
     .ilike('username', normalized)
     .maybeSingle();
 
@@ -82,15 +85,28 @@ export async function signInWithAdminUsers(
     username: row.username,
     displayName: row.display_name,
     role: row.role,
+    orderSource: parseOrderSource(row.order_source),
     loginAt: new Date().toISOString(),
   };
 }
 
-/** `allowed` is false only when the account is gone or lost access; a failed request keeps the session (role unknown). */
-export async function checkSession(id: string): Promise<{ allowed: boolean; role?: AdminRole }> {
+export interface SessionCheck {
+  allowed: boolean;
+  role?: AdminRole;
+  orderSource?: OrderSource | null;
+}
+
+/** `allowed` is false only when the account is gone or lost access; a failed request keeps the session (access unknown). */
+export async function checkSession(id: string): Promise<SessionCheck> {
   if (!hasSupabaseConfig) return { allowed: true };
-  const { data, error } = await supabase.from('admin_users').select('role, allowed_apps').eq('id', id).maybeSingle();
+  const { data, error } = await supabase
+    .from('admin_users')
+    .select('role, allowed_apps, order_source')
+    .eq('id', id)
+    .maybeSingle();
   if (error) return { allowed: true };
-  const row = data as Pick<AdminUserRow, 'role' | 'allowed_apps'> | null;
-  return row ? { allowed: canAccessSite(row, 'order'), role: row.role } : { allowed: false };
+  const row = data as Pick<AdminUserRow, 'role' | 'allowed_apps' | 'order_source'> | null;
+  return row
+    ? { allowed: canAccessSite(row, 'order'), role: row.role, orderSource: parseOrderSource(row.order_source) }
+    : { allowed: false };
 }

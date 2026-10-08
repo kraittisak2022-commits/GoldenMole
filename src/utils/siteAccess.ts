@@ -1,4 +1,15 @@
-import type { AdminRole } from '../types';
+import type { AdminRole, OrderSourceLimit } from '../types';
+
+/** admin_users.order_source — which ออเดอร์หิน-ทราย orders the account sees; read by apps/stone-sand. */
+export const ORDER_SOURCE_OPTIONS: { value: OrderSourceLimit | null; label: string }[] = [
+    { value: null, label: 'ทั้งหมด' },
+    { value: 'shop', label: 'เฉพาะร้านวัสดุก่อสร้าง' },
+    { value: 'pit', label: 'เฉพาะท่าทราย' },
+];
+
+export function parseOrderSourceLimit(raw: unknown): OrderSourceLimit | null {
+    return raw === 'shop' || raw === 'pit' ? raw : null;
+}
 
 export type SiteKey = 'main' | 'order' | 'flowaccount';
 

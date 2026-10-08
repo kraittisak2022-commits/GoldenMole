@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { isIos, isStandalone, useInstallPrompt } from '../lib/installPrompt';
+import SourceBadge from './SourceBadge';
 import Modal from './ui/Modal';
 import logoUrl from '../assets/pirasit-logo.png';
 
@@ -31,7 +32,7 @@ const navItems = [
 const mobileTabs = [navItems[0], navItems[1], null, navItems[3]];
 
 export default function AppShell() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, lockedSource } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const isFullscreen = location.pathname.startsWith('/bill') || location.pathname.startsWith('/new');
@@ -53,6 +54,11 @@ export default function AppShell() {
             <div className="min-w-0">
               <p className="text-xs font-medium tracking-wide text-muted">หจก. พีรสิทธิ์ วัสดุก่อสร้าง</p>
               <h1 className="mt-0.5 text-lg font-semibold text-ink">ออเดอร์หิน-ทราย</h1>
+              {lockedSource ? (
+                <p className="mt-1" title="บัญชีนี้เห็นเฉพาะออเดอร์ประเภทนี้">
+                  <SourceBadge source={lockedSource} long />
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="p-3">
@@ -113,6 +119,7 @@ export default function AppShell() {
                 <p className="text-sm font-semibold">ออเดอร์หิน-ทราย</p>
               </div>
             </div>
+            {lockedSource ? <SourceBadge source={lockedSource} long /> : null}
           </header>
           <main className="mx-auto w-full max-w-6xl flex-1 p-4 pb-28 sm:p-6 md:pb-6 short:pb-20">
             <Outlet />

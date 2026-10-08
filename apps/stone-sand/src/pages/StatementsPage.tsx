@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, FileText, Trash2, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
+import { useVisibleSources } from '../auth/useVisibleSources';
 import PayMethodPicker, { type PayMethod } from '../components/PayMethodPicker';
 import SourceBadge from '../components/SourceBadge';
 import Badge from '../components/ui/Badge';
@@ -34,7 +35,8 @@ type StatusFilter = 'open' | 'cleared' | 'all';
 const CLEAR_HINTS: Record<PayMethod, string> = { cash: 'รับเป็นเงินสด', transfer: 'โอนเข้าบัญชี / พร้อมเพย์' };
 
 export default function StatementsPage() {
-  const { user, isSuperAdmin } = useAuth();
+  const { user, isSuperAdmin, lockedSource } = useAuth();
+  const sources = useVisibleSources();
   const by = user?.displayName || user?.username || '';
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -52,6 +54,7 @@ export default function StatementsPage() {
 
   const summary = useMemo(() => summarizeOutstanding(uncleared.data ?? []), [uncleared.data]);
   const selectedSource: OrderSource =
+    lockedSource ??
     ORDER_SOURCES.find((s) => s === sourceParam) ??
     summary.find((r) => r.customerId === selectedCustomer && r.unbilledCount)?.source ??
     'shop';
@@ -177,6 +180,7 @@ export default function StatementsPage() {
               customerId={selectedCustomer}
               source={selectedSource}
               orders={customerUnbilled.filter((o) => o.source === selectedSource)}
+              sources={sources}
               sourceCounts={Object.fromEntries(
                 ORDER_SOURCES.map((s) => [s, customerUnbilled.filter((o) => o.source === s).length]),
               ) as Record<OrderSource, number>}
@@ -290,6 +294,7 @@ function CreateStatementPanel({
   customerId,
   source,
   orders,
+  sources,
   sourceCounts,
   by,
   onSource,
@@ -299,6 +304,7 @@ function CreateStatementPanel({
   customerId: string;
   source: OrderSource;
   orders: Order[];
+  sources: OrderSource[];
   sourceCounts: Record<OrderSource, number>;
   by: string;
   onSource: (s: OrderSource) => void;
@@ -365,25 +371,29 @@ function CreateStatementPanel({
         </button>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-1 rounded border border-border p-1" role="radiogroup" aria-label="ประเภทออเดอร์">
-        {ORDER_SOURCES.map((s) => (
-          <button
-            key={s}
-            type="button"
-            role="radio"
-            aria-checked={source === s}
-            onClick={() => onSource(s)}
-            className={[
-              'flex min-h-10 items-center justify-center gap-1.5 rounded-[9px] px-2 text-sm font-medium transition-colors cursor-pointer',
-              source === s ? 'bg-primary text-primary-foreground' : 'text-muted hover:bg-subtle hover:text-ink',
-            ].join(' ')}
-          >
-            {ORDER_SOURCE_SHORT[s]}
-            <span className="text-xs tabular-nums opacity-80">{sourceCounts[s]}</span>
-          </button>
-        ))}
-      </div>
-      <p className="-mt-2 mb-4 text-xs text-muted">ใบวางบิลแยกกันระหว่างออเดอร์ร้านวัสดุก่อสร้างกับออเดอร์ท่าทราย</p>
+      {sources.length > 1 ? (
+        <>
+          <div className="mb-4 grid grid-cols-2 gap-1 rounded border border-border p-1" role="radiogroup" aria-label="ประเภทออเดอร์">
+            {sources.map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={source === s}
+                onClick={() => onSource(s)}
+                className={[
+                  'flex min-h-10 items-center justify-center gap-1.5 rounded-[9px] px-2 text-sm font-medium transition-colors cursor-pointer',
+                  source === s ? 'bg-primary text-primary-foreground' : 'text-muted hover:bg-subtle hover:text-ink',
+                ].join(' ')}
+              >
+                {ORDER_SOURCE_SHORT[s]}
+                <span className="text-xs tabular-nums opacity-80">{sourceCounts[s]}</span>
+              </button>
+            ))}
+          </div>
+          <p className="-mt-2 mb-4 text-xs text-muted">ใบวางบิลแยกกันระหว่างออเดอร์ร้านวัสดุก่อสร้างกับออเดอร์ท่าทราย</p>
+        </>
+      ) : null}
 
       {!orders.length ? (
         <p className="text-sm text-muted">ไม่มีออเดอร์{ORDER_SOURCE_LABEL[source]}ที่ยังไม่วางบิล</p>
