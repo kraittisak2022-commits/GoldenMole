@@ -34,17 +34,25 @@ export default function StepSummary({ state: s, patch, items }: Props) {
 
       <section className="rounded border border-border bg-surface">
         <ul className="divide-y divide-border">
-          {items.map((it) => (
-            <li key={it.productId ?? it.name} className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
-              <div>
-                <p className="font-medium">{it.name}</p>
-                <p className="text-muted">
-                  {formatNumber(it.quantity)} {it.unit} × {formatNumber(it.unitPrice)}
-                </p>
-              </div>
-              <p className="tabular-nums">{formatMoney(it.amount)}</p>
-            </li>
-          ))}
+          {items.map((it) => {
+            const load = it.productId ? s.loads[it.productId] : undefined;
+            return (
+              <li key={it.productId ?? it.name} className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
+                <div>
+                  <p className="font-medium">{it.name}</p>
+                  {load ? (
+                    <p className="text-muted">
+                      {formatNumber(load.perTrip)} {it.unit} × {load.trips} เที่ยว = {formatNumber(it.quantity)} {it.unit}
+                    </p>
+                  ) : null}
+                  <p className="text-muted">
+                    {formatNumber(it.quantity)} {it.unit} × {formatNumber(it.unitPrice)} บาท
+                  </p>
+                </div>
+                <p className="tabular-nums">{formatMoney(it.amount)}</p>
+              </li>
+            );
+          })}
           {delivery ? (
             <li className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
               <div>
@@ -69,7 +77,7 @@ export default function StepSummary({ state: s, patch, items }: Props) {
                   type="button"
                   role="radio"
                   aria-checked={s.discountType === t}
-                  onClick={() => patch({ discountType: t })}
+                  onClick={() => t !== s.discountType && patch({ discountType: t, discountValue: 0 })}
                   className={[
                     'min-h-10 min-w-12 rounded px-3 text-sm font-medium cursor-pointer',
                     s.discountType === t ? 'bg-primary text-primary-foreground' : 'text-muted hover:text-ink',
