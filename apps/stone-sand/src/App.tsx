@@ -12,6 +12,7 @@ import DashboardPage from './pages/DashboardPage';
 import DriverPayPage from './pages/DriverPayPage';
 import DriversPage from './pages/DriversPage';
 import LoginPage from './pages/LoginPage';
+import MenuPage from './pages/MenuPage';
 import OrdersPage from './pages/OrdersPage';
 import SettingsPage from './pages/SettingsPage';
 import StatementsPage from './pages/StatementsPage';
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="driver-pay" element={<DriverPayPage />} />
             <Route path="drivers" element={<DriversPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="menu" element={<MenuPage />} />
             <Route path="new" element={lazyPage(<NewOrderPage />)} />
             <Route path="bill/order/:id" element={lazyPage(<BillPage mode="order" />)} />
             <Route path="bill/statement/:id" element={lazyPage(<BillPage mode="statement" />)} />

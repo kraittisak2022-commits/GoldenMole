@@ -1,41 +1,24 @@
-import { useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import {
-  ClipboardList,
-  Download,
-  FileCheck2,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-  Plus,
-  Settings,
-  Truck,
-  Users,
-  Wallet,
-} from 'lucide-react';
+import { LayoutGrid, LogOut, Plus } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
-import { isIos, isStandalone, useInstallPrompt } from '../lib/installPrompt';
+import InstallApp from './InstallApp';
+import { NAV_ITEMS } from './navItems';
 import SourceBadge from './SourceBadge';
-import Modal from './ui/Modal';
 import logoUrl from '../assets/pirasit-logo.png';
 
-const navItems = [
-  { to: '/', label: 'หน้าหลัก', icon: LayoutDashboard, end: true },
-  { to: '/orders', label: 'ออเดอร์', icon: ClipboardList },
-  { to: '/customers', label: 'ลูกค้า', icon: Users },
-  { to: '/statements', label: 'เคลียร์บิล', icon: FileCheck2 },
-  { to: '/driver-pay', label: 'เคลียร์ค่ารถ', icon: Wallet },
-  { to: '/drivers', label: 'รถ / คนขับ', icon: Truck },
-  { to: '/settings', label: 'ตั้งค่า', icon: Settings },
-];
+const mobileTabs = [NAV_ITEMS[0], NAV_ITEMS[1], null, NAV_ITEMS[3]];
 
-const mobileTabs = [navItems[0], navItems[1], null, navItems[3]];
+const mobileTabClass = ({ isActive }: { isActive: boolean }) =>
+  [
+    'flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs short:min-h-11 short:flex-row short:gap-1.5',
+    isActive ? 'font-medium text-primary' : 'text-muted',
+  ].join(' ');
 
 export default function AppShell() {
   const { user, signOut, lockedSource } = useAuth();
   const location = useLocation();
-  const [menuOpen, setMenuOpen] = useState(false);
   const isFullscreen = location.pathname.startsWith('/bill') || location.pathname.startsWith('/new');
+  const onMenu = location.pathname === '/menu';
 
   if (isFullscreen) {
     return (
@@ -71,7 +54,7 @@ export default function AppShell() {
             </Link>
           </div>
           <nav className="flex flex-1 flex-col gap-1 px-3" aria-label="เมนูหลัก">
-            {navItems.map((item) => {
+            {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               return (
                 <NavLink
@@ -148,82 +131,23 @@ export default function AppShell() {
             }
             const Icon = item.icon;
             return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  [
-                    'flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs short:min-h-11 short:flex-row short:gap-1.5',
-                    isActive ? 'font-medium text-primary' : 'text-muted',
-                  ].join(' ')
-                }
-              >
+              <NavLink key={item.to} to={item.to} end={item.end} className={mobileTabClass}>
                 <Icon size={20} aria-hidden />
                 {item.label}
               </NavLink>
             );
           })}
-          <button
-            type="button"
-            onClick={() => setMenuOpen(true)}
-            className="flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs text-muted cursor-pointer short:min-h-11 short:flex-row short:gap-1.5"
+          <NavLink
+            to="/menu"
+            state={onMenu ? location.state : { from: location.pathname }}
+            replace={onMenu}
+            className={mobileTabClass}
           >
-            <Menu size={20} aria-hidden />
+            <LayoutGrid size={20} aria-hidden />
             เมนู
-          </button>
+          </NavLink>
         </div>
       </nav>
-
-      <Modal open={menuOpen} title="เมนู" onClose={() => setMenuOpen(false)}>
-        <div className="flex flex-col gap-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                onClick={() => setMenuOpen(false)}
-                className="flex min-h-12 items-center gap-3 rounded px-3 text-sm hover:bg-subtle"
-              >
-                <Icon size={18} className="text-muted" aria-hidden />
-                {item.label}
-              </NavLink>
-            );
-          })}
-          <InstallApp className="flex min-h-12 items-center gap-3 rounded px-3 text-sm hover:bg-subtle cursor-pointer" />
-          <div className="my-2 border-t border-border" />
-          <p className="px-3 text-xs text-muted">
-            {user?.displayName} · {user?.role}
-          </p>
-          <button
-            type="button"
-            onClick={signOut}
-            className="flex min-h-12 items-center gap-3 rounded px-3 text-sm text-destructive hover:bg-destructive-soft cursor-pointer"
-          >
-            <LogOut size={18} aria-hidden />
-            ออกจากระบบ
-          </button>
-        </div>
-      </Modal>
     </div>
   );
-}
-
-function InstallApp({ className }: { className: string }) {
-  const install = useInstallPrompt();
-  if (isStandalone()) return null;
-  if (install) {
-    return (
-      <button type="button" onClick={() => void install()} className={className}>
-        <Download size={18} className="text-muted" aria-hidden />
-        ติดตั้งเป็นแอปบนเครื่อง
-      </button>
-    );
-  }
-  if (isIos()) {
-    return <p className="px-3 py-2 text-sm text-muted">ติดตั้งเป็นแอป: กดปุ่มแชร์ แล้วเลือก “เพิ่มไปยังหน้าจอโฮม”</p>;
-  }
-  return null;
 }
