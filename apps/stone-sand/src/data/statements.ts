@@ -27,6 +27,7 @@ export function mapStatement(row: any): Statement {
     createdBy: row.created_by,
     createdAt: row.created_at,
     orderIds: (row.links || []).map((l: any) => l.order_id),
+    demo: !!row.demo_session,
   };
 }
 

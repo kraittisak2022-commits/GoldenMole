@@ -164,7 +164,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
     <div className="step-enter flex flex-col gap-5">
       <StepTitle title="การรับสินค้า" subtitle="ลูกค้ามารับเองที่ท่าทราย หรือให้รถไปส่ง" />
 
-      <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="การรับสินค้า">
+      <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="การรับสินค้า" data-tour="wiz-fulfillment">
         <ChoiceCard
           active={s.fulfillment === 'pickup'}
           onClick={() => chooseFulfillment('pickup')}

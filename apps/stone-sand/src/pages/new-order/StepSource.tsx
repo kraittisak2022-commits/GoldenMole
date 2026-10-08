@@ -29,7 +29,11 @@ export default function StepSource({ sources, source, onSelect, orderDate, onDat
     <div className="step-enter flex flex-col gap-5">
       <StepTitle title="ประเภทออเดอร์" subtitle="เลือกวันที่ แล้วเลือกว่ามาจากร้านวัสดุก่อสร้าง หรือสั่งที่ท่าทรายโดยตรง" />
 
-      <section className="flex flex-col gap-3 rounded border border-border bg-surface p-4" aria-labelledby="order-date-label">
+      <section
+        className="flex flex-col gap-3 rounded border border-border bg-surface p-4"
+        aria-labelledby="order-date-label"
+        data-tour="wiz-date"
+      >
         <div className="flex items-center gap-2">
           <CalendarDays size={18} className="text-primary" aria-hidden />
           <h3 id="order-date-label" className="font-semibold">
@@ -57,7 +61,7 @@ export default function StepSource({ sources, source, onSelect, orderDate, onDat
       {sources.length === 1 ? (
         <p className="-mb-2 text-sm text-muted">บัญชีนี้สร้างได้เฉพาะออเดอร์{ORDER_SOURCE_LABEL[sources[0]]}</p>
       ) : null}
-      <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="ประเภทออเดอร์">
+      <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="ประเภทออเดอร์" data-tour="wiz-source">
         {OPTIONS.filter((o) => sources.includes(o.value)).map((o) => {
           const active = source === o.value;
           return (

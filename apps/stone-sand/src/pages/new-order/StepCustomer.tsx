@@ -114,7 +114,7 @@ export default function StepCustomer({ customer, onSelect }: Props) {
 
       {!creating ? (
         <>
-          <div className="relative">
+          <div className="relative" data-tour="wiz-customer-search">
             <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden />
             <Input
               autoFocus

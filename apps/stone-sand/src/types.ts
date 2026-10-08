@@ -153,6 +153,8 @@ export interface Order {
   items: OrderItem[];
   statementId?: string | null;
   driverPayoutId?: string | null;
+  /** Created during the guided tour; carries DEMO- document numbers and is deleted when the tour ends. */
+  demo?: boolean;
 }
 
 export interface DriverPayoutOrder {
@@ -197,6 +199,7 @@ export interface Statement {
   createdBy: string | null;
   createdAt: string;
   orderIds: string[];
+  demo?: boolean;
 }
 
 export interface CompanySettings {

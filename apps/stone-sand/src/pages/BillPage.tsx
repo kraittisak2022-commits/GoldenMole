@@ -90,6 +90,7 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
           <Link
             to={backTo}
             aria-label="กลับ"
+            data-tour="bill-back"
             className="inline-flex min-h-11 min-w-11 items-center justify-center rounded text-muted hover:bg-subtle hover:text-ink"
           >
             <ArrowLeft size={20} aria-hidden />
@@ -103,11 +104,11 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
           <Button variant="secondary" onClick={savePng} disabled={saving} aria-label="บันทึกเป็นรูป">
             <Download size={18} aria-hidden /> <span className="hidden sm:inline">{saving ? 'กำลังบันทึก…' : 'บันทึกรูป'}</span>
           </Button>
-          <Button onClick={() => window.print()}>
+          <Button onClick={() => window.print()} data-tour="bill-print">
             <Printer size={18} aria-hidden /> พิมพ์
           </Button>
         </div>
-        <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-2 px-3 pb-2">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-2 px-3 pb-2" data-tour="bill-options">
           {order ? (
             <Segmented
               label="ประเภทเอกสาร"
@@ -144,7 +145,7 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
       ) : null}
 
       <style>{`@page { size: A4 ${copies === 'both' ? 'landscape' : 'portrait'}; }`}</style>
-      <main className="bill-print-root mx-auto max-w-6xl p-3 sm:p-6">
+      <main className="bill-print-root mx-auto max-w-6xl p-3 sm:p-6" data-tour="bill-sheet">
         {copies === 'both' ? (
           <>
             <p className="no-print mb-2 text-center text-xs text-muted">กระดาษ A4 แนวนอน · ต้นฉบับซ้าย สำเนาขวา (ขนาด A5) ตัดตามเส้นประ</p>

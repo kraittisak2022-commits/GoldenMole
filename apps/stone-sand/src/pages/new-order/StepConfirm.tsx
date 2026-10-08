@@ -26,7 +26,7 @@ export default function StepConfirm({ state: s, items, zone, driver, onEdit }: P
     <div className="step-enter flex flex-col gap-6">
       <StepTitle title="ตรวจสอบก่อนออกบิล" subtitle="แตะ 'แก้ไข' เพื่อกลับไปแก้ขั้นตอนนั้น" />
 
-      <div className="divide-y divide-border border-y border-border">
+      <div className="divide-y divide-border border-y border-border" data-tour="wiz-confirm">
         <Block title="ประเภทและวันที่" onEdit={edit('source')}>
           <p className="font-medium">{s.source ? `ออเดอร์${ORDER_SOURCE_LABEL[s.source]}` : '—'}</p>
           <p className="text-muted">เลขที่ใบส่งของขึ้นต้นด้วย {s.source === 'pit' ? 'TS' : 'DO'}</p>

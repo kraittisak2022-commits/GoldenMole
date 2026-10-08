@@ -1,3 +1,4 @@
+import { demoFilter } from '../tour/tourSession';
 import type { OrderSource } from '../types';
 
 /**
@@ -23,7 +24,8 @@ export function parseOrderSource(raw: unknown): OrderSource | null {
   return raw === 'shop' || raw === 'pit' ? raw : null;
 }
 
-/** Adds `source = locked` to a PostgREST query when the account is limited. */
+/** Adds `source = locked` when the account is limited, and hides demo rows of other tour sessions. */
 export function scoped<Q>(q: Q): Q {
-  return locked ? (q as unknown as { eq: (column: string, value: string) => Q }).eq('source', locked) : q;
+  const limited = locked ? (q as unknown as { eq: (column: string, value: string) => Q }).eq('source', locked) : q;
+  return demoFilter(limited);
 }

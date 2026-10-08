@@ -1,6 +1,7 @@
 import { computeTotals, lineAmount } from '../calc/pricing';
 import { parseAliases } from '../lib/customerSearch';
 import { supabase } from '../lib/supabase';
+import { demoSession } from '../tour/tourSession';
 import { scoped } from './sourceScope';
 import type {
   Customer,
@@ -86,6 +87,7 @@ export function mapOrder(row: any): Order {
     items: items.map(mapItem),
     statementId: stmt?.statement_id ?? null,
     driverPayoutId: row.driver_payout_id ?? null,
+    demo: !!row.demo_session,
   };
 }
 
@@ -130,6 +132,7 @@ export async function listUnclearedOrders(opts: { customerId?: string } = {}): P
 /** Delivery orders with a driver whose ค่ารถ has not been paid yet, oldest first. */
 export async function listDriverUnpaidOrders(): Promise<Order[]> {
   const { data, error } = await scoped(supabase.from('ss_orders').select(ORDER_SELECT))
+    .is('demo_session', null)
     .eq('fulfillment', 'delivery')
     .eq('cancelled', false)
     .not('driver_id', 'is', null)
@@ -230,6 +233,7 @@ export async function createOrder(d: OrderDraft, by: string): Promise<Order> {
     delivery_status: (delivery ? 'waiting' : 'pickup') as DeliveryStatus,
     driver_wage: delivery ? d.driverWage : 0,
     note: d.note.trim(),
+    demo_session: demoSession(),
   };
   const items = d.items
     .filter((it) => it.quantity > 0)

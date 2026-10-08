@@ -67,7 +67,7 @@ export default function DashboardPage() {
 
       {error ? <ErrorBox message={error} /> : null}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-tour="dash-kpis">
         <Kpi label="ออเดอร์" value={formatNumber(day.orderCount)} hint={`${formatMoney(day.net)} บาท`} pending={monthPending} />
         <Kpi label="สินค้า" value={`${formatNumber(day.quantity)} คิว`} hint={`${formatNumber(day.trips)} เที่ยว`} pending={monthPending} />
         <Kpi label="รับเงินแล้ว" value={formatMoney(day.paid)} hint="บาท" pending={monthPending} />
@@ -114,7 +114,7 @@ export default function DashboardPage() {
         <SectionTitle action={<Link to="/orders?f=waiting&r=all" className="text-sm text-primary">ดูทั้งหมด</Link>}>
           งานค้าง (ทุกวัน)
         </SectionTitle>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-tour="dash-pending">
           <Kpi
             to="/orders?f=waiting&r=all"
             label="รอจัดส่ง"
@@ -164,7 +164,7 @@ function DateBar({ date, isToday, onChange }: { date: string; isToday: boolean; 
   const step = 'inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-subtle text-ink hover:bg-border cursor-pointer';
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" data-tour="dash-date">
       <button type="button" aria-label="วันก่อนหน้า" onClick={() => onChange(shiftIsoDate(date, -1))} className={step}>
         <ChevronLeft size={22} aria-hidden />
       </button>

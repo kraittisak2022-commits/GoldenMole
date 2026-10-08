@@ -37,6 +37,9 @@ export interface WizardState {
   note: string;
 }
 
+/** sessionStorage key of the in-progress wizard. */
+export const DRAFT_KEY = 'stone_sand_new_order_v5';
+
 export const STEPS = [
   { key: 'source', label: 'ประเภท' },
   { key: 'products', label: 'สินค้า' },

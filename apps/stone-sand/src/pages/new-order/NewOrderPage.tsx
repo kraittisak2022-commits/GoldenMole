@@ -17,6 +17,7 @@ import StepProducts from './StepProducts';
 import StepSource from './StepSource';
 import StepSummary from './StepSummary';
 import {
+  DRAFT_KEY,
   STEPS,
   buildItems,
   initialWizardState,
@@ -28,8 +29,6 @@ import {
   withDeliveryPlan,
   type WizardState,
 } from './wizardState';
-
-const DRAFT_KEY = 'stone_sand_new_order_v5';
 
 interface StoredDraft {
   step: number;
@@ -203,7 +202,7 @@ export default function NewOrderPage() {
             {step + 1} / {STEPS.length}
           </span>
         </div>
-        <ol className="mx-auto flex max-w-2xl gap-1.5 px-4 pb-3 pt-1 short:pb-1" aria-label="ขั้นตอน">
+        <ol className="mx-auto flex max-w-2xl gap-1.5 px-4 pb-3 pt-1 short:pb-1" aria-label="ขั้นตอน" data-tour="wiz-progress">
           {STEPS.map((s, i) => {
             const done = i < step;
             const current = i === step;
@@ -236,7 +235,7 @@ export default function NewOrderPage() {
         </ol>
       </header>
 
-      <main className="mx-auto max-w-2xl px-4 pb-44 pt-4">
+      <main className="mx-auto max-w-2xl px-4 pb-44 pt-4" data-wizard-step={stepKey}>
         {error ? (
           <div className="mb-4">
             <ErrorBox message={error} />
@@ -296,11 +295,11 @@ export default function NewOrderPage() {
               <p className="truncate text-xl font-semibold tabular-nums text-ink">{formatMoney(totals.total)}</p>
             </div>
             {step < STEPS.length - 1 ? (
-              <Button size="lg" onClick={next}>
+              <Button size="lg" onClick={next} data-tour="wiz-next">
                 ถัดไป <ArrowRight size={18} aria-hidden />
               </Button>
             ) : (
-              <Button size="lg" variant="success" onClick={submit} disabled={submitting}>
+              <Button size="lg" variant="success" onClick={submit} disabled={submitting} data-tour="wiz-submit">
                 <Check size={18} aria-hidden /> {submitting ? 'กำลังบันทึก…' : 'ยืนยันและออกบิล'}
               </Button>
             )}

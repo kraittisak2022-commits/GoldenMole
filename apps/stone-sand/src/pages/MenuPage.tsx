@@ -13,6 +13,7 @@ import { listStatements } from '../data/statements';
 import { useAsync } from '../hooks/useAsync';
 import { toIsoDate } from '../lib/format';
 import { menuHints, type MenuCounts } from '../lib/menuHints';
+import TourMenuCard from '../tour/TourMenuCard';
 
 const MENU_ITEMS: NavItem[] = [...NAV_ITEMS, { to: '/new', label: 'สร้างออเดอร์', icon: Plus }];
 
@@ -58,6 +59,8 @@ export default function MenuPage() {
   return (
     <div>
       <PageHeader title="เมนู" subtitle="เลือกส่วนที่ต้องการใช้งาน" />
+
+      <TourMenuCard />
 
       <nav aria-label="เมนูทั้งหมด" className="mb-6">
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

@@ -12,6 +12,7 @@ import MenuPage from './pages/MenuPage';
 import OrdersPage from './pages/OrdersPage';
 import SettingsPage from './pages/SettingsPage';
 import StatementsPage from './pages/StatementsPage';
+import TourProvider from './tour/TourProvider';
 
 const loadNewOrder = () => import('./pages/new-order/NewOrderPage');
 const loadOrderDetail = () => import('./pages/OrderDetailPage');
@@ -64,23 +65,25 @@ export default function AuthedApp() {
   useBrandHead();
   return (
     <CatalogProvider>
-      <Routes>
-        <Route element={<AppShell />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="orders" element={<OrdersPage />} />
-          <Route path="orders/:id" element={lazyPage(<OrderDetailPage />)} />
-          <Route path="customers" element={<CustomersPage />} />
-          <Route path="statements" element={<StatementsPage />} />
-          <Route path="driver-pay" element={<DriverPayPage />} />
-          <Route path="drivers" element={<DriversPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="menu" element={<MenuPage />} />
-          <Route path="new" element={lazyPage(<NewOrderPage />)} />
-          <Route path="bill/order/:id" element={lazyPage(<BillPage mode="order" />)} />
-          <Route path="bill/statement/:id" element={lazyPage(<BillPage mode="statement" />)} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <TourProvider>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route index element={<DashboardPage />} />
+            <Route path="orders" element={<OrdersPage />} />
+            <Route path="orders/:id" element={lazyPage(<OrderDetailPage />)} />
+            <Route path="customers" element={<CustomersPage />} />
+            <Route path="statements" element={<StatementsPage />} />
+            <Route path="driver-pay" element={<DriverPayPage />} />
+            <Route path="drivers" element={<DriversPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="menu" element={<MenuPage />} />
+            <Route path="new" element={lazyPage(<NewOrderPage />)} />
+            <Route path="bill/order/:id" element={lazyPage(<BillPage mode="order" />)} />
+            <Route path="bill/statement/:id" element={lazyPage(<BillPage mode="statement" />)} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </TourProvider>
     </CatalogProvider>
   );
 }

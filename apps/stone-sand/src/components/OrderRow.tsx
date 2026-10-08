@@ -3,6 +3,7 @@ import { ChevronRight, Store, Truck } from 'lucide-react';
 import { formatDateShort, formatMoney } from '../lib/format';
 import { deliveryBadge, paymentBadge } from '../lib/orderStatus';
 import type { Order } from '../types';
+import DemoBadge from './DemoBadge';
 import SourceBadge from './SourceBadge';
 import Badge from './ui/Badge';
 
@@ -34,6 +35,7 @@ export default function OrderRow({ order: o }: { order: Order }) {
             {o.orderNo} · {formatDateShort(o.orderDate)}
           </span>
           <SourceBadge source={o.source} />
+          {o.demo ? <DemoBadge /> : null}
           {o.cancelled ? (
             <Badge tone="danger">ยกเลิก</Badge>
           ) : (

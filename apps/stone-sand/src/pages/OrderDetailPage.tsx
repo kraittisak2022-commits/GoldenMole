@@ -20,6 +20,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { lineDiscount } from '../calc/pricing';
 import DeliveryMap from '../components/map/DeliveryMap';
 import OrderEditModal from '../components/OrderEditModal';
+import DemoBadge from '../components/DemoBadge';
 import SourceBadge from '../components/SourceBadge';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
@@ -155,7 +156,15 @@ export default function OrderDetailPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div
+      className="mx-auto max-w-3xl"
+      data-order-id={o.id}
+      data-payment={o.paymentStatus}
+      data-delivery={o.deliveryStatus}
+      data-cancelled={o.cancelled ? '1' : '0'}
+      data-cleared={o.cleared ? '1' : '0'}
+      data-statement={statement ? statement.status : ''}
+    >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Link
@@ -167,8 +176,11 @@ export default function OrderDetailPage() {
           </Link>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold tabular-nums">{o.orderNo}</h1>
+              <h1 className="text-xl font-semibold tabular-nums" data-tour="order-no">
+                {o.orderNo}
+              </h1>
               <SourceBadge source={o.source} long />
+              {o.demo ? <DemoBadge /> : null}
             </div>
             <p className="text-sm text-muted">
               {formatDateShort(o.orderDate)}
@@ -178,13 +190,14 @@ export default function OrderDetailPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {isSuperAdmin ? (
-            <Button variant="secondary" onClick={() => setEditing(true)} disabled={!!busy}>
+          {isSuperAdmin || o.demo ? (
+            <Button variant="secondary" onClick={() => setEditing(true)} disabled={!!busy} data-tour="edit-order">
               <Pencil size={16} aria-hidden /> แก้ไขออเดอร์
             </Button>
           ) : null}
           <Link
             to={`/bill/order/${o.id}`}
+            data-tour="bill-link"
             className="inline-flex min-h-11 items-center gap-2 rounded bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
             <FileText size={18} aria-hidden /> ดู / พิมพ์บิล
@@ -204,7 +217,7 @@ export default function OrderDetailPage() {
       ) : null}
 
       <div className="flex flex-col gap-4">
-        <Card className="p-4">
+        <Card className="p-4" data-tour="status-card">
           <SectionTitle>สถานะ</SectionTitle>
           <div className="flex flex-col divide-y divide-border">
             <StatusRow label="การชำระเงิน" badge={<Badge tone={pay.tone}>{pay.label}</Badge>}>
@@ -222,7 +235,7 @@ export default function OrderDetailPage() {
                     — เคลียร์ผ่านใบวางบิล
                   </p>
                 ) : (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2" data-tour="pay-buttons">
                     <Button variant="success" onClick={() => payWith('cash')} disabled={!!busy}>
                       <Check size={16} aria-hidden /> รับเงินสด
                     </Button>
@@ -253,7 +266,12 @@ export default function OrderDetailPage() {
               <StatusRow label="การจัดส่ง" badge={<Badge tone={del.tone}>{del.label}</Badge>}>
                 {o.deliveredAt ? <p className="text-sm text-muted">ส่งถึง {formatDateTime(o.deliveredAt)}</p> : null}
                 {!o.cancelled ? (
-                  <div className="grid grid-cols-3 gap-1 rounded border border-border p-1" role="radiogroup" aria-label="สถานะจัดส่ง">
+                  <div
+                    className="grid grid-cols-3 gap-1 rounded border border-border p-1"
+                    role="radiogroup"
+                    aria-label="สถานะจัดส่ง"
+                    data-tour="delivery-steps"
+                  >
                     {DELIVERY_STEPS.map((st) => (
                       <button
                         key={st}
@@ -290,7 +308,11 @@ export default function OrderDetailPage() {
                   </Link>
                 </p>
               ) : !o.cleared && o.paymentStatus === 'credit' && !o.cancelled ? (
-                <Link to={`/statements?customer=${o.customerId}&source=${o.source}`} className="text-sm font-medium text-primary underline">
+                <Link
+                  to={`/statements?customer=${o.customerId}&source=${o.source}`}
+                  className="text-sm font-medium text-primary underline"
+                  data-tour="to-statement"
+                >
                   รวมเข้าใบวางบิลรายเดือน
                 </Link>
               ) : null}
@@ -453,7 +475,7 @@ export default function OrderDetailPage() {
                     บันทึกคนขับ
                   </Button>
                 ) : null}
-                <Button variant="secondary" onClick={copyMessage}>
+                <Button variant="secondary" onClick={copyMessage} data-tour="copy-driver">
                   {copied ? <Check size={16} aria-hidden /> : <Copy size={16} aria-hidden />}
                   {copied ? 'คัดลอกแล้ว' : 'คัดลอกข้อความส่งคนขับ'}
                 </Button>
@@ -504,13 +526,13 @@ export default function OrderDetailPage() {
         </Card>
 
         <div className="flex flex-wrap justify-end gap-2">
-          {isSuperAdmin ? (
+          {isSuperAdmin || o.demo ? (
             <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={removeOrder} disabled={!!busy}>
               <Trash2 size={16} aria-hidden /> ลบออเดอร์
             </Button>
           ) : null}
           {!inClearedStatement && !inOpenStatement ? (
-            <Button variant={o.cancelled ? 'secondary' : 'ghost'} onClick={toggleCancel} disabled={!!busy}>
+            <Button variant={o.cancelled ? 'secondary' : 'ghost'} onClick={toggleCancel} disabled={!!busy} data-tour="cancel-order">
               {o.cancelled ? <RotateCcw size={16} aria-hidden /> : <Ban size={16} aria-hidden />}
               {o.cancelled ? 'กู้คืนออเดอร์' : 'ยกเลิกออเดอร์'}
             </Button>

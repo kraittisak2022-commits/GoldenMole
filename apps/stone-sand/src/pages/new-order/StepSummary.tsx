@@ -33,7 +33,7 @@ export default function StepSummary({ state: s, patch, items }: Props) {
     <div className="step-enter flex flex-col gap-5">
       <StepTitle title="สรุปยอดและการชำระเงิน" subtitle={s.source ? `ออเดอร์${ORDER_SOURCE_LABEL[s.source]}` : undefined} />
 
-      <section className="rounded border border-border bg-surface">
+      <section className="rounded border border-border bg-surface" data-tour="wiz-totals">
         <ul className="divide-y divide-border">
           {items.map((it) => {
             const load = it.productId ? s.loads[it.productId] : undefined;
@@ -190,7 +190,7 @@ export default function StepSummary({ state: s, patch, items }: Props) {
         </dl>
       </section>
 
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3" data-tour="wiz-payment">
         <h3 className="font-medium">วิธีชำระเงิน *</h3>
         <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="วิธีชำระเงิน">
           {METHODS.map((m) => {

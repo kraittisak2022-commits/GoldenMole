@@ -2,6 +2,7 @@ import { formatAliases, parseAliases } from '../lib/customerSearch';
 import { digitsOnly } from '../lib/format';
 import { newId } from '../lib/ids';
 import { supabase } from '../lib/supabase';
+import { demoFilter, demoSession, isVisibleDemo } from '../tour/tourSession';
 import type { Customer, CustomerSnapshot } from '../types';
 import { throwIfError } from './errors';
 
@@ -28,7 +29,7 @@ export const toSnapshot = (c: Customer): CustomerSnapshot => ({
 });
 
 export async function listCustomers(): Promise<Customer[]> {
-  const { data, error } = await supabase.from('ss_customers').select('*').order('name');
+  const { data, error } = await demoFilter(supabase.from('ss_customers').select('*')).order('name');
   if (error) throw new Error(error.message);
   return (data || []).map(mapCustomer);
 }
@@ -45,9 +46,13 @@ export async function searchCustomers(query: string, limit = 8): Promise<Custome
     .select('*')
     .or(filters.join(','))
     .order('name')
-    .limit(limit);
+    .limit(limit + 4);
   if (error) throw new Error(error.message);
-  return (data || []).map(mapCustomer);
+  // A second .or() would collide with the search filter, so demo rows are dropped here.
+  return (data || [])
+    .filter((row) => isVisibleDemo(row.demo_session))
+    .slice(0, limit)
+    .map(mapCustomer);
 }
 
 export async function getCustomer(id: string): Promise<Customer | null> {
@@ -73,7 +78,7 @@ export async function saveCustomer(input: CustomerInput): Promise<Customer> {
   };
   const query = input.id
     ? supabase.from('ss_customers').update(row).eq('id', input.id)
-    : supabase.from('ss_customers').insert({ id: newId('cus'), ...row });
+    : supabase.from('ss_customers').insert({ id: newId('cus'), ...row, demo_session: demoSession() });
   const { data, error } = await query.select('*').single();
   if (error) throw new Error(error.message);
   return mapCustomer(data);

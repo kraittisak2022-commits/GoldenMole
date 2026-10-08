@@ -189,6 +189,61 @@
   }
 }
 
+/* Guided tour: purely visual, the page underneath stays fully usable. */
+.tour-spot,
+.tour-dim {
+  position: fixed;
+  z-index: 1100;
+  pointer-events: none;
+}
+
+.tour-dim {
+  inset: 0;
+  background: rgb(15 23 42 / 0.5);
+  animation: fade-in 0.2s ease-out both;
+}
+
+.tour-spot {
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 3px rgb(139 92 246),
+    0 0 0 9999px rgb(15 23 42 / 0.5);
+  transition:
+    top 0.25s ease,
+    left 0.25s ease,
+    width 0.25s ease,
+    height 0.25s ease;
+}
+
+.tour-spot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 3px rgb(139 92 246 / 0.6);
+  animation: tour-pulse 1.6s ease-out infinite;
+}
+
+.tour-card {
+  animation: pop-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes tour-pulse {
+  to {
+    transform: scale(1.04);
+    opacity: 0;
+  }
+}
+
+@media print {
+  .tour-spot,
+  .tour-dim,
+  .tour-card,
+  .tour-pill {
+    display: none !important;
+  }
+}
+
 /* Bill document */
 .bill-protect {
   -webkit-user-select: none;

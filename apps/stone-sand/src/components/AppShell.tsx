@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigationType } from 'react-router-dom';
-import { LayoutGrid, LogOut, Plus } from 'lucide-react';
+import { GraduationCap, LayoutGrid, LogOut, Plus } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import InstallApp from './InstallApp';
 import { NAV_ITEMS } from './navItems';
@@ -53,13 +53,14 @@ export default function AppShell() {
           <div className="p-3">
             <Link
               to="/new"
+              data-tour="new-order"
               className="flex min-h-12 items-center justify-center gap-2 rounded bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
             >
               <Plus size={18} aria-hidden />
               สร้างออเดอร์
             </Link>
           </div>
-          <nav className="flex flex-1 flex-col gap-1 px-3" aria-label="เมนูหลัก">
+          <nav className="flex flex-1 flex-col gap-1 px-3" aria-label="เมนูหลัก" data-tour="main-nav">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               return (
@@ -83,6 +84,13 @@ export default function AppShell() {
             })}
           </nav>
           <div className="border-t border-border p-3">
+            <Link
+              to="/menu#tour"
+              className="flex min-h-11 w-full items-center gap-3 rounded px-3 text-sm text-violet-700 hover:bg-violet-50"
+            >
+              <GraduationCap size={18} aria-hidden />
+              สอนใช้งาน
+            </Link>
             <InstallApp className="flex min-h-11 w-full items-center gap-3 rounded px-3 text-sm text-muted hover:bg-subtle hover:text-ink cursor-pointer" />
             <div className="px-3 pb-2">
               <p className="text-sm font-medium text-ink">{user?.displayName}</p>
@@ -121,6 +129,7 @@ export default function AppShell() {
       <nav
         className="fixed inset-x-0 bottom-0 z-40 pad-x-safe border-t border-border bg-surface/95 pb-safe-bottom backdrop-blur md:hidden"
         aria-label="เมนูมือถือ"
+        data-tour="main-nav"
       >
         <div className="grid grid-cols-5">
           {mobileTabs.map((item) => {
@@ -130,6 +139,7 @@ export default function AppShell() {
                   <Link
                     to="/new"
                     aria-label="สร้างออเดอร์"
+                    data-tour="new-order"
                     className="-mt-6 flex h-14 w-14 short:-mt-3 short:h-11 short:w-11 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-4 ring-surface transition duration-150 active:scale-90"
                   >
                     <Plus size={26} aria-hidden />

@@ -312,6 +312,14 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
           </span>
         </div>
       ) : null}
+      {b.demo ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center" data-tour="bill-demo">
+          <span className="-rotate-[28deg] rounded-xl border-[5px] border-violet-500 px-6 py-2 text-center text-[40px] font-extrabold leading-tight text-violet-500 opacity-45">
+            ตัวอย่าง
+            <span className="block text-[18px] font-bold">ไม่ใช่เอกสารจริง · สาธิตการใช้งาน</span>
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 });
