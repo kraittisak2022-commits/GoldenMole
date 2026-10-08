@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { FileText, Pencil, Phone, Plus, Search, UserPlus } from 'lucide-react';
+import { FileText, Pencil, Phone, Plus, Search, Trash2, UserPlus } from 'lucide-react';
+import { useAuth } from '../auth/AuthProvider';
 import OrderRow from '../components/OrderRow';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
@@ -11,7 +12,7 @@ import Modal from '../components/ui/Modal';
 import PageHeader from '../components/ui/PageHeader';
 import { Empty, ErrorBox, Loading } from '../components/ui/States';
 import Textarea from '../components/ui/Textarea';
-import { listCustomers, saveCustomer, type CustomerInput } from '../data/customers';
+import { deleteCustomer, listCustomers, saveCustomer, type CustomerInput } from '../data/customers';
 import { listOrders, listUnclearedOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
 import { digitsOnly, formatMoney, formatPhone } from '../lib/format';
@@ -153,6 +154,10 @@ export default function CustomersPage() {
           balance={balances.get(openCustomer.id) ?? 0}
           onClose={() => setOpen(null)}
           onEdit={() => setEditing({ ...openCustomer })}
+          onDeleted={async () => {
+            setOpen(null);
+            await customers.reload();
+          }}
         />
       ) : null}
 
@@ -166,14 +171,32 @@ function CustomerDetail({
   balance,
   onClose,
   onEdit,
+  onDeleted,
 }: {
   customer: Customer;
   balance: number;
   onClose: () => void;
   onEdit: () => void;
+  onDeleted: () => void;
 }) {
+  const { isSuperAdmin } = useAuth();
   const { data: orders, loading, error } = useAsync(() => listOrders({ customerId: c.id, limit: 100 }), [c.id]);
   const totalSpent = (orders ?? []).filter((o) => !o.cancelled).reduce((s, o) => s + o.total, 0);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const remove = async () => {
+    if (!window.confirm(`ลบลูกค้า "${c.name}"?`)) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await deleteCustomer(c.id);
+      onDeleted();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'ลบไม่สำเร็จ');
+      setDeleting(false);
+    }
+  };
 
   return (
     <Modal open title={c.name} onClose={onClose} wide>
@@ -189,10 +212,18 @@ function CustomerDetail({
             {c.taxId ? <p className="text-muted">เลขผู้เสียภาษี {c.taxId}</p> : null}
             {c.note ? <p className="mt-1 text-muted">หมายเหตุ: {c.note}</p> : null}
           </div>
-          <Button variant="secondary" onClick={onEdit}>
-            <Pencil size={16} aria-hidden /> แก้ไข
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onEdit}>
+              <Pencil size={16} aria-hidden /> แก้ไข
+            </Button>
+            {isSuperAdmin ? (
+              <Button variant="ghost" onClick={remove} disabled={deleting} aria-label={`ลบลูกค้า ${c.name}`}>
+                <Trash2 size={16} aria-hidden /> ลบ
+              </Button>
+            ) : null}
+          </div>
         </div>
+        {deleteError ? <ErrorBox message={deleteError} /> : null}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded bg-subtle px-3 py-2">

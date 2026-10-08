@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Ban,
@@ -8,14 +8,17 @@ import {
   ExternalLink,
   FileText,
   MapPin,
+  Pencil,
   Phone,
   RotateCcw,
   Share2,
   Store,
+  Trash2,
   Truck,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import DeliveryMap from '../components/map/DeliveryMap';
+import OrderEditModal from '../components/OrderEditModal';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -25,7 +28,7 @@ import Select from '../components/ui/Select';
 import { ErrorBox, Loading } from '../components/ui/States';
 import Textarea from '../components/ui/Textarea';
 import { useCatalog } from '../context/CatalogProvider';
-import { getOrder, markOrderPaid, markOrderUnpaid, setDeliveryStatus, updateOrderFields } from '../data/orders';
+import { deleteOrder, getOrder, markOrderPaid, markOrderUnpaid, setDeliveryStatus, updateOrderFields } from '../data/orders';
 import { getStatement } from '../data/statements';
 import { useAsync } from '../hooks/useAsync';
 import { formatDateShort, formatDateTime, formatMoney, formatNumber, formatPhone, googleMapsUrl } from '../lib/format';
@@ -43,14 +46,16 @@ const DELIVERY_STEPS: DeliveryStatus[] = ['waiting', 'dispatched', 'delivered'];
 
 export default function OrderDetailPage() {
   const { id = '' } = useParams();
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const by = user?.displayName || user?.username || '';
+  const navigate = useNavigate();
   const { zoneById, driverById, drivers } = useCatalog();
   const { data: order, error, loading, setData } = useAsync(() => getOrder(id), [id]);
   const { data: statement } = useAsync(
     () => (order?.statementId ? getStatement(order.statementId) : Promise.resolve(null)),
-    [order?.statementId],
+    [order?.statementId, order?.total],
   );
+  const [editing, setEditing] = useState(false);
 
   const [busy, setBusy] = useState('');
   const [actionError, setActionError] = useState('');
@@ -95,6 +100,19 @@ export default function OrderDetailPage() {
   const undoPay = () => {
     if (!window.confirm('ยกเลิกสถานะ "จ่ายแล้ว" ของออเดอร์นี้?')) return;
     void run('unpay', () => markOrderUnpaid(o.id, by));
+  };
+  const removeOrder = async () => {
+    const inStatement = statement ? ` และเอาออกจากใบวางบิล ${statement.statementNo}` : '';
+    if (!window.confirm(`ลบออเดอร์ ${o.orderNo} ถาวร${inStatement}? กู้คืนไม่ได้`)) return;
+    setBusy('delete');
+    setActionError('');
+    try {
+      await deleteOrder(o.id);
+      navigate('/orders', { replace: true });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'ลบไม่สำเร็จ');
+      setBusy('');
+    }
   };
   const toggleCancel = () => {
     const msg = o.cancelled ? 'กู้คืนออเดอร์นี้?' : 'ยกเลิกออเดอร์นี้? บิลจะแสดงว่ายกเลิก';
@@ -153,12 +171,19 @@ export default function OrderDetailPage() {
             </p>
           </div>
         </div>
-        <Link
-          to={`/bill/order/${o.id}`}
-          className="inline-flex min-h-11 items-center gap-2 rounded bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-        >
-          <FileText size={18} aria-hidden /> ดู / พิมพ์บิล
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {isSuperAdmin ? (
+            <Button variant="secondary" onClick={() => setEditing(true)} disabled={!!busy}>
+              <Pencil size={16} aria-hidden /> แก้ไขออเดอร์
+            </Button>
+          ) : null}
+          <Link
+            to={`/bill/order/${o.id}`}
+            className="inline-flex min-h-11 items-center gap-2 rounded bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+          >
+            <FileText size={18} aria-hidden /> ดู / พิมพ์บิล
+          </Link>
+        </div>
       </div>
 
       {o.cancelled ? (
@@ -446,15 +471,32 @@ export default function OrderDetailPage() {
           </ol>
         </Card>
 
-        {!inClearedStatement && !inOpenStatement ? (
-          <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          {isSuperAdmin ? (
+            <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={removeOrder} disabled={!!busy}>
+              <Trash2 size={16} aria-hidden /> ลบออเดอร์
+            </Button>
+          ) : null}
+          {!inClearedStatement && !inOpenStatement ? (
             <Button variant={o.cancelled ? 'secondary' : 'ghost'} onClick={toggleCancel} disabled={!!busy}>
               {o.cancelled ? <RotateCcw size={16} aria-hidden /> : <Ban size={16} aria-hidden />}
               {o.cancelled ? 'กู้คืนออเดอร์' : 'ยกเลิกออเดอร์'}
             </Button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
+
+      {editing ? (
+        <OrderEditModal
+          order={o}
+          by={by}
+          onClose={() => setEditing(false)}
+          onSaved={(next) => {
+            setEditing(false);
+            setData(next);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -478,6 +520,10 @@ function logLabel(e: StatusLogEntry, driverById: (id: string) => { name: string 
       return `ค่าจ้างคนขับ ${formatNumber(Number(arg))} บาท`;
     case 'cancelled':
       return 'ยกเลิกออเดอร์';
+    case 'edited':
+      return 'แก้ไขออเดอร์';
+    case 'uncleared':
+      return `ลบใบวางบิล ${arg} (กลับเป็นยังไม่เคลียร์)`;
     case 'restored':
       return 'กู้คืนออเดอร์';
     default:

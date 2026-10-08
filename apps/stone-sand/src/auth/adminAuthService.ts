@@ -86,10 +86,11 @@ export async function signInWithAdminUsers(
   };
 }
 
-/** False only when the account is gone or lost access; a failed request keeps the session. */
-export async function sessionStillAllowed(id: string): Promise<boolean> {
-  if (!hasSupabaseConfig) return true;
+/** `allowed` is false only when the account is gone or lost access; a failed request keeps the session (role unknown). */
+export async function checkSession(id: string): Promise<{ allowed: boolean; role?: AdminRole }> {
+  if (!hasSupabaseConfig) return { allowed: true };
   const { data, error } = await supabase.from('admin_users').select('role, allowed_apps').eq('id', id).maybeSingle();
-  if (error) return true;
-  return !!data && canAccessSite(data as Pick<AdminUserRow, 'role' | 'allowed_apps'>, 'order');
+  if (error) return { allowed: true };
+  const row = data as Pick<AdminUserRow, 'role' | 'allowed_apps'> | null;
+  return row ? { allowed: canAccessSite(row, 'order'), role: row.role } : { allowed: false };
 }

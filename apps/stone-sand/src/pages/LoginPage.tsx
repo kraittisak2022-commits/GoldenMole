@@ -69,7 +69,6 @@ export default function LoginPage() {
             {busy ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
           </Button>
         </form>
-        <p className="mt-10 text-center text-xs text-muted">ใช้บัญชีเดียวกับระบบ GoldenMole</p>
       </div>
     </div>
   );

@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { sessionStillAllowed, signInWithAdminUsers } from './adminAuthService';
+import { checkSession, signInWithAdminUsers } from './adminAuthService';
 import { clearSession, readSession, saveSession, type StoneSandSession } from './session';
 
 type AuthStatus = 'anonymous' | 'authenticated';
@@ -15,6 +15,8 @@ type AuthStatus = 'anonymous' | 'authenticated';
 interface AuthContextValue {
   user: StoneSandSession | null;
   status: AuthStatus;
+  /** Hides edit/delete actions only; the database itself does not enforce roles. */
+  isSuperAdmin: boolean;
   signIn: (username: string, password: string) => Promise<void>;
   signOut: () => void;
 }
@@ -39,8 +41,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
-    void sessionStillAllowed(userId).then((ok) => {
-      if (!ok && !cancelled) signOut();
+    void checkSession(userId).then(({ allowed, role }) => {
+      if (cancelled) return;
+      if (!allowed) return signOut();
+      if (role) {
+        setUser((prev) => {
+          if (!prev || prev.role === role) return prev;
+          const next = { ...prev, role };
+          saveSession(next);
+          return next;
+        });
+      }
     });
     return () => {
       cancelled = true;
@@ -51,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       status: user ? 'authenticated' : 'anonymous',
+      isSuperAdmin: user?.role === 'SuperAdmin',
       signIn,
       signOut,
     }),

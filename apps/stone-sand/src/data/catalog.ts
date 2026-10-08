@@ -1,5 +1,7 @@
+import { newId } from '../lib/ids';
 import { supabase } from '../lib/supabase';
 import { DEFAULT_SETTINGS, type AppSettings, type Product, type Zone } from '../types';
+import { throwIfError } from './errors';
 
 const toNum = (v: unknown) => Number(v ?? 0);
 
@@ -34,18 +36,52 @@ export async function saveProduct(p: Pick<Product, 'id' | 'name' | 'pricePerUnit
   if (error) throw new Error(error.message);
 }
 
+export async function createProduct(p: Pick<Product, 'name' | 'unit' | 'pricePerUnit' | 'sortOrder'>): Promise<void> {
+  const { error } = await supabase.from('ss_products').insert({
+    id: newId('prd'),
+    name: p.name.trim(),
+    unit: p.unit.trim() || 'คิว',
+    price_per_unit: p.pricePerUnit,
+    sort_order: p.sortOrder,
+    active: true,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Past orders keep their own copy of the product name and price. */
+export async function deleteProduct(id: string): Promise<void> {
+  const { error } = await supabase.from('ss_products').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 export async function listZones(): Promise<Zone[]> {
   const { data, error } = await supabase.from('ss_zones').select('*').order('sort_order');
   if (error) throw new Error(error.message);
   return (data || []).map(mapZone);
 }
 
-export async function saveZone(z: Pick<Zone, 'id' | 'feeMin' | 'feeMax'>): Promise<void> {
+export async function saveZone(z: Pick<Zone, 'id' | 'name' | 'feeMin' | 'feeMax'>): Promise<void> {
   const { error } = await supabase
     .from('ss_zones')
-    .update({ fee_min: z.feeMin, fee_max: z.feeMax })
+    .update({ name: z.name.trim(), fee_min: z.feeMin, fee_max: z.feeMax })
     .eq('id', z.id);
   if (error) throw new Error(error.message);
+}
+
+export async function createZone(z: Pick<Zone, 'name' | 'feeMin' | 'feeMax' | 'sortOrder'>): Promise<void> {
+  const { error } = await supabase.from('ss_zones').insert({
+    id: newId('zone'),
+    name: z.name.trim(),
+    fee_min: z.feeMin,
+    fee_max: z.feeMax,
+    sort_order: z.sortOrder,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteZone(id: string): Promise<void> {
+  const { error } = await supabase.from('ss_zones').delete().eq('id', id);
+  throwIfError(error, 'มีลูกค้าหรือออเดอร์ที่ใช้ตำบลนี้อยู่ ลบไม่ได้');
 }
 
 export async function getSettings(): Promise<AppSettings> {

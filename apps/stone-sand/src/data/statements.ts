@@ -72,8 +72,9 @@ export async function clearStatement(id: string, method: 'cash' | 'transfer', by
   return s;
 }
 
-export async function deleteOpenStatement(id: string): Promise<void> {
-  const { error } = await supabase.from('ss_statements').delete().eq('id', id).eq('status', 'open');
+/** Works on cleared statements too: their orders go back to outstanding. */
+export async function deleteStatement(id: string, by: string): Promise<void> {
+  const { error } = await supabase.rpc('ss_delete_statement', { p_statement_id: id, p_by: by });
   if (error) throw new Error(error.message);
 }
 

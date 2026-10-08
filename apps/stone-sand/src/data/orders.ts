@@ -1,4 +1,4 @@
-import { computeTotals } from '../calc/pricing';
+import { computeTotals, lineAmount } from '../calc/pricing';
 import { supabase } from '../lib/supabase';
 import type {
   Customer,
@@ -237,6 +237,57 @@ export const markOrderUnpaid = (id: string, by: string) =>
 
 export const setDeliveryStatus = (id: string, status: DeliveryStatus, by: string) =>
   rpcOrder('ss_set_delivery_status', { p_order_id: id, p_status: status, p_by: by });
+
+export type OrderEdit = Pick<
+  Order,
+  | 'orderDate'
+  | 'items'
+  | 'truckSize'
+  | 'trips'
+  | 'feePerTrip'
+  | 'remoteSurcharge'
+  | 'discountType'
+  | 'discountValue'
+  | 'paymentMethod'
+  | 'deliveryAddress'
+  | 'note'
+>;
+
+export async function updateOrder(current: Order, e: OrderEdit, by: string): Promise<Order> {
+  const items = e.items.filter((it) => it.quantity > 0);
+  const totals = draftTotals({ ...e, items, fulfillment: current.fulfillment });
+  const order = {
+    order_date: e.orderDate,
+    delivery_address: e.deliveryAddress.trim(),
+    truck_size: e.truckSize,
+    trips: e.trips,
+    fee_per_trip: e.feePerTrip,
+    remote_surcharge: e.remoteSurcharge,
+    discount_type: e.discountType,
+    discount_value: e.discountValue,
+    subtotal: totals.subtotal,
+    delivery_total: totals.deliveryTotal,
+    discount_amount: totals.discountAmount,
+    total: totals.total,
+    payment_method: e.paymentMethod,
+    note: e.note.trim(),
+  };
+  const rows = items.map((it) => ({
+    product_id: it.productId,
+    name: it.name,
+    unit: it.unit,
+    unit_price: it.unitPrice,
+    quantity: it.quantity,
+    amount: lineAmount(it.unitPrice, it.quantity),
+  }));
+  return rpcOrder('ss_update_order', { p_order_id: current.id, p_order: order, p_items: rows, p_by: by });
+}
+
+/** Also drops it from its statement (an emptied statement is deleted). */
+export async function deleteOrder(id: string): Promise<void> {
+  const { error } = await supabase.rpc('ss_delete_order', { p_order_id: id });
+  if (error) throw new Error(error.message);
+}
 
 export async function updateOrderFields(
   id: string,

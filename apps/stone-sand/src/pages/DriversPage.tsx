@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pencil, Phone, Plus, Trash2 } from 'lucide-react';
+import { useAuth } from '../auth/AuthProvider';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -10,7 +11,7 @@ import PageHeader from '../components/ui/PageHeader';
 import Select from '../components/ui/Select';
 import { ErrorBox, Loading } from '../components/ui/States';
 import { useCatalog } from '../context/CatalogProvider';
-import { saveDriver } from '../data/drivers';
+import { deleteDriver, saveDriver } from '../data/drivers';
 import { formatNumber, formatPhone } from '../lib/format';
 import { ROUTE_GROUP_LABEL, type Driver, type RouteGroup, type TruckSize } from '../types';
 
@@ -147,9 +148,23 @@ export default function DriversPage() {
 }
 
 function DriverFormModal({ initial, onClose, onSaved }: { initial: DriverForm; onClose: () => void; onSaved: () => void }) {
+  const { isSuperAdmin } = useAuth();
   const [form, setForm] = useState<DriverForm>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const remove = async () => {
+    if (!initial.id || !window.confirm(`ลบคนขับ "${initial.name}"?`)) return;
+    setSaving(true);
+    setError('');
+    try {
+      await deleteDriver(initial.id);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ลบไม่สำเร็จ');
+      setSaving(false);
+    }
+  };
 
   const setContact = (i: number, patch: Partial<{ label: string; phone: string }>) =>
     setForm({ ...form, contacts: form.contacts.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
@@ -177,6 +192,11 @@ function DriverFormModal({ initial, onClose, onSaved }: { initial: DriverForm; o
       onClose={onClose}
       footer={
         <>
+          {isSuperAdmin && initial.id ? (
+            <Button variant="ghost" className="mr-auto" onClick={remove} disabled={saving}>
+              <Trash2 size={16} aria-hidden /> ลบคนขับ
+            </Button>
+          ) : null}
           <Button variant="secondary" onClick={onClose}>
             ยกเลิก
           </Button>

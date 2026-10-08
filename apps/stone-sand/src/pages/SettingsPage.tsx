@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Plus, Trash2 } from 'lucide-react';
+import { useAuth } from '../auth/AuthProvider';
 import { suggestDeliveryFee } from '../calc/deliveryFee';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -9,7 +10,7 @@ import PageHeader from '../components/ui/PageHeader';
 import { ErrorBox, Loading } from '../components/ui/States';
 import Textarea from '../components/ui/Textarea';
 import { useCatalog } from '../context/CatalogProvider';
-import { saveProduct, saveSetting, saveZone } from '../data/catalog';
+import { createProduct, createZone, deleteProduct, deleteZone, saveProduct, saveSetting, saveZone } from '../data/catalog';
 import { formatNumber } from '../lib/format';
 import { promptPayTarget } from '../lib/promptpay';
 import type { AppSettings, Product, Zone } from '../types';
@@ -98,11 +99,36 @@ function Section({
 
 const num = (v: string) => Math.max(0, Number(v) || 0);
 
+const NEW_PREFIX = 'new-';
+const isNew = (id: string) => id.startsWith(NEW_PREFIX);
+const nextSort = (rows: { sortOrder: number }[]) => Math.max(0, ...rows.map((r) => r.sortOrder)) + 10;
+
+function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded text-muted hover:bg-destructive-soft hover:text-destructive cursor-pointer"
+    >
+      <Trash2 size={18} aria-hidden />
+    </button>
+  );
+}
+
 function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: () => Promise<void> }) {
+  const { isSuperAdmin } = useAuth();
   const [rows, setRows] = useState(products);
   useEffect(() => setRows(products), [products]);
   const saver = useSaver(onSaved);
   const update = (id: string, patch: Partial<Product>) => setRows(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const add = () =>
+    setRows([...rows, { id: `${NEW_PREFIX}${Date.now()}`, name: '', unit: 'คิว', pricePerUnit: 0, sortOrder: nextSort(rows), active: true }]);
+  const remove = (p: Product) => {
+    if (isNew(p.id) || window.confirm(`ลบสินค้า "${p.name}"? (ออเดอร์เก่ายังแสดงชื่อเดิม) กดบันทึกเพื่อยืนยัน`)) {
+      setRows(rows.filter((r) => r.id !== p.id));
+    }
+  };
 
   return (
     <Section
@@ -111,7 +137,16 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
       saver={saver}
       onSave={() =>
         saver.run(async () => {
+          const blank = rows.find((r) => !r.name.trim());
+          if (blank) throw new Error('กรุณาใส่ชื่อสินค้าให้ครบ');
+          for (const p of products) {
+            if (!rows.some((r) => r.id === p.id)) await deleteProduct(p.id);
+          }
           for (const r of rows) {
+            if (isNew(r.id)) {
+              await createProduct(r);
+              continue;
+            }
             const before = products.find((p) => p.id === r.id);
             if (before && (before.pricePerUnit !== r.pricePerUnit || before.name !== r.name || before.active !== r.active)) {
               await saveProduct(r);
@@ -122,7 +157,13 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
     >
       <ul className="flex flex-col gap-3">
         {rows.map((p) => (
-          <li key={p.id} className="grid grid-cols-[1fr_7rem] items-end gap-3 sm:grid-cols-[1fr_7rem_auto]">
+          <li
+            key={p.id}
+            className={[
+              'grid items-end gap-3',
+              isSuperAdmin ? 'grid-cols-[1fr_7rem_auto] sm:grid-cols-[1fr_7rem_auto_auto]' : 'grid-cols-[1fr_7rem] sm:grid-cols-[1fr_7rem_auto]',
+            ].join(' ')}
+          >
             <Field id={`p-name-${p.id}`} label="ชื่อสินค้า">
               <Input id={`p-name-${p.id}`} value={p.name} onChange={(e) => update(p.id, { name: e.target.value })} />
             </Field>
@@ -136,7 +177,12 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
                 onChange={(e) => update(p.id, { pricePerUnit: num(e.target.value) })}
               />
             </Field>
-            <label className="col-span-2 flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:col-span-1">
+            {isSuperAdmin ? (
+              <div className="sm:order-last">
+                <RemoveButton label={`ลบสินค้า ${p.name}`} onClick={() => remove(p)} />
+              </div>
+            ) : null}
+            <label className="col-span-full flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:col-span-1">
               <input
                 type="checkbox"
                 className="h-5 w-5 accent-[var(--color-primary)]"
@@ -148,6 +194,11 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
           </li>
         ))}
       </ul>
+      {isSuperAdmin ? (
+        <Button variant="secondary" className="mt-3" onClick={add}>
+          <Plus size={16} aria-hidden /> เพิ่มสินค้า
+        </Button>
+      ) : null}
     </Section>
   );
 }
@@ -161,11 +212,17 @@ function ZonesSection({
   delivery: AppSettings['delivery'];
   onSaved: () => Promise<void>;
 }) {
+  const { isSuperAdmin } = useAuth();
   const [rows, setRows] = useState(zones);
   useEffect(() => setRows(zones), [zones]);
   const saver = useSaver(onSaved);
   const update = (id: string, patch: Partial<Zone>) => setRows(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const invalid = rows.find((r) => r.feeMax < r.feeMin);
+  const add = () => setRows([...rows, { id: `${NEW_PREFIX}${Date.now()}`, name: '', feeMin: 0, feeMax: 0, sortOrder: nextSort(rows) }]);
+  const remove = (z: Zone) => {
+    if (isNew(z.id) || window.confirm(`ลบ ต.${z.name}? กดบันทึกเพื่อยืนยัน`)) setRows(rows.filter((r) => r.id !== z.id));
+  };
+  const cols = isSuperAdmin ? 'grid-cols-[1fr_5.5rem_5.5rem_auto]' : 'grid-cols-[1fr_6rem_6rem]';
 
   return (
     <Section
@@ -174,24 +231,42 @@ function ZonesSection({
       saver={saver}
       onSave={() =>
         saver.run(async () => {
+          if (rows.some((r) => !r.name.trim())) throw new Error('กรุณาใส่ชื่อตำบลให้ครบ');
           if (invalid) throw new Error(`ต.${invalid.name}: ราคาสูงสุดต้องไม่น้อยกว่าราคาต่ำสุด`);
+          for (const z of zones) {
+            if (!rows.some((r) => r.id === z.id)) await deleteZone(z.id);
+          }
           for (const r of rows) {
+            if (isNew(r.id)) {
+              await createZone(r);
+              continue;
+            }
             const before = zones.find((z) => z.id === r.id);
-            if (before && (before.feeMin !== r.feeMin || before.feeMax !== r.feeMax)) await saveZone(r);
+            if (before && (before.feeMin !== r.feeMin || before.feeMax !== r.feeMax || before.name !== r.name)) await saveZone(r);
           }
         })
       }
     >
       <div className="overflow-hidden rounded border border-border">
-        <div className="grid grid-cols-[1fr_6rem_6rem] gap-2 bg-subtle px-3 py-2 text-xs font-medium text-muted">
+        <div className={`grid ${cols} gap-2 bg-subtle px-3 py-2 text-xs font-medium text-muted`}>
           <span>ตำบล</span>
           <span>ต่ำสุด</span>
           <span>สูงสุด</span>
+          {isSuperAdmin ? <span className="w-11" /> : null}
         </div>
         <ul className="divide-y divide-border">
           {rows.map((z) => (
-            <li key={z.id} className="grid grid-cols-[1fr_6rem_6rem] items-center gap-2 px-3 py-2">
-              <span className="text-sm font-medium">{z.name}</span>
+            <li key={z.id} className={`grid ${cols} items-center gap-2 px-3 py-2`}>
+              {isSuperAdmin ? (
+                <Input
+                  aria-label="ชื่อตำบล"
+                  placeholder="ชื่อตำบล"
+                  value={z.name}
+                  onChange={(e) => update(z.id, { name: e.target.value })}
+                />
+              ) : (
+                <span className="text-sm font-medium">{z.name}</span>
+              )}
               <Input
                 aria-label={`ค่าส่งต่ำสุด ${z.name}`}
                 type="number"
@@ -211,10 +286,19 @@ function ZonesSection({
                 invalid={z.feeMax < z.feeMin}
                 onChange={(e) => update(z.id, { feeMax: num(e.target.value) })}
               />
+              {isSuperAdmin ? <RemoveButton label={`ลบ ต.${z.name}`} onClick={() => remove(z)} /> : null}
             </li>
           ))}
         </ul>
       </div>
+      {isSuperAdmin ? (
+        <>
+          <Button variant="secondary" className="mt-3" onClick={add}>
+            <Plus size={16} aria-hidden /> เพิ่มตำบล
+          </Button>
+          <p className="mt-2 text-xs text-muted">ชื่อตำบลต้องตรงกับชื่อในแผนที่ ระบบจึงจะเลือกตำบลให้อัตโนมัติจากหมุดหน้างาน</p>
+        </>
+      ) : null}
     </Section>
   );
 }

@@ -25,7 +25,9 @@ const LAYOUT = {
     sheet: 'bill-sheet-a4 mx-auto shadow-lg',
     style: { width: '210mm', minHeight: '297mm', padding: '13mm 14mm 11mm' },
     headerGap: 'gap-6',
-    logo: 'h-[72px]',
+    logo: 'h-[76px]',
+    company: 'text-[17px]',
+    companyEn: 'text-[9.5px] tracking-[0.1em]',
     title: 'text-[22px]',
     infoCols: 'grid-cols-[1fr_15.5rem]',
     totalsCols: 'grid-cols-[1fr_16rem]',
@@ -40,8 +42,10 @@ const LAYOUT = {
     sheet: '',
     style: { width: '160mm', minHeight: '226.3mm', padding: '9mm 9mm 7mm' },
     headerGap: 'gap-4',
-    logo: 'h-[60px]',
-    title: 'text-[20px]',
+    logo: 'h-[62px]',
+    company: 'text-[15px]',
+    companyEn: 'text-[8.5px] tracking-[0.03em]',
+    title: 'text-[19px]',
     infoCols: 'grid-cols-[1fr_13rem]',
     totalsCols: 'grid-cols-[1fr_14rem]',
     padRows: 3,
@@ -81,25 +85,38 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
       <BillSecurity docNo={b.docNo} label={copy === 'original' ? 'ORIGINAL' : 'COPY'} />
 
       <div className="relative flex flex-1 flex-col">
-        <header className={`flex items-start justify-between ${L.headerGap} border-b-2 border-[#1e3a5f] pb-3`}>
-          <div className="flex gap-3">
-            <img src={logoUrl} alt="" draggable={false} className={`${L.logo} w-auto shrink-0`} />
-            <div>
-              <p className="text-[15px] font-bold text-[#1e3a5f]">{company.nameTh}</p>
-              <p className="text-[9.5px] font-semibold tracking-wide text-slate-600">{company.nameEn}</p>
-              <p className="mt-1 text-[11px] text-slate-700">{company.address}</p>
-              <p className="text-[11px] text-slate-700">
-                เลขประจำตัวผู้เสียภาษี {company.taxId} · โทร {company.phone}
-              </p>
+        <header>
+          <div className={`flex items-stretch justify-between ${L.headerGap}`}>
+            <div className="flex min-w-0 items-center gap-3">
+              <img src={logoUrl} alt="" draggable={false} className={`${L.logo} w-auto shrink-0`} />
+              <div className="min-w-0 border-l-2 border-[#1e3a5f]/20 pl-3">
+                <p className={`${L.company} font-bold leading-tight text-[#1e3a5f]`}>{company.nameTh}</p>
+                <p className={`mt-0.5 font-semibold uppercase text-slate-500 ${L.companyEn}`}>{company.nameEn}</p>
+                <p className="mt-1.5 text-[10.5px] leading-snug text-slate-700">{company.address}</p>
+                <p className="text-[10.5px] leading-snug text-slate-700">
+                  <span className="text-slate-500">เลขประจำตัวผู้เสียภาษี</span> {company.taxId}
+                  <span className="mx-1.5 text-slate-300">|</span>
+                  <span className="text-slate-500">โทร</span> {company.phone}
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-col items-end justify-between gap-2">
+              <div className="rounded-md bg-[#1e3a5f] px-4 py-2 text-right text-white">
+                <p className={`${L.title} font-bold leading-none`}>{title.th}</p>
+                <p className="mt-1.5 text-[9.5px] font-semibold tracking-[0.25em] text-white/75">{title.en}</p>
+              </div>
+              <span
+                className={[
+                  'rounded-full border px-2.5 py-0.5 text-[10px] font-semibold',
+                  copy === 'original' ? 'border-[#1e3a5f] text-[#1e3a5f]' : 'border-slate-400 text-slate-500',
+                ].join(' ')}
+              >
+                {copyLabel}
+              </span>
             </div>
           </div>
-          <div className="shrink-0 text-right">
-            <p className={`${L.title} font-bold leading-tight text-[#1e3a5f]`}>{title.th}</p>
-            <p className="text-[11px] font-semibold tracking-[0.2em] text-slate-500">{title.en}</p>
-            <span className="mt-1.5 inline-block rounded border border-[#1e3a5f] px-2 py-0.5 text-[10.5px] font-semibold text-[#1e3a5f]">
-              {copyLabel}
-            </span>
-          </div>
+          <div className="mt-3 h-[3px] rounded-full bg-[#1e3a5f]" />
+          <div className="mt-[2px] h-px bg-[#1e3a5f]/35" />
         </header>
 
         <section className={`mt-3 grid ${L.infoCols} gap-3`}>

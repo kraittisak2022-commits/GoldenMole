@@ -2,6 +2,7 @@ import { digitsOnly } from '../lib/format';
 import { newId } from '../lib/ids';
 import { supabase } from '../lib/supabase';
 import type { Customer, CustomerSnapshot } from '../types';
+import { throwIfError } from './errors';
 
 export const mapCustomer = (row: any): Customer => ({
   id: row.id,
@@ -73,4 +74,9 @@ export async function saveCustomer(input: CustomerInput): Promise<Customer> {
   const { data, error } = await query.select('*').single();
   if (error) throw new Error(error.message);
   return mapCustomer(data);
+}
+
+export async function deleteCustomer(id: string): Promise<void> {
+  const { error } = await supabase.from('ss_customers').delete().eq('id', id);
+  throwIfError(error, 'ลูกค้ารายนี้มีออเดอร์หรือใบวางบิลอยู่ ต้องลบออเดอร์และใบวางบิลของลูกค้าก่อน');
 }

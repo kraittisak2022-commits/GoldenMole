@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, FileText, Trash2, X } from 'lucide-react';
+import { Banknote, Check, FileText, Landmark, Trash2, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
@@ -13,16 +13,22 @@ import PageHeader from '../components/ui/PageHeader';
 import { Empty, ErrorBox, Loading } from '../components/ui/States';
 import Textarea from '../components/ui/Textarea';
 import { listUnclearedOrders } from '../data/orders';
-import { clearStatement, createStatement, deleteOpenStatement, listStatements } from '../data/statements';
+import { clearStatement, createStatement, deleteStatement, listStatements } from '../data/statements';
 import { useAsync } from '../hooks/useAsync';
 import { formatDateShort, formatMoney, formatNumber, formatPhone, toIsoDate } from '../lib/format';
 import { summarizeOutstanding } from '../lib/orderStatus';
 import { PAYMENT_METHOD_LABEL, type Order, type Statement } from '../types';
 
 type StatusFilter = 'open' | 'cleared' | 'all';
+type ClearMethod = 'cash' | 'transfer';
+
+const CLEAR_METHODS: { value: ClearMethod; icon: typeof Banknote; hint: string }[] = [
+  { value: 'cash', icon: Banknote, hint: 'รับเป็นเงินสด' },
+  { value: 'transfer', icon: Landmark, hint: 'โอนเข้าบัญชี / พร้อมเพย์' },
+];
 
 export default function StatementsPage() {
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const by = user?.displayName || user?.username || '';
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -33,6 +39,7 @@ export default function StatementsPage() {
   const statements = useAsync(() => listStatements(), []);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
   const [clearing, setClearing] = useState<Statement | null>(null);
+  const [clearMethod, setClearMethod] = useState<ClearMethod | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
 
@@ -51,12 +58,17 @@ export default function StatementsPage() {
     await Promise.all([uncleared.reload(), statements.reload()]);
   };
 
-  const confirmClear = async (method: 'cash' | 'transfer') => {
-    if (!clearing) return;
+  const openClear = (s: Statement) => {
+    setClearMethod(null);
+    setClearing(s);
+  };
+
+  const confirmClear = async () => {
+    if (!clearing || !clearMethod) return;
     setBusy(true);
     setActionError('');
     try {
-      await clearStatement(clearing.id, method, by);
+      await clearStatement(clearing.id, clearMethod, by);
       setClearing(null);
       await reloadAll();
     } catch (err) {
@@ -67,10 +79,14 @@ export default function StatementsPage() {
   };
 
   const remove = async (s: Statement) => {
-    if (!window.confirm(`ลบใบวางบิล ${s.statementNo}? ออเดอร์จะกลับไปเป็นยังไม่วางบิล`)) return;
+    const msg =
+      s.status === 'cleared'
+        ? `ลบใบวางบิล ${s.statementNo} ที่เคลียร์แล้ว? ออเดอร์ในใบนี้จะกลับไปเป็น "ยังไม่จ่าย / ยังไม่เคลียร์"`
+        : `ลบใบวางบิล ${s.statementNo}? ออเดอร์จะกลับไปเป็นยังไม่วางบิล`;
+    if (!window.confirm(msg)) return;
     setActionError('');
     try {
-      await deleteOpenStatement(s.id);
+      await deleteStatement(s.id, by);
       await reloadAll();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'ลบไม่สำเร็จ');
@@ -200,14 +216,14 @@ export default function StatementsPage() {
                         <FileText size={16} aria-hidden /> บิล
                       </Link>
                       {s.status === 'open' ? (
-                        <>
-                          <Button variant="success" className="flex-1 sm:flex-none" onClick={() => setClearing(s)}>
-                            <Check size={16} aria-hidden /> เคลียร์บิลแล้ว
-                          </Button>
-                          <Button variant="ghost" aria-label={`ลบ ${s.statementNo}`} onClick={() => remove(s)}>
-                            <Trash2 size={16} aria-hidden />
-                          </Button>
-                        </>
+                        <Button variant="success" className="flex-1 sm:flex-none" onClick={() => openClear(s)}>
+                          <Check size={16} aria-hidden /> เคลียร์บิล
+                        </Button>
+                      ) : null}
+                      {s.status === 'open' || isSuperAdmin ? (
+                        <Button variant="ghost" aria-label={`ลบ ${s.statementNo}`} onClick={() => remove(s)}>
+                          <Trash2 size={16} aria-hidden />
+                        </Button>
                       ) : null}
                     </div>
                   </li>
@@ -227,15 +243,38 @@ export default function StatementsPage() {
               {clearing.statementNo} · {clearing.customer.name}
               <span className="mt-1 block text-2xl font-bold tabular-nums text-primary">{formatMoney(clearing.total)} บาท</span>
             </p>
-            <p className="text-sm text-muted">
-              ทุกออเดอร์ในใบวางบิลนี้จะเปลี่ยนเป็น "จ่ายแล้ว" และออกเลขใบเสร็จให้อัตโนมัติ รับเงินด้วยวิธีใด?
-            </p>
+            <div>
+              <p className="mb-2 text-sm font-medium">ช่องทางการชำระเงิน</p>
+              <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="ช่องทางการชำระเงิน">
+                {CLEAR_METHODS.map(({ value, icon: Icon, hint }) => {
+                  const active = clearMethod === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setClearMethod(value)}
+                      className={[
+                        'flex min-h-20 flex-col items-center justify-center gap-1 rounded border-2 p-3 text-center transition-colors cursor-pointer',
+                        active ? 'border-primary bg-primary-soft text-primary' : 'border-border hover:border-ink/30',
+                      ].join(' ')}
+                    >
+                      <Icon size={22} aria-hidden />
+                      <span className="font-semibold">{PAYMENT_METHOD_LABEL[value]}</span>
+                      <span className="text-xs text-muted">{hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <p className="text-sm text-muted">ทุกออเดอร์ในใบวางบิลนี้จะเปลี่ยนเป็น "จ่ายแล้ว" และออกเลขใบเสร็จให้อัตโนมัติ</p>
             <div className="grid grid-cols-2 gap-3">
-              <Button size="lg" variant="success" disabled={busy} onClick={() => confirmClear('cash')}>
-                เงินสด
+              <Button variant="secondary" size="lg" disabled={busy} onClick={() => setClearing(null)}>
+                ยกเลิก
               </Button>
-              <Button size="lg" disabled={busy} onClick={() => confirmClear('transfer')}>
-                โอนเงิน
+              <Button variant="success" size="lg" disabled={busy || !clearMethod} onClick={confirmClear}>
+                <Check size={18} aria-hidden /> {busy ? 'กำลังบันทึก…' : 'ยืนยันเคลียร์บิล'}
               </Button>
             </div>
           </div>

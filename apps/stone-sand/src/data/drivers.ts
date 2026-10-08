@@ -1,6 +1,7 @@
 import { newId } from '../lib/ids';
 import { supabase } from '../lib/supabase';
 import type { Driver } from '../types';
+import { throwIfError } from './errors';
 
 export const mapDriver = (row: any): Driver => ({
   id: row.id,
@@ -40,4 +41,9 @@ export async function saveDriver(d: Omit<Driver, 'id' | 'sortOrder'> & { id?: st
     ? await supabase.from('ss_drivers').update(row).eq('id', d.id)
     : await supabase.from('ss_drivers').insert({ id: newId('drv'), sort_order: 100, ...row });
   if (error) throw new Error(error.message);
+}
+
+export async function deleteDriver(id: string): Promise<void> {
+  const { error } = await supabase.from('ss_drivers').delete().eq('id', id);
+  throwIfError(error, 'คนขับคนนี้มีออเดอร์อยู่ ลบไม่ได้ ใช้การปิด "รับงาน" แทน หรือเปลี่ยนคนขับในออเดอร์เหล่านั้นก่อน');
 }
