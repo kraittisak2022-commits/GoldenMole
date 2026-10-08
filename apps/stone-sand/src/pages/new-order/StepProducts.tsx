@@ -53,16 +53,58 @@ export default function StepProducts({ products, loads, onChange }: Props) {
               key={p.id}
               className={['rounded border p-4 transition-colors sm:p-5', qty > 0 ? 'border-ink' : 'border-border'].join(' ')}
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-lg font-medium leading-snug">{p.name}</p>
+                  <p className="text-base font-medium leading-snug sm:text-lg">{p.name}</p>
                   <p className="text-sm text-muted">
                     {formatNumber(p.pricePerUnit)} บาท / {p.unit}
                   </p>
+                  <p className="mt-1 text-sm tabular-nums" aria-live="polite">
+                    {load ? (
+                      <>
+                        รวม {formatNumber(qty)} คิว
+                        {qty > 0 ? <span className="font-semibold"> · {formatMoney(lineAmount(p.pricePerUnit, qty))}</span> : null}
+                      </>
+                    ) : (
+                      <span className="text-muted">เลือกคิวต่อเที่ยวก่อน</span>
+                    )}
+                  </p>
                 </div>
-                {qty > 0 ? (
-                  <p className="shrink-0 text-lg font-semibold tabular-nums">{formatMoney(lineAmount(p.pricePerUnit, qty))}</p>
-                ) : null}
+                <div className="flex shrink-0 flex-col items-center gap-1">
+                  <p className="text-xs text-muted">จำนวนเที่ยว</p>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label={`ลดเที่ยว ${p.name}`}
+                      onClick={() => setTrips(p.id, (load?.trips ?? 0) - 1)}
+                      disabled={!load || load.trips <= 0}
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-subtle text-ink transition-colors hover:bg-border disabled:opacity-30 cursor-pointer disabled:cursor-default"
+                    >
+                      <Minus size={20} aria-hidden />
+                    </button>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      aria-label={`จำนวนเที่ยว ${p.name}`}
+                      value={load?.trips || ''}
+                      placeholder="0"
+                      disabled={!load}
+                      onChange={(e) => setTrips(p.id, Number(e.target.value))}
+                      className="h-11 w-10 bg-transparent text-center text-xl font-semibold tabular-nums placeholder:text-muted/50 disabled:opacity-30"
+                    />
+                    <button
+                      type="button"
+                      aria-label={`เพิ่มเที่ยว ${p.name}`}
+                      onClick={() => setTrips(p.id, (load?.trips ?? 0) + 1)}
+                      disabled={!load}
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-ink text-white transition-colors hover:bg-black disabled:opacity-30 cursor-pointer disabled:cursor-default"
+                    >
+                      <Plus size={20} aria-hidden />
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <p className="mt-4 text-sm text-muted">คิวต่อเที่ยว</p>
@@ -82,47 +124,6 @@ export default function StepProducts({ products, loads, onChange }: Props) {
                     {n} คิว
                   </button>
                 ))}
-              </div>
-
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm text-muted">จำนวนเที่ยว</p>
-                  <p className="text-sm font-medium tabular-nums" aria-live="polite">
-                    {load ? `รวม ${formatNumber(qty)} คิว` : 'เลือกคิวต่อเที่ยวก่อน'}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    aria-label={`ลดเที่ยว ${p.name}`}
-                    onClick={() => setTrips(p.id, (load?.trips ?? 0) - 1)}
-                    disabled={!load || load.trips <= 0}
-                    className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-subtle text-ink transition-colors hover:bg-border disabled:opacity-30 cursor-pointer disabled:cursor-default"
-                  >
-                    <Minus size={20} aria-hidden />
-                  </button>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    step={1}
-                    aria-label={`จำนวนเที่ยว ${p.name}`}
-                    value={load?.trips || ''}
-                    placeholder="0"
-                    disabled={!load}
-                    onChange={(e) => setTrips(p.id, Number(e.target.value))}
-                    className="h-12 w-12 bg-transparent text-center text-xl font-semibold tabular-nums placeholder:text-muted/50 disabled:opacity-30"
-                  />
-                  <button
-                    type="button"
-                    aria-label={`เพิ่มเที่ยว ${p.name}`}
-                    onClick={() => setTrips(p.id, (load?.trips ?? 0) + 1)}
-                    disabled={!load}
-                    className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-ink text-white transition-colors hover:bg-black disabled:opacity-30 cursor-pointer disabled:cursor-default"
-                  >
-                    <Plus size={20} aria-hidden />
-                  </button>
-                </div>
               </div>
             </div>
           );
