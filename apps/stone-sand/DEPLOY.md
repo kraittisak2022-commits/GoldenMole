@@ -8,20 +8,28 @@ The schema, RPCs and seed data (products, zones, 12 drivers, settings) live in
 `supabase/migrations/20261008100000_ss_stone_sand_schema.sql` and are already applied to the project.
 For a fresh project, apply that migration (Supabase SQL editor or `supabase db push`).
 
-## 2. Vercel project (Dashboard)
+## 2. Vercel project (already set up)
 
-1. **Add New → Project** → import `kraittisak2022-commits/GoldenMole`.
-2. **Root Directory:** `apps/stone-sand`
-3. **Framework Preset:** Vite (build `npm run build`, output `dist` — the defaults).
-4. **Settings → Environment Variables** (same values as `golden-mole` / `goldenmole-flowaccount`):
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-5. Optional **Ignored Build Step** (runs in Root Directory):
-   ```bash
-   git diff --quiet HEAD^ HEAD -- .
-   ```
-6. Optional **Settings → Domains** → e.g. `stone.goldenmole.pro`.
-7. **Deployments → Redeploy** after adding env vars.
+**Vercel project:** `stone-sand` (id `prj_bw2ZQEro8irLwZCh1sYSoVt0z8OQ`)  
+**Root Directory:** `apps/stone-sand` · **Framework:** Vite  
+**Git:** `kraittisak2022-commits/GoldenMole` → production branch `main` (every push deploys)  
+**Env vars:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (production, preview, development)  
+**Domains:** `order.goldenmole.pro` (primary), `www.order.goldenmole.pro` → 308 redirect to the primary  
+**Fallback URL:** `https://stone-sand.vercel.app`
+
+Optional **Ignored Build Step** (runs in Root Directory), so pushes that only touch other apps skip this build:
+```bash
+git diff --quiet HEAD^ HEAD -- .
+```
+
+### DNS (Cloudflare, zone `goldenmole.pro`)
+
+| Type | Name | Target | Proxy |
+| --- | --- | --- | --- |
+| CNAME | `order` | `cname.vercel-dns.com` | DNS only (grey cloud) |
+| CNAME | `www.order` | `cname.vercel-dns.com` | DNS only (grey cloud) |
+
+`www.order` must stay DNS only: Cloudflare's free certificate covers only `*.goldenmole.pro`, not `*.order.goldenmole.pro`, so proxying it breaks HTTPS. Vercel issues the certificates once the records resolve.
 
 `vercel.json` already rewrites every path to `index.html`, so deep links such as `/v/<token>` (bill verification QR) work.
 
