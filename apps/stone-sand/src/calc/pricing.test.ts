@@ -1,4 +1,4 @@
-import { computeTotals, lineAmount } from './pricing';
+import { computeTotals, lineAmount, lineDiscount } from './pricing';
 
 describe('lineAmount', () => {
   it('matches the price list for 1, 3 and 5 คิว', () => {
@@ -34,6 +34,7 @@ describe('computeTotals', () => {
     expect(computeTotals(base)).toEqual({
       subtotal: 3100,
       deliveryTotal: 700,
+      itemDiscount: 0,
       discountAmount: 0,
       total: 3800,
       totalQuantity: 10,
@@ -63,5 +64,34 @@ describe('computeTotals', () => {
 
   it('pickup orders have no delivery', () => {
     expect(computeTotals({ ...base, feePerTrip: 0, trips: 0 }).total).toBe(3100);
+  });
+
+  it('takes a per-คิว discount off each product separately', () => {
+    const t = computeTotals({
+      ...base,
+      items: [
+        { unitPrice: 400, quantity: 5, discountPerUnit: 30 },
+        { unitPrice: 220, quantity: 5, discountPerUnit: 20 },
+      ],
+    });
+    expect(t.subtotal).toBe(3100);
+    expect(t.itemDiscount).toBe(250);
+    expect(t.discountAmount).toBe(250);
+    expect(t.total).toBe(3550);
+  });
+
+  it('stacks the bill discount on top; percent uses the discounted products', () => {
+    const items = [{ unitPrice: 400, quantity: 5, discountPerUnit: 40 }];
+    expect(computeTotals({ ...base, items, discountValue: 100 }).discountAmount).toBe(300);
+    expect(computeTotals({ ...base, items, discountType: 'percent', discountValue: 10 }).discountAmount).toBe(380);
+  });
+});
+
+describe('lineDiscount', () => {
+  it('never discounts more than the unit price', () => {
+    expect(lineDiscount(220, 5, 20)).toBe(100);
+    expect(lineDiscount(220, 5, 999)).toBe(1100);
+    expect(lineDiscount(220, 0, 20)).toBe(0);
+    expect(lineDiscount(220, 5)).toBe(0);
   });
 });

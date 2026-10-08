@@ -17,6 +17,7 @@ import {
   Truck,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
+import { lineDiscount } from '../calc/pricing';
 import DeliveryMap from '../components/map/DeliveryMap';
 import OrderEditModal from '../components/OrderEditModal';
 import SourceBadge from '../components/SourceBadge';
@@ -323,6 +324,12 @@ export default function OrderDetailPage() {
                   <p className="text-muted">
                     {formatNumber(it.quantity)} {it.unit} × {formatNumber(it.unitPrice)}
                   </p>
+                  {it.discountPerUnit ? (
+                    <p className="text-success">
+                      ลด{it.unit}ละ {formatNumber(it.discountPerUnit)} บาท (-
+                      {formatMoney(lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit))})
+                    </p>
+                  ) : null}
                 </div>
                 <p className="tabular-nums">{formatMoney(it.amount)}</p>
               </li>
@@ -338,7 +345,11 @@ export default function OrderDetailPage() {
             ) : null}
             {o.discountAmount ? (
               <TotalRow
-                label={`ส่วนลด${o.discountType === 'percent' ? ` ${formatNumber(o.discountValue)}%` : ''}`}
+                label={
+                  o.items.some((it) => it.discountPerUnit)
+                    ? 'ส่วนลด (ต่อคิว + ท้ายบิล)'
+                    : `ส่วนลด${o.discountType === 'percent' ? ` ${formatNumber(o.discountValue)}%` : ''}`
+                }
                 value={`-${formatMoney(o.discountAmount)}`}
               />
             ) : null}

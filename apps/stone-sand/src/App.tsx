@@ -4,6 +4,7 @@ import { AuthProvider } from './auth/AuthProvider';
 import { RequireAuth } from './auth/RequireAuth';
 import AppShell from './components/AppShell';
 import { Loading } from './components/ui/States';
+import VersionWatcher from './components/VersionWatcher';
 import { CatalogProvider } from './context/CatalogProvider';
 import { retryImport } from './lib/chunkReload';
 import CustomersPage from './pages/CustomersPage';
@@ -26,6 +27,7 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <VersionWatcher />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/v/:token" element={<VerifyPage />} />

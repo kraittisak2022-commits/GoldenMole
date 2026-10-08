@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { lineAmount } from '../calc/pricing';
+import { lineAmount, lineDiscount } from '../calc/pricing';
 import { useCatalog } from '../context/CatalogProvider';
 import { draftTotals, updateOrder, type OrderEdit } from '../data/orders';
 import { formatMoney } from '../lib/format';
@@ -137,9 +137,25 @@ export default function OrderEditModal({
                 >
                   <Trash2 size={16} aria-hidden />
                 </button>
-                <p className="col-span-full -mt-1 text-xs text-muted">
-                  {it.unit} · รวม {formatMoney(lineAmount(it.unitPrice, it.quantity))} บาท
-                </p>
+                <div className="col-span-full -mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                  <span>ลด{it.unit}ละ</span>
+                  <span className="w-24">
+                    <Input
+                      aria-label={`ส่วนลดต่อ${it.unit} ${it.name}`}
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      value={it.discountPerUnit || ''}
+                      placeholder="0"
+                      className="min-h-9 px-2 text-right text-sm"
+                      onChange={(e) => setItem(i, { discountPerUnit: Math.min(it.unitPrice, num(e.target.value)) })}
+                    />
+                  </span>
+                  <span>
+                    บาท · รวม {formatMoney(lineAmount(it.unitPrice, it.quantity) - lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit))}{' '}
+                    บาท
+                  </span>
+                </div>
               </li>
             ))}
           </ul>

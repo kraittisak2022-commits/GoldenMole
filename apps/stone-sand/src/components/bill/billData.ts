@@ -1,3 +1,4 @@
+import { lineDiscount } from '../../calc/pricing';
 import type { DocKind } from '../../lib/format';
 import { formatNumber } from '../../lib/format';
 import {
@@ -43,13 +44,19 @@ export interface BillData {
 }
 
 export function billFromOrder(o: Order, kind: 'delivery' | 'receipt', zone?: Zone, driver?: Driver): BillData {
-  const lines: BillLine[] = o.items.map((it) => ({
-    description: it.name,
-    quantity: it.quantity,
-    unit: it.unit,
-    unitPrice: it.unitPrice,
-    amount: it.amount,
-  }));
+  const lines: BillLine[] = o.items.map((it) => {
+    const off = lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit);
+    return {
+      description: it.name,
+      detail: off ? `ลด${it.unit}ละ ${formatNumber(it.discountPerUnit ?? 0)} บาท (-${formatNumber(off)})` : undefined,
+      quantity: it.quantity,
+      unit: it.unit,
+      unitPrice: it.unitPrice,
+      amount: it.amount,
+    };
+  });
+  const itemDiscount = o.items.reduce((s, it) => s + lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit), 0);
+  const billDiscountPart = o.discountAmount - itemDiscount > 0.004;
   if (o.fulfillment === 'delivery' && o.trips > 0) {
     lines.push({
       description: `ค่าขนส่ง${zone ? ` ต.${zone.name}` : ''}`,
@@ -84,7 +91,12 @@ export function billFromOrder(o: Order, kind: 'delivery' | 'receipt', zone?: Zon
     lines,
     gross: o.subtotal + o.deliveryTotal,
     discountLabel: o.discountAmount
-      ? `ส่วนลด${o.discountType === 'percent' ? ` ${formatNumber(o.discountValue)}% (ค่าสินค้า)` : ''}`
+      ? [
+          itemDiscount ? 'ส่วนลดต่อคิว' : '',
+          billDiscountPart ? `ส่วนลด${o.discountType === 'percent' ? ` ${formatNumber(o.discountValue)}% (ค่าสินค้า)` : ''}` : '',
+        ]
+          .filter(Boolean)
+          .join(' + ')
       : undefined,
     discountAmount: o.discountAmount,
     total: o.total,

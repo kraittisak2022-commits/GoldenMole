@@ -27,6 +27,7 @@ function mapItem(row: any): OrderItem {
     unitPrice: num(row.unit_price),
     quantity: num(row.quantity),
     amount: num(row.amount),
+    discountPerUnit: num(row.discount_per_unit),
   };
 }
 
@@ -235,6 +236,7 @@ export async function createOrder(d: OrderDraft, by: string): Promise<Order> {
       unit_price: it.unitPrice,
       quantity: it.quantity,
       amount: it.amount,
+      discount_per_unit: it.discountPerUnit || 0,
     }));
 
   const { data, error } = await supabase.rpc('ss_create_order', { p_order: order, p_items: items, p_by: by });
@@ -302,6 +304,7 @@ export async function updateOrder(current: Order, e: OrderEdit, by: string): Pro
     unit_price: it.unitPrice,
     quantity: it.quantity,
     amount: lineAmount(it.unitPrice, it.quantity),
+    discount_per_unit: it.discountPerUnit || 0,
   }));
   return rpcOrder('ss_update_order', { p_order_id: current.id, p_order: order, p_items: rows, p_by: by });
 }

@@ -1,3 +1,4 @@
+import { formatAliases, parseAliases } from '../lib/customerSearch';
 import { digitsOnly } from '../lib/format';
 import { newId } from '../lib/ids';
 import { supabase } from '../lib/supabase';
@@ -7,6 +8,7 @@ import { throwIfError } from './errors';
 export const mapCustomer = (row: any): Customer => ({
   id: row.id,
   name: row.name,
+  aliases: parseAliases(row.aliases || ''),
   phone: row.phone || '',
   address: row.address || '',
   zoneId: row.zone_id,
@@ -36,7 +38,7 @@ export async function searchCustomers(query: string, limit = 8): Promise<Custome
   if (!q) return [];
   const digits = digitsOnly(q);
   const escaped = q.replace(/[%,()]/g, ' ');
-  const filters = [`name.ilike.%${escaped}%`];
+  const filters = [`name.ilike.%${escaped}%`, `aliases.ilike.%${escaped}%`];
   if (digits.length >= 3) filters.push(`phone.ilike.%${digits}%`);
   const { data, error } = await supabase
     .from('ss_customers')
@@ -59,6 +61,7 @@ export type CustomerInput = Omit<Customer, 'id' | 'createdAt'> & { id?: string }
 export async function saveCustomer(input: CustomerInput): Promise<Customer> {
   const row = {
     name: input.name.trim(),
+    aliases: formatAliases(input.aliases),
     phone: digitsOnly(input.phone),
     address: input.address.trim(),
     zone_id: input.zoneId || null,

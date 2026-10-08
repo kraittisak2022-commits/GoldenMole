@@ -7,6 +7,7 @@ import Input from '../../components/ui/Input';
 import Textarea from '../../components/ui/Textarea';
 import { ErrorBox } from '../../components/ui/States';
 import { saveCustomer, searchCustomers } from '../../data/customers';
+import { matchedAlias, parseAliases } from '../../lib/customerSearch';
 import { digitsOnly, formatPhone } from '../../lib/format';
 import type { Customer } from '../../types';
 import StepTitle from './StepTitle';
@@ -16,7 +17,7 @@ interface Props {
   onSelect: (c: Customer | null) => void;
 }
 
-const emptyForm = { name: '', phone: '', address: '', taxId: '', isCredit: false };
+const emptyForm = { name: '', aliasText: '', phone: '', address: '', taxId: '', isCredit: false };
 
 export default function StepCustomer({ customer, onSelect }: Props) {
   const [query, setQuery] = useState('');
@@ -63,7 +64,8 @@ export default function StepCustomer({ customer, onSelect }: Props) {
     setSaving(true);
     setFormError('');
     try {
-      const c = await saveCustomer({ ...form, phone, zoneId: null, lat: null, lng: null, note: '' });
+      const { aliasText, ...rest } = form;
+      const c = await saveCustomer({ ...rest, aliases: parseAliases(aliasText), phone, zoneId: null, lat: null, lng: null, note: '' });
       onSelect(c);
       setCreating(false);
       setQuery('');
@@ -108,7 +110,7 @@ export default function StepCustomer({ customer, onSelect }: Props) {
 
   return (
     <div className="step-enter flex flex-col gap-4">
-      <StepTitle title="ลูกค้า" subtitle="ค้นหาจากชื่อหรือเบอร์โทร หรือเพิ่มลูกค้าใหม่" />
+      <StepTitle title="ลูกค้า" subtitle="ค้นหาจากชื่อ ชื่อเรียก หรือเบอร์โทร หรือเพิ่มลูกค้าใหม่" />
 
       {!creating ? (
         <>
@@ -117,7 +119,7 @@ export default function StepCustomer({ customer, onSelect }: Props) {
             <Input
               autoFocus
               aria-label="ค้นหาลูกค้า"
-              placeholder="ชื่อ หรือ เบอร์โทร"
+              placeholder="ชื่อ ชื่อเรียก หรือ เบอร์โทร"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="min-h-12 pl-10 text-base"
@@ -139,6 +141,9 @@ export default function StepCustomer({ customer, onSelect }: Props) {
                 >
                   <div className="min-w-0">
                     <p className="font-medium">{c.name}</p>
+                    {matchedAlias(c, query) ? (
+                      <p className="truncate text-xs text-primary">ชื่อเรียก: {matchedAlias(c, query)}</p>
+                    ) : null}
                     <p className="truncate text-sm text-muted">
                       {[c.phone && formatPhone(c.phone), c.address].filter(Boolean).join(' · ') || '—'}
                     </p>
@@ -167,6 +172,9 @@ export default function StepCustomer({ customer, onSelect }: Props) {
           </div>
           <Field id="c-name" label="ชื่อลูกค้า / ชื่อร้าน *">
             <Input id="c-name" autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </Field>
+          <Field id="c-aliases" label="ชื่อเรียกอื่น / ชื่อเล่น (ถ้ามี)" hint="คั่นหลายชื่อด้วย , เช่น เสี่ยบาส, บาส">
+            <Input id="c-aliases" value={form.aliasText} onChange={(e) => setForm({ ...form, aliasText: e.target.value })} />
           </Field>
           <Field id="c-phone" label="เบอร์โทร">
             <Input

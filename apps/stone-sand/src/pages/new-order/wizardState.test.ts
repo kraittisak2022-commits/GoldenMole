@@ -19,6 +19,7 @@ const products: Product[] = [
 const customer: Customer = {
   id: 'cus-1',
   name: 'สมชาย',
+  aliases: [],
   phone: '0931234567',
   address: 'บ้านทุ่งฮั้ว',
   zoneId: null,

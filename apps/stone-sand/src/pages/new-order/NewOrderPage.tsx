@@ -114,7 +114,7 @@ export default function NewOrderPage() {
         .map((p) => ({ id: p.id, name: p.name, ...state.loads[p.id] })),
     [products, state.loads],
   );
-  const items = useMemo(() => buildItems(products, quantities), [products, quantities]);
+  const items = useMemo(() => buildItems(products, quantities, state.unitDiscounts), [products, quantities, state.unitDiscounts]);
   const totals = draftTotals({ ...state, fulfillment: state.fulfillment ?? 'pickup', items });
   const zone = zoneById(state.zoneId);
   const driver = driverById(state.driverId);

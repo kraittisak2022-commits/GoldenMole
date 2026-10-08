@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { lineDiscount } from '../../calc/pricing';
 import { draftTotals } from '../../data/orders';
 import { formatMoney, formatNumber, formatPhone } from '../../lib/format';
 import { ORDER_SOURCE_LABEL, PAYMENT_METHOD_LABEL, type Driver, type OrderItem, type Zone } from '../../types';
@@ -37,8 +38,16 @@ export default function StepConfirm({ state: s, items, zone, driver, onEdit }: P
               <li key={it.productId ?? it.name} className="flex justify-between gap-3">
                 <span>
                   {it.name} <span className="text-muted">× {formatNumber(it.quantity)} {it.unit}</span>
+                  {it.discountPerUnit ? (
+                    <span className="block text-xs text-success">ลดคิวละ {formatNumber(it.discountPerUnit)} บาท</span>
+                  ) : null}
                 </span>
-                <span className="tabular-nums">{formatMoney(it.amount)}</span>
+                <span className="text-right tabular-nums">
+                  {it.discountPerUnit ? (
+                    <span className="block text-xs text-muted line-through">{formatMoney(it.amount)}</span>
+                  ) : null}
+                  {formatMoney(it.amount - lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit))}
+                </span>
               </li>
             ))}
           </ul>
@@ -85,10 +94,16 @@ export default function StepConfirm({ state: s, items, zone, driver, onEdit }: P
             <dd className="tabular-nums">{formatMoney(totals.deliveryTotal)}</dd>
           </div>
         ) : null}
-        {totals.discountAmount ? (
+        {totals.itemDiscount ? (
           <div className="flex justify-between text-muted">
-            <dt>ส่วนลด</dt>
-            <dd className="tabular-nums text-success">-{formatMoney(totals.discountAmount)}</dd>
+            <dt>ส่วนลดต่อคิว</dt>
+            <dd className="tabular-nums text-success">-{formatMoney(totals.itemDiscount)}</dd>
+          </div>
+        ) : null}
+        {totals.discountAmount - totals.itemDiscount > 0 ? (
+          <div className="flex justify-between text-muted">
+            <dt>ส่วนลดท้ายบิล</dt>
+            <dd className="tabular-nums text-success">-{formatMoney(totals.discountAmount - totals.itemDiscount)}</dd>
           </div>
         ) : null}
         <div className="mt-2 flex items-baseline justify-between">

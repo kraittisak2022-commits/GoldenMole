@@ -68,6 +68,8 @@ export interface Driver {
 export interface Customer {
   id: string;
   name: string;
+  /** Other names the customer is called by (e.g. เสี่ยบาส for ร้านสินทวีวังเหนือ); searchable. */
+  aliases: string[];
   phone: string;
   address: string;
   zoneId: string | null;
@@ -93,7 +95,10 @@ export interface OrderItem {
   unit: string;
   unitPrice: number;
   quantity: number;
+  /** List price × quantity; the per-คิว discount is counted in the order's discountAmount. */
   amount: number;
+  /** ส่วนลดบาทต่อคิว for this product. */
+  discountPerUnit?: number;
 }
 
 export interface StatusLogEntry {

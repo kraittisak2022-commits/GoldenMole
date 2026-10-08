@@ -16,11 +16,13 @@ import { deleteCustomer, listCustomers, saveCustomer, type CustomerInput } from 
 import { listOrders, listUnclearedOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
 import { digitsOnly, formatMoney, formatPhone } from '../lib/format';
+import { formatAliases, matchesCustomer, parseAliases } from '../lib/customerSearch';
 import { summarizeOutstanding } from '../lib/orderStatus';
 import type { Customer } from '../types';
 
 const emptyInput: CustomerInput = {
   name: '',
+  aliases: [],
   phone: '',
   address: '',
   zoneId: null,
@@ -47,12 +49,9 @@ export default function CustomersPage() {
   }, [uncleared.data]);
 
   const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const digits = digitsOnly(q);
     return (customers.data ?? []).filter((c) => {
       if (onlyOutstanding && !balances.get(c.id)) return false;
-      if (!q) return true;
-      return c.name.toLowerCase().includes(q) || (digits.length >= 3 && c.phone.includes(digits));
+      return matchesCustomer(c, query);
     });
   }, [customers.data, query, onlyOutstanding, balances]);
 
@@ -89,7 +88,7 @@ export default function CustomersPage() {
           <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden />
           <Input
             aria-label="ค้นหาลูกค้า"
-            placeholder="ค้นหาชื่อหรือเบอร์โทร"
+            placeholder="ค้นหาชื่อ ชื่อเรียก หรือเบอร์โทร"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="pl-10"
@@ -127,6 +126,9 @@ export default function CustomersPage() {
                           <p className="truncate font-medium">{c.name}</p>
                           {c.isCredit ? <Badge tone="info">เครดิต</Badge> : null}
                         </div>
+                        {c.aliases.length ? (
+                          <p className="truncate text-xs text-primary">ชื่อเรียก: {formatAliases(c.aliases)}</p>
+                        ) : null}
                         <p className="truncate text-sm text-muted">
                           {[c.phone && formatPhone(c.phone), c.address].filter(Boolean).join(' · ') || '—'}
                         </p>
@@ -203,6 +205,7 @@ function CustomerDetail({
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="text-sm">
+            {c.aliases.length ? <p className="text-primary">ชื่อเรียก: {formatAliases(c.aliases)}</p> : null}
             {c.phone ? (
               <a href={`tel:${c.phone}`} className="inline-flex min-h-11 items-center gap-1.5 text-primary">
                 <Phone size={14} aria-hidden /> {formatPhone(c.phone)}
@@ -285,6 +288,7 @@ function CustomerForm({
   onSaved: (c: Customer) => void;
 }) {
   const [form, setForm] = useState(initial);
+  const [aliasText, setAliasText] = useState(formatAliases(initial.aliases));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -296,7 +300,7 @@ function CustomerForm({
     setSaving(true);
     setError('');
     try {
-      onSaved(await saveCustomer({ ...form, phone }));
+      onSaved(await saveCustomer({ ...form, phone, aliases: parseAliases(aliasText) }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ');
       setSaving(false);
@@ -322,6 +326,9 @@ function CustomerForm({
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
         <Field id="cf-name" label="ชื่อลูกค้า / ชื่อร้าน *">
           <Input id="cf-name" autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        </Field>
+        <Field id="cf-aliases" label="ชื่อเรียกอื่น / ชื่อเล่น" hint="ใช้ค้นหาได้ คั่นหลายชื่อด้วย , เช่น เสี่ยบาส, บาส">
+          <Input id="cf-aliases" value={aliasText} onChange={(e) => setAliasText(e.target.value)} placeholder="เสี่ยบาส, บาส" />
         </Field>
         <Field id="cf-phone" label="เบอร์โทร">
           <Input id="cf-phone" inputMode="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />

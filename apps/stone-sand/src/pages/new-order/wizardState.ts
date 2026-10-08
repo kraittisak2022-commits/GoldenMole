@@ -24,6 +24,8 @@ export interface WizardState {
   driverId: string | null;
   driverTruckSize: TruckSize | null;
   driverConfirmed: boolean;
+  /** ส่วนลดบาทต่อคิว by product id. */
+  unitDiscounts: Record<string, number>;
   discountType: DiscountType;
   discountValue: number;
   paymentMethod: PaymentMethod | null;
@@ -65,6 +67,7 @@ export const initialWizardState: WizardState = {
   driverId: null,
   driverTruckSize: null,
   driverConfirmed: false,
+  unitDiscounts: {},
   discountType: 'baht',
   discountValue: 0,
   paymentMethod: null,
@@ -72,7 +75,11 @@ export const initialWizardState: WizardState = {
   note: '',
 };
 
-export function buildItems(products: Product[], quantities: Record<string, number>): OrderItem[] {
+export function buildItems(
+  products: Product[],
+  quantities: Record<string, number>,
+  unitDiscounts: Record<string, number> = {},
+): OrderItem[] {
   return products
     .filter((p) => (quantities[p.id] || 0) > 0)
     .map((p) => ({
@@ -82,6 +89,7 @@ export function buildItems(products: Product[], quantities: Record<string, numbe
       unitPrice: p.pricePerUnit,
       quantity: quantities[p.id],
       amount: lineAmount(p.pricePerUnit, quantities[p.id]),
+      discountPerUnit: Math.min(Math.max(0, unitDiscounts[p.id] || 0), p.pricePerUnit),
     }));
 }
 
@@ -150,7 +158,7 @@ export function toDraft(s: WizardState, products: Product[], driverWagePerTrip: 
   return {
     source: s.source,
     customer: s.customer,
-    items: buildItems(products, quantitiesOf(s.loads)),
+    items: buildItems(products, quantitiesOf(s.loads), s.unitDiscounts),
     fulfillment: s.fulfillment,
     deliveryAddress: s.deliveryAddress,
     pinLat: s.pin?.lat ?? null,
