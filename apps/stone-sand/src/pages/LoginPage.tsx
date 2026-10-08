@@ -6,8 +6,6 @@ import Button from '../components/ui/Button';
 import Field from '../components/ui/Field';
 import Input from '../components/ui/Input';
 import { ErrorBox } from '../components/ui/States';
-import logoUrl from '../assets/pirasit-logo.png';
-
 export default function LoginPage() {
   const { status, signIn } = useAuth();
   const navigate = useNavigate();
@@ -38,9 +36,7 @@ export default function LoginPage() {
     <div className="flex min-h-[100dvh] items-center justify-center bg-surface px-4 py-8 short:py-4">
       <div className="w-full max-w-sm">
         <div className="mb-10 text-center short:mb-4">
-          <img src={logoUrl} alt="" className="mx-auto mb-5 h-24 w-auto short:hidden" />
-          <p className="text-sm text-muted">หจก. พีรสิทธิ์ วัสดุก่อสร้าง</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">ระบบออเดอร์หิน-ทราย</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">ระบบจัดการออเดอร์ หิน-ทราย</h1>
         </div>
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <Field id="username" label="ชื่อผู้ใช้">
