@@ -57,7 +57,9 @@ export default function DeliveryMap({ value, onChange, flyTarget = null, height 
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          // OSM rejects tiles requested without a Referer (403); the site-wide no-referrer policy must not apply here.
+          referrerPolicy="strict-origin"
         />
         {districtOutline ? (
           <GeoJSON
