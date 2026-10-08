@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { CalendarDays, Mountain, Store } from 'lucide-react';
 import Chip from '../../components/ui/Chip';
 import Input from '../../components/ui/Input';
-import { formatDateLongTh, shiftIsoDate, toIsoDate } from '../../lib/format';
+import { formatDateLongTh, toIsoDate } from '../../lib/format';
 import { ORDER_SOURCE_LABEL, type OrderSource } from '../../types';
 import StepTitle from './StepTitle';
 
@@ -23,7 +23,6 @@ const OPTIONS: { value: OrderSource; icon: ReactNode; hint: string; docNo: strin
 
 export default function StepSource({ sources, source, onSelect, orderDate, onDateChange }: Props) {
   const today = toIsoDate();
-  const yesterday = shiftIsoDate(today, -1);
   const date = orderDate || today;
 
   return (
@@ -40,9 +39,6 @@ export default function StepSource({ sources, source, onSelect, orderDate, onDat
         <div className="flex flex-wrap items-center gap-2">
           <Chip active={date === today} onClick={() => onDateChange('')}>
             วันนี้
-          </Chip>
-          <Chip active={date === yesterday} onClick={() => onDateChange(yesterday)}>
-            เมื่อวาน
           </Chip>
           <Input
             type="date"
