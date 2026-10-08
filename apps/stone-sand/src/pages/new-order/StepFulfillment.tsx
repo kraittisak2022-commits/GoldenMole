@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, Crosshair, Link2, MapPin, Minus, Phone, Plus, Store, Truck } from 'lucide-react';
 import { suggestDeliveryFee } from '../../calc/deliveryFee';
-import { suggestTrips, suggestTruckSize } from '../../calc/trips';
+import { tripsForLoads, truckForLoads, type Load } from '../../calc/trips';
 import DeliveryMap, { type LatLng } from '../../components/map/DeliveryMap';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
@@ -33,11 +33,12 @@ interface Props {
   drivers: Driver[];
   settings: AppSettings;
   totalQty: number;
+  loads: Load[];
 }
 
 type GroupFilter = 'all' | RouteGroup;
 
-export default function StepFulfillment({ state: s, patch, customer, zones, drivers, settings, totalQty }: Props) {
+export default function StepFulfillment({ state: s, patch, customer, zones, drivers, settings, totalQty, loads }: Props) {
   const [flyTarget, setFlyTarget] = useState<LatLng | null>(null);
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState('');
@@ -49,14 +50,14 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
   useEffect(() => {
     if (s.fulfillment !== 'delivery') return;
     const next: Partial<WizardState> = {};
-    const size = s.truckTouched ? s.truckSize : suggestTruckSize(totalQty);
+    const size = s.truckTouched ? s.truckSize : truckForLoads(loads);
     if (size !== s.truckSize) next.truckSize = size;
     if (!s.tripsTouched) {
-      const trips = suggestTrips(totalQty, size);
+      const trips = tripsForLoads(loads, size);
       if (trips !== s.trips) next.trips = trips;
     }
     if (Object.keys(next).length) patch(next);
-  }, [s.fulfillment, totalQty, s.truckTouched, s.tripsTouched, s.truckSize, s.trips, patch]);
+  }, [s.fulfillment, loads, s.truckTouched, s.tripsTouched, s.truckSize, s.trips, patch]);
 
   const chooseFulfillment = (f: 'pickup' | 'delivery') => {
     const next: Partial<WizardState> = { fulfillment: f };
@@ -135,7 +136,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
 
   const setTruck = (size: TruckSize) => {
     const next: Partial<WizardState> = { truckSize: size, truckTouched: true };
-    if (!s.tripsTouched) next.trips = suggestTrips(totalQty, size);
+    if (!s.tripsTouched) next.trips = tripsForLoads(loads, size);
     patch(next);
   };
 
@@ -145,7 +146,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
     if (d.truckSize !== s.truckSize) {
       next.truckSize = d.truckSize;
       next.truckTouched = true;
-      if (!s.tripsTouched) next.trips = suggestTrips(totalQty, d.truckSize);
+      if (!s.tripsTouched) next.trips = tripsForLoads(loads, d.truckSize);
     }
     patch(next);
   };
@@ -290,7 +291,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
               <div>
                 <p className="text-sm font-medium">จำนวนเที่ยว</p>
                 <p className="text-xs text-muted">
-                  สินค้า {formatNumber(totalQty)} คิว · แนะนำ {suggestTrips(totalQty, s.truckSize)} เที่ยว
+                  สินค้า {formatNumber(totalQty)} คิว · แนะนำ {tripsForLoads(loads, s.truckSize)} เที่ยว
                 </p>
               </div>
               <div className="flex items-center rounded border border-border">

@@ -1,5 +1,13 @@
 import type { Customer, Product } from '../../types';
-import { STEPS, buildItems, initialWizardState, toDraft, validateStep, type WizardState } from './wizardState';
+import {
+  STEPS,
+  buildItems,
+  initialWizardState,
+  quantitiesOf,
+  toDraft,
+  validateStep,
+  type WizardState,
+} from './wizardState';
 
 const products: Product[] = [
   { id: 'small-stone', name: 'หินเล็กคละ เบอร์ 1-3', unit: 'คิว', pricePerUnit: 400, sortOrder: 1, active: true },
@@ -25,8 +33,8 @@ const state = (patch: Partial<WizardState>): WizardState => ({ ...initialWizardS
 describe('validateStep', () => {
   it('asks for products first, then the customer', () => {
     expect(STEPS.map((s) => s.key)).toEqual(['products', 'customer', 'fulfillment', 'summary', 'confirm']);
-    expect(validateStep(0, state({ quantities: { 'small-stone': 0 } }))).toMatch(/สินค้า/);
-    expect(validateStep(0, state({ quantities: { 'small-stone': 3 } }))).toBe('');
+    expect(validateStep(0, state({ loads: { 'small-stone': { perTrip: 3, trips: 0 } } }))).toMatch(/สินค้า/);
+    expect(validateStep(0, state({ loads: { 'small-stone': { perTrip: 3, trips: 1 } } }))).toBe('');
     expect(validateStep(1, state({}))).toMatch(/ลูกค้า/);
     expect(validateStep(1, state({ customer }))).toBe('');
   });
@@ -51,7 +59,7 @@ describe('toDraft', () => {
   it('builds items and driver wage from the wizard', () => {
     const s = state({
       customer,
-      quantities: { 'small-stone': 5, 'fill-sand': 5 },
+      loads: { 'small-stone': { perTrip: 5, trips: 1 }, 'fill-sand': { perTrip: 5, trips: 1 } },
       fulfillment: 'delivery',
       zoneId: 'thung-hua',
       trips: 2,
@@ -70,7 +78,7 @@ describe('toDraft', () => {
 
   it('credit orders are never paid now and pickup drops delivery fields', () => {
     const d = toDraft(
-      state({ customer, quantities: { 'fill-sand': 3 }, fulfillment: 'pickup', paymentMethod: 'credit', paidNow: true }),
+      state({ customer, loads: { 'fill-sand': { perTrip: 3, trips: 1 } }, fulfillment: 'pickup', paymentMethod: 'credit', paidNow: true }),
       products,
       500,
     );
@@ -81,5 +89,14 @@ describe('toDraft', () => {
 
   it('skips products with zero quantity', () => {
     expect(buildItems(products, { 'small-stone': 0, 'fill-sand': 1 })).toHaveLength(1);
+  });
+});
+
+describe('quantitiesOf', () => {
+  it('multiplies คิวต่อเที่ยว by trips', () => {
+    expect(quantitiesOf({ 'small-stone': { perTrip: 3, trips: 2 }, 'fill-sand': { perTrip: 5, trips: 0 } })).toEqual({
+      'small-stone': 6,
+      'fill-sand': 0,
+    });
   });
 });

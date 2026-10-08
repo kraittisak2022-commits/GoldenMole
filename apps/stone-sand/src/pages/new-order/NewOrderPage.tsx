@@ -18,6 +18,7 @@ import {
   STEPS,
   buildItems,
   initialWizardState,
+  quantitiesOf,
   stepIndex,
   toDraft,
   totalQuantity,
@@ -25,7 +26,7 @@ import {
   type WizardState,
 } from './wizardState';
 
-const DRAFT_KEY = 'stone_sand_new_order_v2';
+const DRAFT_KEY = 'stone_sand_new_order_v3';
 
 interface StoredDraft {
   step: number;
@@ -98,7 +99,9 @@ export default function NewOrderPage() {
     window.scrollTo({ top: 0 });
   }, [step]);
 
-  const items = useMemo(() => buildItems(products, state.quantities), [products, state.quantities]);
+  const quantities = useMemo(() => quantitiesOf(state.loads), [state.loads]);
+  const loads = useMemo(() => Object.values(state.loads), [state.loads]);
+  const items = useMemo(() => buildItems(products, quantities), [products, quantities]);
   const totals = draftTotals({ ...state, fulfillment: state.fulfillment ?? 'pickup', items });
   const zone = zoneById(state.zoneId);
   const driver = driverById(state.driverId);
@@ -116,7 +119,7 @@ export default function NewOrderPage() {
   };
 
   const close = () => {
-    const dirty = state.customer || totalQuantity(state.quantities) > 0;
+    const dirty = state.customer || totalQuantity(quantities) > 0;
     if (dirty && !window.confirm('ยกเลิกออเดอร์นี้? ข้อมูลที่กรอกไว้จะหายไป')) return;
     clearDraft();
     navigate('/');
@@ -215,7 +218,7 @@ export default function NewOrderPage() {
         ) : null}
 
         {stepKey === 'products' ? (
-          <StepProducts products={products} quantities={state.quantities} onChange={(q) => patch({ quantities: q })} />
+          <StepProducts products={products} loads={state.loads} onChange={(l) => patch({ loads: l })} />
         ) : null}
         {stepKey === 'customer' ? <StepCustomer customer={state.customer} onSelect={selectCustomer} /> : null}
         {stepKey === 'fulfillment' ? (
@@ -226,7 +229,8 @@ export default function NewOrderPage() {
             zones={zones}
             drivers={drivers}
             settings={settings}
-            totalQty={totalQuantity(state.quantities)}
+            totalQty={totalQuantity(quantities)}
+            loads={loads}
           />
         ) : null}
         {stepKey === 'summary' ? <StepSummary state={state} patch={patch} items={items} /> : null}

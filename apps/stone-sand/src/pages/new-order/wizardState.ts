@@ -1,10 +1,11 @@
 import { lineAmount } from '../../calc/pricing';
+import type { Load } from '../../calc/trips';
 import type { OrderDraft } from '../../data/orders';
 import type { Customer, DiscountType, Fulfillment, OrderItem, PaymentMethod, Product, TruckSize } from '../../types';
 
 export interface WizardState {
   customer: Customer | null;
-  quantities: Record<string, number>;
+  loads: Record<string, Load>;
   fulfillment: Fulfillment | null;
   deliveryAddress: string;
   pin: { lat: number; lng: number } | null;
@@ -43,7 +44,7 @@ export const stepIndex = (key: StepKey): number => STEPS.findIndex((s) => s.key 
 
 export const initialWizardState: WizardState = {
   customer: null,
-  quantities: {},
+  loads: {},
   fulfillment: null,
   deliveryAddress: '',
   pin: null,
@@ -85,11 +86,17 @@ export function totalQuantity(quantities: Record<string, number>): number {
   return Object.values(quantities).reduce((s, q) => s + (q > 0 ? q : 0), 0);
 }
 
+export function quantitiesOf(loads: Record<string, Load>): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(loads).map(([id, l]) => [id, Math.round(l.perTrip * l.trips * 10) / 10]),
+  );
+}
+
 /** Error message for the step, or '' when the step is complete. */
 export function validateStep(step: number, s: WizardState): string {
   switch (STEPS[step]?.key) {
     case 'products':
-      return totalQuantity(s.quantities) > 0 ? '' : 'ใส่จำนวนสินค้าอย่างน้อย 1 รายการ';
+      return totalQuantity(quantitiesOf(s.loads)) > 0 ? '' : 'เลือกสินค้าอย่างน้อย 1 รายการ';
     case 'customer':
       return s.customer ? '' : 'เลือกหรือเพิ่มลูกค้าก่อน';
     case 'fulfillment':
@@ -117,7 +124,7 @@ export function toDraft(s: WizardState, products: Product[], driverWagePerTrip: 
   const delivery = s.fulfillment === 'delivery';
   return {
     customer: s.customer,
-    items: buildItems(products, s.quantities),
+    items: buildItems(products, quantitiesOf(s.loads)),
     fulfillment: s.fulfillment,
     deliveryAddress: s.deliveryAddress,
     pinLat: s.pin?.lat ?? null,
