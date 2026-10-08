@@ -36,6 +36,7 @@ export default function OrderEditModal({
     trips: o.trips,
     feePerTrip: o.feePerTrip,
     remoteSurcharge: o.remoteSurcharge,
+    deliveryDiscount: o.deliveryDiscount,
     discountType: o.discountType,
     discountValue: o.discountValue,
     paymentMethod: o.paymentMethod,
@@ -174,7 +175,7 @@ export default function OrderEditModal({
         {delivery ? (
           <section className="flex flex-col gap-3">
             <p className="text-sm font-medium">การจัดส่ง</p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
               <Field id="oe-truck" label="ขนาดรถ">
                 <Select
                   id="oe-truck"
@@ -207,6 +208,17 @@ export default function OrderEditModal({
                   min={0}
                   value={form.remoteSurcharge}
                   onChange={(e) => set({ remoteSurcharge: num(e.target.value) })}
+                />
+              </Field>
+              <Field id="oe-ddisc" label="ลดค่าส่ง (บาท)">
+                <Input
+                  id="oe-ddisc"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  value={form.deliveryDiscount || ''}
+                  placeholder="0"
+                  onChange={(e) => set({ deliveryDiscount: num(e.target.value) })}
                 />
               </Field>
             </div>
@@ -255,7 +267,10 @@ export default function OrderEditModal({
         <dl className="flex flex-col gap-1 rounded bg-subtle px-4 py-3 text-sm">
           <Row label="ค่าสินค้า" value={formatMoney(totals.subtotal)} />
           {delivery ? <Row label="ค่าจัดส่ง" value={formatMoney(totals.deliveryTotal)} /> : null}
-          {totals.discountAmount ? <Row label="ส่วนลด" value={`-${formatMoney(totals.discountAmount)}`} /> : null}
+          {totals.deliveryDiscount ? <Row label="ส่วนลดค่าส่ง" value={`-${formatMoney(totals.deliveryDiscount)}`} /> : null}
+          {totals.discountAmount - totals.deliveryDiscount > 0 ? (
+            <Row label="ส่วนลด" value={`-${formatMoney(totals.discountAmount - totals.deliveryDiscount)}`} />
+          ) : null}
           <div className="mt-1 flex items-baseline justify-between border-t border-border pt-2">
             <dt className="font-semibold">ยอดสุทธิใหม่</dt>
             <dd className="text-xl font-bold tabular-nums text-primary">{formatMoney(totals.total)}</dd>

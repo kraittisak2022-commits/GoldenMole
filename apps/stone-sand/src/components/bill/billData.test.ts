@@ -24,6 +24,7 @@ const order: Order = {
   discountValue: 10,
   subtotal: 2000,
   deliveryTotal: 800,
+  deliveryDiscount: 0,
   discountAmount: 200,
   total: 2600,
   paymentMethod: 'cash',
@@ -52,6 +53,15 @@ describe('billFromOrder', () => {
     expect(bill.lines[1].description).toBe('ค่าขนส่ง ต.ทุ่งฮั้ว');
     expect(bill.docNo).toBe('DO6910-0001');
     expect(bill.discountLabel).toContain('10%');
+  });
+
+  it('names ส่วนลดค่าส่ง alongside the bill discount', () => {
+    const bill = billFromOrder({ ...order, deliveryDiscount: 100, discountAmount: 300, total: 2500 }, 'delivery');
+    expect(bill.discountLabel).toBe('ส่วนลดค่าส่ง + ส่วนลด 10% (ค่าสินค้า)');
+    expect(bill.gross - bill.discountAmount).toBe(bill.total);
+    expect(billFromOrder({ ...order, deliveryDiscount: 100, discountAmount: 100, total: 2700 }, 'delivery').discountLabel).toBe(
+      'ส่วนลดค่าส่ง',
+    );
   });
 
   it('a receipt uses the receipt number and references the delivery note', () => {

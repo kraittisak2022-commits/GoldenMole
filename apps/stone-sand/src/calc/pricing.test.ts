@@ -35,6 +35,8 @@ describe('computeTotals', () => {
       subtotal: 3100,
       deliveryTotal: 700,
       itemDiscount: 0,
+      deliveryDiscount: 0,
+      billDiscount: 0,
       discountAmount: 0,
       total: 3800,
       totalQuantity: 10,
@@ -84,6 +86,23 @@ describe('computeTotals', () => {
     const items = [{ unitPrice: 400, quantity: 5, discountPerUnit: 40 }];
     expect(computeTotals({ ...base, items, discountValue: 100 }).discountAmount).toBe(300);
     expect(computeTotals({ ...base, items, discountType: 'percent', discountValue: 10 }).discountAmount).toBe(380);
+  });
+
+  it('takes ส่วนลดค่าส่ง off the delivery fee, never more than the fee', () => {
+    const t = computeTotals({ ...base, deliveryDiscount: 100 });
+    expect(t.deliveryTotal).toBe(700);
+    expect(t.deliveryDiscount).toBe(100);
+    expect(t.discountAmount).toBe(100);
+    expect(t.total).toBe(3700);
+    expect(computeTotals({ ...base, deliveryDiscount: 5000 }).deliveryDiscount).toBe(700);
+    expect(computeTotals({ ...base, feePerTrip: 0, trips: 0, deliveryDiscount: 100 }).deliveryDiscount).toBe(0);
+  });
+
+  it('keeps the bill discount separate from ส่วนลดค่าส่ง; percent still uses products only', () => {
+    const t = computeTotals({ ...base, deliveryDiscount: 100, discountType: 'percent', discountValue: 10 });
+    expect(t.billDiscount).toBe(310);
+    expect(t.discountAmount).toBe(410);
+    expect(t.total).toBe(3390);
   });
 });
 

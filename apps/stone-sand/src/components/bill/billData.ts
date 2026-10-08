@@ -56,7 +56,7 @@ export function billFromOrder(o: Order, kind: 'delivery' | 'receipt', zone?: Zon
     };
   });
   const itemDiscount = o.items.reduce((s, it) => s + lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit), 0);
-  const billDiscountPart = o.discountAmount - itemDiscount > 0.004;
+  const billDiscountPart = o.discountAmount - itemDiscount - o.deliveryDiscount > 0.004;
   if (o.fulfillment === 'delivery' && o.trips > 0) {
     lines.push({
       description: `ค่าขนส่ง${zone ? ` ต.${zone.name}` : ''}`,
@@ -93,6 +93,7 @@ export function billFromOrder(o: Order, kind: 'delivery' | 'receipt', zone?: Zon
     discountLabel: o.discountAmount
       ? [
           itemDiscount ? 'ส่วนลดต่อคิว' : '',
+          o.deliveryDiscount ? 'ส่วนลดค่าส่ง' : '',
           billDiscountPart ? `ส่วนลด${o.discountType === 'percent' ? ` ${formatNumber(o.discountValue)}% (ค่าสินค้า)` : ''}` : '',
         ]
           .filter(Boolean)

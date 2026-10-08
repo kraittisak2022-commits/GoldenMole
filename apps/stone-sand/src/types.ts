@@ -132,6 +132,8 @@ export interface Order {
   discountValue: number;
   subtotal: number;
   deliveryTotal: number;
+  /** ส่วนลดค่าส่ง (baht); included in discountAmount. */
+  deliveryDiscount: number;
   discountAmount: number;
   total: number;
   paymentMethod: PaymentMethod;

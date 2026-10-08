@@ -104,10 +104,16 @@ export default function StepConfirm({ state: s, items, zone, driver, onEdit }: P
             <dd className="tabular-nums text-success">-{formatMoney(totals.itemDiscount)}</dd>
           </div>
         ) : null}
-        {totals.discountAmount - totals.itemDiscount > 0 ? (
+        {totals.deliveryDiscount ? (
+          <div className="flex justify-between text-muted">
+            <dt>ส่วนลดค่าส่ง</dt>
+            <dd className="tabular-nums text-success">-{formatMoney(totals.deliveryDiscount)}</dd>
+          </div>
+        ) : null}
+        {totals.billDiscount > 0 ? (
           <div className="flex justify-between text-muted">
             <dt>ส่วนลดท้ายบิล</dt>
-            <dd className="tabular-nums text-success">-{formatMoney(totals.discountAmount - totals.itemDiscount)}</dd>
+            <dd className="tabular-nums text-success">-{formatMoney(totals.billDiscount)}</dd>
           </div>
         ) : null}
         <div className="mt-2 flex items-baseline justify-between">

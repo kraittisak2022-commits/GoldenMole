@@ -6,6 +6,7 @@ const make = (patch: Partial<Order>): Order =>
     cancelled: false,
     subtotal: 1000,
     deliveryTotal: 300,
+    deliveryDiscount: 0,
     discountAmount: 100,
     total: 1200,
     driverWage: 200,

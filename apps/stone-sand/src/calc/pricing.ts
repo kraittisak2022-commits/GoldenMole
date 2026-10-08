@@ -18,16 +18,23 @@ export interface TotalsInput {
   feePerTrip: number;
   trips: number;
   remoteSurcharge: number;
+  /** ส่วนลดค่าส่ง in baht. */
+  deliveryDiscount?: number;
   discountType: DiscountType;
   discountValue: number;
 }
 
 export interface Totals {
   subtotal: number;
+  /** The full delivery fee, before ส่วนลดค่าส่ง. */
   deliveryTotal: number;
   /** Sum of the per-คิว discounts on the lines. */
   itemDiscount: number;
-  /** Per-คิว discounts plus the bill discount. */
+  /** ส่วนลดค่าส่ง as applied (capped at the delivery fee). */
+  deliveryDiscount: number;
+  /** ส่วนลดท้ายบิล as applied. */
+  billDiscount: number;
+  /** Per-คิว discounts, ส่วนลดค่าส่ง and the bill discount. */
   discountAmount: number;
   total: number;
   totalQuantity: number;
@@ -47,15 +54,19 @@ export function computeTotals(input: TotalsInput): Totals {
     input.items.reduce((sum, it) => sum + lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit), 0),
   );
 
+  const deliveryDiscount = round2(Math.min(Math.max(0, input.deliveryDiscount || 0), deliveryTotal));
+
   const value = Math.max(0, input.discountValue || 0);
-  const billDiscount =
+  const billValue =
     input.discountType === 'percent' ? ((subtotal - itemDiscount) * Math.min(value, 100)) / 100 : value;
-  const discountAmount = round2(Math.min(itemDiscount + billDiscount, gross));
+  const discountAmount = round2(Math.min(itemDiscount + deliveryDiscount + billValue, gross));
 
   return {
     subtotal,
     deliveryTotal,
     itemDiscount,
+    deliveryDiscount,
+    billDiscount: round2(discountAmount - itemDiscount - deliveryDiscount),
     discountAmount,
     total: round2(gross - discountAmount),
     totalQuantity,

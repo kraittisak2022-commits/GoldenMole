@@ -88,15 +88,48 @@ export default function StepSummary({ state: s, patch, items }: Props) {
             );
           })}
           {delivery ? (
-            <li className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
-              <div>
-                <p className="font-medium">ค่าจัดส่ง</p>
-                <p className="text-muted">
-                  {formatNumber(s.feePerTrip)} × {s.trips} เที่ยว
-                  {s.remoteSurcharge ? ` + ที่กันดาร ${formatNumber(s.remoteSurcharge)}` : ''}
-                </p>
+            <li className="flex flex-col gap-2 px-4 py-3 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium">ค่าจัดส่ง</p>
+                  <p className="text-muted">
+                    {formatNumber(s.feePerTrip)} × {s.trips} เที่ยว
+                    {s.remoteSurcharge ? ` + ที่กันดาร ${formatNumber(s.remoteSurcharge)}` : ''}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className={['tabular-nums', totals.deliveryDiscount ? 'text-muted line-through' : ''].join(' ')}>
+                    {formatMoney(totals.deliveryTotal)}
+                  </p>
+                  {totals.deliveryDiscount ? (
+                    <p className="font-medium tabular-nums">{formatMoney(totals.deliveryTotal - totals.deliveryDiscount)}</p>
+                  ) : null}
+                </div>
               </div>
-              <p className="tabular-nums">{formatMoney(totals.deliveryTotal)}</p>
+              <label className="flex items-center gap-2">
+                <span className="shrink-0 text-muted">ลดค่าส่ง</span>
+                <span className="w-28">
+                  <Input
+                    aria-label="ส่วนลดค่าส่ง (บาท)"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={totals.deliveryTotal}
+                    value={s.deliveryDiscount || ''}
+                    placeholder="0"
+                    className="min-h-10 px-3 text-right tabular-nums"
+                    onChange={(e) =>
+                      patch({ deliveryDiscount: Math.min(totals.deliveryTotal, Math.max(0, Number(e.target.value) || 0)) })
+                    }
+                  />
+                </span>
+                <span className="text-muted">บาท</span>
+                {totals.deliveryDiscount ? (
+                  <span className="ml-auto text-right text-success tabular-nums">
+                    เหลือ {formatMoney(totals.deliveryTotal - totals.deliveryDiscount)}
+                  </span>
+                ) : null}
+              </label>
             </li>
           ) : null}
         </ul>
@@ -144,8 +177,11 @@ export default function StepSummary({ state: s, patch, items }: Props) {
           {totals.itemDiscount ? (
             <Row label="ส่วนลดต่อคิว" value={`-${formatMoney(totals.itemDiscount)}`} tone="text-success" />
           ) : null}
-          {totals.discountAmount - totals.itemDiscount > 0 ? (
-            <Row label="ส่วนลดท้ายบิล" value={`-${formatMoney(totals.discountAmount - totals.itemDiscount)}`} tone="text-success" />
+          {totals.deliveryDiscount ? (
+            <Row label="ส่วนลดค่าส่ง" value={`-${formatMoney(totals.deliveryDiscount)}`} tone="text-success" />
+          ) : null}
+          {totals.billDiscount > 0 ? (
+            <Row label="ส่วนลดท้ายบิล" value={`-${formatMoney(totals.billDiscount)}`} tone="text-success" />
           ) : null}
           <div className="mt-1 flex items-baseline justify-between border-t border-border pt-2">
             <dt className="font-semibold">ยอดสุทธิ</dt>

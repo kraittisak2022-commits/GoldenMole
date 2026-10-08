@@ -24,6 +24,7 @@ const base: Order = {
   discountValue: 0,
   subtotal: 2000,
   deliveryTotal: 600,
+  deliveryDiscount: 0,
   discountAmount: 0,
   total: 2600,
   paymentMethod: 'cod',

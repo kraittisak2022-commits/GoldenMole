@@ -346,7 +346,7 @@ function PayoutPanel({
                     </span>
                     <span className="block text-xs text-muted">
                       {o.truckSize ? `${o.truckSize} คิว × ` : ''}
-                      {o.trips} เที่ยว · เก็บลูกค้า {formatNumber(o.deliveryTotal)}
+                      {o.trips} เที่ยว · เก็บลูกค้า {formatNumber(o.deliveryTotal - o.deliveryDiscount)}
                     </span>
                   </button>
                   <div className="w-28 shrink-0">

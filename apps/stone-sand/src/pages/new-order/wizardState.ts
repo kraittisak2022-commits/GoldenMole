@@ -23,6 +23,8 @@ export interface WizardState {
   feePerTrip: number;
   feeTouched: boolean;
   remoteSurcharge: number;
+  /** ส่วนลดค่าส่ง in baht. */
+  deliveryDiscount: number;
   driverId: string | null;
   driverTruckSize: TruckSize | null;
   driverConfirmed: boolean;
@@ -67,6 +69,7 @@ export const initialWizardState: WizardState = {
   feePerTrip: 0,
   feeTouched: false,
   remoteSurcharge: 0,
+  deliveryDiscount: 0,
   driverId: null,
   driverTruckSize: null,
   driverConfirmed: false,
@@ -174,6 +177,7 @@ export function toDraft(s: WizardState, products: Product[], driverWagePerTrip: 
     driverId: delivery ? s.driverId : null,
     feePerTrip: s.feePerTrip,
     remoteSurcharge: s.remoteSurcharge,
+    deliveryDiscount: delivery ? s.deliveryDiscount : 0,
     discountType: s.discountType,
     discountValue: s.discountValue,
     paymentMethod: s.paymentMethod,

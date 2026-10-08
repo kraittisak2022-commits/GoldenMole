@@ -9,6 +9,7 @@ const make = (patch: Partial<Order>): Order =>
     trips: 1,
     driverWage: 0,
     deliveryTotal: 600,
+    deliveryDiscount: 0,
     total: 2000,
     paymentMethod: 'cash',
     paymentStatus: 'unpaid',

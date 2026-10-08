@@ -343,14 +343,15 @@ export default function OrderDetailPage() {
                 value={formatMoney(o.deliveryTotal)}
               />
             ) : null}
-            {o.discountAmount ? (
+            {o.deliveryDiscount ? <TotalRow label="ส่วนลดค่าส่ง" value={`-${formatMoney(o.deliveryDiscount)}`} /> : null}
+            {o.discountAmount - o.deliveryDiscount > 0 ? (
               <TotalRow
                 label={
                   o.items.some((it) => it.discountPerUnit)
                     ? 'ส่วนลด (ต่อคิว + ท้ายบิล)'
                     : `ส่วนลด${o.discountType === 'percent' ? ` ${formatNumber(o.discountValue)}%` : ''}`
                 }
-                value={`-${formatMoney(o.discountAmount)}`}
+                value={`-${formatMoney(o.discountAmount - o.deliveryDiscount)}`}
               />
             ) : null}
             <div className="mt-1 flex items-baseline justify-between border-t border-border pt-2">

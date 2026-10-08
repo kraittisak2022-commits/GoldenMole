@@ -80,11 +80,13 @@ describe('toDraft', () => {
       driverConfirmed: true,
       paymentMethod: 'cash',
       paidNow: true,
+      deliveryDiscount: 100,
     });
     const d = toDraft(s, products, 500);
     expect(d.source).toBe('shop');
     expect(d.items.map((i) => i.amount)).toEqual([2000, 1100]);
     expect(d.driverWage).toBe(1000);
+    expect(d.deliveryDiscount).toBe(100);
     expect(d.paidNow).toBe(true);
   });
 
@@ -97,6 +99,7 @@ describe('toDraft', () => {
         fulfillment: 'pickup',
         paymentMethod: 'credit',
         paidNow: true,
+        deliveryDiscount: 200,
       }),
       products,
       500,
@@ -105,6 +108,7 @@ describe('toDraft', () => {
     expect(d.paidNow).toBe(false);
     expect(d.trips).toBe(0);
     expect(d.driverWage).toBe(0);
+    expect(d.deliveryDiscount).toBe(0);
   });
 
   it('sends the chosen order date, or null so the database uses today', () => {

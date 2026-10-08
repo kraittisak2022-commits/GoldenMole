@@ -66,6 +66,7 @@ export function mapOrder(row: any): Order {
     discountValue: num(row.discount_value),
     subtotal: num(row.subtotal),
     deliveryTotal: num(row.delivery_total),
+    deliveryDiscount: num(row.delivery_discount),
     discountAmount: num(row.discount_amount),
     total: num(row.total),
     paymentMethod: row.payment_method,
@@ -173,6 +174,7 @@ export interface OrderDraft {
   driverId: string | null;
   feePerTrip: number;
   remoteSurcharge: number;
+  deliveryDiscount: number;
   discountType: DiscountType;
   discountValue: number;
   paymentMethod: PaymentMethod;
@@ -181,13 +183,16 @@ export interface OrderDraft {
   note: string;
 }
 
-export function draftTotals(d: Pick<OrderDraft, 'items' | 'fulfillment' | 'feePerTrip' | 'trips' | 'remoteSurcharge' | 'discountType' | 'discountValue'>) {
+export function draftTotals(
+  d: Pick<OrderDraft, 'items' | 'fulfillment' | 'feePerTrip' | 'trips' | 'remoteSurcharge' | 'deliveryDiscount' | 'discountType' | 'discountValue'>,
+) {
   const delivery = d.fulfillment === 'delivery';
   return computeTotals({
     items: d.items,
     feePerTrip: delivery ? d.feePerTrip : 0,
     trips: delivery ? d.trips : 0,
     remoteSurcharge: delivery ? d.remoteSurcharge : 0,
+    deliveryDiscount: delivery ? d.deliveryDiscount : 0,
     discountType: d.discountType,
     discountValue: d.discountValue,
   });
@@ -213,6 +218,7 @@ export async function createOrder(d: OrderDraft, by: string): Promise<Order> {
     driver_id: delivery ? d.driverId : null,
     fee_per_trip: delivery ? d.feePerTrip : 0,
     remote_surcharge: delivery ? d.remoteSurcharge : 0,
+    delivery_discount: totals.deliveryDiscount,
     discount_type: d.discountType,
     discount_value: d.discountValue,
     subtotal: totals.subtotal,
@@ -269,6 +275,7 @@ export type OrderEdit = Pick<
   | 'trips'
   | 'feePerTrip'
   | 'remoteSurcharge'
+  | 'deliveryDiscount'
   | 'discountType'
   | 'discountValue'
   | 'paymentMethod'
@@ -286,6 +293,7 @@ export async function updateOrder(current: Order, e: OrderEdit, by: string): Pro
     trips: e.trips,
     fee_per_trip: e.feePerTrip,
     remote_surcharge: e.remoteSurcharge,
+    delivery_discount: totals.deliveryDiscount,
     discount_type: e.discountType,
     discount_value: e.discountValue,
     subtotal: totals.subtotal,
