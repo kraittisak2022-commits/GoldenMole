@@ -38,6 +38,8 @@
   /* The A4 bill is laid out in rem at a 16px base. */
   html:has(.bill-sheet) {
     font-size: 16px;
+    /* ScaledSheet sizes from the page width: a scrollbar that comes and goes makes the bill rescale in a loop. */
+    scrollbar-gutter: stable;
   }
 
   html,
