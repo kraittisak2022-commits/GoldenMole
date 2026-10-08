@@ -7,7 +7,7 @@ import { ErrorBox, Loading } from '../../components/ui/States';
 import { useCatalog } from '../../context/CatalogProvider';
 import { getCustomer } from '../../data/customers';
 import { createOrder, draftTotals } from '../../data/orders';
-import { formatMoney } from '../../lib/format';
+import { formatDateShort, formatMoney } from '../../lib/format';
 import { ORDER_SOURCE_LABEL, type Customer, type OrderSource } from '../../types';
 import StepConfirm from './StepConfirm';
 import StepCustomer from './StepCustomer';
@@ -188,7 +188,10 @@ export default function NewOrderPage() {
           <div className="flex min-w-0 flex-1 flex-col">
             <h1 className="text-lg font-semibold leading-tight">สร้างออเดอร์</h1>
             {state.source ? (
-              <p className="truncate text-xs font-medium text-primary">ออเดอร์{ORDER_SOURCE_LABEL[state.source]}</p>
+              <p className="truncate text-xs font-medium text-primary">
+                ออเดอร์{ORDER_SOURCE_LABEL[state.source]}
+                {state.orderDate ? ` · ${formatDateShort(state.orderDate)}` : ''}
+              </p>
             ) : null}
           </div>
           <span className="pr-3 text-sm tabular-nums text-muted">
@@ -235,7 +238,14 @@ export default function NewOrderPage() {
           </div>
         ) : null}
 
-        {stepKey === 'source' ? <StepSource source={state.source} onSelect={selectSource} /> : null}
+        {stepKey === 'source' ? (
+          <StepSource
+            source={state.source}
+            onSelect={selectSource}
+            orderDate={state.orderDate}
+            onDateChange={(orderDate) => patch({ orderDate })}
+          />
+        ) : null}
         {stepKey === 'products' ? (
           <StepProducts products={products} loads={state.loads} onChange={(l) => patch({ loads: l })} />
         ) : null}

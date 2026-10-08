@@ -107,6 +107,12 @@ describe('toDraft', () => {
     expect(d.driverWage).toBe(0);
   });
 
+  it('sends the chosen order date, or null so the database uses today', () => {
+    const base = { source: 'shop' as const, customer, loads: { 'fill-sand': { perTrip: 3, trips: 1 } }, fulfillment: 'pickup' as const, paymentMethod: 'cash' as const };
+    expect(toDraft(state(base), products, 0).orderDate).toBeNull();
+    expect(toDraft(state({ ...base, orderDate: '2026-10-01' }), products, 0).orderDate).toBe('2026-10-01');
+  });
+
   it('refuses to build an order without a source', () => {
     expect(() =>
       toDraft(state({ customer, loads: { 'fill-sand': { perTrip: 3, trips: 1 } }, fulfillment: 'pickup', paymentMethod: 'cash' }), products, 0),

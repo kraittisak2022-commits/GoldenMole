@@ -163,6 +163,8 @@ export async function getOrdersByIds(ids: string[]): Promise<Order[]> {
 
 export interface OrderDraft {
   source: OrderSource;
+  /** YYYY-MM-DD; null lets the database use today (Bangkok). */
+  orderDate: string | null;
   customer: Customer;
   items: OrderItem[];
   fulfillment: Fulfillment;
@@ -202,6 +204,7 @@ export async function createOrder(d: OrderDraft, by: string): Promise<Order> {
   const paymentStatus = d.paidNow ? 'paid' : d.paymentMethod === 'credit' ? 'credit' : 'unpaid';
   const order = {
     source: d.source,
+    order_date: d.orderDate,
     customer_id: d.customer.id,
     customer_snapshot: toSnapshot(d.customer),
     fulfillment: d.fulfillment,

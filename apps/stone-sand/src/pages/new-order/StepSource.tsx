@@ -1,11 +1,17 @@
 import type { ReactNode } from 'react';
-import { Mountain, Store } from 'lucide-react';
+import { CalendarDays, Mountain, Store } from 'lucide-react';
+import Chip from '../../components/ui/Chip';
+import Input from '../../components/ui/Input';
+import { formatDateLongTh, shiftIsoDate, toIsoDate } from '../../lib/format';
 import { ORDER_SOURCE_LABEL, type OrderSource } from '../../types';
 import StepTitle from './StepTitle';
 
 interface Props {
   source: OrderSource | null;
   onSelect: (source: OrderSource) => void;
+  /** '' means today. */
+  orderDate: string;
+  onDateChange: (date: string) => void;
 }
 
 const OPTIONS: { value: OrderSource; icon: ReactNode; hint: string; docNo: string }[] = [
@@ -13,10 +19,43 @@ const OPTIONS: { value: OrderSource; icon: ReactNode; hint: string; docNo: strin
   { value: 'pit', icon: <Mountain size={32} aria-hidden />, hint: 'ลูกค้าสั่งกับท่าทรายโดยตรง', docNo: 'เลขที่ TS…' },
 ];
 
-export default function StepSource({ source, onSelect }: Props) {
+export default function StepSource({ source, onSelect, orderDate, onDateChange }: Props) {
+  const today = toIsoDate();
+  const yesterday = shiftIsoDate(today, -1);
+  const date = orderDate || today;
+
   return (
     <div className="step-enter flex flex-col gap-5">
-      <StepTitle title="ประเภทออเดอร์" subtitle="ออเดอร์นี้มาจากร้านวัสดุก่อสร้าง หรือสั่งที่ท่าทรายโดยตรง" />
+      <StepTitle title="ประเภทออเดอร์" subtitle="เลือกวันที่ แล้วเลือกว่ามาจากร้านวัสดุก่อสร้าง หรือสั่งที่ท่าทรายโดยตรง" />
+
+      <section className="flex flex-col gap-3 rounded border border-border bg-surface p-4" aria-labelledby="order-date-label">
+        <div className="flex items-center gap-2">
+          <CalendarDays size={18} className="text-primary" aria-hidden />
+          <h3 id="order-date-label" className="font-semibold">
+            วันที่ออเดอร์
+          </h3>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Chip active={date === today} onClick={() => onDateChange('')}>
+            วันนี้
+          </Chip>
+          <Chip active={date === yesterday} onClick={() => onDateChange(yesterday)}>
+            เมื่อวาน
+          </Chip>
+          <Input
+            type="date"
+            aria-label="เลือกวันที่ออเดอร์"
+            value={date}
+            onChange={(e) => onDateChange(e.target.value === today ? '' : e.target.value)}
+            className="w-auto min-w-44 flex-1 sm:flex-none"
+          />
+        </div>
+        <p className={['text-sm', date === today ? 'text-muted' : 'font-medium text-warning'].join(' ')}>
+          {date === today ? 'ลงวันที่วันนี้' : date < today ? 'ลงวันที่ย้อนหลัง' : 'ลงวันที่ล่วงหน้า'} ·{' '}
+          {formatDateLongTh(date)}
+        </p>
+      </section>
+
       <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="ประเภทออเดอร์">
         {OPTIONS.map((o) => {
           const active = source === o.value;

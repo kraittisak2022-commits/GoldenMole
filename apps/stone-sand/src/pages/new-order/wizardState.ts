@@ -5,6 +5,8 @@ import type { Customer, DiscountType, Fulfillment, OrderItem, OrderSource, Payme
 
 export interface WizardState {
   source: OrderSource | null;
+  /** YYYY-MM-DD; '' means today. */
+  orderDate: string;
   customer: Customer | null;
   loads: Record<string, Load>;
   fulfillment: Fulfillment | null;
@@ -48,6 +50,7 @@ export const stepIndex = (key: StepKey): number => STEPS.findIndex((s) => s.key 
 
 export const initialWizardState: WizardState = {
   source: null,
+  orderDate: '',
   customer: null,
   loads: {},
   fulfillment: null,
@@ -157,6 +160,7 @@ export function toDraft(s: WizardState, products: Product[], driverWagePerTrip: 
   const delivery = s.fulfillment === 'delivery';
   return {
     source: s.source,
+    orderDate: s.orderDate || null,
     customer: s.customer,
     items: buildItems(products, quantitiesOf(s.loads), s.unitDiscounts),
     fulfillment: s.fulfillment,
