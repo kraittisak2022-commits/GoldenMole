@@ -19,7 +19,7 @@ export default function AppShell() {
   const { user, signOut, lockedSource } = useAuth();
   const location = useLocation();
   const navigationType = useNavigationType();
-  const isFullscreen = location.pathname.startsWith('/bill') || location.pathname.startsWith('/new');
+  const isFullscreen = /^\/(bill|new)(\/|$)/.test(location.pathname);
   const onMenu = location.pathname === '/menu';
 
   useEffect(() => {
