@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import { APIProvider, Map, Marker, useMap } from '@vis.gl/react-google-maps';
 import { DISTRICT_CENTER, districtOutline, mainRoads } from '../../lib/geo';
-import type { DeliveryMapProps, LatLng } from './DeliveryMap';
+import { pathMidpoint } from '../../lib/roadRoute';
+import type { DeliveryMapProps, LatLng, MapRoute } from './DeliveryMap';
 import { markGoogleMapsFailed } from './googleMapsStatus';
-import { PIN_SVG } from './pin';
+import { distanceLabelSvg, PIN_SVG, ROAD_START_COLOR, ROUTE_COLOR } from './pin';
 
 function Overlays() {
   const map = useMap();
@@ -24,6 +25,62 @@ function Overlays() {
       roads.setMap(null);
     };
   }, [map]);
+  return null;
+}
+
+function RouteLayer({ route }: { route: MapRoute }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || route.path.length < 2) return;
+    const line = new google.maps.Polyline({
+      map,
+      path: route.path,
+      clickable: false,
+      strokeColor: ROUTE_COLOR,
+      strokeWeight: 5,
+      strokeOpacity: route.byRoad ? 0.85 : 0,
+      icons: route.byRoad
+        ? undefined
+        : [{ icon: { path: 'M 0,-1 0,1', strokeColor: ROUTE_COLOR, strokeOpacity: 1, strokeWeight: 4, scale: 3 }, offset: '0', repeat: '14px' }],
+    });
+    const start = new google.maps.Marker({
+      map,
+      position: route.path[0],
+      clickable: false,
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: ROAD_START_COLOR, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+    });
+    const mid = pathMidpoint(route.path);
+    const { svg, width, height } = distanceLabelSvg(route.label);
+    const label = mid
+      ? new google.maps.Marker({
+          map,
+          position: mid,
+          clickable: false,
+          zIndex: 1000,
+          icon: {
+            url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+            scaledSize: new google.maps.Size(width, height),
+            anchor: new google.maps.Point(width / 2, height / 2),
+          },
+        })
+      : null;
+
+    const bounds = new google.maps.LatLngBounds();
+    route.path.forEach((p) => bounds.extend(p));
+    const view = map.getBounds();
+    if (!view || !view.contains(bounds.getNorthEast()) || !view.contains(bounds.getSouthWest())) {
+      map.fitBounds(bounds, 48);
+      google.maps.event.addListenerOnce(map, 'idle', () => {
+        if ((map.getZoom() ?? 0) > 16) map.setZoom(16);
+      });
+    }
+
+    return () => {
+      line.setMap(null);
+      start.setMap(null);
+      label?.setMap(null);
+    };
+  }, [map, route]);
   return null;
 }
 
@@ -58,7 +115,7 @@ function Pin({ value, onChange, readOnly }: Pick<DeliveryMapProps, 'onChange' | 
   );
 }
 
-export default function GoogleDeliveryMap({ apiKey, value, onChange, flyTarget = null, readOnly }: DeliveryMapProps & { apiKey: string }) {
+export default function GoogleDeliveryMap({ apiKey, value, onChange, flyTarget = null, readOnly, route }: DeliveryMapProps & { apiKey: string }) {
   const center = value ?? DISTRICT_CENTER;
   const canPick = !readOnly && !!onChange;
 
@@ -83,6 +140,7 @@ export default function GoogleDeliveryMap({ apiKey, value, onChange, flyTarget =
         }
       >
         <Overlays />
+        {route ? <RouteLayer route={route} /> : null}
         {value ? <Pin value={value} onChange={onChange} readOnly={readOnly} /> : null}
         <FlyTo target={flyTarget} />
       </Map>

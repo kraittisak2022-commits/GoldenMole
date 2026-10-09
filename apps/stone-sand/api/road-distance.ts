@@ -1,7 +1,7 @@
 /**
  * Driving distance between two points, via Google Routes API.
  * The browser cannot call Routes API directly (no CORS) and the key must stay server-side.
- * POST { from: { lat, lng }, to: { lat, lng } } → { km }
+ * POST { from: { lat, lng }, to: { lat, lng } } → { km, polyline } (polyline: Google encoded polyline, may be '')
  */
 
 interface LatLng {
@@ -44,7 +44,7 @@ export async function POST(request: Request): Promise<Response> {
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': key,
-      'X-Goog-FieldMask': 'routes.distanceMeters',
+      'X-Goog-FieldMask': 'routes.distanceMeters,routes.polyline.encodedPolyline',
     },
     body: JSON.stringify({
       origin: waypoint(from),
@@ -54,8 +54,9 @@ export async function POST(request: Request): Promise<Response> {
     }),
   });
   if (!res.ok) return json({ error: 'upstream', status: res.status }, 502);
-  const data = (await res.json()) as { routes?: { distanceMeters?: number }[] };
-  const meters = data.routes?.[0]?.distanceMeters;
+  const data = (await res.json()) as { routes?: { distanceMeters?: number; polyline?: { encodedPolyline?: string } }[] };
+  const route = data.routes?.[0];
+  const meters = route?.distanceMeters;
   if (typeof meters !== 'number') return json({ error: 'no_route' }, 404);
-  return json({ km: Math.round(meters / 10) / 100 });
+  return json({ km: Math.round(meters / 10) / 100, polyline: route?.polyline?.encodedPolyline ?? '' });
 }

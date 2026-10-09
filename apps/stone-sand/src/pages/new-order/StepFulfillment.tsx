@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, Crosshair, Link2, MapPin, Pencil, Phone, Store, Truck } from 'lucide-react';
 import { suggestDeliveryFee } from '../../calc/deliveryFee';
 import { truckFits, type Load } from '../../calc/trips';
-import DeliveryMap, { type LatLng } from '../../components/map/DeliveryMap';
+import DeliveryMap, { type LatLng, type MapRoute } from '../../components/map/DeliveryMap';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import Chip from '../../components/ui/Chip';
@@ -14,7 +14,7 @@ import { driverTripRate } from '../../lib/driverPay';
 import { distanceToMainRoad, findTambon } from '../../lib/geo';
 import { formatMoney, formatNumber, formatPhone } from '../../lib/format';
 import { parseLatLng } from '../../lib/latlng';
-import { fetchRoadDistanceKm } from '../../lib/roadRoute';
+import { fetchRoadRoute } from '../../lib/roadRoute';
 import {
   ROUTE_GROUP_LABEL,
   type AppSettings,
@@ -61,6 +61,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
   const [roadFailedKey, setRoadFailedKey] = useState('');
   const roadFailed = !!pinKey && roadFailedKey === pinKey;
   const measuringRoad = !!pinKey && !s.roadDistanceByRoad && !roadFailed;
+  const [roadPath, setRoadPath] = useState<{ key: string; path: LatLng[] } | null>(null);
   const latest = useRef({ s, zones, delivery: settings.delivery });
   useEffect(() => {
     latest.current = { s, zones, delivery: settings.delivery };
@@ -71,9 +72,11 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
     const start = distanceToMainRoad(pinLat, pinLng)?.point;
     if (!start) return;
     const ctrl = new AbortController();
-    void fetchRoadDistanceKm(start, { lat: pinLat, lng: pinLng }, ctrl.signal).then((km) => {
+    void fetchRoadRoute(start, { lat: pinLat, lng: pinLng }, ctrl.signal).then((route) => {
       if (ctrl.signal.aborted) return;
-      if (km == null) return setRoadFailedKey(`${pinLat},${pinLng}`);
+      if (!route) return setRoadFailedKey(`${pinLat},${pinLng}`);
+      const { km } = route;
+      setRoadPath({ key: `${pinLat},${pinLng}`, path: route.path });
       const cur = latest.current;
       const feeZone = cur.zones.find((z) => z.id === cur.s.zoneId);
       patch({
@@ -84,6 +87,18 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
     });
     return () => ctrl.abort();
   }, [pinLat, pinLng, s.roadDistanceByRoad, roadFailedKey, patch]);
+
+  const roadKm = s.roadDistanceKm;
+  const byRoad = s.roadDistanceByRoad;
+  const roadPathForPin = roadPath?.key === pinKey ? roadPath.path : null;
+  const mapRoute = useMemo<MapRoute | null>(() => {
+    if (pinLat == null || pinLng == null || roadKm == null) return null;
+    const pin = { lat: pinLat, lng: pinLng };
+    const label = measuringRoad ? 'กำลังวัด…' : `${formatNumber(roadKm)} กม.`;
+    if (byRoad && roadPathForPin && roadPathForPin.length > 1) return { path: [...roadPathForPin, pin], label, byRoad: true };
+    const start = distanceToMainRoad(pinLat, pinLng)?.point;
+    return start ? { path: [start, pin], label, byRoad: false } : null;
+  }, [pinLat, pinLng, roadKm, byRoad, roadPathForPin, measuringRoad]);
   const largestPerTrip = Math.max(0, ...loadLines.map((l) => l.perTrip));
 
   const chooseFulfillment = (f: 'pickup' | 'delivery') => {
@@ -224,8 +239,10 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                 <Crosshair size={16} aria-hidden /> {locating ? 'กำลังหา…' : 'ตำแหน่งปัจจุบัน'}
               </Button>
             </div>
-            <p className="text-sm text-muted">แตะบนแผนที่หรือลากหมุด เส้นสีส้มคือถนนสายหลัก</p>
-            <DeliveryMap value={s.pin} onChange={onPin} flyTarget={flyTarget} height={300} />
+            <p className="text-sm text-muted">
+              แตะบนแผนที่หรือลากหมุด เส้นสีส้มคือถนนสายหลัก เส้นสีน้ำเงินคือเส้นทางจากถนนใหญ่ถึงหมุด (เส้นประ = ระยะเส้นตรง)
+            </p>
+            <DeliveryMap value={s.pin} onChange={onPin} flyTarget={flyTarget} height={300} route={mapRoute} />
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Link2 size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden />

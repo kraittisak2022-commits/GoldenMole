@@ -7,12 +7,21 @@ export interface LatLng {
   lng: number;
 }
 
+export interface MapRoute {
+  /** From the main road to the pin. */
+  path: LatLng[];
+  label: string;
+  /** false = straight line (drawn dashed). */
+  byRoad: boolean;
+}
+
 export interface DeliveryMapProps {
   value: LatLng | null;
   onChange?: (p: LatLng) => void;
   flyTarget?: LatLng | null;
   height?: number;
   readOnly?: boolean;
+  route?: MapRoute | null;
 }
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY?.trim() ?? '';
