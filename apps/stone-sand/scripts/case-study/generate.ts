@@ -1,16 +1,26 @@
 /**
- * Builds the A4 admin case-study worksheet and its answer key.
+ * Builds the A4 admin case-study worksheets and their answer keys (set 1: order entry, set 2: order to closed job).
  * Run from apps/stone-sand: npx tsx scripts/case-study/generate.ts
- * Expected numbers come from the app's own pricing and driver-pay code with the rates below,
+ * Expected numbers come from the app's own pricing, driver-pay and bill-stage code with the rates below,
  * so update RATES_DATE and the tables when the products, tambons or drivers change.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { computeTotals } from '../../src/calc/pricing';
+import { BILL_STAGE, billStage } from '../../src/lib/billSummary';
 import { driverPayBreakdown } from '../../src/lib/driverPay';
-import { ORDER_SOURCE_LABEL, PAYMENT_METHOD_LABEL, type DeliverySettings, type TruckSize } from '../../src/types';
-import { CASES, type ProductId, type StudyCase, type ZoneId } from './cases';
+import { outstanding } from '../../src/lib/orderStatus';
+import {
+  ORDER_SOURCE_LABEL,
+  PAYMENT_METHOD_LABEL,
+  type DeliverySettings,
+  type Order,
+  type PaymentStatus,
+  type TruckSize,
+} from '../../src/types';
+import { CASES, type AfterStep, type ProductId, type StudyCase, type ZoneId } from './cases';
+import { CASES_2 } from './cases2';
 
 const RATES_DATE = '9 ต.ค. 2569';
 
@@ -75,6 +85,52 @@ interface Expected {
   stageDelivered: string | null;
 }
 
+/** The order fields the bill stage depends on, tracked through the after-save steps. */
+interface SimState {
+  delivered: 'driver' | 'shop' | null;
+  driverReported: boolean;
+  paymentStatus: PaymentStatus;
+  cleared: boolean;
+  /** How the order got paid; payout = COD taken through a driver clearing (undo blocked). */
+  paidVia: 'order' | 'payout' | 'driverCod' | 'statement' | null;
+  statement: { payments: number[] } | null;
+  payout: boolean;
+  cancelled: boolean;
+}
+
+function initialState(c: StudyCase): SimState {
+  const paid = c.payment === 'cash' || c.payment === 'transfer' ? (c.paidNow ?? true) : false;
+  return {
+    delivered: null,
+    driverReported: false,
+    paymentStatus: paid ? 'paid' : c.payment === 'credit' ? 'credit' : 'unpaid',
+    cleared: paid,
+    paidVia: paid ? 'order' : null,
+    statement: null,
+    payout: false,
+    cancelled: false,
+  };
+}
+
+function asOrder(c: StudyCase, s: SimState, total: number): Order {
+  const d = !!c.delivery;
+  return {
+    cancelled: s.cancelled,
+    fulfillment: d ? 'delivery' : 'pickup',
+    driverId: d ? 'driver' : null,
+    deliveryStatus: !d ? 'pickup' : s.delivered ? 'delivered' : 'dispatched',
+    cleared: s.cleared,
+    paymentStatus: s.paymentStatus,
+    paymentMethod: c.payment,
+    statementId: s.statement ? 'statement' : null,
+    driverPayoutId: s.payout ? 'payout' : null,
+    total,
+  } as Order;
+}
+
+const stageOf = (c: StudyCase, s: SimState, total: number) => BILL_STAGE[billStage(asOrder(c, s, total))].label;
+const receivableOf = (c: StudyCase, s: SimState, total: number) => outstanding(asOrder(c, s, total));
+
 function expected(c: StudyCase): Expected {
   const items = c.items.map((it) => ({
     unitPrice: PRODUCTS[it.product].price,
@@ -116,11 +172,7 @@ function expected(c: StudyCase): Expected {
   const driverPay = pay?.amount ?? 0;
   const deliveryFee = Math.max(0, t.deliveryTotal - t.deliveryDiscount);
 
-  const paid = c.payment === 'cash' || c.payment === 'transfer' ? c.paidNow ?? true : false;
-  const moneyStage = paid ? null : c.payment === 'cod' && d ? 'รอรับเงินจากคนขับ' : c.payment === 'credit' ? 'รอวางบิล' : 'รอรับเงิน';
-  const stageNow = d ? 'รอจัดส่ง' : moneyStage ?? 'ปิดงานแล้ว';
-  const stageDelivered = d ? moneyStage ?? 'รอเคลียร์ค่ารถ' : null;
-
+  const start = initialState(c);
   return {
     qty: t.totalQuantity,
     trips,
@@ -136,16 +188,254 @@ function expected(c: StudyCase): Expected {
     deliveryFee,
     goods: t.total - deliveryFee,
     net: t.total - driverPay,
-    paid,
-    receivable: paid ? 0 : t.total,
-    stageNow,
-    stageDelivered,
+    paid: start.paymentStatus === 'paid',
+    receivable: receivableOf(c, start, t.total),
+    stageNow: stageOf(c, start, t.total),
+    stageDelivered: d ? stageOf(c, { ...start, delivered: 'shop' }, t.total) : null,
   };
+}
+
+interface StepResult {
+  /** Worksheet instruction. */
+  action: string;
+  /** Short name for the answer key. */
+  short: string;
+  /** What the checker should see besides the stage. */
+  expect: string[];
+  stage: string;
+  receivable: number;
+}
+
+const RECEIVE_LABEL = { cash: 'รับเงินสด', transfer: 'รับโอนแล้ว', cod: 'เก็บปลายทางแล้ว' } as const;
+
+/** Walks the after-save steps with the same rules as the database functions and returns what each one should show. */
+function simulate(c: StudyCase, e: Expected): { steps: StepResult[]; final: SimState } {
+  const s = initialState(c);
+  const total = e.total;
+  const d = c.delivery;
+  const steps: StepResult[] = [];
+  const codDue = () => c.payment === 'cod' && s.paymentStatus !== 'paid' && !s.statement;
+  const fail = (step: AfterStep, why: string) => {
+    throw new Error(`${c.title}: ${step.do} ${why}`);
+  };
+
+  for (const step of c.after ?? []) {
+    let action = '';
+    let short = '';
+    const expect: string[] = [];
+    switch (step.do) {
+      case 'driverLink': {
+        if (!d) fail(step, 'needs delivery');
+        const open = 'เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ)';
+        if (s.cancelled) {
+          action = open;
+          short = 'เปิดลิงก์คนขับ (ออเดอร์ยกเลิกแล้ว)';
+          expect.push('ลิงก์ขึ้น "ออเดอร์นี้ถูกยกเลิกแล้ว ไม่ต้องส่งของ" และไม่มีปุ่มยืนยัน');
+          break;
+        }
+        const cod = codDue();
+        if (s.driverReported && !cod) {
+          action = open;
+          short = 'เปิดลิงก์คนขับอีกครั้ง';
+          expect.push('ลิงก์ขึ้น "ยืนยันส่งสำเร็จแล้ว" ไม่มีปุ่มให้กดซ้ำ ต้องให้ร้านกด "ส่งแล้ว" เอง');
+          break;
+        }
+        expect.push(
+          cod
+            ? `ลิงก์ขึ้น "เก็บเงินสดปลายทาง ${money(total)} บาท"`
+            : s.paymentStatus === 'paid'
+              ? 'ลิงก์ขึ้น "ลูกค้าชำระเงินแล้ว ไม่ต้องเก็บเงิน"'
+              : 'ลิงก์ขึ้น "ไม่ต้องเก็บเงินจากลูกค้า (ร้านเรียกเก็บเอง)"',
+        );
+        let choice = '';
+        if (cod) {
+          if (step.cash == null) fail(step, 'needs the cash the driver reports');
+          const cash = step.cash === 'full' ? total : step.cash!;
+          choice =
+            step.cash === 'full'
+              ? ` เลือก "ได้รับครบ ${money(total)} บาท"`
+              : ` เลือก "ได้รับไม่ครบ / ยังไม่ได้รับ" แล้วใส่ ${num(cash)}`;
+          expect.push(
+            `หน้าออเดอร์ขึ้น "คนขับแจ้งเก็บเงินสด ${money(cash)} บาท${cash < total ? ` (ขาด ${money(total - cash)} บาท)` : ''}"`,
+          );
+          short = step.cash === 'full' ? 'คนขับกดยืนยันในลิงก์ (เก็บเงินครบ)' : `คนขับกดยืนยันในลิงก์ (แจ้งเก็บ ${num(cash)})`;
+        } else {
+          short = 'คนขับกดยืนยันในลิงก์';
+        }
+        action = `${open}${choice} แล้วกด "ยืนยันส่งสำเร็จ"`;
+        expect.push('หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"');
+        s.driverReported = true;
+        s.delivered = 'driver';
+        break;
+      }
+      case 'shopDelivered':
+        if (!d || s.cancelled) fail(step, 'needs a live delivery');
+        action = 'หน้าออเดอร์ ส่วนการจัดส่ง กด "ส่งแล้ว"';
+        short = 'ร้านกด "ส่งแล้ว"';
+        expect.push('ใต้สถานะขึ้น "ส่งถึง … · ร้านกดยืนยันเอง"');
+        s.delivered = 'shop';
+        break;
+      case 'shopDispatched':
+        if (!d || s.cancelled) fail(step, 'needs a live delivery');
+        action = 'หน้าออเดอร์ ส่วนการจัดส่ง กด "กำลังจัดส่ง"';
+        short = 'ร้านกด "กำลังจัดส่ง" (ย้อนสถานะ)';
+        expect.push('การจัดส่งกลับเป็น "กำลังจัดส่ง" และขึ้น "รอคนขับกด "ยืนยันส่งสำเร็จ" ในลิงก์…"');
+        s.delivered = null;
+        break;
+      case 'receive':
+        if (s.statement || s.paymentStatus === 'paid' || s.cancelled) fail(step, 'cannot take payment here');
+        action = `หน้าออเดอร์ ส่วนการชำระเงิน กด "${RECEIVE_LABEL[step.method]}"`;
+        short = `กด "${RECEIVE_LABEL[step.method]}"`;
+        expect.push('การชำระเงินเป็น "จ่ายแล้ว" และมีปุ่ม "ยกเลิกการรับเงิน"');
+        s.paymentStatus = 'paid';
+        s.cleared = true;
+        s.paidVia = 'order';
+        break;
+      case 'undoPay':
+        if (s.paymentStatus !== 'paid') fail(step, 'order is not paid');
+        action = 'หน้าออเดอร์ กด "ยกเลิกการรับเงิน" แล้วกดตกลง';
+        short = 'กด "ยกเลิกการรับเงิน"';
+        if (s.paidVia === 'payout') {
+          expect.push('ต้องขึ้นข้อความ "รับเงินปลายทางผ่านเคลียร์ค่ารถแล้ว ต้องลบรายการจ่ายค่ารถก่อน" และสถานะไม่เปลี่ยน');
+          break;
+        }
+        if (s.paidVia === 'statement') fail(step, 'paid through a statement');
+        expect.push(`การชำระเงินกลับเป็น "${c.payment === 'credit' ? 'ค้างเครดิต' : 'ยังไม่จ่าย'}"`);
+        s.paymentStatus = c.payment === 'credit' ? 'credit' : 'unpaid';
+        s.cleared = false;
+        s.paidVia = null;
+        break;
+      case 'statement':
+        if (s.cleared || s.cancelled || s.statement) fail(step, 'order cannot go on a statement');
+        action = `เมนู "เคลียร์บิล" เลือก ${esc(c.customer.name)} ติ๊กเฉพาะออเดอร์นี้ แล้วกด "สร้างใบวางบิลและพิมพ์"`;
+        short = 'ออกใบวางบิล';
+        expect.push(`ได้ใบวางบิลเลขขึ้นต้น BL ยอด ${money(total)}`);
+        expect.push('หน้าออเดอร์ขึ้น "อยู่ในใบวางบิล … — เคลียร์ผ่านใบวางบิล" และไม่มีปุ่มรับเงิน');
+        s.statement = { payments: [] };
+        break;
+      case 'payStatement': {
+        if (!s.statement || s.cleared) fail(step, 'needs an open statement');
+        const balance = total - s.statement!.payments.reduce((a, b) => a + b, 0);
+        const amount = step.amount === 'full' ? balance : step.amount;
+        if (amount <= 0 || amount >= balance - 0.004) {
+          if (step.amount !== 'full') fail(step, 'partial amount must be below the balance');
+        }
+        const method = PAYMENT_METHOD_LABEL[step.method];
+        const open = 'เมนู "เคลียร์บิล" เปิดใบวางบิลนี้ กด "รับชำระ / เคลียร์บิล"';
+        const tryFull = step.tryFullAsPartial ? ` ลองเลือก "จ่ายบางส่วน" ใส่ ${num(balance)} (เท่ายอดค้าง) ดูก่อน แล้วแก้เป็น` : '';
+        action =
+          step.amount === 'full'
+            ? `${open}${tryFull} เลือก "จ่ายครบ" ช่องทาง ${method} แล้วบันทึก`
+            : `${open}${tryFull} เลือก "จ่ายบางส่วน" ใส่ ${num(amount)} ช่องทาง ${method} แล้วบันทึก`;
+        if (step.tryFullAsPartial) {
+          expect.push('ตอนใส่เท่ายอดค้าง ต้องขึ้น "ยอดเท่ากับหรือเกินยอดค้าง เลือก "จ่ายครบ" แทน" และกดบันทึกไม่ได้');
+        }
+        short = step.amount === 'full' ? `รับชำระใบวางบิล "จ่ายครบ" ${money(amount)}` : `รับชำระใบวางบิลบางส่วน ${money(amount)}`;
+        s.statement!.payments.push(amount);
+        if (step.amount === 'full') {
+          expect.push('ใบวางบิลเปลี่ยนเป็นเคลียร์แล้ว · หน้าออเดอร์ "เคลียร์บิล: เคลียร์แล้ว"');
+          s.cleared = true;
+          s.paidVia = 'statement';
+        } else {
+          expect.push(`ใบวางบิล "ยอดค้างชำระ" เหลือ ${money(balance - amount)}`);
+        }
+        break;
+      }
+      case 'deleteStatementPayment': {
+        if (!s.statement || s.cleared || !s.statement.payments.length) fail(step, 'needs a payment on an open statement');
+        action = 'ในใบวางบิล ส่วน "ประวัติรับชำระ" กดถังขยะของรายการที่บันทึกผิด แล้วกดตกลง';
+        short = 'ลบรายการรับชำระที่บันทึกผิด';
+        s.statement!.payments.pop();
+        expect.push(`"ยอดค้างชำระ" กลับเป็น ${money(total - s.statement!.payments.reduce((a, b) => a + b, 0))}`);
+        break;
+      }
+      case 'deleteStatement':
+        if (!s.statement || s.cleared) fail(step, 'needs an open statement');
+        action = 'เมนู "เคลียร์บิล" กดถังขยะของใบวางบิลนี้ แล้วกดตกลง';
+        short = 'ลบใบวางบิล';
+        expect.push('ออเดอร์กลับไปเป็น "ยังไม่วางบิล" และมีปุ่ม "ยกเลิกออเดอร์" อีกครั้ง');
+        s.statement = null;
+        break;
+      case 'clearDriver': {
+        if (!d || s.cancelled || s.payout) fail(step, 'nothing to clear');
+        const pay = e.driverPay;
+        const cash = codDue() ? total : 0;
+        const base = `เมนู "เคลียร์ค่ารถ" เลือก ${d!.driver} ติ๊กเฉพาะออเดอร์นี้`;
+        if (cash > 0 && !step.mode) fail(step, 'COD needs a clearing mode');
+        if (cash === 0 && step.mode) fail(step, 'no COD cash to choose a mode for');
+        if (step.mode === 'later') {
+          action = `${base} เลือก "ได้รับเงินสด ${money(cash)} บาท จากคนขับแล้ว" แล้วกดยืนยัน`;
+          short = `รับเงินปลายทาง ${money(cash)} (ค่ารถรอเคลียร์รอบเดือน)`;
+          expect.push(`ปุ่มขึ้น "ยืนยันรับเงิน ${money(cash)} (ค่ารถรอเคลียร์รอบเดือน)" · ค่ารถ ${money(pay)} ยังไม่จ่าย`);
+          s.paymentStatus = 'paid';
+          s.cleared = true;
+          s.paidVia = 'driverCod';
+          break;
+        }
+        if (cash > 0) {
+          const handover = Math.max(0, cash - pay);
+          const topUp = Math.max(0, pay - cash);
+          action = `${base} เลือก "หักค่ารถให้คนขับแล้ว …" เลือกช่องทาง "เงินสด" แล้วกดยืนยัน`;
+          short = 'เคลียร์ค่ารถ แบบหักจากเงินปลายทาง';
+          expect.push(
+            `ค่ารถ ${money(pay)} · เก็บปลายทาง ${money(cash)} → ${
+              handover ? `"คนขับส่งเงินให้ร้าน" ${money(handover)}` : topUp ? `"ร้านจ่ายค่ารถเพิ่ม" ${money(topUp)}` : '"หักกันพอดี"'
+            }`,
+          );
+          s.paymentStatus = 'paid';
+          s.cleared = true;
+          s.paidVia = 'payout';
+        } else {
+          action = `${base} เลือกช่องทางจ่าย "เงินสด" แล้วกดยืนยัน`;
+          short = 'เคลียร์ค่ารถ';
+          expect.push(`"ร้านจ่ายค่ารถคนขับ" ${money(pay)} · ได้เลขที่ขึ้นต้น DP`);
+        }
+        s.payout = true;
+        break;
+      }
+      case 'deletePayout':
+        if (!s.payout) fail(step, 'no payout to delete');
+        action = 'บัญชี super admin: เมนู "เคลียร์ค่ารถ" ส่วนประวัติ กดถังขยะของรายการ DP ของออเดอร์นี้ แล้วกดตกลง';
+        short = 'super admin ลบรายการเคลียร์ค่ารถ';
+        expect.push('ออเดอร์กลับไปอยู่ในรายการค่ารถค้างจ่าย');
+        if (s.paidVia === 'payout') {
+          expect.push('เงินปลายทางกลับเป็น "ยังไม่จ่าย"');
+          s.paymentStatus = 'unpaid';
+          s.cleared = false;
+          s.paidVia = null;
+        }
+        s.payout = false;
+        break;
+      case 'cancel':
+        if (s.cancelled) fail(step, 'already cancelled');
+        if (s.statement) {
+          action = 'หน้าออเดอร์ หาปุ่ม "ยกเลิกออเดอร์" ท้ายหน้า';
+          short = 'ลองยกเลิกออเดอร์';
+          expect.push('ไม่มีปุ่ม "ยกเลิกออเดอร์" เพราะออเดอร์อยู่ในใบวางบิล (ต้องลบใบวางบิลก่อน)');
+          break;
+        }
+        action = 'หน้าออเดอร์ กด "ยกเลิกออเดอร์" ท้ายหน้า แล้วกดตกลง';
+        short = 'ยกเลิกออเดอร์';
+        expect.push('หน้าออเดอร์ขึ้นแถบ "ออเดอร์นี้ถูกยกเลิกแล้ว"');
+        s.cancelled = true;
+        break;
+      case 'restore':
+        if (!s.cancelled) fail(step, 'not cancelled');
+        action = 'หน้าออเดอร์ กด "กู้คืนออเดอร์" แล้วกดตกลง';
+        short = 'กู้คืนออเดอร์';
+        expect.push('แถบ "ออเดอร์นี้ถูกยกเลิกแล้ว" หายไป');
+        s.cancelled = false;
+        break;
+    }
+    steps.push({ action, short, expect, stage: stageOf(c, s, total), receivable: receivableOf(c, s, total) });
+  }
+  return { steps, final: s };
 }
 
 const payLabel = (c: StudyCase) => {
   const base = PAYMENT_METHOD_LABEL[c.payment];
-  if (c.payment === 'cash' || c.payment === 'transfer') return `${base} · ${c.paidNow ?? true ? 'ติ๊ก "ได้รับเงินแล้ว"' : 'ไม่ติ๊ก "ได้รับเงินแล้ว"'}`;
+  if (c.payment === 'cash' || c.payment === 'transfer')
+    return `${base} · ${(c.paidNow ?? true) ? 'ติ๊ก "ได้รับเงินแล้ว"' : 'ไม่ติ๊ก "ได้รับเงินแล้ว"'}`;
   return base;
 };
 
@@ -197,19 +487,94 @@ const CHECK_FIELDS: { label: string; hint: string; delivery?: boolean }[] = [
   { label: 'ขั้นตอนในสรุปบิล', hint: 'ป้ายสถานะ' },
 ];
 
-function casePage(c: StudyCase, i: number): string {
+/** Set 2 pages also carry the after-save steps, so the entry checks are trimmed to fit one A4 page. */
+const CHECK_FIELDS_SHORT: typeof CHECK_FIELDS = [
+  { label: 'เลขที่เอกสาร', hint: 'DO… / TS…' },
+  { label: 'ยอดสุทธิ', hint: 'ตัวเลขสีน้ำเงิน' },
+  { label: 'ค่ารถคนขับ', hint: 'ใต้ช่องยืนยันคนขับ', delivery: true },
+  { label: 'ขั้นตอนในสรุปบิล', hint: 'ทันทีหลังบันทึก' },
+];
+
+interface CaseSet {
+  no: number;
+  cases: StudyCase[];
+  /** Number of the first case, so set 2 continues at 21. */
+  first: number;
+  adminFile: string;
+  answerFile: string;
+  title: string;
+  lead: string;
+  howTo: string[];
+  levels: Record<StudyCase['level'], string>;
+  cleanup: string;
+}
+
+const SETS: CaseSet[] = [
+  {
+    no: 1,
+    cases: CASES,
+    first: 1,
+    adminFile: 'case-study-admin',
+    answerFile: 'case-study-answer-key',
+    title: 'ทดสอบการเปิดออเดอร์ 20 เคส',
+    lead: 'ชุดฝึกให้แอดมินลองกรอกออเดอร์จริงในระบบ แล้วจดตัวเลขที่ระบบแสดง เพื่อตรวจว่า<br><b>(1) แอดมินกรอกข้อมูลถูกต้อง</b> และ <b>(2) ระบบคำนวณ/ทำงานถูกต้อง</b>',
+    howTo: [
+      'เข้าเมนู <b>สร้างออเดอร์</b> แล้วกรอกตาม "ข้อมูลที่ต้องกรอก" ของแต่ละเคสทีละขั้น',
+      'เพิ่มลูกค้าใหม่ตามชื่อในเคส (ทุกชื่อขึ้นต้นด้วย <b>"ทดสอบ"</b> เพื่อแยกจากลูกค้าจริง)',
+      'เคสจัดส่ง: <b>ไม่ต้องปักหมุด</b> พิมพ์ที่อยู่ แล้วเลือกตำบลจากรายการเอง (ตัวเลขจะได้ตรงกับเฉลย)',
+      'ระหว่างกรอก จดตัวเลขลงตาราง "จดผลที่ระบบแสดง" ส่วน "คงเหลือเข้าร้าน" และ "ขั้นตอน" ดูที่เมนู <b>สรุปบิล</b> หลังบันทึก',
+      'ถ้าเคสมีกล่อง "ให้ลองทำระหว่างกรอก" ให้ทำตามและจดว่าระบบแสดงอะไร',
+      'ส่งใบงานให้ผู้ตรวจเทียบกับ <b>เฉลย</b> (แยกเป็นอีกไฟล์)',
+    ],
+    levels: {
+      พื้นฐาน: 'มารับเอง / จัดส่งธรรมดา / วิธีจ่ายเงินแบบต่างๆ',
+      ปานกลาง: 'ขนาดรถ หลายสินค้า คิวไม่เต็ม และส่วนลดทุกแบบ',
+      ท้าทาย: 'ทดสอบขอบเขต การบังคับกรอก ที่กันดาร และบิลใหญ่',
+    },
+    cleanup:
+      'ให้ <b>ยกเลิกออเดอร์</b> ของลูกค้า "ทดสอบ01–20" ทุกใบ และลบลูกค้าทดสอบออก เพื่อไม่ให้ปนกับยอดขายจริง (ออเดอร์ที่ยกเลิกจะไม่ถูกนับในสรุปบิล)',
+  },
+  {
+    no: 2,
+    cases: CASES_2,
+    first: 21,
+    adminFile: 'case-study-2-admin',
+    answerFile: 'case-study-2-answer-key',
+    title: 'ชุดที่ 2 · ตั้งแต่เปิดออเดอร์จนปิดงาน 20 เคส',
+    lead: 'ต่อจากชุดที่ 1 เคสชุดนี้ให้แอดมินเปิดออเดอร์ แล้วทำงานต่อจนจบ: <b>คนขับยืนยันผ่านลิงก์</b> รับเงิน (รวมเงินปลายทาง) <b>ใบวางบิล</b> <b>เคลียร์ค่ารถ</b> และ <b>การแก้เมื่อกดผิด</b><br>หลังทำแต่ละขั้น ให้จดว่า "ขั้นตอนในสรุปบิล" เปลี่ยนเป็นอะไร',
+    howTo: [
+      'เปิดออเดอร์ตาม "ข้อมูลที่ต้องกรอก" เหมือนชุดที่ 1 (ลูกค้าใหม่ชื่อขึ้นต้น <b>"ทดสอบ"</b> · เคสจัดส่งไม่ต้องปักหมุด เลือกตำบลเอง)',
+      'จากนั้นทำ <b>"ขั้นต่อจากบันทึก"</b> ทีละข้อตามลำดับ หลังทำแต่ละข้อ เปิดเมนู <b>สรุปบิล</b> แล้วจดป้าย "ขั้นตอน" ของออเดอร์นี้',
+      '<b>ลิงก์คนขับ</b>: ในหน้าออเดอร์กด "คัดลอกข้อความส่งคนขับ" แล้วเปิดลิงก์ในข้อความด้วยแท็บใหม่ (ไม่ต้องล็อกอิน) ทำแทนคนขับ',
+      '<b>เคลียร์ค่ารถ / ใบวางบิล</b>: ติ๊กเฉพาะออเดอร์ของเคสนั้น ถ้ามีออเดอร์ทดสอบเคสอื่นของคนขับหรือลูกค้าเดียวกันให้เอาติ๊กออก',
+      'เคส 37 มีขั้นที่ต้องใช้บัญชี <b>super admin</b> (ลบรายการเคลียร์ค่ารถ)',
+      'ส่งใบงานให้ผู้ตรวจเทียบกับ <b>เฉลยชุดที่ 2</b> (แยกเป็นอีกไฟล์)',
+    ],
+    levels: {
+      พื้นฐาน: 'ลิงก์คนขับ รับเงินทีหลัง เก็บปลายทาง และใบวางบิลแบบจ่ายครบ',
+      ปานกลาง: 'เงินปลายทางขาด ค่ารถรอบเดือน ค่ารถแพงกว่ายอดบิล ยกเลิก/กู้คืน และรับชำระเป็นงวด',
+      ท้าทาย: 'สิ่งที่ระบบต้องกันไว้ (ยกเลิกในใบวางบิล ยกเลิกการรับเงินหลังเคลียร์ค่ารถ) และบิลใหญ่ครบวงจร',
+    },
+    cleanup:
+      'เรียงตามนี้: (1) super admin ลบรายการเคลียร์ค่ารถ (DP) ของออเดอร์ทดสอบ (2) ลบใบวางบิล (BL) ของลูกค้าทดสอบ (3) ยกเลิกหรือลบออเดอร์ของลูกค้า "ทดสอบ21–40" (4) ลบลูกค้าทดสอบ เพื่อไม่ให้ปนกับยอดขายและค่ารถจริง',
+  },
+];
+
+function casePage(set: CaseSet, c: StudyCase, i: number, sim: StepResult[]): string {
   const d = c.delivery;
-  const fields = CHECK_FIELDS.filter((f) => !f.delivery || d);
+  const no = set.first + i;
+  const last = set.first + set.cases.length - 1;
+  const fields = (sim.length ? CHECK_FIELDS_SHORT : CHECK_FIELDS).filter((f) => !f.delivery || d);
   return `
 <section class="page">
   <header class="head">
     <div>
-      <p class="kicker">Case Study · ทดสอบการเปิดออเดอร์</p>
-      <h1>เคสที่ ${pad(i + 1)} · ${esc(c.title)}</h1>
+      <p class="kicker">Case Study ${set.no > 1 ? `ชุดที่ ${set.no} ` : ''}· ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ ${pad(no)} · ${esc(c.title)}</h1>
     </div>
     <div class="head-right">
       <span class="level level-${c.level}">${c.level}</span>
-      <span class="count">${pad(i + 1)} / ${pad(CASES.length)}</span>
+      <span class="count">${pad(no)} / ${pad(last)}</span>
     </div>
   </header>
   <p class="tags">${c.topics.map((t) => `<span>${esc(t)}</span>`).join('')}</p>
@@ -240,9 +605,21 @@ function casePage(c: StudyCase, i: number): string {
     </tbody>
   </table>
 
+  ${
+    sim.length
+      ? `<h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody>${sim
+      .map((st, j) => `<tr><td class="n">${j + 1}</td><td>${st.action}</td><td class="w"></td><td class="ok"></td></tr>`)
+      .join('')}</tbody>
+  </table>`
+      : ''
+  }
+
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
-    <span class="line"></span><span class="line"></span>
+    <span class="line"></span>${sim.length ? '' : '<span class="line"></span>'}
   </div>
 
   <footer class="sign">
@@ -253,35 +630,33 @@ function casePage(c: StudyCase, i: number): string {
 </section>`;
 }
 
-function coverPage(): string {
+function levelRanges(set: CaseSet): { level: StudyCase['level']; range: string }[] {
+  const order: StudyCase['level'][] = ['พื้นฐาน', 'ปานกลาง', 'ท้าทาย'];
+  return order.flatMap((level) => {
+    const nos = set.cases.flatMap((c, i) => (c.level === level ? [set.first + i] : []));
+    return nos.length ? [{ level, range: `${pad(nos[0])}–${pad(nos[nos.length - 1])}` }] : [];
+  });
+}
+
+function coverPage(set: CaseSet): string {
   return `
 <section class="page cover">
   <p class="kicker">Golden Mole · ระบบสั่งหิน-ทราย</p>
-  <h1 class="title">Case Study<br>ทดสอบการเปิดออเดอร์ 20 เคส</h1>
-  <p class="lead">ชุดฝึกให้แอดมินลองกรอกออเดอร์จริงในระบบ แล้วจดตัวเลขที่ระบบแสดง เพื่อตรวจว่า<br>
-  <b>(1) แอดมินกรอกข้อมูลถูกต้อง</b> และ <b>(2) ระบบคำนวณ/ทำงานถูกต้อง</b></p>
+  <h1 class="title">Case Study<br>${set.title}</h1>
+  <p class="lead">${set.lead}</p>
 
   <h2>วิธีทำ</h2>
-  <ol class="steps">
-    <li>เข้าเมนู <b>สร้างออเดอร์</b> แล้วกรอกตาม "ข้อมูลที่ต้องกรอก" ของแต่ละเคสทีละขั้น</li>
-    <li>เพิ่มลูกค้าใหม่ตามชื่อในเคส (ทุกชื่อขึ้นต้นด้วย <b>"ทดสอบ"</b> เพื่อแยกจากลูกค้าจริง)</li>
-    <li>เคสจัดส่ง: <b>ไม่ต้องปักหมุด</b> พิมพ์ที่อยู่ แล้วเลือกตำบลจากรายการเอง (ตัวเลขจะได้ตรงกับเฉลย)</li>
-    <li>ระหว่างกรอก จดตัวเลขลงตาราง "จดผลที่ระบบแสดง" ส่วน "คงเหลือเข้าร้าน" และ "ขั้นตอน" ดูที่เมนู <b>สรุปบิล</b> หลังบันทึก</li>
-    <li>ถ้าเคสมีกล่อง "ให้ลองทำระหว่างกรอก" ให้ทำตามและจดว่าระบบแสดงอะไร</li>
-    <li>ส่งใบงานให้ผู้ตรวจเทียบกับ <b>เฉลย</b> (แยกเป็นอีกไฟล์)</li>
-  </ol>
+  <ol class="steps">${set.howTo.map((h) => `<li>${h}</li>`).join('')}</ol>
 
   <h2>ระดับความยาก</h2>
-  <table class="levels">
-    <tr><th><span class="level level-พื้นฐาน">พื้นฐาน</span></th><td>เคส 01–06 · มารับเอง / จัดส่งธรรมดา / วิธีจ่ายเงินแบบต่างๆ</td></tr>
-    <tr><th><span class="level level-ปานกลาง">ปานกลาง</span></th><td>เคส 07–15 · ขนาดรถ หลายสินค้า คิวไม่เต็ม และส่วนลดทุกแบบ</td></tr>
-    <tr><th><span class="level level-ท้าทาย">ท้าทาย</span></th><td>เคส 16–20 · ทดสอบขอบเขต การบังคับกรอก ที่กันดาร และบิลใหญ่</td></tr>
-  </table>
+  <table class="levels">${levelRanges(set)
+    .map(
+      ({ level, range }) =>
+        `<tr><th><span class="level level-${level}">${level}</span></th><td>เคส ${range} · ${set.levels[level]}</td></tr>`,
+    )
+    .join('')}</table>
 
-  <div class="warn">
-    <b>หลังทดสอบเสร็จ</b> ให้ <b>ยกเลิกออเดอร์</b> ของลูกค้า "ทดสอบ01–20" ทุกใบ และลบลูกค้าทดสอบออก
-    เพื่อไม่ให้ปนกับยอดขายจริง (ออเดอร์ที่ยกเลิกจะไม่ถูกนับในสรุปบิล)
-  </div>
+  <div class="warn"><b>หลังทดสอบเสร็จ</b> ${set.cleanup}</div>
 
   <footer class="sign cover-sign">
     <span>ชื่อผู้ทดสอบ ............................................</span>
@@ -290,26 +665,42 @@ function coverPage(): string {
 </section>`;
 }
 
-function answerCover(rows: { c: StudyCase; e: Expected }[]): string {
-  const sum = (f: (e: Expected) => number) => rows.reduce((s, r) => s + f(r.e), 0);
+interface Row {
+  c: StudyCase;
+  e: Expected;
+  steps: StepResult[];
+  final: SimState;
+}
+
+function answerCover(set: CaseSet, rows: Row[]): string {
+  const live = rows.filter((r) => !r.final.cancelled);
+  const sum = (f: (r: Row) => number) => live.reduce((s, r) => s + f(r), 0);
+  const hasSteps = rows.some((r) => r.steps.length);
+  const cancelled = rows.length - live.length;
+  const range = `${pad(set.first)}–${pad(set.first + rows.length - 1)}`;
   return `
 <section class="page">
   <p class="kicker">เฉลยสำหรับผู้ตรวจ · ห้ามแจกให้ผู้ทดสอบ</p>
-  <h1 class="title-sm">เฉลย Case Study 20 เคส</h1>
+  <h1 class="title-sm">เฉลย Case Study ${set.no > 1 ? `ชุดที่ ${set.no} ` : ''}(เคส ${range})</h1>
   <p class="lead">ตัวเลขทั้งหมดคำนวณด้วยสูตรเดียวกับในระบบ จากราคาและอัตราค่าส่ง ณ ${RATES_DATE}
   ถ้าแก้ราคาสินค้า อัตราตำบล หรือคนขับหลังวันนี้ ตัวเลขในเฉลยจะไม่ตรง ต้องสร้างเฉลยใหม่</p>
 
   <h2>ราคาสินค้า</h2>
   <table class="ref">
     <thead><tr><th>สินค้า</th><th class="r">บาท/คิว</th></tr></thead>
-    <tbody>${Object.values(PRODUCTS).map((p) => `<tr><td>${p.name}</td><td class="r">${num(p.price)}</td></tr>`).join('')}</tbody>
+    <tbody>${Object.values(PRODUCTS)
+      .map((p) => `<tr><td>${p.name}</td><td class="r">${num(p.price)}</td></tr>`)
+      .join('')}</tbody>
   </table>
 
   <h2>อัตราตำบล</h2>
   <table class="ref">
     <thead><tr><th>ตำบล</th><th class="r">ค่าส่งลูกค้า บาท/คิว</th><th class="r">ค่ารถคนขับ รถ 5 คิว/เที่ยว</th><th class="r">ค่ารถคนขับ รถ 3 คิว/เที่ยว</th></tr></thead>
     <tbody>${Object.values(ZONES)
-      .map((z) => `<tr><td>${z.name}</td><td class="r">${num(z.feePerCubic)}</td><td class="r">${num(z.driverFee)}</td><td class="r">${num(z.driverFee3)}</td></tr>`)
+      .map(
+        (z) =>
+          `<tr><td>${z.name}</td><td class="r">${num(z.feePerCubic)}</td><td class="r">${num(z.driverFee)}</td><td class="r">${num(z.driverFee3)}</td></tr>`,
+      )
       .join('')}</tbody>
   </table>
 
@@ -319,21 +710,30 @@ function answerCover(rows: { c: StudyCase; e: Expected }[]): string {
     <li><b>ยอดสุทธิ</b> = ค่าสินค้า + ค่าจัดส่ง − ลดคิวละ − ลดค่าส่ง (ไม่เกินค่าจัดส่ง) − ส่วนลดท้ายบิล (% คิดจากค่าสินค้าหลังลดคิวละ เท่านั้น)</li>
     <li><b>ค่ารถคนขับ</b> = อัตราตำบลตามขนาดรถของคนขับ × จำนวนเที่ยว (ไม่รวมที่กันดาร)</li>
     <li><b>คงเหลือเข้าร้าน</b> = ยอดสุทธิ − ค่ารถคนขับ</li>
+    ${
+      hasSteps
+        ? `<li><b>เคลียร์ค่ารถแบบหัก</b>: คนขับส่งร้าน = เงินปลายทาง − ค่ารถ (ถ้าติดลบ ร้านจ่ายค่ารถเพิ่มส่วนต่าง)</li>
+    <li><b>ค้างรับ</b> = ยอดบิลของออเดอร์ที่ยังไม่เคลียร์ (รับชำระใบวางบิลบางส่วน ค้างรับในสรุปบิลยังเต็มยอดจนจ่ายครบ)</li>`
+        : ''
+    }
   </ul>
 
-  <h2>ยอดรวมทั้ง 20 เคส (ใช้เทียบหน้าสรุปบิล เมื่อกรองเฉพาะลูกค้าทดสอบ)</h2>
+  <h2>ยอดรวม${cancelled ? ` ${live.length} เคส (ไม่นับ ${cancelled} เคสที่จบด้วยการยกเลิก)` : `ทั้ง ${rows.length} เคส`} (เทียบหน้าสรุปบิล เมื่อกรองเฉพาะลูกค้าทดสอบ)</h2>
   <table class="ref">
     <tbody>
-      <tr><td>ยอดบิลรวม</td><td class="r">${money(sum((e) => e.total))}</td></tr>
-      <tr><td>ค่ารถคนขับรวม</td><td class="r">${money(sum((e) => e.driverPay))}</td></tr>
-      <tr><td>คงเหลือเข้าร้านรวม</td><td class="r"><b>${money(sum((e) => e.net))}</b></td></tr>
-      <tr><td>ค้างรับรวม (ทันทีหลังบันทึก)</td><td class="r">${money(sum((e) => e.receivable))}</td></tr>
+      <tr><td>ยอดบิลรวม</td><td class="r">${money(sum((r) => r.e.total))}</td></tr>
+      <tr><td>ค่ารถคนขับรวม</td><td class="r">${money(sum((r) => r.e.driverPay))}</td></tr>
+      <tr><td>คงเหลือเข้าร้านรวม</td><td class="r"><b>${money(sum((r) => r.e.net))}</b></td></tr>
+      <tr><td>ค้างรับรวม (${hasSteps ? 'หลังทำครบทุกขั้น' : 'ทันทีหลังบันทึก'})</td><td class="r">${money(
+        sum((r) => (r.steps.length ? r.steps[r.steps.length - 1].receivable : r.e.receivable)),
+      )}</td></tr>
     </tbody>
   </table>
 </section>`;
 }
 
-function answerBlock(c: StudyCase, e: Expected, i: number): string {
+function answerBlock(set: CaseSet, r: Row, i: number): string {
+  const { c, e, steps } = r;
   const d = c.delivery;
   const discount = e.itemDiscount + e.deliveryDiscount + e.billDiscount;
   const discParts = [
@@ -349,16 +749,37 @@ function answerBlock(c: StudyCase, e: Expected, i: number): string {
     ['ส่วนลดรวม', discount ? `${money(discount)} <small>(${discParts.join(' + ')})</small>` : '0.00'],
     ['ยอดสุทธิ', `<b>${money(e.total)}</b>`],
     ...(d
-      ? ([['ค่ารถคนขับ', `${money(e.driverPay)} <small>(${num(e.driverRate)} × ${e.trips} เที่ยว · ต.${ZONES[d.zone].name} รถ ${e.truck} คิว)</small>`]] as [string, string][])
+      ? ([
+          [
+            'ค่ารถคนขับ',
+            `${money(e.driverPay)} <small>(${num(e.driverRate)} × ${e.trips} เที่ยว · ต.${ZONES[d.zone].name} รถ ${e.truck} คิว)</small>`,
+          ],
+        ] as [string, string][])
       : []),
-    ['คงเหลือเข้าร้าน', `<b class="pos">${money(e.net)}</b>${d ? ` <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า ${money(e.deliveryFee)} − ค่ารถ ${money(e.driverPay)} = ${money(e.deliveryFee - e.driverPay)})</small>` : ''}`],
+    [
+      'คงเหลือเข้าร้าน',
+      `<b class="${e.net < 0 ? 'neg' : 'pos'}">${money(e.net)}</b>${d ? ` <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า ${money(e.deliveryFee)} − ค่ารถ ${money(e.driverPay)} = ${money(e.deliveryFee - e.driverPay)})</small>` : ''}`,
+    ],
     ['ค้างรับ', money(e.receivable)],
-    ['ขั้นตอนในสรุปบิล', `<b>${e.stageNow}</b>${e.stageDelivered ? ` <small>→ หลังกด "ส่งแล้ว": ${e.stageDelivered}</small>` : ''}`],
+    [
+      steps.length ? 'ขั้นตอน (หลังบันทึก)' : 'ขั้นตอนในสรุปบิล',
+      `<b>${e.stageNow}</b>${!steps.length && e.stageDelivered ? ` <small>→ หลังกด "ส่งแล้ว": ${e.stageDelivered}</small>` : ''}`,
+    ],
   ];
   return `
 <article class="ans">
-  <h3>เคสที่ ${pad(i + 1)} · ${esc(c.title)} <span class="muted">· ${esc(c.customer.name)} · ${PAYMENT_METHOD_LABEL[c.payment]}</span></h3>
+  <h3>เคสที่ ${pad(set.first + i)} · ${esc(c.title)} <span class="muted">· ${esc(c.customer.name)} · ${PAYMENT_METHOD_LABEL[c.payment]}</span></h3>
   <table class="ans-t">${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>
+  ${
+    steps.length
+      ? `<table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody>${steps
+          .map(
+            (st, j) =>
+              `<tr><td class="n">${j + 1}</td><td>${st.short}</td><td>${st.expect.join('<br>')}</td><td class="st"><b>${st.stage}</b><small>ค้างรับ ${money(st.receivable)}</small></td></tr>`,
+          )
+          .join('')}</tbody></table>`
+      : ''
+  }
   ${c.expectBehaviour?.length ? `<p class="behave"><b>ต้องเห็น:</b> ${c.expectBehaviour.map(esc).join(' · ')}</p>` : ''}
 </article>`;
 }
@@ -388,13 +809,17 @@ td small, h3 small { display: inline; }
 .story { margin-top: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 6px 11px; font-size: 10.5pt; }
 .story b { color: #166534; margin-right: 4px; }
 table { width: 100%; border-collapse: collapse; }
-.input th, .input td, .check th, .check td, .ref th, .ref td, .ans-t th, .ans-t td { border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; text-align: left; }
+.input th, .input td, .check th, .check td, .ref th, .ref td, .ans-t th, .ans-t td, .steps-t th, .steps-t td, .ans-steps th, .ans-steps td { border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; text-align: left; }
 .input th { width: 30%; background: #f9fafb; font-weight: 600; }
-.check thead th { background: #111827; color: #fff; font-size: 9pt; }
+.check thead th, .steps-t thead th { background: #111827; color: #fff; font-size: 9pt; }
 .check tbody th { width: 34%; background: #f9fafb; font-weight: 600; }
 .check tbody th { padding-top: 2px; padding-bottom: 2px; line-height: 1.25; }
 .check tbody td { height: 26px; }
-.check .ok { width: 18%; text-align: center; }
+.check .ok, .steps-t .ok { width: 9%; text-align: center; }
+.check .ok { width: 18%; }
+.steps-t td { font-size: 9.5pt; line-height: 1.35; padding: 3px 7px; }
+.steps-t .n, .ans-steps .n { width: 5%; text-align: center; }
+.steps-t .w { width: 27%; }
 .try { margin-top: 8px; border: 1.5px dashed #f59e0b; background: #fffbeb; border-radius: 6px; padding: 5px 11px; }
 .try ol { margin: 3px 0 0; padding-left: 18px; }
 .write { margin: 6px 0 0; display: flex; gap: 6px; align-items: flex-end; }
@@ -418,7 +843,13 @@ table { width: 100%; border-collapse: collapse; }
 .ans { break-inside: avoid; page-break-inside: avoid; margin-bottom: 10px; }
 .ans-t th { width: 26%; background: #f9fafb; font-weight: 600; font-size: 9.5pt; padding: 3px 8px; }
 .ans-t td { font-variant-numeric: tabular-nums; padding: 3px 8px; }
+.ans-steps { margin-top: 4px; }
+.ans-steps thead th { background: #f3f4f6; font-size: 8.5pt; padding: 2px 6px; }
+.ans-steps td { font-size: 8.5pt; line-height: 1.3; padding: 2px 6px; font-variant-numeric: tabular-nums; }
+.ans-steps td small { display: block; }
+.ans-steps .st { width: 24%; }
 .pos { color: #047857; }
+.neg { color: #b91c1c; }
 .behave { margin: 4px 0 0; font-size: 9.5pt; background: #fffbeb; border-left: 3px solid #f59e0b; padding: 3px 8px; }
 `;
 
@@ -426,23 +857,40 @@ const doc = (title: string, body: string) => `<!doctype html>
 <html lang="th"><head><meta charset="utf-8"><title>${title}</title><style>${CSS}</style></head>
 <body>${body}</body></html>`;
 
-const rows = CASES.map((c) => ({ c, e: expected(c) }));
 const outDir = join(dirname(fileURLToPath(import.meta.url)), '../../docs/case-study');
 mkdirSync(outDir, { recursive: true });
 
-writeFileSync(
-  join(outDir, 'case-study-admin.html'),
-  doc('Case Study ทดสอบการเปิดออเดอร์', coverPage() + CASES.map(casePage).join('')),
-);
+for (const set of SETS) {
+  const rows: Row[] = set.cases.map((c) => {
+    const e = expected(c);
+    return { c, e, ...simulate(c, e) };
+  });
+  const label = set.no > 1 ? ` ชุดที่ ${set.no}` : '';
 
-const answerPages: string[] = [];
-for (let i = 0; i < rows.length; i += 3) {
-  answerPages.push(`<section class="page">${rows.slice(i, i + 3).map((r, j) => answerBlock(r.c, r.e, i + j)).join('')}</section>`);
-}
-writeFileSync(join(outDir, 'case-study-answer-key.html'), doc('เฉลย Case Study', answerCover(rows) + answerPages.join('')));
-
-for (const [i, { c, e }] of rows.entries()) {
-  console.log(
-    `${pad(i + 1)} ${c.title.padEnd(36)} total=${money(e.total).padStart(10)} driver=${money(e.driverPay).padStart(9)} net=${money(e.net).padStart(10)} ${e.stageNow}`,
+  writeFileSync(
+    join(outDir, `${set.adminFile}.html`),
+    doc(
+      `Case Study${label} ทดสอบการเปิดออเดอร์`,
+      coverPage(set) + rows.map((r, i) => casePage(set, r.c, i, r.steps)).join(''),
+    ),
   );
+
+  const perPage = rows.some((r) => r.steps.length) ? 2 : 3;
+  const answerPages: string[] = [];
+  for (let i = 0; i < rows.length; i += perPage) {
+    answerPages.push(
+      `<section class="page">${rows
+        .slice(i, i + perPage)
+        .map((r, j) => answerBlock(set, r, i + j))
+        .join('')}</section>`,
+    );
+  }
+  writeFileSync(join(outDir, `${set.answerFile}.html`), doc(`เฉลย Case Study${label}`, answerCover(set, rows) + answerPages.join('')));
+
+  for (const [i, r] of rows.entries()) {
+    const end = r.steps.length ? ` → ${r.steps[r.steps.length - 1].stage}` : '';
+    console.log(
+      `${pad(set.first + i)} ${r.c.title.padEnd(40)} total=${money(r.e.total).padStart(10)} driver=${money(r.e.driverPay).padStart(9)} net=${money(r.e.net).padStart(10)} ${r.e.stageNow}${end}`,
+    );
+  }
 }

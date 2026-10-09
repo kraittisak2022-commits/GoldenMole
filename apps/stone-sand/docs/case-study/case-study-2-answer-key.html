@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><title>เฉลย Case Study ชุดที่ 2</title><style>
+@page { size: A4; margin: 10mm 13mm; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Sarabun', 'Leelawadee UI', 'Leelawadee', Tahoma, sans-serif; font-size: 10.5pt; color: #1f2937; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.page { page-break-after: always; break-after: page; }
+.page:last-child { page-break-after: auto; break-after: auto; }
+h1 { font-size: 17pt; margin: 2px 0 0; line-height: 1.25; }
+h2 { font-size: 11pt; margin: 9px 0 4px; color: #0f5132; border-left: 4px solid #198754; padding-left: 7px; }
+h3 { font-size: 10.5pt; margin: 0 0 4px; }
+small { display: block; font-size: 8pt; color: #6b7280; font-weight: 400; }
+td small, h3 small { display: inline; }
+.muted { color: #6b7280; font-weight: 400; }
+.kicker { margin: 0; font-size: 8.5pt; letter-spacing: .04em; color: #198754; font-weight: 600; text-transform: uppercase; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-bottom: 2px solid #111827; padding-bottom: 6px; }
+.head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.count { font-size: 9pt; color: #6b7280; font-variant-numeric: tabular-nums; }
+.level { display: inline-block; border-radius: 999px; padding: 1px 10px; font-size: 8.5pt; font-weight: 700; }
+.level-พื้นฐาน { background: #d1fae5; color: #065f46; }
+.level-ปานกลาง { background: #fef3c7; color: #92400e; }
+.level-ท้าทาย { background: #fee2e2; color: #991b1b; }
+.tags { margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.tags span { background: #f3f4f6; border-radius: 4px; padding: 0 7px; font-size: 8.5pt; color: #374151; }
+.story { margin-top: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 6px 11px; font-size: 10.5pt; }
+.story b { color: #166534; margin-right: 4px; }
+table { width: 100%; border-collapse: collapse; }
+.input th, .input td, .check th, .check td, .ref th, .ref td, .ans-t th, .ans-t td, .steps-t th, .steps-t td, .ans-steps th, .ans-steps td { border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; text-align: left; }
+.input th { width: 30%; background: #f9fafb; font-weight: 600; }
+.check thead th, .steps-t thead th { background: #111827; color: #fff; font-size: 9pt; }
+.check tbody th { width: 34%; background: #f9fafb; font-weight: 600; }
+.check tbody th { padding-top: 2px; padding-bottom: 2px; line-height: 1.25; }
+.check tbody td { height: 26px; }
+.check .ok, .steps-t .ok { width: 9%; text-align: center; }
+.check .ok { width: 18%; }
+.steps-t td { font-size: 9.5pt; line-height: 1.35; padding: 3px 7px; }
+.steps-t .n, .ans-steps .n { width: 5%; text-align: center; }
+.steps-t .w { width: 27%; }
+.try { margin-top: 8px; border: 1.5px dashed #f59e0b; background: #fffbeb; border-radius: 6px; padding: 5px 11px; }
+.try ol { margin: 3px 0 0; padding-left: 18px; }
+.write { margin: 6px 0 0; display: flex; gap: 6px; align-items: flex-end; }
+.line { display: block; flex: 1; border-bottom: 1px dotted #6b7280; height: 20px; }
+.issue { margin-top: 8px; }
+.issue .line { margin-top: 2px; }
+.sign { margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; font-size: 9pt; color: #374151; }
+.cover .title { font-size: 26pt; margin: 6px 0 8px; }
+.title-sm { font-size: 20pt; margin: 4px 0 6px; }
+.lead { font-size: 11pt; color: #374151; }
+.steps { padding-left: 20px; margin: 4px 0; }
+.steps li { margin: 3px 0; }
+.levels th { width: 22%; padding: 6px 8px; text-align: left; border: 1px solid #e5e7eb; }
+.levels td { padding: 6px 8px; border: 1px solid #e5e7eb; }
+.warn { margin-top: 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 9px 12px; color: #7f1d1d; }
+.cover-sign { margin-top: 28px; }
+.ref thead th { background: #f3f4f6; font-size: 9pt; }
+.r { text-align: right !important; font-variant-numeric: tabular-nums; }
+.formula { padding-left: 18px; margin: 4px 0; }
+.formula li { margin: 3px 0; }
+.ans { break-inside: avoid; page-break-inside: avoid; margin-bottom: 10px; }
+.ans-t th { width: 26%; background: #f9fafb; font-weight: 600; font-size: 9.5pt; padding: 3px 8px; }
+.ans-t td { font-variant-numeric: tabular-nums; padding: 3px 8px; }
+.ans-steps { margin-top: 4px; }
+.ans-steps thead th { background: #f3f4f6; font-size: 8.5pt; padding: 2px 6px; }
+.ans-steps td { font-size: 8.5pt; line-height: 1.3; padding: 2px 6px; font-variant-numeric: tabular-nums; }
+.ans-steps td small { display: block; }
+.ans-steps .st { width: 24%; }
+.pos { color: #047857; }
+.neg { color: #b91c1c; }
+.behave { margin: 4px 0 0; font-size: 9.5pt; background: #fffbeb; border-left: 3px solid #f59e0b; padding: 3px 8px; }
+</style></head>
+<body>
+<section class="page">
+  <p class="kicker">เฉลยสำหรับผู้ตรวจ · ห้ามแจกให้ผู้ทดสอบ</p>
+  <h1 class="title-sm">เฉลย Case Study ชุดที่ 2 (เคส 21–40)</h1>
+  <p class="lead">ตัวเลขทั้งหมดคำนวณด้วยสูตรเดียวกับในระบบ จากราคาและอัตราค่าส่ง ณ 9 ต.ค. 2569
+  ถ้าแก้ราคาสินค้า อัตราตำบล หรือคนขับหลังวันนี้ ตัวเลขในเฉลยจะไม่ตรง ต้องสร้างเฉลยใหม่</p>
+
+  <h2>ราคาสินค้า</h2>
+  <table class="ref">
+    <thead><tr><th>สินค้า</th><th class="r">บาท/คิว</th></tr></thead>
+    <tbody><tr><td>หินเล็กคละ เบอร์ 1-3</td><td class="r">560</td></tr><tr><td>หินคละใหญ่ เบอร์ 4-6</td><td class="r">560</td></tr><tr><td>ทรายถม (ทรายขี้เป็ด)</td><td class="r">450</td></tr><tr><td>ทรายก่อ/เท</td><td class="r">560</td></tr></tbody>
+  </table>
+
+  <h2>อัตราตำบล</h2>
+  <table class="ref">
+    <thead><tr><th>ตำบล</th><th class="r">ค่าส่งลูกค้า บาท/คิว</th><th class="r">ค่ารถคนขับ รถ 5 คิว/เที่ยว</th><th class="r">ค่ารถคนขับ รถ 3 คิว/เที่ยว</th></tr></thead>
+    <tbody><tr><td>ทุ่งฮั้ว</td><td class="r">0</td><td class="r">400</td><td class="r">400</td></tr><tr><td>วังแก้ว</td><td class="r">0</td><td class="r">500</td><td class="r">400</td></tr><tr><td>วังเหนือ</td><td class="r">0</td><td class="r">700</td><td class="r">500</td></tr><tr><td>วังซ้าย</td><td class="r">0</td><td class="r">700</td><td class="r">500</td></tr><tr><td>วังใต้</td><td class="r">40</td><td class="r">1,000</td><td class="r">700</td></tr><tr><td>วังทรายคำ</td><td class="r">40</td><td class="r">1,000</td><td class="r">700</td></tr><tr><td>วังทอง</td><td class="r">40</td><td class="r">1,300</td><td class="r">1,000</td></tr><tr><td>ร่องเคาะ</td><td class="r">40</td><td class="r">1,300</td><td class="r">1,000</td></tr></tbody>
+  </table>
+
+  <h2>สูตรที่ใช้ตรวจ</h2>
+  <ul class="formula">
+    <li><b>ค่าจัดส่ง</b> = ค่าส่ง/คิว ของตำบล × คิวรวม + ที่กันดาร (ไม่ปักหมุด จึงไม่มีค่าเพิ่มตามระยะ)</li>
+    <li><b>ยอดสุทธิ</b> = ค่าสินค้า + ค่าจัดส่ง − ลดคิวละ − ลดค่าส่ง (ไม่เกินค่าจัดส่ง) − ส่วนลดท้ายบิล (% คิดจากค่าสินค้าหลังลดคิวละ เท่านั้น)</li>
+    <li><b>ค่ารถคนขับ</b> = อัตราตำบลตามขนาดรถของคนขับ × จำนวนเที่ยว (ไม่รวมที่กันดาร)</li>
+    <li><b>คงเหลือเข้าร้าน</b> = ยอดสุทธิ − ค่ารถคนขับ</li>
+    <li><b>เคลียร์ค่ารถแบบหัก</b>: คนขับส่งร้าน = เงินปลายทาง − ค่ารถ (ถ้าติดลบ ร้านจ่ายค่ารถเพิ่มส่วนต่าง)</li>
+    <li><b>ค้างรับ</b> = ยอดบิลของออเดอร์ที่ยังไม่เคลียร์ (รับชำระใบวางบิลบางส่วน ค้างรับในสรุปบิลยังเต็มยอดจนจ่ายครบ)</li>
+  </ul>
+
+  <h2>ยอดรวม 18 เคส (ไม่นับ 2 เคสที่จบด้วยการยกเลิก) (เทียบหน้าสรุปบิล เมื่อกรองเฉพาะลูกค้าทดสอบ)</h2>
+  <table class="ref">
+    <tbody>
+      <tr><td>ยอดบิลรวม</td><td class="r">63,005.00</td></tr>
+      <tr><td>ค่ารถคนขับรวม</td><td class="r">19,200.00</td></tr>
+      <tr><td>คงเหลือเข้าร้านรวม</td><td class="r"><b>43,805.00</b></td></tr>
+      <tr><td>ค้างรับรวม (หลังทำครบทุกขั้น)</td><td class="r">2,450.00</td></tr>
+    </tbody>
+  </table>
+</section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 21 · มารับเอง ยังไม่จ่าย แล้วมาจ่ายเงินสดทีหลัง <span class="muted">· ทดสอบ21 ลุงมาโนช · เงินสด</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว</td></tr><tr><th>ค่าสินค้า</th><td>2,250.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>2,250.00</b></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">2,250.00</b></td></tr><tr><th>ค้างรับ</th><td>2,250.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>รอรับเงิน</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>กด "รับเงินสด"</td><td>การชำระเงินเป็น "จ่ายแล้ว" และมีปุ่ม "ยกเลิกการรับเงิน"</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 22 · จัดส่ง จ่ายแล้ว คนขับยืนยันผ่านลิงก์ <span class="muted">· ทดสอบ22 คุณสมใจ · เงินสด</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,800.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>2,800.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>500.00 <small>(500 × 1 เที่ยว · ต.วังแก้ว รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">2,300.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 500.00 = -500.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์</td><td>ลิงก์ขึ้น "ลูกค้าชำระเงินแล้ว ไม่ต้องเก็บเงิน"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอเคลียร์ค่ารถ</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">2</td><td>เคลียร์ค่ารถ</td><td>"ร้านจ่ายค่ารถคนขับ" 500.00 · ได้เลขที่ขึ้นต้น DP</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 23 · เก็บปลายทาง คนขับเก็บครบ หักค่ารถ <span class="muted">· ทดสอบ23 คุณประยูร · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>10 คิว · 2 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>5,600.00</td></tr><tr><th>ค่าจัดส่ง</th><td>400.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>6,000.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>2,000.00 <small>(1,000 × 2 เที่ยว · ต.วังใต้ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">4,000.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 400.00 − ค่ารถ 2,000.00 = -1,600.00)</small></td></tr><tr><th>ค้างรับ</th><td>6,000.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์ (เก็บเงินครบ)</td><td>ลิงก์ขึ้น "เก็บเงินสดปลายทาง 6,000.00 บาท"<br>หน้าออเดอร์ขึ้น "คนขับแจ้งเก็บเงินสด 6,000.00 บาท"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอรับเงินจากคนขับ</b><small>ค้างรับ 6,000.00</small></td></tr><tr><td class="n">2</td><td>เคลียร์ค่ารถ แบบหักจากเงินปลายทาง</td><td>ค่ารถ 2,000.00 · เก็บปลายทาง 6,000.00 → "คนขับส่งเงินให้ร้าน" 4,000.00</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 24 · คนขับลืมกดลิงก์ ร้านกด "ส่งแล้ว" แทน <span class="muted">· ทดสอบ24 ร้านทุ่งฮั้ววัสดุ · โอนเงิน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>3 คิว · 1 เที่ยว · รถ 3 คิว</td></tr><tr><th>ค่าสินค้า</th><td>1,350.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>1,350.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>400.00 <small>(400 × 1 เที่ยว · ต.ทุ่งฮั้ว รถ 3 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">950.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 400.00 = -400.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>ร้านกด "ส่งแล้ว"</td><td>ใต้สถานะขึ้น "ส่งถึง … · ร้านกดยืนยันเอง"</td><td class="st"><b>รอเคลียร์ค่ารถ</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">2</td><td>เคลียร์ค่ารถ</td><td>"ร้านจ่ายค่ารถคนขับ" 400.00 · ได้เลขที่ขึ้นต้น DP</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 25 · ลูกค้าโอนหลังของถึง <span class="muted">· ทดสอบ25 คุณจิรา · โอนเงิน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,800.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>2,800.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>700.00 <small>(700 × 1 เที่ยว · ต.วังเหนือ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">2,100.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 700.00 = -700.00)</small></td></tr><tr><th>ค้างรับ</th><td>2,800.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์</td><td>ลิงก์ขึ้น "ไม่ต้องเก็บเงินจากลูกค้า (ร้านเรียกเก็บเอง)"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอรับเงิน</b><small>ค้างรับ 2,800.00</small></td></tr><tr><td class="n">2</td><td>กด "รับโอนแล้ว"</td><td>การชำระเงินเป็น "จ่ายแล้ว" และมีปุ่ม "ยกเลิกการรับเงิน"</td><td class="st"><b>รอเคลียร์ค่ารถ</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">3</td><td>เคลียร์ค่ารถ</td><td>"ร้านจ่ายค่ารถคนขับ" 700.00 · ได้เลขที่ขึ้นต้น DP</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 26 · เครดิต จัดส่ง ออกใบวางบิล จ่ายครบ <span class="muted">· ทดสอบ26 ร้านวังซ้ายค้าวัสดุ · เครดิตรายเดือน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>10 คิว · 2 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>5,600.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>5,600.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>1,400.00 <small>(700 × 2 เที่ยว · ต.วังซ้าย รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">4,200.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 1,400.00 = -1,400.00)</small></td></tr><tr><th>ค้างรับ</th><td>5,600.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์</td><td>ลิงก์ขึ้น "ไม่ต้องเก็บเงินจากลูกค้า (ร้านเรียกเก็บเอง)"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอวางบิล</b><small>ค้างรับ 5,600.00</small></td></tr><tr><td class="n">2</td><td>ออกใบวางบิล</td><td>ได้ใบวางบิลเลขขึ้นต้น BL ยอด 5,600.00<br>หน้าออเดอร์ขึ้น "อยู่ในใบวางบิล … — เคลียร์ผ่านใบวางบิล" และไม่มีปุ่มรับเงิน</td><td class="st"><b>รอลูกค้าจ่ายตามใบวางบิล</b><small>ค้างรับ 5,600.00</small></td></tr><tr><td class="n">3</td><td>รับชำระใบวางบิล "จ่ายครบ" 5,600.00</td><td>ใบวางบิลเปลี่ยนเป็นเคลียร์แล้ว · หน้าออเดอร์ "เคลียร์บิล: เคลียร์แล้ว"</td><td class="st"><b>รอเคลียร์ค่ารถ</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">4</td><td>เคลียร์ค่ารถ</td><td>"ร้านจ่ายค่ารถคนขับ" 1,400.00 · ได้เลขที่ขึ้นต้น DP</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 27 · เก็บปลายทาง คนขับเก็บเงินไม่ครบ <span class="muted">· ทดสอบ27 คุณเสาวลักษณ์ · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,250.00</td></tr><tr><th>ค่าจัดส่ง</th><td>200.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>2,450.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>1,000.00 <small>(1,000 × 1 เที่ยว · ต.วังทรายคำ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,450.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 200.00 − ค่ารถ 1,000.00 = -800.00)</small></td></tr><tr><th>ค้างรับ</th><td>2,450.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์ (แจ้งเก็บ 2,000)</td><td>ลิงก์ขึ้น "เก็บเงินสดปลายทาง 2,450.00 บาท"<br>หน้าออเดอร์ขึ้น "คนขับแจ้งเก็บเงินสด 2,000.00 บาท (ขาด 450.00 บาท)"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอรับเงินจากคนขับ</b><small>ค้างรับ 2,450.00</small></td></tr></tbody></table>
+  <p class="behave"><b>ต้องเห็น:</b> หน้าเคลียร์ค่ารถยังนับ "เงินเก็บปลายทาง" เต็มยอดบิล ไม่ใช่ 2,000 ที่คนขับแจ้ง (ยังไม่ต้องกดเคลียร์ค่ารถ ให้จดว่าระบบแสดงยอดเท่าไร)</p>
+</article>
+<article class="ans">
+  <h3>เคสที่ 28 · รับเงินปลายทางก่อน ค่ารถรอเคลียร์รอบเดือน <span class="muted">· ทดสอบ28 ป้าสายใจ · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>3 คิว · 1 เที่ยว · รถ 3 คิว</td></tr><tr><th>ค่าสินค้า</th><td>1,680.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>1,680.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>400.00 <small>(400 × 1 เที่ยว · ต.วังแก้ว รถ 3 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,280.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 400.00 = -400.00)</small></td></tr><tr><th>ค้างรับ</th><td>1,680.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์ (เก็บเงินครบ)</td><td>ลิงก์ขึ้น "เก็บเงินสดปลายทาง 1,680.00 บาท"<br>หน้าออเดอร์ขึ้น "คนขับแจ้งเก็บเงินสด 1,680.00 บาท"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอรับเงินจากคนขับ</b><small>ค้างรับ 1,680.00</small></td></tr><tr><td class="n">2</td><td>รับเงินปลายทาง 1,680.00 (ค่ารถรอเคลียร์รอบเดือน)</td><td>ปุ่มขึ้น "ยืนยันรับเงิน 1,680.00 (ค่ารถรอเคลียร์รอบเดือน)" · ค่ารถ 400.00 ยังไม่จ่าย</td><td class="st"><b>รอเคลียร์ค่ารถ</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">3</td><td>เคลียร์ค่ารถ</td><td>"ร้านจ่ายค่ารถคนขับ" 400.00 · ได้เลขที่ขึ้นต้น DP</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 29 · ค่ารถแพงกว่ายอดเก็บปลายทาง <span class="muted">· ทดสอบ29 คุณวีระ · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>2 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>900.00</td></tr><tr><th>ค่าจัดส่ง</th><td>80.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>980.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>1,300.00 <small>(1,300 × 1 เที่ยว · ต.ร่องเคาะ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="neg">-320.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 80.00 − ค่ารถ 1,300.00 = -1,220.00)</small></td></tr><tr><th>ค้างรับ</th><td>980.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์ (เก็บเงินครบ)</td><td>ลิงก์ขึ้น "เก็บเงินสดปลายทาง 980.00 บาท"<br>หน้าออเดอร์ขึ้น "คนขับแจ้งเก็บเงินสด 980.00 บาท"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอรับเงินจากคนขับ</b><small>ค้างรับ 980.00</small></td></tr><tr><td class="n">2</td><td>เคลียร์ค่ารถ แบบหักจากเงินปลายทาง</td><td>ค่ารถ 1,300.00 · เก็บปลายทาง 980.00 → "ร้านจ่ายค่ารถเพิ่ม" 320.00</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  <p class="behave"><b>ต้องเห็น:</b> "คงเหลือเข้าร้าน" ในสรุปบิลต้องติดลบ และหน้าเคลียร์ค่ารถต้องขึ้น "ร้านจ่ายค่ารถเพิ่ม"</p>
+</article>
+<article class="ans">
+  <h3>เคสที่ 30 · ยกเลิกออเดอร์หลังส่งลิงก์ให้คนขับแล้ว <span class="muted">· ทดสอบ30 ร้านเหนือวัสดุ · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>3 คิว · 1 เที่ยว · รถ 3 คิว</td></tr><tr><th>ค่าสินค้า</th><td>1,680.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>1,680.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>500.00 <small>(500 × 1 เที่ยว · ต.วังเหนือ รถ 3 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,180.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 500.00 = -500.00)</small></td></tr><tr><th>ค้างรับ</th><td>1,680.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>ยกเลิกออเดอร์</td><td>หน้าออเดอร์ขึ้นแถบ "ออเดอร์นี้ถูกยกเลิกแล้ว"</td><td class="st"><b>ยกเลิก</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">2</td><td>เปิดลิงก์คนขับ (ออเดอร์ยกเลิกแล้ว)</td><td>ลิงก์ขึ้น "ออเดอร์นี้ถูกยกเลิกแล้ว ไม่ต้องส่งของ" และไม่มีปุ่มยืนยัน</td><td class="st"><b>ยกเลิก</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  <p class="behave"><b>ต้องเห็น:</b> ออเดอร์ที่ยกเลิกต้องไม่ถูกนับในยอดรวมหน้าสรุปบิล และไม่ขึ้นในรายการเคลียร์ค่ารถ</p>
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 31 · ยกเลิกผิดออเดอร์ แล้วกู้คืน <span class="muted">· ทดสอบ31 คุณบุญเรือน · โอนเงิน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,800.00</td></tr><tr><th>ค่าจัดส่ง</th><td>200.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>3,000.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>1,300.00 <small>(1,300 × 1 เที่ยว · ต.วังทอง รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,700.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 200.00 − ค่ารถ 1,300.00 = -1,100.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>ยกเลิกออเดอร์</td><td>หน้าออเดอร์ขึ้นแถบ "ออเดอร์นี้ถูกยกเลิกแล้ว"</td><td class="st"><b>ยกเลิก</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">2</td><td>กู้คืนออเดอร์</td><td>แถบ "ออเดอร์นี้ถูกยกเลิกแล้ว" หายไป</td><td class="st"><b>กำลังจัดส่ง</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">3</td><td>คนขับกดยืนยันในลิงก์</td><td>ลิงก์ขึ้น "ลูกค้าชำระเงินแล้ว ไม่ต้องเก็บเงิน"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอเคลียร์ค่ารถ</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">4</td><td>เคลียร์ค่ารถ</td><td>"ร้านจ่ายค่ารถคนขับ" 1,300.00 · ได้เลขที่ขึ้นต้น DP</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 32 · กดรับเงินผิดช่องทาง แล้วแก้ <span class="muted">· ทดสอบ32 ร้านศรีวังวัสดุ · โอนเงิน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว</td></tr><tr><th>ค่าสินค้า</th><td>2,800.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>2,800.00</b></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">2,800.00</b></td></tr><tr><th>ค้างรับ</th><td>2,800.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>รอรับเงิน</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>กด "รับเงินสด"</td><td>การชำระเงินเป็น "จ่ายแล้ว" และมีปุ่ม "ยกเลิกการรับเงิน"</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">2</td><td>กด "ยกเลิกการรับเงิน"</td><td>การชำระเงินกลับเป็น "ยังไม่จ่าย"</td><td class="st"><b>รอรับเงิน</b><small>ค้างรับ 2,800.00</small></td></tr><tr><td class="n">3</td><td>กด "รับโอนแล้ว"</td><td>การชำระเงินเป็น "จ่ายแล้ว" และมีปุ่ม "ยกเลิกการรับเงิน"</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 33 · ใบวางบิล รับชำระ 2 งวด <span class="muted">· ทดสอบ33 ร้านพูนผลวัสดุ · เครดิตรายเดือน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>15 คิว · 3 เที่ยว</td></tr><tr><th>ค่าสินค้า</th><td>7,300.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>7,300.00</b></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">7,300.00</b></td></tr><tr><th>ค้างรับ</th><td>7,300.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>รอวางบิล</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>ออกใบวางบิล</td><td>ได้ใบวางบิลเลขขึ้นต้น BL ยอด 7,300.00<br>หน้าออเดอร์ขึ้น "อยู่ในใบวางบิล … — เคลียร์ผ่านใบวางบิล" และไม่มีปุ่มรับเงิน</td><td class="st"><b>รอลูกค้าจ่ายตามใบวางบิล</b><small>ค้างรับ 7,300.00</small></td></tr><tr><td class="n">2</td><td>รับชำระใบวางบิลบางส่วน 3,000.00</td><td>ใบวางบิล "ยอดค้างชำระ" เหลือ 4,300.00</td><td class="st"><b>รอลูกค้าจ่ายตามใบวางบิล</b><small>ค้างรับ 7,300.00</small></td></tr><tr><td class="n">3</td><td>รับชำระใบวางบิล "จ่ายครบ" 4,300.00</td><td>ใบวางบิลเปลี่ยนเป็นเคลียร์แล้ว · หน้าออเดอร์ "เคลียร์บิล: เคลียร์แล้ว"</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 34 · คนขับยืนยันแล้ว ร้านกดสถานะย้อนผิด <span class="muted">· ทดสอบ34 คุณอำไพ · เงินสด</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,250.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>2,250.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>700.00 <small>(700 × 1 เที่ยว · ต.วังซ้าย รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,550.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 700.00 = -700.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์</td><td>ลิงก์ขึ้น "ลูกค้าชำระเงินแล้ว ไม่ต้องเก็บเงิน"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอเคลียร์ค่ารถ</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">2</td><td>ร้านกด "กำลังจัดส่ง" (ย้อนสถานะ)</td><td>การจัดส่งกลับเป็น "กำลังจัดส่ง" และขึ้น "รอคนขับกด "ยืนยันส่งสำเร็จ" ในลิงก์…"</td><td class="st"><b>กำลังจัดส่ง</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">3</td><td>เปิดลิงก์คนขับอีกครั้ง</td><td>ลิงก์ขึ้น "ยืนยันส่งสำเร็จแล้ว" ไม่มีปุ่มให้กดซ้ำ ต้องให้ร้านกด "ส่งแล้ว" เอง</td><td class="st"><b>กำลังจัดส่ง</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">4</td><td>ร้านกด "ส่งแล้ว"</td><td>ใต้สถานะขึ้น "ส่งถึง … · ร้านกดยืนยันเอง"</td><td class="st"><b>รอเคลียร์ค่ารถ</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">5</td><td>เคลียร์ค่ารถ</td><td>"ร้านจ่ายค่ารถคนขับ" 700.00 · ได้เลขที่ขึ้นต้น DP</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 35 · ยกเลิกออเดอร์ที่อยู่ในใบวางบิล <span class="muted">· ทดสอบ35 ร้านอินทร์วัสดุ · เครดิตรายเดือน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>3 คิว · 1 เที่ยว · รถ 3 คิว</td></tr><tr><th>ค่าสินค้า</th><td>1,680.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>1,680.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>400.00 <small>(400 × 1 เที่ยว · ต.ทุ่งฮั้ว รถ 3 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,280.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 400.00 = -400.00)</small></td></tr><tr><th>ค้างรับ</th><td>1,680.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>ออกใบวางบิล</td><td>ได้ใบวางบิลเลขขึ้นต้น BL ยอด 1,680.00<br>หน้าออเดอร์ขึ้น "อยู่ในใบวางบิล … — เคลียร์ผ่านใบวางบิล" และไม่มีปุ่มรับเงิน</td><td class="st"><b>กำลังจัดส่ง</b><small>ค้างรับ 1,680.00</small></td></tr><tr><td class="n">2</td><td>ลองยกเลิกออเดอร์</td><td>ไม่มีปุ่ม "ยกเลิกออเดอร์" เพราะออเดอร์อยู่ในใบวางบิล (ต้องลบใบวางบิลก่อน)</td><td class="st"><b>กำลังจัดส่ง</b><small>ค้างรับ 1,680.00</small></td></tr><tr><td class="n">3</td><td>ลบใบวางบิล</td><td>ออเดอร์กลับไปเป็น "ยังไม่วางบิล" และมีปุ่ม "ยกเลิกออเดอร์" อีกครั้ง</td><td class="st"><b>กำลังจัดส่ง</b><small>ค้างรับ 1,680.00</small></td></tr><tr><td class="n">4</td><td>ยกเลิกออเดอร์</td><td>หน้าออเดอร์ขึ้นแถบ "ออเดอร์นี้ถูกยกเลิกแล้ว"</td><td class="st"><b>ยกเลิก</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 36 · คนขับแจ้งยังไม่ได้เงิน ลูกค้าโอนเข้าร้านเอง <span class="muted">· ทดสอบ36 คุณชาญ · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>6 คิว · 2 เที่ยว · รถ 3 คิว</td></tr><tr><th>ค่าสินค้า</th><td>3,360.00</td></tr><tr><th>ค่าจัดส่ง</th><td>240.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>3,600.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>1,400.00 <small>(700 × 2 เที่ยว · ต.วังใต้ รถ 3 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">2,200.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 240.00 − ค่ารถ 1,400.00 = -1,160.00)</small></td></tr><tr><th>ค้างรับ</th><td>3,600.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์ (แจ้งเก็บ 0)</td><td>ลิงก์ขึ้น "เก็บเงินสดปลายทาง 3,600.00 บาท"<br>หน้าออเดอร์ขึ้น "คนขับแจ้งเก็บเงินสด 0.00 บาท (ขาด 3,600.00 บาท)"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอรับเงินจากคนขับ</b><small>ค้างรับ 3,600.00</small></td></tr><tr><td class="n">2</td><td>กด "รับโอนแล้ว"</td><td>การชำระเงินเป็น "จ่ายแล้ว" และมีปุ่ม "ยกเลิกการรับเงิน"</td><td class="st"><b>รอเคลียร์ค่ารถ</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">3</td><td>เคลียร์ค่ารถ</td><td>"ร้านจ่ายค่ารถคนขับ" 1,400.00 · ได้เลขที่ขึ้นต้น DP</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 37 · รับเงินผ่านเคลียร์ค่ารถแล้ว ยกเลิกการรับเงินไม่ได้ <span class="muted">· ทดสอบ37 คุณสุรชัย · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>10 คิว · 2 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>4,500.00</td></tr><tr><th>ค่าจัดส่ง</th><td>400.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>4,900.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>2,600.00 <small>(1,300 × 2 เที่ยว · ต.วังทอง รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">2,300.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 400.00 − ค่ารถ 2,600.00 = -2,200.00)</small></td></tr><tr><th>ค้างรับ</th><td>4,900.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์ (เก็บเงินครบ)</td><td>ลิงก์ขึ้น "เก็บเงินสดปลายทาง 4,900.00 บาท"<br>หน้าออเดอร์ขึ้น "คนขับแจ้งเก็บเงินสด 4,900.00 บาท"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอรับเงินจากคนขับ</b><small>ค้างรับ 4,900.00</small></td></tr><tr><td class="n">2</td><td>เคลียร์ค่ารถ แบบหักจากเงินปลายทาง</td><td>ค่ารถ 2,600.00 · เก็บปลายทาง 4,900.00 → "คนขับส่งเงินให้ร้าน" 2,300.00</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">3</td><td>กด "ยกเลิกการรับเงิน"</td><td>ต้องขึ้นข้อความ "รับเงินปลายทางผ่านเคลียร์ค่ารถแล้ว ต้องลบรายการจ่ายค่ารถก่อน" และสถานะไม่เปลี่ยน</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">4</td><td>super admin ลบรายการเคลียร์ค่ารถ</td><td>ออเดอร์กลับไปอยู่ในรายการค่ารถค้างจ่าย<br>เงินปลายทางกลับเป็น "ยังไม่จ่าย"</td><td class="st"><b>รอรับเงินจากคนขับ</b><small>ค้างรับ 4,900.00</small></td></tr><tr><td class="n">5</td><td>เคลียร์ค่ารถ แบบหักจากเงินปลายทาง</td><td>ค่ารถ 2,600.00 · เก็บปลายทาง 4,900.00 → "คนขับส่งเงินให้ร้าน" 2,300.00</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 38 · คิวไม่เต็ม + ที่กันดาร + ลดค่าส่ง เก็บปลายทาง <span class="muted">· ทดสอบ38 ลุงทอง · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 2 เที่ยว · รถ 3 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,800.00</td></tr><tr><th>ค่าจัดส่ง</th><td>400.00</td></tr><tr><th>ส่วนลดรวม</th><td>100.00 <small>(ลดค่าส่ง 100.00)</small></td></tr><tr><th>ยอดสุทธิ</th><td><b>3,100.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>2,000.00 <small>(1,000 × 2 เที่ยว · ต.ร่องเคาะ รถ 3 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,100.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 300.00 − ค่ารถ 2,000.00 = -1,700.00)</small></td></tr><tr><th>ค้างรับ</th><td>3,100.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์ (เก็บเงินครบ)</td><td>ลิงก์ขึ้น "เก็บเงินสดปลายทาง 3,100.00 บาท"<br>หน้าออเดอร์ขึ้น "คนขับแจ้งเก็บเงินสด 3,100.00 บาท"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอรับเงินจากคนขับ</b><small>ค้างรับ 3,100.00</small></td></tr><tr><td class="n">2</td><td>รับเงินปลายทาง 3,100.00 (ค่ารถรอเคลียร์รอบเดือน)</td><td>ปุ่มขึ้น "ยืนยันรับเงิน 3,100.00 (ค่ารถรอเคลียร์รอบเดือน)" · ค่ารถ 2,000.00 ยังไม่จ่าย</td><td class="st"><b>รอเคลียร์ค่ารถ</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">3</td><td>เคลียร์ค่ารถ</td><td>"ร้านจ่ายค่ารถคนขับ" 2,000.00 · ได้เลขที่ขึ้นต้น DP</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 39 · ใบวางบิล รับชำระผิด แล้วลบรายการรับชำระ <span class="muted">· ทดสอบ39 ร้านแก้วมณีวัสดุ · เครดิตรายเดือน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,800.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>2,800.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>500.00 <small>(500 × 1 เที่ยว · ต.วังแก้ว รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">2,300.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 500.00 = -500.00)</small></td></tr><tr><th>ค้างรับ</th><td>2,800.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์</td><td>ลิงก์ขึ้น "ไม่ต้องเก็บเงินจากลูกค้า (ร้านเรียกเก็บเอง)"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอวางบิล</b><small>ค้างรับ 2,800.00</small></td></tr><tr><td class="n">2</td><td>ออกใบวางบิล</td><td>ได้ใบวางบิลเลขขึ้นต้น BL ยอด 2,800.00<br>หน้าออเดอร์ขึ้น "อยู่ในใบวางบิล … — เคลียร์ผ่านใบวางบิล" และไม่มีปุ่มรับเงิน</td><td class="st"><b>รอลูกค้าจ่ายตามใบวางบิล</b><small>ค้างรับ 2,800.00</small></td></tr><tr><td class="n">3</td><td>รับชำระใบวางบิลบางส่วน 1,000.00</td><td>ตอนใส่เท่ายอดค้าง ต้องขึ้น "ยอดเท่ากับหรือเกินยอดค้าง เลือก "จ่ายครบ" แทน" และกดบันทึกไม่ได้<br>ใบวางบิล "ยอดค้างชำระ" เหลือ 1,800.00</td><td class="st"><b>รอลูกค้าจ่ายตามใบวางบิล</b><small>ค้างรับ 2,800.00</small></td></tr><tr><td class="n">4</td><td>ลบรายการรับชำระที่บันทึกผิด</td><td>"ยอดค้างชำระ" กลับเป็น 2,800.00</td><td class="st"><b>รอลูกค้าจ่ายตามใบวางบิล</b><small>ค้างรับ 2,800.00</small></td></tr><tr><td class="n">5</td><td>รับชำระใบวางบิล "จ่ายครบ" 2,800.00</td><td>ใบวางบิลเปลี่ยนเป็นเคลียร์แล้ว · หน้าออเดอร์ "เคลียร์บิล: เคลียร์แล้ว"</td><td class="st"><b>รอเคลียร์ค่ารถ</b><small>ค้างรับ 0.00</small></td></tr><tr><td class="n">6</td><td>เคลียร์ค่ารถ</td><td>"ร้านจ่ายค่ารถคนขับ" 500.00 · ได้เลขที่ขึ้นต้น DP</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 40 · บิลใหญ่ครบวงจร <span class="muted">· ทดสอบ40 หจก.ทดสอบมั่นคงก่อสร้าง · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>15 คิว · 3 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>7,300.00</td></tr><tr><th>ค่าจัดส่ง</th><td>600.00</td></tr><tr><th>ส่วนลดรวม</th><td>555.00 <small>(ลดคิวละ 200.00 + ท้ายบิล 355.00)</small></td></tr><tr><th>ยอดสุทธิ</th><td><b>7,345.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>3,000.00 <small>(1,000 × 3 เที่ยว · ต.วังทรายคำ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">4,345.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 600.00 − ค่ารถ 3,000.00 = -2,400.00)</small></td></tr><tr><th>ค้างรับ</th><td>7,345.00</td></tr><tr><th>ขั้นตอน (หลังบันทึก)</th><td><b>กำลังจัดส่ง</b></td></tr></table>
+  <table class="ans-steps"><thead><tr><th class="n">#</th><th>ขั้น</th><th>ต้องเห็น</th><th class="st">ขั้นตอนในสรุปบิล · ค้างรับ</th></tr></thead><tbody><tr><td class="n">1</td><td>คนขับกดยืนยันในลิงก์ (เก็บเงินครบ)</td><td>ลิงก์ขึ้น "เก็บเงินสดปลายทาง 7,345.00 บาท"<br>หน้าออเดอร์ขึ้น "คนขับแจ้งเก็บเงินสด 7,345.00 บาท"<br>หน้าออเดอร์: การจัดส่ง "ส่งแล้ว" · "คนขับยืนยันผ่านลิงก์"</td><td class="st"><b>รอรับเงินจากคนขับ</b><small>ค้างรับ 7,345.00</small></td></tr><tr><td class="n">2</td><td>เคลียร์ค่ารถ แบบหักจากเงินปลายทาง</td><td>ค่ารถ 3,000.00 · เก็บปลายทาง 7,345.00 → "คนขับส่งเงินให้ร้าน" 4,345.00</td><td class="st"><b>ปิดงานแล้ว</b><small>ค้างรับ 0.00</small></td></tr></tbody></table>
+  
+</article></section></body></html>

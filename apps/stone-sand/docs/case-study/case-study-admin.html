@@ -24,13 +24,17 @@ td small, h3 small { display: inline; }
 .story { margin-top: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 6px 11px; font-size: 10.5pt; }
 .story b { color: #166534; margin-right: 4px; }
 table { width: 100%; border-collapse: collapse; }
-.input th, .input td, .check th, .check td, .ref th, .ref td, .ans-t th, .ans-t td { border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; text-align: left; }
+.input th, .input td, .check th, .check td, .ref th, .ref td, .ans-t th, .ans-t td, .steps-t th, .steps-t td, .ans-steps th, .ans-steps td { border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; text-align: left; }
 .input th { width: 30%; background: #f9fafb; font-weight: 600; }
-.check thead th { background: #111827; color: #fff; font-size: 9pt; }
+.check thead th, .steps-t thead th { background: #111827; color: #fff; font-size: 9pt; }
 .check tbody th { width: 34%; background: #f9fafb; font-weight: 600; }
 .check tbody th { padding-top: 2px; padding-bottom: 2px; line-height: 1.25; }
 .check tbody td { height: 26px; }
-.check .ok { width: 18%; text-align: center; }
+.check .ok, .steps-t .ok { width: 9%; text-align: center; }
+.check .ok { width: 18%; }
+.steps-t td { font-size: 9.5pt; line-height: 1.35; padding: 3px 7px; }
+.steps-t .n, .ans-steps .n { width: 5%; text-align: center; }
+.steps-t .w { width: 27%; }
 .try { margin-top: 8px; border: 1.5px dashed #f59e0b; background: #fffbeb; border-radius: 6px; padding: 5px 11px; }
 .try ol { margin: 3px 0 0; padding-left: 18px; }
 .write { margin: 6px 0 0; display: flex; gap: 6px; align-items: flex-end; }
@@ -54,37 +58,28 @@ table { width: 100%; border-collapse: collapse; }
 .ans { break-inside: avoid; page-break-inside: avoid; margin-bottom: 10px; }
 .ans-t th { width: 26%; background: #f9fafb; font-weight: 600; font-size: 9.5pt; padding: 3px 8px; }
 .ans-t td { font-variant-numeric: tabular-nums; padding: 3px 8px; }
+.ans-steps { margin-top: 4px; }
+.ans-steps thead th { background: #f3f4f6; font-size: 8.5pt; padding: 2px 6px; }
+.ans-steps td { font-size: 8.5pt; line-height: 1.3; padding: 2px 6px; font-variant-numeric: tabular-nums; }
+.ans-steps td small { display: block; }
+.ans-steps .st { width: 24%; }
 .pos { color: #047857; }
+.neg { color: #b91c1c; }
 .behave { margin: 4px 0 0; font-size: 9.5pt; background: #fffbeb; border-left: 3px solid #f59e0b; padding: 3px 8px; }
 </style></head>
 <body>
 <section class="page cover">
   <p class="kicker">Golden Mole · ระบบสั่งหิน-ทราย</p>
   <h1 class="title">Case Study<br>ทดสอบการเปิดออเดอร์ 20 เคส</h1>
-  <p class="lead">ชุดฝึกให้แอดมินลองกรอกออเดอร์จริงในระบบ แล้วจดตัวเลขที่ระบบแสดง เพื่อตรวจว่า<br>
-  <b>(1) แอดมินกรอกข้อมูลถูกต้อง</b> และ <b>(2) ระบบคำนวณ/ทำงานถูกต้อง</b></p>
+  <p class="lead">ชุดฝึกให้แอดมินลองกรอกออเดอร์จริงในระบบ แล้วจดตัวเลขที่ระบบแสดง เพื่อตรวจว่า<br><b>(1) แอดมินกรอกข้อมูลถูกต้อง</b> และ <b>(2) ระบบคำนวณ/ทำงานถูกต้อง</b></p>
 
   <h2>วิธีทำ</h2>
-  <ol class="steps">
-    <li>เข้าเมนู <b>สร้างออเดอร์</b> แล้วกรอกตาม "ข้อมูลที่ต้องกรอก" ของแต่ละเคสทีละขั้น</li>
-    <li>เพิ่มลูกค้าใหม่ตามชื่อในเคส (ทุกชื่อขึ้นต้นด้วย <b>"ทดสอบ"</b> เพื่อแยกจากลูกค้าจริง)</li>
-    <li>เคสจัดส่ง: <b>ไม่ต้องปักหมุด</b> พิมพ์ที่อยู่ แล้วเลือกตำบลจากรายการเอง (ตัวเลขจะได้ตรงกับเฉลย)</li>
-    <li>ระหว่างกรอก จดตัวเลขลงตาราง "จดผลที่ระบบแสดง" ส่วน "คงเหลือเข้าร้าน" และ "ขั้นตอน" ดูที่เมนู <b>สรุปบิล</b> หลังบันทึก</li>
-    <li>ถ้าเคสมีกล่อง "ให้ลองทำระหว่างกรอก" ให้ทำตามและจดว่าระบบแสดงอะไร</li>
-    <li>ส่งใบงานให้ผู้ตรวจเทียบกับ <b>เฉลย</b> (แยกเป็นอีกไฟล์)</li>
-  </ol>
+  <ol class="steps"><li>เข้าเมนู <b>สร้างออเดอร์</b> แล้วกรอกตาม "ข้อมูลที่ต้องกรอก" ของแต่ละเคสทีละขั้น</li><li>เพิ่มลูกค้าใหม่ตามชื่อในเคส (ทุกชื่อขึ้นต้นด้วย <b>"ทดสอบ"</b> เพื่อแยกจากลูกค้าจริง)</li><li>เคสจัดส่ง: <b>ไม่ต้องปักหมุด</b> พิมพ์ที่อยู่ แล้วเลือกตำบลจากรายการเอง (ตัวเลขจะได้ตรงกับเฉลย)</li><li>ระหว่างกรอก จดตัวเลขลงตาราง "จดผลที่ระบบแสดง" ส่วน "คงเหลือเข้าร้าน" และ "ขั้นตอน" ดูที่เมนู <b>สรุปบิล</b> หลังบันทึก</li><li>ถ้าเคสมีกล่อง "ให้ลองทำระหว่างกรอก" ให้ทำตามและจดว่าระบบแสดงอะไร</li><li>ส่งใบงานให้ผู้ตรวจเทียบกับ <b>เฉลย</b> (แยกเป็นอีกไฟล์)</li></ol>
 
   <h2>ระดับความยาก</h2>
-  <table class="levels">
-    <tr><th><span class="level level-พื้นฐาน">พื้นฐาน</span></th><td>เคส 01–06 · มารับเอง / จัดส่งธรรมดา / วิธีจ่ายเงินแบบต่างๆ</td></tr>
-    <tr><th><span class="level level-ปานกลาง">ปานกลาง</span></th><td>เคส 07–15 · ขนาดรถ หลายสินค้า คิวไม่เต็ม และส่วนลดทุกแบบ</td></tr>
-    <tr><th><span class="level level-ท้าทาย">ท้าทาย</span></th><td>เคส 16–20 · ทดสอบขอบเขต การบังคับกรอก ที่กันดาร และบิลใหญ่</td></tr>
-  </table>
+  <table class="levels"><tr><th><span class="level level-พื้นฐาน">พื้นฐาน</span></th><td>เคส 01–06 · มารับเอง / จัดส่งธรรมดา / วิธีจ่ายเงินแบบต่างๆ</td></tr><tr><th><span class="level level-ปานกลาง">ปานกลาง</span></th><td>เคส 07–15 · ขนาดรถ หลายสินค้า คิวไม่เต็ม และส่วนลดทุกแบบ</td></tr><tr><th><span class="level level-ท้าทาย">ท้าทาย</span></th><td>เคส 16–20 · ทดสอบขอบเขต การบังคับกรอก ที่กันดาร และบิลใหญ่</td></tr></table>
 
-  <div class="warn">
-    <b>หลังทดสอบเสร็จ</b> ให้ <b>ยกเลิกออเดอร์</b> ของลูกค้า "ทดสอบ01–20" ทุกใบ และลบลูกค้าทดสอบออก
-    เพื่อไม่ให้ปนกับยอดขายจริง (ออเดอร์ที่ยกเลิกจะไม่ถูกนับในสรุปบิล)
-  </div>
+  <div class="warn"><b>หลังทดสอบเสร็จ</b> ให้ <b>ยกเลิกออเดอร์</b> ของลูกค้า "ทดสอบ01–20" ทุกใบ และลบลูกค้าทดสอบออก เพื่อไม่ให้ปนกับยอดขายจริง (ออเดอร์ที่ยกเลิกจะไม่ถูกนับในสรุปบิล)</div>
 
   <footer class="sign cover-sign">
     <span>ชื่อผู้ทดสอบ ............................................</span>
@@ -120,6 +115,8 @@ table { width: 100%; border-collapse: collapse; }
       <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>รวมคิว / จำนวนเที่ยว<small>ขั้นสินค้า</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าสินค้า<small>ก่อนส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ส่วนลดรวม<small>ทุกส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>คงเหลือเข้าร้าน<small>เมนูสรุปบิล</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ป้ายสถานะ</small></th><td></td><td class="ok"></td></tr>
     </tbody>
   </table>
+
+  
 
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
@@ -161,6 +158,8 @@ table { width: 100%; border-collapse: collapse; }
       <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>รวมคิว / จำนวนเที่ยว<small>ขั้นสินค้า</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าสินค้า<small>ก่อนส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ส่วนลดรวม<small>ทุกส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>คงเหลือเข้าร้าน<small>เมนูสรุปบิล</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ป้ายสถานะ</small></th><td></td><td class="ok"></td></tr>
     </tbody>
   </table>
+
+  
 
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
@@ -204,6 +203,8 @@ table { width: 100%; border-collapse: collapse; }
     </tbody>
   </table>
 
+  
+
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
     <span class="line"></span><span class="line"></span>
@@ -244,6 +245,8 @@ table { width: 100%; border-collapse: collapse; }
       <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>รวมคิว / จำนวนเที่ยว<small>ขั้นสินค้า</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าสินค้า<small>ก่อนส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าจัดส่ง<small>ก่อนลดค่าส่ง</small></th><td></td><td class="ok"></td></tr><tr><th>ส่วนลดรวม<small>ทุกส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>คงเหลือเข้าร้าน<small>เมนูสรุปบิล</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ป้ายสถานะ</small></th><td></td><td class="ok"></td></tr>
     </tbody>
   </table>
+
+  
 
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
@@ -286,6 +289,8 @@ table { width: 100%; border-collapse: collapse; }
     </tbody>
   </table>
 
+  
+
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
     <span class="line"></span><span class="line"></span>
@@ -326,6 +331,8 @@ table { width: 100%; border-collapse: collapse; }
       <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>รวมคิว / จำนวนเที่ยว<small>ขั้นสินค้า</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าสินค้า<small>ก่อนส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าจัดส่ง<small>ก่อนลดค่าส่ง</small></th><td></td><td class="ok"></td></tr><tr><th>ส่วนลดรวม<small>ทุกส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>คงเหลือเข้าร้าน<small>เมนูสรุปบิล</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ป้ายสถานะ</small></th><td></td><td class="ok"></td></tr>
     </tbody>
   </table>
+
+  
 
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
@@ -368,6 +375,8 @@ table { width: 100%; border-collapse: collapse; }
     </tbody>
   </table>
 
+  
+
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
     <span class="line"></span><span class="line"></span>
@@ -409,6 +418,8 @@ table { width: 100%; border-collapse: collapse; }
     </tbody>
   </table>
 
+  
+
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
     <span class="line"></span><span class="line"></span>
@@ -449,6 +460,8 @@ table { width: 100%; border-collapse: collapse; }
       <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>รวมคิว / จำนวนเที่ยว<small>ขั้นสินค้า</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าสินค้า<small>ก่อนส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าจัดส่ง<small>ก่อนลดค่าส่ง</small></th><td></td><td class="ok"></td></tr><tr><th>ส่วนลดรวม<small>ทุกส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>คงเหลือเข้าร้าน<small>เมนูสรุปบิล</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ป้ายสถานะ</small></th><td></td><td class="ok"></td></tr>
     </tbody>
   </table>
+
+  
 
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
@@ -492,6 +505,8 @@ table { width: 100%; border-collapse: collapse; }
     </tbody>
   </table>
 
+  
+
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
     <span class="line"></span><span class="line"></span>
@@ -532,6 +547,8 @@ table { width: 100%; border-collapse: collapse; }
       <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>รวมคิว / จำนวนเที่ยว<small>ขั้นสินค้า</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าสินค้า<small>ก่อนส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าจัดส่ง<small>ก่อนลดค่าส่ง</small></th><td></td><td class="ok"></td></tr><tr><th>ส่วนลดรวม<small>ทุกส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>คงเหลือเข้าร้าน<small>เมนูสรุปบิล</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ป้ายสถานะ</small></th><td></td><td class="ok"></td></tr>
     </tbody>
   </table>
+
+  
 
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
@@ -574,6 +591,8 @@ table { width: 100%; border-collapse: collapse; }
     </tbody>
   </table>
 
+  
+
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
     <span class="line"></span><span class="line"></span>
@@ -614,6 +633,8 @@ table { width: 100%; border-collapse: collapse; }
       <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>รวมคิว / จำนวนเที่ยว<small>ขั้นสินค้า</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าสินค้า<small>ก่อนส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าจัดส่ง<small>ก่อนลดค่าส่ง</small></th><td></td><td class="ok"></td></tr><tr><th>ส่วนลดรวม<small>ทุกส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>คงเหลือเข้าร้าน<small>เมนูสรุปบิล</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ป้ายสถานะ</small></th><td></td><td class="ok"></td></tr>
     </tbody>
   </table>
+
+  
 
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
@@ -656,6 +677,8 @@ table { width: 100%; border-collapse: collapse; }
     </tbody>
   </table>
 
+  
+
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
     <span class="line"></span><span class="line"></span>
@@ -696,6 +719,8 @@ table { width: 100%; border-collapse: collapse; }
       <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>รวมคิว / จำนวนเที่ยว<small>ขั้นสินค้า</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าสินค้า<small>ก่อนส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าจัดส่ง<small>ก่อนลดค่าส่ง</small></th><td></td><td class="ok"></td></tr><tr><th>ส่วนลดรวม<small>ทุกส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>คงเหลือเข้าร้าน<small>เมนูสรุปบิล</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ป้ายสถานะ</small></th><td></td><td class="ok"></td></tr>
     </tbody>
   </table>
+
+  
 
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
@@ -739,6 +764,8 @@ table { width: 100%; border-collapse: collapse; }
     </tbody>
   </table>
 
+  
+
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
     <span class="line"></span><span class="line"></span>
@@ -779,6 +806,8 @@ table { width: 100%; border-collapse: collapse; }
       <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>รวมคิว / จำนวนเที่ยว<small>ขั้นสินค้า</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าสินค้า<small>ก่อนส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าจัดส่ง<small>ก่อนลดค่าส่ง</small></th><td></td><td class="ok"></td></tr><tr><th>ส่วนลดรวม<small>ทุกส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>คงเหลือเข้าร้าน<small>เมนูสรุปบิล</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ป้ายสถานะ</small></th><td></td><td class="ok"></td></tr>
     </tbody>
   </table>
+
+  
 
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
@@ -822,6 +851,8 @@ table { width: 100%; border-collapse: collapse; }
     </tbody>
   </table>
 
+  
+
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
     <span class="line"></span><span class="line"></span>
@@ -864,6 +895,8 @@ table { width: 100%; border-collapse: collapse; }
     </tbody>
   </table>
 
+  
+
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>
     <span class="line"></span><span class="line"></span>
@@ -904,6 +937,8 @@ table { width: 100%; border-collapse: collapse; }
       <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>รวมคิว / จำนวนเที่ยว<small>ขั้นสินค้า</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าสินค้า<small>ก่อนส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ค่าจัดส่ง<small>ก่อนลดค่าส่ง</small></th><td></td><td class="ok"></td></tr><tr><th>ส่วนลดรวม<small>ทุกส่วนลด</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>คงเหลือเข้าร้าน<small>เมนูสรุปบิล</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ป้ายสถานะ</small></th><td></td><td class="ok"></td></tr>
     </tbody>
   </table>
+
+  
 
   <div class="issue">
     <b>ปัญหา / ข้อสังเกตที่พบ</b>

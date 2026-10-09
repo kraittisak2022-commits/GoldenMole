@@ -28,6 +28,25 @@ export interface CaseDelivery {
   deliveryDiscount?: number;
 }
 
+/** Actions after the order is saved, done in order; generate.ts works out what the system should show after each. */
+export type AfterStep =
+  /** Open the driver's confirm link and press ยืนยันส่งสำเร็จ; cash = what the driver reports for COD. */
+  | { do: 'driverLink'; cash?: 'full' | number }
+  | { do: 'shopDelivered' }
+  | { do: 'shopDispatched' }
+  | { do: 'receive'; method: 'cash' | 'transfer' | 'cod' }
+  | { do: 'undoPay' }
+  | { do: 'statement' }
+  /** tryFullAsPartial: first type the whole balance as "จ่ายบางส่วน", which the form must refuse. */
+  | { do: 'payStatement'; amount: number | 'full'; method: 'cash' | 'transfer'; tryFullAsPartial?: boolean }
+  | { do: 'deleteStatementPayment' }
+  | { do: 'deleteStatement' }
+  /** net = deduct the fee from the COD cash now; later = take all the cash, pay the fee in the monthly clearing. */
+  | { do: 'clearDriver'; mode?: 'net' | 'later' }
+  | { do: 'deletePayout' }
+  | { do: 'cancel' }
+  | { do: 'restore' };
+
 export interface StudyCase {
   title: string;
   level: 'พื้นฐาน' | 'ปานกลาง' | 'ท้าทาย';
@@ -46,6 +65,7 @@ export interface StudyCase {
   tryFirst?: string[];
   /** What the checker should see for those steps. */
   expectBehaviour?: string[];
+  after?: AfterStep[];
 }
 
 export const CASES: StudyCase[] = [

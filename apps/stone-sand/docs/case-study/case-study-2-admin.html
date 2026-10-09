@@ -1,0 +1,1029 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><title>Case Study ชุดที่ 2 ทดสอบการเปิดออเดอร์</title><style>
+@page { size: A4; margin: 10mm 13mm; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Sarabun', 'Leelawadee UI', 'Leelawadee', Tahoma, sans-serif; font-size: 10.5pt; color: #1f2937; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.page { page-break-after: always; break-after: page; }
+.page:last-child { page-break-after: auto; break-after: auto; }
+h1 { font-size: 17pt; margin: 2px 0 0; line-height: 1.25; }
+h2 { font-size: 11pt; margin: 9px 0 4px; color: #0f5132; border-left: 4px solid #198754; padding-left: 7px; }
+h3 { font-size: 10.5pt; margin: 0 0 4px; }
+small { display: block; font-size: 8pt; color: #6b7280; font-weight: 400; }
+td small, h3 small { display: inline; }
+.muted { color: #6b7280; font-weight: 400; }
+.kicker { margin: 0; font-size: 8.5pt; letter-spacing: .04em; color: #198754; font-weight: 600; text-transform: uppercase; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-bottom: 2px solid #111827; padding-bottom: 6px; }
+.head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.count { font-size: 9pt; color: #6b7280; font-variant-numeric: tabular-nums; }
+.level { display: inline-block; border-radius: 999px; padding: 1px 10px; font-size: 8.5pt; font-weight: 700; }
+.level-พื้นฐาน { background: #d1fae5; color: #065f46; }
+.level-ปานกลาง { background: #fef3c7; color: #92400e; }
+.level-ท้าทาย { background: #fee2e2; color: #991b1b; }
+.tags { margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.tags span { background: #f3f4f6; border-radius: 4px; padding: 0 7px; font-size: 8.5pt; color: #374151; }
+.story { margin-top: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 6px 11px; font-size: 10.5pt; }
+.story b { color: #166534; margin-right: 4px; }
+table { width: 100%; border-collapse: collapse; }
+.input th, .input td, .check th, .check td, .ref th, .ref td, .ans-t th, .ans-t td, .steps-t th, .steps-t td, .ans-steps th, .ans-steps td { border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; text-align: left; }
+.input th { width: 30%; background: #f9fafb; font-weight: 600; }
+.check thead th, .steps-t thead th { background: #111827; color: #fff; font-size: 9pt; }
+.check tbody th { width: 34%; background: #f9fafb; font-weight: 600; }
+.check tbody th { padding-top: 2px; padding-bottom: 2px; line-height: 1.25; }
+.check tbody td { height: 26px; }
+.check .ok, .steps-t .ok { width: 9%; text-align: center; }
+.check .ok { width: 18%; }
+.steps-t td { font-size: 9.5pt; line-height: 1.35; padding: 3px 7px; }
+.steps-t .n, .ans-steps .n { width: 5%; text-align: center; }
+.steps-t .w { width: 27%; }
+.try { margin-top: 8px; border: 1.5px dashed #f59e0b; background: #fffbeb; border-radius: 6px; padding: 5px 11px; }
+.try ol { margin: 3px 0 0; padding-left: 18px; }
+.write { margin: 6px 0 0; display: flex; gap: 6px; align-items: flex-end; }
+.line { display: block; flex: 1; border-bottom: 1px dotted #6b7280; height: 20px; }
+.issue { margin-top: 8px; }
+.issue .line { margin-top: 2px; }
+.sign { margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; font-size: 9pt; color: #374151; }
+.cover .title { font-size: 26pt; margin: 6px 0 8px; }
+.title-sm { font-size: 20pt; margin: 4px 0 6px; }
+.lead { font-size: 11pt; color: #374151; }
+.steps { padding-left: 20px; margin: 4px 0; }
+.steps li { margin: 3px 0; }
+.levels th { width: 22%; padding: 6px 8px; text-align: left; border: 1px solid #e5e7eb; }
+.levels td { padding: 6px 8px; border: 1px solid #e5e7eb; }
+.warn { margin-top: 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 9px 12px; color: #7f1d1d; }
+.cover-sign { margin-top: 28px; }
+.ref thead th { background: #f3f4f6; font-size: 9pt; }
+.r { text-align: right !important; font-variant-numeric: tabular-nums; }
+.formula { padding-left: 18px; margin: 4px 0; }
+.formula li { margin: 3px 0; }
+.ans { break-inside: avoid; page-break-inside: avoid; margin-bottom: 10px; }
+.ans-t th { width: 26%; background: #f9fafb; font-weight: 600; font-size: 9.5pt; padding: 3px 8px; }
+.ans-t td { font-variant-numeric: tabular-nums; padding: 3px 8px; }
+.ans-steps { margin-top: 4px; }
+.ans-steps thead th { background: #f3f4f6; font-size: 8.5pt; padding: 2px 6px; }
+.ans-steps td { font-size: 8.5pt; line-height: 1.3; padding: 2px 6px; font-variant-numeric: tabular-nums; }
+.ans-steps td small { display: block; }
+.ans-steps .st { width: 24%; }
+.pos { color: #047857; }
+.neg { color: #b91c1c; }
+.behave { margin: 4px 0 0; font-size: 9.5pt; background: #fffbeb; border-left: 3px solid #f59e0b; padding: 3px 8px; }
+</style></head>
+<body>
+<section class="page cover">
+  <p class="kicker">Golden Mole · ระบบสั่งหิน-ทราย</p>
+  <h1 class="title">Case Study<br>ชุดที่ 2 · ตั้งแต่เปิดออเดอร์จนปิดงาน 20 เคส</h1>
+  <p class="lead">ต่อจากชุดที่ 1 เคสชุดนี้ให้แอดมินเปิดออเดอร์ แล้วทำงานต่อจนจบ: <b>คนขับยืนยันผ่านลิงก์</b> รับเงิน (รวมเงินปลายทาง) <b>ใบวางบิล</b> <b>เคลียร์ค่ารถ</b> และ <b>การแก้เมื่อกดผิด</b><br>หลังทำแต่ละขั้น ให้จดว่า "ขั้นตอนในสรุปบิล" เปลี่ยนเป็นอะไร</p>
+
+  <h2>วิธีทำ</h2>
+  <ol class="steps"><li>เปิดออเดอร์ตาม "ข้อมูลที่ต้องกรอก" เหมือนชุดที่ 1 (ลูกค้าใหม่ชื่อขึ้นต้น <b>"ทดสอบ"</b> · เคสจัดส่งไม่ต้องปักหมุด เลือกตำบลเอง)</li><li>จากนั้นทำ <b>"ขั้นต่อจากบันทึก"</b> ทีละข้อตามลำดับ หลังทำแต่ละข้อ เปิดเมนู <b>สรุปบิล</b> แล้วจดป้าย "ขั้นตอน" ของออเดอร์นี้</li><li><b>ลิงก์คนขับ</b>: ในหน้าออเดอร์กด "คัดลอกข้อความส่งคนขับ" แล้วเปิดลิงก์ในข้อความด้วยแท็บใหม่ (ไม่ต้องล็อกอิน) ทำแทนคนขับ</li><li><b>เคลียร์ค่ารถ / ใบวางบิล</b>: ติ๊กเฉพาะออเดอร์ของเคสนั้น ถ้ามีออเดอร์ทดสอบเคสอื่นของคนขับหรือลูกค้าเดียวกันให้เอาติ๊กออก</li><li>เคส 37 มีขั้นที่ต้องใช้บัญชี <b>super admin</b> (ลบรายการเคลียร์ค่ารถ)</li><li>ส่งใบงานให้ผู้ตรวจเทียบกับ <b>เฉลยชุดที่ 2</b> (แยกเป็นอีกไฟล์)</li></ol>
+
+  <h2>ระดับความยาก</h2>
+  <table class="levels"><tr><th><span class="level level-พื้นฐาน">พื้นฐาน</span></th><td>เคส 21–26 · ลิงก์คนขับ รับเงินทีหลัง เก็บปลายทาง และใบวางบิลแบบจ่ายครบ</td></tr><tr><th><span class="level level-ปานกลาง">ปานกลาง</span></th><td>เคส 27–34 · เงินปลายทางขาด ค่ารถรอบเดือน ค่ารถแพงกว่ายอดบิล ยกเลิก/กู้คืน และรับชำระเป็นงวด</td></tr><tr><th><span class="level level-ท้าทาย">ท้าทาย</span></th><td>เคส 35–40 · สิ่งที่ระบบต้องกันไว้ (ยกเลิกในใบวางบิล ยกเลิกการรับเงินหลังเคลียร์ค่ารถ) และบิลใหญ่ครบวงจร</td></tr></table>
+
+  <div class="warn"><b>หลังทดสอบเสร็จ</b> เรียงตามนี้: (1) super admin ลบรายการเคลียร์ค่ารถ (DP) ของออเดอร์ทดสอบ (2) ลบใบวางบิล (BL) ของลูกค้าทดสอบ (3) ยกเลิกหรือลบออเดอร์ของลูกค้า "ทดสอบ21–40" (4) ลบลูกค้าทดสอบ เพื่อไม่ให้ปนกับยอดขายและค่ารถจริง</div>
+
+  <footer class="sign cover-sign">
+    <span>ชื่อผู้ทดสอบ ............................................</span>
+    <span>วันที่ทดสอบ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 21 · มารับเอง ยังไม่จ่าย แล้วมาจ่ายเงินสดทีหลัง</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-พื้นฐาน">พื้นฐาน</span>
+      <span class="count">21 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>มารับเอง</span><span>รับเงินทีหลัง</span><span>หน้าออเดอร์</span></p>
+
+  <div class="story"><b>โจทย์</b> ลุงมาโนชมารับทรายถม 5 คิว บอกว่าจะเอาเงินสดมาจ่ายตอนบ่าย พอบ่ายลุงเอาเงินสดมาจ่ายครบ</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายถม (ทรายขี้เป็ด) — 5 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ21 ลุงมาโนช<br><span class="muted">โทร 099-000-0121 · ที่อยู่ 3 ม.2 ต.ทุ่งฮั้ว</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>มารับเอง</b></td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>เงินสด · ไม่ติ๊ก "ได้รับเงินแล้ว"</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>หน้าออเดอร์ ส่วนการชำระเงิน กด "รับเงินสด"</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 22 · จัดส่ง จ่ายแล้ว คนขับยืนยันผ่านลิงก์</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-พื้นฐาน">พื้นฐาน</span>
+      <span class="count">22 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>ลิงก์คนขับ</span><span>เคลียร์ค่ารถ</span><span>เงินสด</span></p>
+
+  <div class="story"><b>โจทย์</b> คุณสมใจซื้อหินเล็กคละ 5 คิว จ่ายเงินสดที่ร้านแล้ว ให้อ้ายโกไปส่งตำบลวังแก้ว พอส่งถึงอ้ายโกกดยืนยันในลิงก์ สิ้นวันเคลียร์ค่ารถให้อ้ายโก</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>หินเล็กคละ เบอร์ 1-3 — 5 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ22 คุณสมใจ<br><span class="muted">โทร 099-000-0122 · ที่อยู่ 15 ม.4 ต.วังแก้ว</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: บ้านคุณสมใจ หลังวัด<br>ตำบล: <b>วังแก้ว</b> (เลือกเอง) · คนขับ: <b>อ้ายโก</b> (รถ 5 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>เงินสด · ติ๊ก "ได้รับเงินแล้ว"</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เมนู "เคลียร์ค่ารถ" เลือก อ้ายโก ติ๊กเฉพาะออเดอร์นี้ เลือกช่องทางจ่าย "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 23 · เก็บปลายทาง คนขับเก็บครบ หักค่ารถ</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-พื้นฐาน">พื้นฐาน</span>
+      <span class="count">23 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>จ่ายปลายทาง</span><span>ลิงก์คนขับ</span><span>หักค่ารถ</span></p>
+
+  <div class="story"><b>โจทย์</b> คุณประยูรสั่งทรายก่อ/เท 10 คิว (2 เที่ยว) ส่งตำบลวังใต้ เก็บเงินปลายทาง สมศักดิ์ส่งครบ เก็บเงินได้ครบ แล้วกดยืนยันในลิงก์ ตอนเย็นสมศักดิ์เอาเงินมาส่งร้านโดยหักค่ารถของตัวเองไว้</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายก่อ/เท — 5 คิว/เที่ยว × 2 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ23 คุณประยูร<br><span class="muted">โทร 099-000-0123 · ที่อยู่ 40 ม.6 ต.วังใต้</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: บ้านคุณประยูร ติดคลองส่งน้ำ<br>ตำบล: <b>วังใต้</b> (เลือกเอง) · คนขับ: <b>สมศักดิ์</b> (รถ 5 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>จ่ายปลายทาง</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) เลือก "ได้รับครบ 6,000.00 บาท" แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เมนู "เคลียร์ค่ารถ" เลือก สมศักดิ์ ติ๊กเฉพาะออเดอร์นี้ เลือก "หักค่ารถให้คนขับแล้ว …" เลือกช่องทาง "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 24 · คนขับลืมกดลิงก์ ร้านกด "ส่งแล้ว" แทน</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-พื้นฐาน">พื้นฐาน</span>
+      <span class="count">24 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>ร้านวัสดุ</span><span>สถานะจัดส่ง</span><span>รถ 3 คิว</span></p>
+
+  <div class="story"><b>โจทย์</b> ร้านวัสดุโอนค่าทรายถม 3 คิวมาแล้ว ให้แซมไปส่งตำบลทุ่งฮั้ว แซมโทรมาบอกว่าส่งแล้วแต่ไม่ได้กดลิงก์ ร้านจึงกด "ส่งแล้ว" ในหน้าออเดอร์เอง แล้วเคลียร์ค่ารถ</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ร้านวัสดุก่อสร้าง · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายถม (ทรายขี้เป็ด) — 3 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ24 ร้านทุ่งฮั้ววัสดุ<br><span class="muted">โทร 099-000-0124 · ที่อยู่ 7 ม.1 ต.ทุ่งฮั้ว</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: หน้างานลูกค้าร้าน ม.1 ซอย 2<br>ตำบล: <b>ทุ่งฮั้ว</b> (เลือกเอง) · คนขับ: <b>แซม</b> (รถ 3 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>โอนเงิน · ติ๊ก "ได้รับเงินแล้ว"</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>หน้าออเดอร์ ส่วนการจัดส่ง กด "ส่งแล้ว"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เมนู "เคลียร์ค่ารถ" เลือก แซม ติ๊กเฉพาะออเดอร์นี้ เลือกช่องทางจ่าย "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 25 · ลูกค้าโอนหลังของถึง</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-พื้นฐาน">พื้นฐาน</span>
+      <span class="count">25 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>โอนเงิน</span><span>ลิงก์คนขับ</span><span>รับเงินทีหลัง</span></p>
+
+  <div class="story"><b>โจทย์</b> คุณจิราสั่งหินคละใหญ่ 5 คิว ส่งตำบลวังเหนือ บอกว่าจะโอนเมื่อของถึง เทวาไปส่งแล้วกดยืนยันในลิงก์ (ไม่ต้องเก็บเงิน) จากนั้นคุณจิราโอนเงินมา แล้วเคลียร์ค่ารถให้เทวา</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>หินคละใหญ่ เบอร์ 4-6 — 5 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ25 คุณจิรา<br><span class="muted">โทร 099-000-0125 · ที่อยู่ 22 ม.3 ต.วังเหนือ</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: บ้านคุณจิรา รั้วสีขาว<br>ตำบล: <b>วังเหนือ</b> (เลือกเอง) · คนขับ: <b>เทวา</b> (รถ 5 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>โอนเงิน · ไม่ติ๊ก "ได้รับเงินแล้ว"</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>หน้าออเดอร์ ส่วนการชำระเงิน กด "รับโอนแล้ว"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>เมนู "เคลียร์ค่ารถ" เลือก เทวา ติ๊กเฉพาะออเดอร์นี้ เลือกช่องทางจ่าย "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 26 · เครดิต จัดส่ง ออกใบวางบิล จ่ายครบ</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-พื้นฐาน">พื้นฐาน</span>
+      <span class="count">26 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>ร้านวัสดุ</span><span>เครดิต</span><span>ใบวางบิล</span></p>
+
+  <div class="story"><b>โจทย์</b> ร้านวัสดุสั่งหินเล็กคละ 10 คิว (2 เที่ยว) ส่งตำบลวังซ้าย ขอเครดิต โอ็ตไปส่งและกดยืนยันในลิงก์ สิ้นเดือนออกใบวางบิล ร้านโอนจ่ายครบ แล้วเคลียร์ค่ารถให้โอ็ต</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ร้านวัสดุก่อสร้าง · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>หินเล็กคละ เบอร์ 1-3 — 5 คิว/เที่ยว × 2 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ26 ร้านวังซ้ายค้าวัสดุ<br><span class="muted">โทร 099-000-0126 · ที่อยู่ 12 ม.5 ต.วังซ้าย</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: หน้างานลูกค้าร้าน ม.5 ข้างโรงเรียน<br>ตำบล: <b>วังซ้าย</b> (เลือกเอง) · คนขับ: <b>โอ็ต</b> (รถ 5 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>เครดิตรายเดือน</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เมนู "เคลียร์บิล" เลือก ทดสอบ26 ร้านวังซ้ายค้าวัสดุ ติ๊กเฉพาะออเดอร์นี้ แล้วกด "สร้างใบวางบิลและพิมพ์"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>เมนู "เคลียร์บิล" เปิดใบวางบิลนี้ กด "รับชำระ / เคลียร์บิล" เลือก "จ่ายครบ" ช่องทาง โอนเงิน แล้วบันทึก</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">4</td><td>เมนู "เคลียร์ค่ารถ" เลือก โอ็ต ติ๊กเฉพาะออเดอร์นี้ เลือกช่องทางจ่าย "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 27 · เก็บปลายทาง คนขับเก็บเงินไม่ครบ</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ปานกลาง">ปานกลาง</span>
+      <span class="count">27 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>จ่ายปลายทาง</span><span>ลิงก์คนขับ</span><span>เงินขาด</span></p>
+
+  <div class="story"><b>โจทย์</b> คุณเสาวลักษณ์สั่งทรายถม 5 คิว ส่งตำบลวังทรายคำ เก็บปลายทาง ลูกค้ามีเงินสดให้พ่อเลี้ยงตุ๋ยแค่ 2,000 บาท บอกว่าจะโอนส่วนที่เหลือทีหลัง พ่อเลี้ยงตุ๋ยแจ้งยอด 2,000 ในลิงก์</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายถม (ทรายขี้เป็ด) — 5 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ27 คุณเสาวลักษณ์<br><span class="muted">โทร 099-000-0127 · ที่อยู่ 9 ม.8 ต.วังทรายคำ</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: บ้านสวนคุณเสาวลักษณ์<br>ตำบล: <b>วังทรายคำ</b> (เลือกเอง) · คนขับ: <b>พ่อเลี้ยงตุ๋ย</b> (รถ 5 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>จ่ายปลายทาง</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) เลือก "ได้รับไม่ครบ / ยังไม่ได้รับ" แล้วใส่ 2,000 แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 28 · รับเงินปลายทางก่อน ค่ารถรอเคลียร์รอบเดือน</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ปานกลาง">ปานกลาง</span>
+      <span class="count">28 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>จ่ายปลายทาง</span><span>เคลียร์ค่ารถรอบเดือน</span><span>รถ 3 คิว</span></p>
+
+  <div class="story"><b>โจทย์</b> ป้าสายใจสั่งทรายก่อ/เท 3 คิว ส่งตำบลวังแก้ว เก็บปลายทาง หลวงพูนเก็บเงินครบและกดยืนยัน ตอนเย็นหลวงพูนส่งเงินทั้งหมดให้ร้าน ค่ารถขอรับรวมสิ้นเดือน พอสิ้นเดือนร้านเคลียร์ค่ารถให้</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายก่อ/เท — 3 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ28 ป้าสายใจ<br><span class="muted">โทร 099-000-0128 · ที่อยู่ 31 ม.2 ต.วังแก้ว</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: บ้านป้าสายใจ ซอยตรงข้ามร้านก๋วยเตี๋ยว<br>ตำบล: <b>วังแก้ว</b> (เลือกเอง) · คนขับ: <b>หลวงพูน</b> (รถ 3 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>จ่ายปลายทาง</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) เลือก "ได้รับครบ 1,680.00 บาท" แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เมนู "เคลียร์ค่ารถ" เลือก หลวงพูน ติ๊กเฉพาะออเดอร์นี้ เลือก "ได้รับเงินสด 1,680.00 บาท จากคนขับแล้ว" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>เมนู "เคลียร์ค่ารถ" เลือก หลวงพูน ติ๊กเฉพาะออเดอร์นี้ เลือกช่องทางจ่าย "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 29 · ค่ารถแพงกว่ายอดเก็บปลายทาง</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ปานกลาง">ปานกลาง</span>
+      <span class="count">29 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>จ่ายปลายทาง</span><span>ร้านจ่ายค่ารถเพิ่ม</span><span>ขาดทุนค่าส่ง</span></p>
+
+  <div class="story"><b>โจทย์</b> คุณวีระสั่งทรายถมแค่ 2 คิว ส่งตำบลร่องเคาะ เก็บปลายทาง รถเล็กไม่ว่างต้องให้อ้ายเบล (รถ 5 คิว) ไปส่ง อ้ายเบลเก็บเงินครบและกดยืนยัน แล้วเคลียร์ค่ารถโดยหักจากเงินที่เก็บมา</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายถม (ทรายขี้เป็ด) — 2 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ29 คุณวีระ<br><span class="muted">โทร 099-000-0129 · ที่อยู่ 5 ม.10 ต.ร่องเคาะ</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: บ้านคุณวีระ ปลายซอย<br>ตำบล: <b>ร่องเคาะ</b> (เลือกเอง) · คนขับ: <b>อ้ายเบล</b> (รถ 5 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>จ่ายปลายทาง</td></tr>
+  </table>
+
+  <div class="try"><b>ให้ลองทำระหว่างกรอก</b><ol><li>ขั้นสินค้า: กด "อื่นๆ" แล้วพิมพ์ 2 คิว/เที่ยว จำนวน 1 เที่ยว</li></ol>
+         <p class="write">สิ่งที่ระบบแสดง: <span class="line"></span></p></div>
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) เลือก "ได้รับครบ 980.00 บาท" แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เมนู "เคลียร์ค่ารถ" เลือก อ้ายเบล ติ๊กเฉพาะออเดอร์นี้ เลือก "หักค่ารถให้คนขับแล้ว …" เลือกช่องทาง "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 30 · ยกเลิกออเดอร์หลังส่งลิงก์ให้คนขับแล้ว</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ปานกลาง">ปานกลาง</span>
+      <span class="count">30 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>ร้านวัสดุ</span><span>ยกเลิกออเดอร์</span><span>ลิงก์คนขับ</span></p>
+
+  <div class="story"><b>โจทย์</b> ร้านวัสดุสั่งหินเล็กคละ 3 คิว ส่งตำบลวังเหนือ เก็บปลายทาง ส่งลิงก์ให้ลุงช่วยแล้ว แต่ร้านโทรมายกเลิกก่อนรถออก ร้านจึงยกเลิกออเดอร์ แล้วให้ลองเปิดลิงก์ของคนขับดู</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ร้านวัสดุก่อสร้าง · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>หินเล็กคละ เบอร์ 1-3 — 3 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ30 ร้านเหนือวัสดุ<br><span class="muted">โทร 099-000-0130 · ที่อยู่ 18 ม.7 ต.วังเหนือ</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: หน้างานลูกค้าร้าน ม.7<br>ตำบล: <b>วังเหนือ</b> (เลือกเอง) · คนขับ: <b>ลุงช่วย</b> (รถ 3 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>จ่ายปลายทาง</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>หน้าออเดอร์ กด "ยกเลิกออเดอร์" ท้ายหน้า แล้วกดตกลง</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ)</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 31 · ยกเลิกผิดออเดอร์ แล้วกู้คืน</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ปานกลาง">ปานกลาง</span>
+      <span class="count">31 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>ยกเลิกออเดอร์</span><span>กู้คืนออเดอร์</span><span>ตำบลไกล</span></p>
+
+  <div class="story"><b>โจทย์</b> คุณบุญเรือนโอนค่าทรายก่อ/เท 5 คิวมาแล้ว ส่งตำบลวังทอง ให้โอเว่นส่ง พนักงานกดยกเลิกออเดอร์นี้ผิด จึงกดกู้คืน จากนั้นโอเว่นไปส่งและกดยืนยัน แล้วเคลียร์ค่ารถ</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายก่อ/เท — 5 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ31 คุณบุญเรือน<br><span class="muted">โทร 099-000-0131 · ที่อยู่ 50 ม.4 ต.วังทอง</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: บ้านคุณบุญเรือน ใกล้ อบต.วังทอง<br>ตำบล: <b>วังทอง</b> (เลือกเอง) · คนขับ: <b>โอเว่น</b> (รถ 5 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>โอนเงิน · ติ๊ก "ได้รับเงินแล้ว"</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>หน้าออเดอร์ กด "ยกเลิกออเดอร์" ท้ายหน้า แล้วกดตกลง</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>หน้าออเดอร์ กด "กู้คืนออเดอร์" แล้วกดตกลง</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">4</td><td>เมนู "เคลียร์ค่ารถ" เลือก โอเว่น ติ๊กเฉพาะออเดอร์นี้ เลือกช่องทางจ่าย "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 32 · กดรับเงินผิดช่องทาง แล้วแก้</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ปานกลาง">ปานกลาง</span>
+      <span class="count">32 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>ร้านวัสดุ</span><span>มารับเอง</span><span>ยกเลิกการรับเงิน</span></p>
+
+  <div class="story"><b>โจทย์</b> ร้านวัสดุมารับหินคละใหญ่ 5 คิว บอกว่าจะโอน ตอนลูกค้าโอนมา พนักงานเผลอกด "รับเงินสด" จึงกด "ยกเลิกการรับเงิน" แล้วกด "รับโอนแล้ว" ใหม่ให้ถูก</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ร้านวัสดุก่อสร้าง · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>หินคละใหญ่ เบอร์ 4-6 — 5 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ32 ร้านศรีวังวัสดุ<br><span class="muted">โทร 099-000-0132 · ที่อยู่ 27 ม.9 ต.วังซ้าย</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>มารับเอง</b></td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>โอนเงิน · ไม่ติ๊ก "ได้รับเงินแล้ว"</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>หน้าออเดอร์ ส่วนการชำระเงิน กด "รับเงินสด"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>หน้าออเดอร์ กด "ยกเลิกการรับเงิน" แล้วกดตกลง</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>หน้าออเดอร์ ส่วนการชำระเงิน กด "รับโอนแล้ว"</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 33 · ใบวางบิล รับชำระ 2 งวด</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ปานกลาง">ปานกลาง</span>
+      <span class="count">33 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>ร้านวัสดุ</span><span>เครดิต</span><span>ใบวางบิล</span><span>รับชำระบางส่วน</span></p>
+
+  <div class="story"><b>โจทย์</b> ร้านวัสดุมารับเองทรายถม 10 คิว (2 เที่ยว) และหินเล็กคละ 5 คิว ขอเครดิต สิ้นเดือนออกใบวางบิล ร้านจ่ายเงินสดก่อน 3,000 บาท อีก 1 สัปดาห์โอนส่วนที่เหลือ</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ร้านวัสดุก่อสร้าง · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายถม (ทรายขี้เป็ด) — 5 คิว/เที่ยว × 2 เที่ยว<br>หินเล็กคละ เบอร์ 1-3 — 5 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ33 ร้านพูนผลวัสดุ<br><span class="muted">โทร 099-000-0133 · ที่อยู่ 4 ม.3 ต.วังทอง</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>มารับเอง</b></td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>เครดิตรายเดือน</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เมนู "เคลียร์บิล" เลือก ทดสอบ33 ร้านพูนผลวัสดุ ติ๊กเฉพาะออเดอร์นี้ แล้วกด "สร้างใบวางบิลและพิมพ์"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เมนู "เคลียร์บิล" เปิดใบวางบิลนี้ กด "รับชำระ / เคลียร์บิล" เลือก "จ่ายบางส่วน" ใส่ 3,000 ช่องทาง เงินสด แล้วบันทึก</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>เมนู "เคลียร์บิล" เปิดใบวางบิลนี้ กด "รับชำระ / เคลียร์บิล" เลือก "จ่ายครบ" ช่องทาง โอนเงิน แล้วบันทึก</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 34 · คนขับยืนยันแล้ว ร้านกดสถานะย้อนผิด</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ปานกลาง">ปานกลาง</span>
+      <span class="count">34 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>สถานะจัดส่ง</span><span>ลิงก์คนขับ</span><span>ใครเป็นคนยืนยัน</span></p>
+
+  <div class="story"><b>โจทย์</b> คุณอำไพจ่ายเงินสดค่าทรายถม 5 คิวแล้ว ให้อาวชาติส่งตำบลวังซ้าย อาวชาติกดยืนยันในลิงก์แล้ว แต่พนักงานเผลอกด "กำลังจัดส่ง" ในหน้าออเดอร์ ให้ลองเปิดลิงก์คนขับดู แล้วร้านกด "ส่งแล้ว" คืน จากนั้นเคลียร์ค่ารถ</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายถม (ทรายขี้เป็ด) — 5 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ34 คุณอำไพ<br><span class="muted">โทร 099-000-0134 · ที่อยู่ 16 ม.6 ต.วังซ้าย</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: บ้านคุณอำไพ ข้างศาลาประชาคม<br>ตำบล: <b>วังซ้าย</b> (เลือกเอง) · คนขับ: <b>อาวชาติ</b> (รถ 5 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>เงินสด · ติ๊ก "ได้รับเงินแล้ว"</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>หน้าออเดอร์ ส่วนการจัดส่ง กด "กำลังจัดส่ง"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ)</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">4</td><td>หน้าออเดอร์ ส่วนการจัดส่ง กด "ส่งแล้ว"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">5</td><td>เมนู "เคลียร์ค่ารถ" เลือก อาวชาติ ติ๊กเฉพาะออเดอร์นี้ เลือกช่องทางจ่าย "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 35 · ยกเลิกออเดอร์ที่อยู่ในใบวางบิล</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ท้าทาย">ท้าทาย</span>
+      <span class="count">35 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>ร้านวัสดุ</span><span>ใบวางบิล</span><span>ยกเลิกออเดอร์</span><span>ตรวจขอบเขต</span></p>
+
+  <div class="story"><b>โจทย์</b> ร้านวัสดุสั่งทรายก่อ/เท 3 คิว ส่งตำบลทุ่งฮั้ว ขอเครดิต ให้อินจันส่ง ออกใบวางบิลไปแล้ว ร้านโทรมายกเลิกเพราะยังไม่ได้ส่ง ให้ลองยกเลิกออเดอร์ก่อน ถ้าทำไม่ได้ให้ลบใบวางบิลแล้วยกเลิกใหม่</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ร้านวัสดุก่อสร้าง · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายก่อ/เท — 3 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ35 ร้านอินทร์วัสดุ<br><span class="muted">โทร 099-000-0135 · ที่อยู่ 8 ม.4 ต.ทุ่งฮั้ว</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: หน้างานลูกค้าร้าน ม.4 ทางเข้าไร่<br>ตำบล: <b>ทุ่งฮั้ว</b> (เลือกเอง) · คนขับ: <b>อินจัน</b> (รถ 3 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>เครดิตรายเดือน</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เมนู "เคลียร์บิล" เลือก ทดสอบ35 ร้านอินทร์วัสดุ ติ๊กเฉพาะออเดอร์นี้ แล้วกด "สร้างใบวางบิลและพิมพ์"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>หน้าออเดอร์ หาปุ่ม "ยกเลิกออเดอร์" ท้ายหน้า</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>เมนู "เคลียร์บิล" กดถังขยะของใบวางบิลนี้ แล้วกดตกลง</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">4</td><td>หน้าออเดอร์ กด "ยกเลิกออเดอร์" ท้ายหน้า แล้วกดตกลง</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 36 · คนขับแจ้งยังไม่ได้เงิน ลูกค้าโอนเข้าร้านเอง</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ท้าทาย">ท้าทาย</span>
+      <span class="count">36 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>จ่ายปลายทาง</span><span>เงินขาด</span><span>ร้านจ่ายค่ารถ</span></p>
+
+  <div class="story"><b>โจทย์</b> คุณชาญสั่งหินเล็กคละ 6 คิว (2 เที่ยว เที่ยวละ 3 คิว) ส่งตำบลวังใต้ เก็บปลายทาง ให้หลวงพูนส่ง ลูกค้าไม่มีเงินสด หลวงพูนจึงแจ้งยอด 0 บาทในลิงก์ ต่อมาลูกค้าโอนเข้าบัญชีร้านเอง แล้วร้านจ่ายค่ารถให้หลวงพูน</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>หินเล็กคละ เบอร์ 1-3 — 3 คิว/เที่ยว × 2 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ36 คุณชาญ<br><span class="muted">โทร 099-000-0136 · ที่อยู่ 61 ม.1 ต.วังใต้</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: บ้านคุณชาญ ตรงข้ามปั๊มน้ำมัน<br>ตำบล: <b>วังใต้</b> (เลือกเอง) · คนขับ: <b>หลวงพูน</b> (รถ 3 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>จ่ายปลายทาง</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) เลือก "ได้รับไม่ครบ / ยังไม่ได้รับ" แล้วใส่ 0 แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>หน้าออเดอร์ ส่วนการชำระเงิน กด "รับโอนแล้ว"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>เมนู "เคลียร์ค่ารถ" เลือก หลวงพูน ติ๊กเฉพาะออเดอร์นี้ เลือกช่องทางจ่าย "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 37 · รับเงินผ่านเคลียร์ค่ารถแล้ว ยกเลิกการรับเงินไม่ได้</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ท้าทาย">ท้าทาย</span>
+      <span class="count">37 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>จ่ายปลายทาง</span><span>ลบรายการเคลียร์ค่ารถ</span><span>ตรวจขอบเขต</span></p>
+
+  <div class="story"><b>โจทย์</b> คุณสุรชัยสั่งทรายถม 10 คิว (2 เที่ยว) ส่งตำบลวังทอง เก็บปลายทาง โอ็ตเก็บครบและเคลียร์ค่ารถแบบหักค่ารถแล้ว ภายหลังพบว่าบันทึกผิด ให้ลองกด "ยกเลิกการรับเงิน" ในหน้าออเดอร์ก่อน จากนั้นให้ผู้ดูแลระบบ (super admin) ลบรายการเคลียร์ค่ารถ แล้วเคลียร์ใหม่</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายถม (ทรายขี้เป็ด) — 5 คิว/เที่ยว × 2 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ37 คุณสุรชัย<br><span class="muted">โทร 099-000-0137 · ที่อยู่ 33 ม.5 ต.วังทอง</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: แปลงที่ดินคุณสุรชัย ริมถนนดำ<br>ตำบล: <b>วังทอง</b> (เลือกเอง) · คนขับ: <b>โอ็ต</b> (รถ 5 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>จ่ายปลายทาง</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) เลือก "ได้รับครบ 4,900.00 บาท" แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เมนู "เคลียร์ค่ารถ" เลือก โอ็ต ติ๊กเฉพาะออเดอร์นี้ เลือก "หักค่ารถให้คนขับแล้ว …" เลือกช่องทาง "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>หน้าออเดอร์ กด "ยกเลิกการรับเงิน" แล้วกดตกลง</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">4</td><td>บัญชี super admin: เมนู "เคลียร์ค่ารถ" ส่วนประวัติ กดถังขยะของรายการ DP ของออเดอร์นี้ แล้วกดตกลง</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">5</td><td>เมนู "เคลียร์ค่ารถ" เลือก โอ็ต ติ๊กเฉพาะออเดอร์นี้ เลือก "หักค่ารถให้คนขับแล้ว …" เลือกช่องทาง "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 38 · คิวไม่เต็ม + ที่กันดาร + ลดค่าส่ง เก็บปลายทาง</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ท้าทาย">ท้าทาย</span>
+      <span class="count">38 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>คิวต่อเที่ยว "อื่นๆ"</span><span>ที่กันดาร</span><span>ลดค่าส่ง</span><span>เคลียร์ค่ารถรอบเดือน</span></p>
+
+  <div class="story"><b>โจทย์</b> ลุงทองสั่งทรายก่อ/เท 5 คิว ส่งตำบลร่องเคาะบนดอย ทางแคบต้องใช้แซม (รถ 3 คิว) แบ่ง 2 เที่ยว เที่ยวละ 2.5 คิว บวกที่กันดาร 200 บาท ลุงขอลดค่าส่ง 100 บาท เก็บปลายทาง แซมเก็บครบ ส่งเงินให้ร้านทั้งหมด ค่ารถรอเคลียร์สิ้นเดือน</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายก่อ/เท — 2.5 คิว/เที่ยว × 2 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ38 ลุงทอง<br><span class="muted">โทร 099-000-0138 · ที่อยู่ 2 ม.12 ต.ร่องเคาะ</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: บ้านลุงทอง บนดอย ทางลูกรัง<br>ตำบล: <b>ร่องเคาะ</b> (เลือกเอง) · คนขับ: <b>แซม</b> (รถ 3 คิว)<br>ที่กันดาร (บวกเพิ่ม): <b>200</b> บาท</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ลดค่าส่ง 100 บาท</td></tr><tr><th>6. วิธีชำระเงิน</th><td>จ่ายปลายทาง</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) เลือก "ได้รับครบ 3,100.00 บาท" แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เมนู "เคลียร์ค่ารถ" เลือก แซม ติ๊กเฉพาะออเดอร์นี้ เลือก "ได้รับเงินสด 3,100.00 บาท จากคนขับแล้ว" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>เมนู "เคลียร์ค่ารถ" เลือก แซม ติ๊กเฉพาะออเดอร์นี้ เลือกช่องทางจ่าย "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 39 · ใบวางบิล รับชำระผิด แล้วลบรายการรับชำระ</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ท้าทาย">ท้าทาย</span>
+      <span class="count">39 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>ร้านวัสดุ</span><span>ใบวางบิล</span><span>ลบการรับชำระ</span><span>ตรวจขอบเขต</span></p>
+
+  <div class="story"><b>โจทย์</b> ร้านวัสดุสั่งหินคละใหญ่ 5 คิว ส่งตำบลวังแก้ว ขอเครดิต อ้ายเบลส่งและกดยืนยัน ออกใบวางบิลแล้ว พนักงานบันทึกรับเงินสด 1,000 บาทผิดใบ จึงลบรายการนั้น แล้วบันทึกรับโอนเต็มจำนวนให้ถูก จากนั้นเคลียร์ค่ารถ</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ร้านวัสดุก่อสร้าง · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>หินคละใหญ่ เบอร์ 4-6 — 5 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ39 ร้านแก้วมณีวัสดุ<br><span class="muted">โทร 099-000-0139 · ที่อยู่ 11 ม.8 ต.วังแก้ว</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: หน้างานลูกค้าร้าน ม.8 ใกล้หอถังประปา<br>ตำบล: <b>วังแก้ว</b> (เลือกเอง) · คนขับ: <b>อ้ายเบล</b> (รถ 5 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ไม่มีส่วนลด</td></tr><tr><th>6. วิธีชำระเงิน</th><td>เครดิตรายเดือน</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เมนู "เคลียร์บิล" เลือก ทดสอบ39 ร้านแก้วมณีวัสดุ ติ๊กเฉพาะออเดอร์นี้ แล้วกด "สร้างใบวางบิลและพิมพ์"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">3</td><td>เมนู "เคลียร์บิล" เปิดใบวางบิลนี้ กด "รับชำระ / เคลียร์บิล" ลองเลือก "จ่ายบางส่วน" ใส่ 2,800 (เท่ายอดค้าง) ดูก่อน แล้วแก้เป็น เลือก "จ่ายบางส่วน" ใส่ 1,000 ช่องทาง เงินสด แล้วบันทึก</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">4</td><td>ในใบวางบิล ส่วน "ประวัติรับชำระ" กดถังขยะของรายการที่บันทึกผิด แล้วกดตกลง</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">5</td><td>เมนู "เคลียร์บิล" เปิดใบวางบิลนี้ กด "รับชำระ / เคลียร์บิล" เลือก "จ่ายครบ" ช่องทาง โอนเงิน แล้วบันทึก</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">6</td><td>เมนู "เคลียร์ค่ารถ" เลือก อ้ายเบล ติ๊กเฉพาะออเดอร์นี้ เลือกช่องทางจ่าย "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section>
+<section class="page">
+  <header class="head">
+    <div>
+      <p class="kicker">Case Study ชุดที่ 2 · ทดสอบการเปิดออเดอร์</p>
+      <h1>เคสที่ 40 · บิลใหญ่ครบวงจร</h1>
+    </div>
+    <div class="head-right">
+      <span class="level level-ท้าทาย">ท้าทาย</span>
+      <span class="count">40 / 40</span>
+    </div>
+  </header>
+  <p class="tags"><span>หลายสินค้า</span><span>ส่วนลดคิวละ</span><span>ส่วนลด %</span><span>จ่ายปลายทาง</span><span>หักค่ารถ</span></p>
+
+  <div class="story"><b>โจทย์</b> ผู้รับเหมาสั่งทรายถม 10 คิว (2 เที่ยว) ลดคิวละ 20 บาท และหินเล็กคละ 5 คิว (1 เที่ยว) ขอลดท้ายบิลอีก 5% ส่งตำบลวังทรายคำ เก็บปลายทาง สมศักดิ์ส่งครบ 3 เที่ยว เก็บเงินครบ แล้วเคลียร์ค่ารถแบบหักค่ารถ</div>
+
+  <h2>ข้อมูลที่ต้องกรอก (เมนู "สร้างออเดอร์")</h2>
+  <table class="input">
+    <tr><th>1. ประเภท / วันที่</th><td>ออเดอร์ท่าทราย · วันที่ "วันนี้"</td></tr><tr><th>2. สินค้า</th><td>ทรายถม (ทรายขี้เป็ด) — 5 คิว/เที่ยว × 2 เที่ยว<br>หินเล็กคละ เบอร์ 1-3 — 5 คิว/เที่ยว × 1 เที่ยว</td></tr><tr><th>3. ลูกค้า (เพิ่มใหม่)</th><td>ทดสอบ40 หจก.ทดสอบมั่นคงก่อสร้าง<br><span class="muted">โทร 099-000-0140 · ที่อยู่ 88 ม.2 ต.วังทรายคำ</span></td></tr><tr><th>4. การรับสินค้า</th><td><b>จัดส่ง</b> · ไม่ต้องปักหมุด พิมพ์ที่อยู่: โครงการโกดังสินค้า ม.2<br>ตำบล: <b>วังทรายคำ</b> (เลือกเอง) · คนขับ: <b>สมศักดิ์</b> (รถ 5 คิว)</td></tr><tr><th>5. สรุป / ส่วนลด</th><td>ลดคิวละ 20 บาท (ทรายถม (ทรายขี้เป็ด))<br>ส่วนลดท้ายบิล 5 %</td></tr><tr><th>6. วิธีชำระเงิน</th><td>จ่ายปลายทาง</td></tr>
+  </table>
+
+  
+
+  <h2>จดผลที่ระบบแสดง</h2>
+  <table class="check">
+    <thead><tr><th>รายการ</th><th>ระบบแสดง</th><th class="ok">ผู้ตรวจ ✓/✗</th></tr></thead>
+    <tbody>
+      <tr><th>เลขที่เอกสาร<small>DO… / TS…</small></th><td></td><td class="ok"></td></tr><tr><th>ยอดสุทธิ<small>ตัวเลขสีน้ำเงิน</small></th><td></td><td class="ok"></td></tr><tr><th>ค่ารถคนขับ<small>ใต้ช่องยืนยันคนขับ</small></th><td></td><td class="ok"></td></tr><tr><th>ขั้นตอนในสรุปบิล<small>ทันทีหลังบันทึก</small></th><td></td><td class="ok"></td></tr>
+    </tbody>
+  </table>
+
+  <h2>ขั้นต่อจากบันทึก (ทำตามลำดับ)</h2>
+  <table class="steps-t">
+    <thead><tr><th class="n">#</th><th>สิ่งที่ต้องทำ</th><th class="w">ขั้นตอนในสรุปบิล</th><th class="ok">✓/✗</th></tr></thead>
+    <tbody><tr><td class="n">1</td><td>เปิดลิงก์ยืนยันของคนขับ (หน้าออเดอร์ → "คัดลอกข้อความส่งคนขับ" → เปิดลิงก์ในข้อความ) เลือก "ได้รับครบ 7,345.00 บาท" แล้วกด "ยืนยันส่งสำเร็จ"</td><td class="w"></td><td class="ok"></td></tr><tr><td class="n">2</td><td>เมนู "เคลียร์ค่ารถ" เลือก สมศักดิ์ ติ๊กเฉพาะออเดอร์นี้ เลือก "หักค่ารถให้คนขับแล้ว …" เลือกช่องทาง "เงินสด" แล้วกดยืนยัน</td><td class="w"></td><td class="ok"></td></tr></tbody>
+  </table>
+
+  <div class="issue">
+    <b>ปัญหา / ข้อสังเกตที่พบ</b>
+    <span class="line"></span>
+  </div>
+
+  <footer class="sign">
+    <span>ผู้กรอก ............................................</span>
+    <span>วันที่/เวลา ......................................</span>
+    <span>ผู้ตรวจ ............................................</span>
+  </footer>
+</section></body></html>
