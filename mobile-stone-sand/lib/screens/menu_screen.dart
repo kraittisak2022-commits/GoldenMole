@@ -74,6 +74,7 @@ class _MenuScreenState extends State<MenuScreen> with ReloadOnDataChange {
   Widget build(BuildContext context) {
     final auth = AuthScope.of(context);
     final catalog = CatalogScope.of(context);
+    final tour = TourScope.maybeOf(context);
     final user = auth.user;
     final width = MediaQuery.sizeOf(context).width;
     final columns = width >= 1024 ? 4 : (width >= 600 ? 3 : 2);
@@ -100,8 +101,10 @@ class _MenuScreenState extends State<MenuScreen> with ReloadOnDataChange {
             },
             children: [
               const PageHeader(title: 'เมนู', subtitle: 'เลือกส่วนที่ต้องการใช้งาน'),
-              const TourMenuCard(),
-              const SizedBox(height: 24),
+              if (tour != null && (tour.state != null || !tour.done)) ...[
+                const TourMenuCard(),
+                const SizedBox(height: 24),
+              ],
               GridRows(
                 columns: columns,
                 children: [

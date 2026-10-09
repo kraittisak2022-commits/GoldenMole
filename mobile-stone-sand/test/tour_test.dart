@@ -22,6 +22,14 @@ void main() {
     endDemoSession();
   });
 
+  test('finishing the tour is remembered per user', () {
+    expect(isTourDone('u1'), isFalse);
+    expect(isTourDone(null), isFalse);
+    markTourDone('u1');
+    expect(isTourDone('u1'), isTrue);
+    expect(isTourDone('u2'), isFalse);
+  });
+
   group('tour state', () {
     test('round-trips through prefs', () {
       saveTourState(

@@ -65,7 +65,6 @@ class _DashboardScreenState extends State<DashboardScreen> with ReloadOnDataChan
 
   @override
   Widget build(BuildContext context) {
-    final user = AuthScope.of(context).user;
     return ListenableBuilder(
       listenable: Listenable.merge(loaders),
       builder: (context, _) {
@@ -116,26 +115,20 @@ class _DashboardScreenState extends State<DashboardScreen> with ReloadOnDataChan
           child: PageScroll(
             onRefresh: reloadAll,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'สวัสดี ${user?.displayName ?? ''}',
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
+              if (isWide(context)) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TourTarget(
+                    'new-order',
+                    child: FilledButton.icon(
+                      onPressed: () => openNewOrder(context),
+                      icon: const Icon(Icons.add, size: 20),
+                      label: const Text('สร้างออเดอร์'),
                     ),
                   ),
-                  if (isWide(context))
-                    TourTarget(
-                      'new-order',
-                      child: FilledButton.icon(
-                        onPressed: () => openNewOrder(context),
-                        icon: const Icon(Icons.add, size: 20),
-                        label: const Text('สร้างออเดอร์'),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
+                ),
+                const SizedBox(height: 16),
+              ],
               _DateBar(date: _date, isToday: isToday, onChange: _setDate),
               if (error != null) ...[const SizedBox(height: 16), ErrorBox(error, onRetry: reloadAll)],
               const SizedBox(height: 16),

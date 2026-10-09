@@ -56,6 +56,24 @@ void saveTourState(TourState? s) {
   } catch (_) {}
 }
 
+String _doneKey(String userId) => 'stone_sand_tour_done_v1:$userId';
+
+/// True once [userId] finished the whole tour on this device; the menu then stops offering it.
+bool isTourDone(String? userId) {
+  if (userId == null) return false;
+  try {
+    return Prefs.instance.getBool(_doneKey(userId)) ?? false;
+  } catch (_) {
+    return false;
+  }
+}
+
+void markTourDone(String userId) {
+  try {
+    Prefs.instance.setBool(_doneKey(userId), true);
+  } catch (_) {}
+}
+
 /// A ready-made credit pickup order so the tour can jump straight to วางบิล.
 OrderDraft demoCreditDraft(Customer customer, Product product, OrderSource source) {
   const quantity = 2.0;
@@ -316,8 +334,11 @@ class TourController extends ChangeNotifier {
     }
   }
 
-  /// Deletes the demo data; true when the tour ended.
-  Future<bool> end() async {
+  /// Finished the whole tour, so it is offered from Settings only.
+  bool get done => isTourDone(auth.user?.id);
+
+  /// Deletes the demo data; true when the tour ended. [completed] is the last step's finish button.
+  Future<bool> end({bool completed = false}) async {
     busy = true;
     error = '';
     notifyListeners();
@@ -331,18 +352,20 @@ class TourController extends ChangeNotifier {
       return false;
     }
     final onMenu = env().page == TourPage.menu;
+    final userId = auth.user?.id;
+    if (completed && userId != null) markTourDone(userId);
     endDemoSession();
     _clearDraft();
     notifyDataChanged();
     busy = false;
     _set(null);
-    navigate(TourNav(onMenu ? TourPage.home : TourPage.menu));
+    navigate(TourNav(completed || onMenu ? TourPage.home : TourPage.menu));
     return true;
   }
 
   Future<void> runAction(TourAction action) async {
     if (action == TourAction.finish) {
-      await end();
+      await end(completed: true);
       return;
     }
     final s = _state;

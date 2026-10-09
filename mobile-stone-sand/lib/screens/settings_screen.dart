@@ -13,6 +13,7 @@ import '../logic/promptpay.dart';
 import '../models/models.dart';
 import '../screens/new_order/wizard_widgets.dart';
 import '../theme/app_theme.dart';
+import '../tour/tour_menu_card.dart';
 import '../widgets/page.dart';
 import '../widgets/ui.dart';
 
@@ -29,7 +30,7 @@ class SettingsScreen extends StatelessWidget {
       maxWidth: 768,
       onRefresh: catalog.reload,
       children: [
-        const PageHeader(title: 'ตั้งค่า', subtitle: 'ราคาสินค้า ค่าส่ง หัวบิล และช่องทางรับเงิน'),
+        const PageHeader(title: 'ตั้งค่า', subtitle: 'ราคาสินค้า ค่าส่ง หัวบิล ช่องทางรับเงิน และสอนใช้งาน'),
         if (catalog.error.isNotEmpty) ...[ErrorBox(catalog.error), const SizedBox(height: 12)],
         ProductsSection(products: catalog.products),
         const SizedBox(height: 20),
@@ -40,6 +41,8 @@ class SettingsScreen extends StatelessWidget {
         CompanySection(company: catalog.settings.company),
         const SizedBox(height: 20),
         PaymentSection(payment: catalog.settings.payment),
+        const SizedBox(height: 20),
+        const TourMenuCard(),
       ],
     );
   }
