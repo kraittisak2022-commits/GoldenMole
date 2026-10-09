@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><title>เฉลย Case Study</title><style>
+@page { size: A4; margin: 10mm 13mm; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: 'Sarabun', 'Leelawadee UI', 'Leelawadee', Tahoma, sans-serif; font-size: 10.5pt; color: #1f2937; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.page { page-break-after: always; break-after: page; }
+.page:last-child { page-break-after: auto; break-after: auto; }
+h1 { font-size: 17pt; margin: 2px 0 0; line-height: 1.25; }
+h2 { font-size: 11pt; margin: 9px 0 4px; color: #0f5132; border-left: 4px solid #198754; padding-left: 7px; }
+h3 { font-size: 10.5pt; margin: 0 0 4px; }
+small { display: block; font-size: 8pt; color: #6b7280; font-weight: 400; }
+td small, h3 small { display: inline; }
+.muted { color: #6b7280; font-weight: 400; }
+.kicker { margin: 0; font-size: 8.5pt; letter-spacing: .04em; color: #198754; font-weight: 600; text-transform: uppercase; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-bottom: 2px solid #111827; padding-bottom: 6px; }
+.head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.count { font-size: 9pt; color: #6b7280; font-variant-numeric: tabular-nums; }
+.level { display: inline-block; border-radius: 999px; padding: 1px 10px; font-size: 8.5pt; font-weight: 700; }
+.level-พื้นฐาน { background: #d1fae5; color: #065f46; }
+.level-ปานกลาง { background: #fef3c7; color: #92400e; }
+.level-ท้าทาย { background: #fee2e2; color: #991b1b; }
+.tags { margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.tags span { background: #f3f4f6; border-radius: 4px; padding: 0 7px; font-size: 8.5pt; color: #374151; }
+.story { margin-top: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 6px 11px; font-size: 10.5pt; }
+.story b { color: #166534; margin-right: 4px; }
+table { width: 100%; border-collapse: collapse; }
+.input th, .input td, .check th, .check td, .ref th, .ref td, .ans-t th, .ans-t td { border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; text-align: left; }
+.input th { width: 30%; background: #f9fafb; font-weight: 600; }
+.check thead th { background: #111827; color: #fff; font-size: 9pt; }
+.check tbody th { width: 34%; background: #f9fafb; font-weight: 600; }
+.check tbody th { padding-top: 2px; padding-bottom: 2px; line-height: 1.25; }
+.check tbody td { height: 26px; }
+.check .ok { width: 18%; text-align: center; }
+.try { margin-top: 8px; border: 1.5px dashed #f59e0b; background: #fffbeb; border-radius: 6px; padding: 5px 11px; }
+.try ol { margin: 3px 0 0; padding-left: 18px; }
+.write { margin: 6px 0 0; display: flex; gap: 6px; align-items: flex-end; }
+.line { display: block; flex: 1; border-bottom: 1px dotted #6b7280; height: 20px; }
+.issue { margin-top: 8px; }
+.issue .line { margin-top: 2px; }
+.sign { margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; font-size: 9pt; color: #374151; }
+.cover .title { font-size: 26pt; margin: 6px 0 8px; }
+.title-sm { font-size: 20pt; margin: 4px 0 6px; }
+.lead { font-size: 11pt; color: #374151; }
+.steps { padding-left: 20px; margin: 4px 0; }
+.steps li { margin: 3px 0; }
+.levels th { width: 22%; padding: 6px 8px; text-align: left; border: 1px solid #e5e7eb; }
+.levels td { padding: 6px 8px; border: 1px solid #e5e7eb; }
+.warn { margin-top: 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 9px 12px; color: #7f1d1d; }
+.cover-sign { margin-top: 28px; }
+.ref thead th { background: #f3f4f6; font-size: 9pt; }
+.r { text-align: right !important; font-variant-numeric: tabular-nums; }
+.formula { padding-left: 18px; margin: 4px 0; }
+.formula li { margin: 3px 0; }
+.ans { break-inside: avoid; page-break-inside: avoid; margin-bottom: 10px; }
+.ans-t th { width: 26%; background: #f9fafb; font-weight: 600; font-size: 9.5pt; padding: 3px 8px; }
+.ans-t td { font-variant-numeric: tabular-nums; padding: 3px 8px; }
+.pos { color: #047857; }
+.behave { margin: 4px 0 0; font-size: 9.5pt; background: #fffbeb; border-left: 3px solid #f59e0b; padding: 3px 8px; }
+</style></head>
+<body>
+<section class="page">
+  <p class="kicker">เฉลยสำหรับผู้ตรวจ · ห้ามแจกให้ผู้ทดสอบ</p>
+  <h1 class="title-sm">เฉลย Case Study 20 เคส</h1>
+  <p class="lead">ตัวเลขทั้งหมดคำนวณด้วยสูตรเดียวกับในระบบ จากราคาและอัตราค่าส่ง ณ 9 ต.ค. 2569
+  ถ้าแก้ราคาสินค้า อัตราตำบล หรือคนขับหลังวันนี้ ตัวเลขในเฉลยจะไม่ตรง ต้องสร้างเฉลยใหม่</p>
+
+  <h2>ราคาสินค้า</h2>
+  <table class="ref">
+    <thead><tr><th>สินค้า</th><th class="r">บาท/คิว</th></tr></thead>
+    <tbody><tr><td>หินเล็กคละ เบอร์ 1-3</td><td class="r">560</td></tr><tr><td>หินคละใหญ่ เบอร์ 4-6</td><td class="r">560</td></tr><tr><td>ทรายถม (ทรายขี้เป็ด)</td><td class="r">450</td></tr><tr><td>ทรายก่อ/เท</td><td class="r">560</td></tr></tbody>
+  </table>
+
+  <h2>อัตราตำบล</h2>
+  <table class="ref">
+    <thead><tr><th>ตำบล</th><th class="r">ค่าส่งลูกค้า บาท/คิว</th><th class="r">ค่ารถคนขับ รถ 5 คิว/เที่ยว</th><th class="r">ค่ารถคนขับ รถ 3 คิว/เที่ยว</th></tr></thead>
+    <tbody><tr><td>ทุ่งฮั้ว</td><td class="r">0</td><td class="r">400</td><td class="r">400</td></tr><tr><td>วังแก้ว</td><td class="r">0</td><td class="r">500</td><td class="r">400</td></tr><tr><td>วังเหนือ</td><td class="r">0</td><td class="r">700</td><td class="r">500</td></tr><tr><td>วังซ้าย</td><td class="r">0</td><td class="r">700</td><td class="r">500</td></tr><tr><td>วังใต้</td><td class="r">40</td><td class="r">1,000</td><td class="r">700</td></tr><tr><td>วังทรายคำ</td><td class="r">40</td><td class="r">1,000</td><td class="r">700</td></tr><tr><td>วังทอง</td><td class="r">40</td><td class="r">1,300</td><td class="r">1,000</td></tr><tr><td>ร่องเคาะ</td><td class="r">40</td><td class="r">1,300</td><td class="r">1,000</td></tr></tbody>
+  </table>
+
+  <h2>สูตรที่ใช้ตรวจ</h2>
+  <ul class="formula">
+    <li><b>ค่าจัดส่ง</b> = ค่าส่ง/คิว ของตำบล × คิวรวม + ที่กันดาร (ไม่ปักหมุด จึงไม่มีค่าเพิ่มตามระยะ)</li>
+    <li><b>ยอดสุทธิ</b> = ค่าสินค้า + ค่าจัดส่ง − ลดคิวละ − ลดค่าส่ง (ไม่เกินค่าจัดส่ง) − ส่วนลดท้ายบิล (% คิดจากค่าสินค้าหลังลดคิวละ เท่านั้น)</li>
+    <li><b>ค่ารถคนขับ</b> = อัตราตำบลตามขนาดรถของคนขับ × จำนวนเที่ยว (ไม่รวมที่กันดาร)</li>
+    <li><b>คงเหลือเข้าร้าน</b> = ยอดสุทธิ − ค่ารถคนขับ</li>
+  </ul>
+
+  <h2>ยอดรวมทั้ง 20 เคส (ใช้เทียบหน้าสรุปบิล เมื่อกรองเฉพาะลูกค้าทดสอบ)</h2>
+  <table class="ref">
+    <tbody>
+      <tr><td>ยอดบิลรวม</td><td class="r">76,785.00</td></tr>
+      <tr><td>ค่ารถคนขับรวม</td><td class="r">24,300.00</td></tr>
+      <tr><td>คงเหลือเข้าร้านรวม</td><td class="r"><b>52,485.00</b></td></tr>
+      <tr><td>ค้างรับรวม (ทันทีหลังบันทึก)</td><td class="r">48,455.00</td></tr>
+    </tbody>
+  </table>
+</section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 01 · ลูกค้ามารับเอง จ่ายเงินสด <span class="muted">· ทดสอบ01 ลุงแก้ว ใจดี · เงินสด</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>3 คิว · 1 เที่ยว</td></tr><tr><th>ค่าสินค้า</th><td>1,350.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>1,350.00</b></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,350.00</b></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>ปิดงานแล้ว</b></td></tr></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 02 · มารับเอง โอนเงินแล้ว <span class="muted">· ทดสอบ02 ช่างบุญมี · โอนเงิน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว</td></tr><tr><th>ค่าสินค้า</th><td>2,800.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>2,800.00</b></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">2,800.00</b></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>ปิดงานแล้ว</b></td></tr></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 03 · มารับเอง บอกว่าจะโอน แต่ยังไม่โอน <span class="muted">· ทดสอบ03 ป้าจันทร์ แสงดี · โอนเงิน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>6 คิว · 2 เที่ยว</td></tr><tr><th>ค่าสินค้า</th><td>3,360.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>3,360.00</b></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">3,360.00</b></td></tr><tr><th>ค้างรับ</th><td>3,360.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอรับเงิน</b></td></tr></table>
+  <p class="behave"><b>ต้องเห็น:</b> บิลต้องยังค้างรับเต็มจำนวน และในสรุปบิลขึ้น "รอรับเงิน"</p>
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 04 · ร้านวัสดุสั่งส่ง ตำบลที่ค่าส่ง 0 บาท <span class="muted">· ทดสอบ04 ร้านรุ่งเรืองวัสดุ · เงินสด</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,250.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>2,250.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>700.00 <small>(700 × 1 เที่ยว · ต.วังเหนือ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,550.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 700.00 = -700.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอเคลียร์ค่ารถ</small></td></tr></table>
+  <p class="behave"><b>ต้องเห็น:</b> ค่าส่งเก็บลูกค้า = 0 แต่ค่ารถคนขับไม่เป็น 0 → ในสรุปบิล "คงเหลือเข้าร้าน" ต้องน้อยกว่ายอดบิล</p>
+</article>
+<article class="ans">
+  <h3>เคสที่ 05 · จัดส่ง 2 เที่ยว ตำบลมีค่าส่ง เก็บเงินปลายทาง <span class="muted">· ทดสอบ05 คุณวิชัย มั่นคง · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>10 คิว · 2 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>5,600.00</td></tr><tr><th>ค่าจัดส่ง</th><td>400.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>6,000.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>2,000.00 <small>(1,000 × 2 เที่ยว · ต.วังใต้ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">4,000.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 400.00 − ค่ารถ 2,000.00 = -1,600.00)</small></td></tr><tr><th>ค้างรับ</th><td>6,000.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอรับเงินจากคนขับ</small></td></tr></table>
+  <p class="behave"><b>ต้องเห็น:</b> หลังบันทึก ต้องมีหน้าต่างให้เลือก "คัดลอกข้อความส่งคนขับ" หรือ "ออกบิล"</p>
+</article>
+<article class="ans">
+  <h3>เคสที่ 06 · รถเล็ก 3 คิว <span class="muted">· ทดสอบ06 น้องฝน · เงินสด</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>3 คิว · 1 เที่ยว · รถ 3 คิว</td></tr><tr><th>ค่าสินค้า</th><td>1,680.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>1,680.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>400.00 <small>(400 × 1 เที่ยว · ต.ทุ่งฮั้ว รถ 3 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,280.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 400.00 = -400.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอเคลียร์ค่ารถ</small></td></tr></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 07 · ของ 3 คิว แต่ใช้รถ 5 คิว <span class="muted">· ทดสอบ07 ร้านมั่นคงการช่าง · โอนเงิน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>3 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>1,350.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>1,350.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>500.00 <small>(500 × 1 เที่ยว · ต.วังแก้ว รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">850.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 500.00 = -500.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอเคลียร์ค่ารถ</small></td></tr></table>
+  <p class="behave"><b>ต้องเห็น:</b> เมื่อเลือกอ้ายเบล ขนาดรถต้องเปลี่ยนเป็น 5 คิว และค่ารถคิดตามอัตรารถ 5 คิว (ไม่ใช่รถ 3 คิว)</p>
+</article>
+<article class="ans">
+  <h3>เคสที่ 08 · งานใหญ่ 3 เที่ยว เครดิตรายเดือน <span class="muted">· ทดสอบ08 ผรม.สมชาย ก่อสร้าง · เครดิตรายเดือน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>15 คิว · 3 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>8,400.00</td></tr><tr><th>ค่าจัดส่ง</th><td>600.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>9,000.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>3,900.00 <small>(1,300 × 3 เที่ยว · ต.วังทอง รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">5,100.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 600.00 − ค่ารถ 3,900.00 = -3,300.00)</small></td></tr><tr><th>ค้างรับ</th><td>9,000.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอวางบิล</small></td></tr></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 09 · สินค้า 2 อย่าง รถเล็ก 2 เที่ยว <span class="muted">· ทดสอบ09 ร้านเจริญพาณิชย์ · โอนเงิน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>6 คิว · 2 เที่ยว · รถ 3 คิว</td></tr><tr><th>ค่าสินค้า</th><td>3,030.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>3,030.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>1,000.00 <small>(500 × 2 เที่ยว · ต.วังซ้าย รถ 3 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">2,030.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 1,000.00 = -1,000.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอเคลียร์ค่ารถ</small></td></tr></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 10 · คิวต่อเที่ยวไม่เต็ม (2.5 คิว) <span class="muted">· ทดสอบ10 ลุงประเสริฐ · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 2 เที่ยว · รถ 3 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,800.00</td></tr><tr><th>ค่าจัดส่ง</th><td>200.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>3,000.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>2,000.00 <small>(1,000 × 2 เที่ยว · ต.ร่องเคาะ รถ 3 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,000.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 200.00 − ค่ารถ 2,000.00 = -1,800.00)</small></td></tr><tr><th>ค้างรับ</th><td>3,000.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอรับเงินจากคนขับ</small></td></tr></table>
+  <p class="behave"><b>ต้องเห็น:</b> รวมต้องได้ 5 คิว 2 เที่ยว ระบบแนะนำรถ 3 คิว</p>
+</article>
+<article class="ans">
+  <h3>เคสที่ 11 · ส่วนลดต่อคิว <span class="muted">· ทดสอบ11 คุณสุดา รักษ์ดี · เงินสด</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>10 คิว · 2 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>5,600.00</td></tr><tr><th>ค่าจัดส่ง</th><td>400.00</td></tr><tr><th>ส่วนลดรวม</th><td>300.00 <small>(ลดคิวละ 300.00)</small></td></tr><tr><th>ยอดสุทธิ</th><td><b>5,700.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>2,000.00 <small>(1,000 × 2 เที่ยว · ต.วังทรายคำ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">3,700.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 400.00 − ค่ารถ 2,000.00 = -1,600.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอเคลียร์ค่ารถ</small></td></tr></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 12 · ส่วนลดท้ายบิล 5% มารับเอง เครดิต <span class="muted">· ทดสอบ12 ร้านทองดีวัสดุ · เครดิตรายเดือน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>15 คิว · 3 เที่ยว</td></tr><tr><th>ค่าสินค้า</th><td>7,300.00</td></tr><tr><th>ส่วนลดรวม</th><td>365.00 <small>(ท้ายบิล 365.00)</small></td></tr><tr><th>ยอดสุทธิ</th><td><b>6,935.00</b></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">6,935.00</b></td></tr><tr><th>ค้างรับ</th><td>6,935.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอวางบิล</b></td></tr></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 13 · ส่วนลด % ต้องไม่ลดค่าส่ง <span class="muted">· ทดสอบ13 คุณมาลี ศรีสุข · โอนเงิน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,800.00</td></tr><tr><th>ค่าจัดส่ง</th><td>200.00</td></tr><tr><th>ส่วนลดรวม</th><td>280.00 <small>(ท้ายบิล 280.00)</small></td></tr><tr><th>ยอดสุทธิ</th><td><b>2,720.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>1,000.00 <small>(1,000 × 1 เที่ยว · ต.วังใต้ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,720.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 200.00 − ค่ารถ 1,000.00 = -800.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอเคลียร์ค่ารถ</small></td></tr></table>
+  <p class="behave"><b>ต้องเห็น:</b> ส่วนลด 10% ต้องคิดจากค่าสินค้าเท่านั้น ไม่รวมค่าส่ง</p>
+</article>
+<article class="ans">
+  <h3>เคสที่ 14 · ส่วนลดท้ายบิลเป็นบาท (ปัดเศษ) <span class="muted">· ทดสอบ14 ร้านสมบูรณ์ค้าวัสดุ · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>10 คิว · 2 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>5,050.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>50.00 <small>(ท้ายบิล 50.00)</small></td></tr><tr><th>ยอดสุทธิ</th><td><b>5,000.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>1,400.00 <small>(700 × 2 เที่ยว · ต.วังเหนือ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">3,600.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 1,400.00 = -1,400.00)</small></td></tr><tr><th>ค้างรับ</th><td>5,000.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอรับเงินจากคนขับ</small></td></tr></table>
+  
+</article>
+<article class="ans">
+  <h3>เคสที่ 15 · ลดค่าส่งบางส่วน <span class="muted">· ทดสอบ15 คุณอนันต์ ใจกว้าง · เงินสด</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>10 คิว · 2 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>4,500.00</td></tr><tr><th>ค่าจัดส่ง</th><td>400.00</td></tr><tr><th>ส่วนลดรวม</th><td>200.00 <small>(ลดค่าส่ง 200.00)</small></td></tr><tr><th>ยอดสุทธิ</th><td><b>4,700.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>2,600.00 <small>(1,300 × 2 เที่ยว · ต.วังทอง รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">2,100.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 200.00 − ค่ารถ 2,600.00 = -2,400.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอเคลียร์ค่ารถ</small></td></tr></table>
+  
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 16 · พิมพ์ลดค่าส่งเกินค่าส่ง <span class="muted">· ทดสอบ16 คุณนิด · เครดิตรายเดือน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>3 คิว · 1 เที่ยว · รถ 3 คิว</td></tr><tr><th>ค่าสินค้า</th><td>1,680.00</td></tr><tr><th>ค่าจัดส่ง</th><td>120.00</td></tr><tr><th>ส่วนลดรวม</th><td>120.00 <small>(ลดค่าส่ง 120.00)</small></td></tr><tr><th>ยอดสุทธิ</th><td><b>1,680.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>700.00 <small>(700 × 1 เที่ยว · ต.วังทรายคำ รถ 3 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">980.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 700.00 = -700.00)</small></td></tr><tr><th>ค้างรับ</th><td>1,680.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอวางบิล</small></td></tr></table>
+  <p class="behave"><b>ต้องเห็น:</b> ระบบต้องตัดส่วนลดค่าส่งให้ไม่เกินค่าส่งจริง (ค่าส่งเหลือ 0) และไม่ไปลดค่าสินค้า</p>
+</article>
+<article class="ans">
+  <h3>เคสที่ 17 · ที่กันดาร บวกค่าส่งเพิ่ม <span class="muted">· ทดสอบ17 ร้านดอยงามวัสดุ · โอนเงิน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,250.00</td></tr><tr><th>ค่าจัดส่ง</th><td>500.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>2,750.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>1,300.00 <small>(1,300 × 1 เที่ยว · ต.ร่องเคาะ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,450.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 500.00 − ค่ารถ 1,300.00 = -800.00)</small></td></tr><tr><th>ค้างรับ</th><td>0.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอเคลียร์ค่ารถ</small></td></tr></table>
+  <p class="behave"><b>ต้องเห็น:</b> ค่าที่กันดารบวกเข้าค่าส่งของลูกค้า แต่ไม่บวกเข้าค่ารถคนขับ</p>
+</article>
+<article class="ans">
+  <h3>เคสที่ 18 · ลืมเลือกคนขับ <span class="muted">· ทดสอบ18 คุณเอก · จ่ายปลายทาง</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>3 คิว · 1 เที่ยว · รถ 3 คิว</td></tr><tr><th>ค่าสินค้า</th><td>1,680.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>1,680.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>400.00 <small>(400 × 1 เที่ยว · ต.วังแก้ว รถ 3 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">1,280.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 400.00 = -400.00)</small></td></tr><tr><th>ค้างรับ</th><td>1,680.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอรับเงินจากคนขับ</small></td></tr></table>
+  <p class="behave"><b>ต้องเห็น:</b> ครั้งแรกต้องขึ้น "เลือกคนขับ" และไปต่อไม่ได้ · ครั้งที่สองต้องขึ้น "ยืนยันว่ารถเข้าหน้างานได้และมีคิวว่าง"</p>
+</article></section><section class="page">
+<article class="ans">
+  <h3>เคสที่ 19 · ของเที่ยวละ 5 คิว เลือกรถ 3 คิวไม่ได้ <span class="muted">· ทดสอบ19 ร้านทุ่งทองวัสดุ · เครดิตรายเดือน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น DO</td></tr><tr><th>รวมคิว / เที่ยว</th><td>5 คิว · 1 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>2,800.00</td></tr><tr><th>ค่าจัดส่ง</th><td>0.00</td></tr><tr><th>ส่วนลดรวม</th><td>0.00</td></tr><tr><th>ยอดสุทธิ</th><td><b>2,800.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>400.00 <small>(400 × 1 เที่ยว · ต.ทุ่งฮั้ว รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">2,400.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 0.00 − ค่ารถ 400.00 = -400.00)</small></td></tr><tr><th>ค้างรับ</th><td>2,800.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอวางบิล</small></td></tr></table>
+  <p class="behave"><b>ต้องเห็น:</b> อินจันต้องกดไม่ได้ และขึ้น "รถเล็กเกิน (สินค้าเที่ยวละ 5 คิว)"</p>
+</article>
+<article class="ans">
+  <h3>เคสที่ 20 · บิลใหญ่ รวมทุกอย่าง <span class="muted">· ทดสอบ20 หจก.ทดสอบรุ่งโรจน์ · เครดิตรายเดือน</span></h3>
+  <table class="ans-t"><tr><th>เลขที่เอกสาร</th><td>ขึ้นต้น TS</td></tr><tr><th>รวมคิว / เที่ยว</th><td>18 คิว · 4 เที่ยว · รถ 5 คิว</td></tr><tr><th>ค่าสินค้า</th><td>8,980.00</td></tr><tr><th>ค่าจัดส่ง</th><td>720.00</td></tr><tr><th>ส่วนลดรวม</th><td>700.00 <small>(ลดคิวละ 200.00 + ท้ายบิล 500.00)</small></td></tr><tr><th>ยอดสุทธิ</th><td><b>9,000.00</b></td></tr><tr><th>ค่ารถคนขับ</th><td>4,000.00 <small>(1,000 × 4 เที่ยว · ต.วังใต้ รถ 5 คิว)</small></td></tr><tr><th>คงเหลือเข้าร้าน</th><td><b class="pos">5,000.00</b> <small>(กำไรค่าส่ง: ค่าส่งเก็บลูกค้า 720.00 − ค่ารถ 4,000.00 = -3,280.00)</small></td></tr><tr><th>ค้างรับ</th><td>9,000.00</td></tr><tr><th>ขั้นตอนในสรุปบิล</th><td><b>รอจัดส่ง</b> <small>→ หลังกด "ส่งแล้ว": รอวางบิล</small></td></tr></table>
+  
+</article></section></body></html>
