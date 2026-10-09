@@ -9,8 +9,6 @@ export default {
       lg: '1024px',
       xl: '1280px',
       '2xl': '1536px',
-      /** Phones in landscape. */
-      short: { raw: '(max-height: 500px)' },
     },
     extend: {
       colors: {
@@ -57,5 +55,11 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    /**
+     * `short:` targets phones in landscape. A raw-media screen would disable Tailwind's min-/max- variants;
+     * `:root` keeps it winning over sm:/md:/lg: like a last-declared screen did.
+     */
+    ({ addVariant }) => addVariant('short', '@media (max-height: 500px) { :root & }'),
+  ],
 };
