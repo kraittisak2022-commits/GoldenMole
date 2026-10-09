@@ -71,7 +71,7 @@ export default function StepConfirm({ state: s, items, zone, driver, onEdit }: P
               {s.deliveryAddress ? <p className="text-muted">{s.deliveryAddress}</p> : null}
               <p className="text-muted">
                 ค่าส่ง {formatNumber(s.feePerTrip)}/เที่ยว
-                {s.roadDistanceKm != null ? ` · ห่างถนนใหญ่ ${formatNumber(s.roadDistanceKm)} กม.` : ''}
+                {s.roadDistanceKm != null ? ` · ${s.roadDistanceByRoad ? 'ระยะตามถนนจากถนนใหญ่' : 'ห่างถนนใหญ่ (เส้นตรง)'} ${formatNumber(s.roadDistanceKm)} กม.` : ''}
               </p>
               <p className="text-muted">คนขับ: {driver ? driver.name : 'ยังไม่ระบุ'}</p>
             </div>

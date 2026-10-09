@@ -16,6 +16,8 @@ export interface WizardState {
   tambonMethod: 'exact' | 'nearest' | 'manual' | null;
   outsideDistrict: boolean;
   roadDistanceKm: number | null;
+  /** roadDistanceKm is the driving distance from the main road; false = still the straight-line estimate. */
+  roadDistanceByRoad: boolean;
   roadLabel: string;
   truckSize: TruckSize;
   truckTouched: boolean;
@@ -65,6 +67,7 @@ export const initialWizardState: WizardState = {
   tambonMethod: null,
   outsideDistrict: false,
   roadDistanceKm: null,
+  roadDistanceByRoad: false,
   roadLabel: '',
   truckSize: 5,
   truckTouched: false,

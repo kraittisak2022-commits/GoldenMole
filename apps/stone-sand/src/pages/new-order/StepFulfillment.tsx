@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, Crosshair, Link2, MapPin, Pencil, Phone, Store, Truck } from 'lucide-react';
 import { suggestDeliveryFee } from '../../calc/deliveryFee';
 import { truckFits, type Load } from '../../calc/trips';
@@ -14,6 +14,7 @@ import { driverTripRate } from '../../lib/driverPay';
 import { distanceToMainRoad, findTambon } from '../../lib/geo';
 import { formatMoney, formatNumber, formatPhone } from '../../lib/format';
 import { parseLatLng } from '../../lib/latlng';
+import { fetchRoadDistanceKm } from '../../lib/roadRoute';
 import {
   ROUTE_GROUP_LABEL,
   type AppSettings,
@@ -53,6 +54,36 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
 
   const zone = zones.find((z) => z.id === s.zoneId);
   const driverRate = driverTripRate(zone, s.truckSize, s.roadDistanceKm, settings.delivery);
+
+  const pinLat = s.pin?.lat;
+  const pinLng = s.pin?.lng;
+  const pinKey = pinLat != null && pinLng != null ? `${pinLat},${pinLng}` : '';
+  const [roadFailedKey, setRoadFailedKey] = useState('');
+  const roadFailed = !!pinKey && roadFailedKey === pinKey;
+  const measuringRoad = !!pinKey && !s.roadDistanceByRoad && !roadFailed;
+  const latest = useRef({ s, zones, delivery: settings.delivery });
+  useEffect(() => {
+    latest.current = { s, zones, delivery: settings.delivery };
+  });
+
+  useEffect(() => {
+    if (pinLat == null || pinLng == null || s.roadDistanceByRoad || roadFailedKey === `${pinLat},${pinLng}`) return;
+    const start = distanceToMainRoad(pinLat, pinLng)?.point;
+    if (!start) return;
+    const ctrl = new AbortController();
+    void fetchRoadDistanceKm(start, { lat: pinLat, lng: pinLng }, ctrl.signal).then((km) => {
+      if (ctrl.signal.aborted) return;
+      if (km == null) return setRoadFailedKey(`${pinLat},${pinLng}`);
+      const cur = latest.current;
+      const feeZone = cur.zones.find((z) => z.id === cur.s.zoneId);
+      patch({
+        roadDistanceKm: km,
+        roadDistanceByRoad: true,
+        ...(!cur.s.feeTouched && feeZone ? { feePerTrip: suggestDeliveryFee(feeZone, km, cur.delivery) } : {}),
+      });
+    });
+    return () => ctrl.abort();
+  }, [pinLat, pinLng, s.roadDistanceByRoad, roadFailedKey, patch]);
   const largestPerTrip = Math.max(0, ...loadLines.map((l) => l.perTrip));
 
   const chooseFulfillment = (f: 'pickup' | 'delivery') => {
@@ -72,6 +103,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
       pin: { lat: Number(p.lat.toFixed(6)), lng: Number(p.lng.toFixed(6)) },
       outsideDistrict: !tambon,
       roadDistanceKm: road?.km ?? null,
+      roadDistanceByRoad: false,
       roadLabel: road?.roadLabel ?? '',
     };
     const matched = tambon ? zones.find((z) => z.name === tambon.name) : undefined;
@@ -221,9 +253,15 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <InfoTile label="ตำบล (จากหมุด)" value={zone?.name ?? '—'} hint={tambonHint(s.tambonMethod)} />
                 <InfoTile
-                  label="ห่างถนนใหญ่"
-                  value={s.roadDistanceKm != null ? `${formatNumber(s.roadDistanceKm)} กม.` : '—'}
-                  hint={s.roadLabel || undefined}
+                  label={s.roadDistanceByRoad ? 'ระยะตามถนนจากถนนใหญ่' : 'ห่างถนนใหญ่ (เส้นตรง)'}
+                  value={
+                    measuringRoad
+                      ? 'กำลังวัดตามถนน…'
+                      : s.roadDistanceKm != null
+                        ? `${formatNumber(s.roadDistanceKm)} กม.`
+                        : '—'
+                  }
+                  hint={[s.roadLabel, roadFailed ? 'วัดตามถนนไม่ได้ ใช้ระยะเส้นตรง' : ''].filter(Boolean).join(' · ') || undefined}
                 />
               </div>
             ) : null}

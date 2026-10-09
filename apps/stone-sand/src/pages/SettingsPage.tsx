@@ -351,7 +351,7 @@ function DeliverySection({ settings, zones, onSaved }: { settings: AppSettings; 
   return (
     <Section
       title="การคำนวณค่าส่งจากระยะ"
-      subtitle="ระยะวัดจากหมุดหน้างานถึงถนนสายหลักที่ใกล้ที่สุด (เส้นตรง)"
+      subtitle="ระยะวัดตามถนนที่รถวิ่งจริง จากถนนสายหลักที่ใกล้ที่สุดเข้าไปถึงหมุดหน้างาน (ถ้าวัดตามถนนไม่ได้จะใช้ระยะเส้นตรง)"
       saver={saver}
       onSave={() =>
         saver.run(async () => {

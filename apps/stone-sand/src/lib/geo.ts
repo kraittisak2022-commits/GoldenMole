@@ -1,4 +1,5 @@
 import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon';
+import { nearestPointOnLine } from '@turf/nearest-point-on-line';
 import { pointToLineDistance } from '@turf/point-to-line-distance';
 import type { Feature, FeatureCollection, LineString, MultiPolygon, Polygon } from 'geojson';
 import districtJson from '../data/geo/district.json';
@@ -59,17 +60,23 @@ export function findTambon(lat: number, lng: number): TambonMatch | null {
 export interface RoadDistance {
   km: number;
   roadLabel: string;
+  /** Closest point on that main road, where a road route to the pin starts. */
+  point: { lat: number; lng: number };
 }
 
 /** Straight-line distance from a pin to the nearest main road in the district. */
 export function distanceToMainRoad(lat: number, lng: number): RoadDistance | null {
-  let best: RoadDistance | null = null;
+  let best: { km: number; road: RoadFeature } | null = null;
   for (const road of roads) {
     const km = pointToLineDistance([lng, lat], road, { units: 'kilometers', method: 'planar' });
-    if (!best || km < best.km) {
-      const p = road.properties;
-      best = { km, roadLabel: p.ref ? `ถนน ${p.ref}` : p.name || 'ถนนสายหลัก' };
-    }
+    if (!best || km < best.km) best = { km, road };
   }
-  return best ? { ...best, km: Math.round(best.km * 100) / 100 } : null;
+  if (!best) return null;
+  const p = best.road.properties;
+  const [pLng, pLat] = nearestPointOnLine(best.road, [lng, lat]).geometry.coordinates;
+  return {
+    km: Math.round(best.km * 100) / 100,
+    roadLabel: p.ref ? `ถนน ${p.ref}` : p.name || 'ถนนสายหลัก',
+    point: { lat: pLat, lng: pLng },
+  };
 }

@@ -14,6 +14,7 @@ For a fresh project, apply that migration (Supabase SQL editor or `supabase db p
 **Root Directory:** `apps/stone-sand` · **Framework:** Vite  
 **Git:** `kraittisak2022-commits/GoldenMole` → production branch `main` (every push deploys)  
 **Env vars:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (production, preview, development)  
+**Server-only env var:** `GOOGLE_MAPS_API_KEY` for `api/road-distance.ts` (driving distance from the main road to the pin, used for the delivery fee). Enable **Routes API** on the key, restrict the key to Routes API, and set a daily quota cap. Without it, or when running `vite dev`, the app falls back to the straight-line distance.  
 **Domains:** `order.goldenmole.pro` (primary), `www.order.goldenmole.pro` → 308 redirect to the primary  
 **Fallback URL:** `https://stone-sand.vercel.app`
 

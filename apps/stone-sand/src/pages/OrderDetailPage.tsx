@@ -392,7 +392,7 @@ export default function OrderDetailPage() {
             <div className="mb-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
               <Info label="ตำบล" value={zone?.name ?? '—'} />
               <Info label="รถ" value={o.truckSize ? `${o.truckSize} คิว × ${o.trips}` : '—'} />
-              <Info label="ห่างถนนใหญ่" value={o.roadDistanceKm != null ? `${formatNumber(o.roadDistanceKm)} กม.` : '—'} />
+              <Info label="ระยะจากถนนใหญ่" value={o.roadDistanceKm != null ? `${formatNumber(o.roadDistanceKm)} กม.` : '—'} />
               <Info label="ค่าส่ง/เที่ยว" value={formatNumber(o.feePerTrip)} />
             </div>
             {o.deliveryAddress ? (

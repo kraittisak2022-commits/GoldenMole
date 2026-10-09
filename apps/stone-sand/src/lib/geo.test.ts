@@ -20,6 +20,12 @@ describe('geo helpers', () => {
     expect(d!.km).toBeLessThan(0.5);
   });
 
+  it('returns the closest point on the main road as the route start', () => {
+    const d = distanceToMainRoad(18.9835, 99.5963)!;
+    const again = distanceToMainRoad(d.point.lat, d.point.lng)!;
+    expect(again.km).toBeLessThan(0.01);
+  });
+
   it('every tambon centre is within reach of a main road', () => {
     const centres: [string, number, number][] = [
       ['ทุ่งฮั้ว', 19.2373, 99.6087],
