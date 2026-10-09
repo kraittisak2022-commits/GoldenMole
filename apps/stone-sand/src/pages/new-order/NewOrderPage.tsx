@@ -8,7 +8,7 @@ import { ErrorBox, Loading } from '../../components/ui/States';
 import { useCatalog } from '../../context/CatalogProvider';
 import { getCustomer } from '../../data/customers';
 import { createOrder, draftTotals } from '../../data/orders';
-import { zoneDriverFee } from '../../lib/driverPay';
+import { driverTripRate } from '../../lib/driverPay';
 import { formatDateShort, formatMoney } from '../../lib/format';
 import { ORDER_SOURCE_LABEL, type Customer, type OrderSource } from '../../types';
 import StepConfirm from './StepConfirm';
@@ -167,7 +167,7 @@ export default function NewOrderPage() {
     setSubmitting(true);
     setSubmitError('');
     try {
-      const order = await createOrder(toDraft(state, products, zoneDriverFee(zone, state.truckSize)), user?.displayName || user?.username || '');
+      const order = await createOrder(toDraft(state, products, driverTripRate(zone, state.truckSize, state.roadDistanceKm, settings.delivery).perTrip), user?.displayName || user?.username || '');
       clearDraft();
       navigate(`/bill/order/${order.id}?created=1`, { replace: true });
     } catch (err) {

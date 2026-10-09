@@ -1,19 +1,39 @@
-import type { Order, TruckSize, Zone } from '../types';
+import { suggestDeliveryFee } from '../calc/deliveryFee';
+import type { DeliverySettings, Order, TruckSize, Zone } from '../types';
 
-type ZoneDriverFee = Pick<Zone, 'driverFee' | 'driverFee3'> | undefined;
+type ZoneRates = Pick<Zone, 'feeMin' | 'feeMax' | 'driverFee' | 'driverFee3'> | undefined;
 
-/** Driver fee per trip for the truck size; trucks of unknown size are paid the normal 5-คิว rate. */
-export function zoneDriverFee(zone: ZoneDriverFee, truckSize: TruckSize | null | undefined): number {
-  if (!zone) return 0;
-  return truckSize === 3 ? zone.driverFee3 : zone.driverFee;
+export interface DriverTripRate {
+  /** Rate for the truck size; trucks of unknown size get the normal 5-คิว rate. 0 = not set. */
+  base: number;
+  /** Distance surcharge per trip, the same amount the customer pays above the tambon's lowest fee. */
+  extra: number;
+  /** base + extra, or 0 while the base rate is not set. */
+  perTrip: number;
+}
+
+export function driverTripRate(
+  zone: ZoneRates,
+  truckSize: TruckSize | null | undefined,
+  roadDistanceKm: number | null | undefined,
+  delivery: DeliverySettings,
+): DriverTripRate {
+  if (!zone) return { base: 0, extra: 0, perTrip: 0 };
+  const base = truckSize === 3 ? zone.driverFee3 : zone.driverFee;
+  const extra = suggestDeliveryFee(zone, roadDistanceKm, delivery) - zone.feeMin;
+  return { base, extra, perTrip: base > 0 ? base + extra : 0 };
 }
 
 /**
- * Default amount to pay the driver: the tambon's driver fee for the truck size × trips.
+ * Default amount to pay the driver: (tambon rate for the truck size + distance surcharge) × trips.
  * Without a rate it falls back to the wage stored on the order, never to the customer's delivery fee.
  */
-export function suggestedDriverPay(o: Pick<Order, 'driverWage' | 'trips' | 'truckSize'>, zone: ZoneDriverFee): number {
-  const perTrip = zoneDriverFee(zone, o.truckSize);
+export function suggestedDriverPay(
+  o: Pick<Order, 'driverWage' | 'trips' | 'truckSize' | 'roadDistanceKm'>,
+  zone: ZoneRates,
+  delivery: DeliverySettings,
+): number {
+  const { perTrip } = driverTripRate(zone, o.truckSize, o.roadDistanceKm, delivery);
   return perTrip > 0 ? perTrip * o.trips : o.driverWage;
 }
 
@@ -31,14 +51,18 @@ export interface DriverDue {
   oldestDate: string;
 }
 
-export function summarizeDriverDues(orders: Order[], zoneOf: (id: string | null) => ZoneDriverFee): DriverDue[] {
+export function summarizeDriverDues(
+  orders: Order[],
+  zoneOf: (id: string | null) => ZoneRates,
+  delivery: DeliverySettings,
+): DriverDue[] {
   const map = new Map<string, DriverDue>();
   for (const o of orders) {
     if (!o.driverId) continue;
     const row = map.get(o.driverId) ?? { driverId: o.driverId, count: 0, trips: 0, total: 0, cash: 0, oldestDate: o.orderDate };
     row.count += 1;
     row.trips += o.trips;
-    row.total += suggestedDriverPay(o, zoneOf(o.zoneId));
+    row.total += suggestedDriverPay(o, zoneOf(o.zoneId), delivery);
     row.cash += codToCollect(o);
     if (o.orderDate < row.oldestDate) row.oldestDate = o.orderDate;
     map.set(o.driverId, row);

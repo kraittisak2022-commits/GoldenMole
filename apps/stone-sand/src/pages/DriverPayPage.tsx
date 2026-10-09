@@ -15,7 +15,7 @@ import { useCatalog } from '../context/CatalogProvider';
 import { createDriverPayout, deleteDriverPayout, listDriverPayouts } from '../data/driverPayouts';
 import { listDriverUnpaidOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
-import { codToCollect, suggestedDriverPay, summarizeDriverDues, zoneDriverFee } from '../lib/driverPay';
+import { codToCollect, driverTripRate, suggestedDriverPay, summarizeDriverDues } from '../lib/driverPay';
 import { formatDateShort, formatDateTime, formatMoney, formatNumber, toIsoDate } from '../lib/format';
 import { PAYMENT_METHOD_LABEL, type DriverPayout, type Order } from '../types';
 
@@ -25,7 +25,7 @@ const DRIVER_PAYS_HINTS: Record<PayMethod, string> = { cash: 'คนขับส
 export default function DriverPayPage() {
   const { user, isSuperAdmin } = useAuth();
   const by = user?.displayName || user?.username || '';
-  const { driverById, zoneById } = useCatalog();
+  const { driverById, zoneById, settings } = useCatalog();
   const [params, setParams] = useSearchParams();
   const selectedDriver = params.get('driver');
 
@@ -34,7 +34,10 @@ export default function DriverPayPage() {
   const [actionError, setActionError] = useState('');
   const [paidNo, setPaidNo] = useState('');
 
-  const dues = useMemo(() => summarizeDriverDues(unpaid.data ?? [], zoneById), [unpaid.data, zoneById]);
+  const dues = useMemo(
+    () => summarizeDriverDues(unpaid.data ?? [], zoneById, settings.delivery),
+    [unpaid.data, zoneById, settings.delivery],
+  );
   const dueTotal = dues.reduce((s, d) => s + d.total, 0);
   const visiblePayouts = (payouts.data ?? []).filter((p) => !selectedDriver || p.driverId === selectedDriver);
   const driverName = (id: string) => driverById(id)?.name ?? 'คนขับ';
@@ -225,14 +228,14 @@ function PayoutPanel({
   onClose: () => void;
   onPaid: (payoutNo: string) => void;
 }) {
-  const { zoneById } = useCatalog();
+  const { zoneById, settings } = useCatalog();
   const today = toIsoDate();
   const oldest = orders[0]?.orderDate ?? today;
   const [from, setFrom] = useState(oldest);
   const [to, setTo] = useState(today < oldest ? oldest : today);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [amounts, setAmounts] = useState<Record<string, number>>(() =>
-    Object.fromEntries(orders.map((o) => [o.id, suggestedDriverPay(o, zoneById(o.zoneId))])),
+    Object.fromEntries(orders.map((o) => [o.id, suggestedDriverPay(o, zoneById(o.zoneId), settings.delivery)])),
   );
   const [method, setMethod] = useState<PayMethod | null>(null);
   const [note, setNote] = useState('');
@@ -326,7 +329,7 @@ function PayoutPanel({
             <ul className="flex max-h-96 flex-col divide-y divide-border overflow-y-auto overflow-x-hidden rounded border border-border">
               {inRange.map((o) => {
                 const zone = zoneById(o.zoneId);
-                const perTrip = zoneDriverFee(zone, o.truckSize);
+                const rate = driverTripRate(zone, o.truckSize, o.roadDistanceKm, settings.delivery);
                 const truckLabel = o.truckSize === 3 ? 'รถ 3 คิว' : 'รถ 5 คิว';
                 return (
                   <li key={o.id} className="flex min-h-14 items-center gap-3 px-3 py-2 text-sm">
@@ -353,9 +356,10 @@ function PayoutPanel({
                         {o.truckSize ? `${o.truckSize} คิว × ` : ''}
                         {o.trips} เที่ยว · เก็บลูกค้า {formatNumber(o.deliveryTotal - o.deliveryDiscount)}
                       </span>
-                      {zone && perTrip ? (
+                      {zone && rate.perTrip ? (
                         <span className="block text-xs text-muted">
-                          ต.{zone.name} · {truckLabel} {formatNumber(perTrip)} บาท/เที่ยว × {o.trips} เที่ยว
+                          ต.{zone.name} · {truckLabel} {formatNumber(rate.base)}
+                          {rate.extra ? ` + ตามระยะ ${formatNumber(rate.extra)}` : ''} บาท/เที่ยว × {o.trips} เที่ยว
                         </span>
                       ) : (
                         <span className="block text-xs font-medium text-warning">
@@ -381,7 +385,8 @@ function PayoutPanel({
               {!inRange.length ? <li className="px-3 py-3 text-sm text-muted">ไม่มีออเดอร์ในช่วงวันที่นี้</li> : null}
             </ul>
             <p className="mt-1 px-1 text-xs text-muted">
-              ตั้งต้นจากค่ารถคนขับของตำบลตามขนาดรถ × จำนวนเที่ยว (ตั้งได้ที่ ตั้งค่า › ค่าส่งตามตำบล) แก้ตัวเลขได้ก่อนยืนยัน
+              ตั้งต้นจาก (ค่ารถของตำบลตามขนาดรถ + ค่าส่งเพิ่มตามระยะที่ลูกค้าจ่าย) × จำนวนเที่ยว (ตั้งได้ที่ ตั้งค่า › ค่าส่งตามตำบล)
+              แก้ตัวเลขได้ก่อนยืนยัน
             </p>
           </div>
 

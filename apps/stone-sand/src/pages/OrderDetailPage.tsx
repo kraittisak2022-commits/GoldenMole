@@ -34,7 +34,7 @@ import { useCatalog } from '../context/CatalogProvider';
 import { deleteOrder, getOrder, markOrderPaid, markOrderUnpaid, setDeliveryStatus, updateOrderFields } from '../data/orders';
 import { getStatement } from '../data/statements';
 import { useAsync } from '../hooks/useAsync';
-import { zoneDriverFee } from '../lib/driverPay';
+import { driverTripRate } from '../lib/driverPay';
 import { formatDateShort, formatDateTime, formatMoney, formatNumber, formatPhone, googleMapsUrl } from '../lib/format';
 import { deliveryBadge, driverMessage, paymentBadge } from '../lib/orderStatus';
 import {
@@ -53,7 +53,7 @@ export default function OrderDetailPage() {
   const { user, isSuperAdmin } = useAuth();
   const by = user?.displayName || user?.username || '';
   const navigate = useNavigate();
-  const { zoneById, driverById, drivers } = useCatalog();
+  const { zoneById, driverById, drivers, settings } = useCatalog();
   const { data: order, error, loading, setData } = useAsync(() => getOrder(id), [id], 'order');
   const { data: statement } = useAsync(
     () => (order?.statementId ? getStatement(order.statementId) : Promise.resolve(null)),
@@ -127,7 +127,7 @@ export default function OrderDetailPage() {
 
   const pickDriver = (value: string) => {
     setDriverId(value);
-    const perTrip = zoneDriverFee(zone, o.truckSize);
+    const { perTrip } = driverTripRate(zone, o.truckSize, o.roadDistanceKm, settings.delivery);
     if (value && perTrip) setWage(perTrip * o.trips);
   };
   const driverDirty = (driverId || null) !== o.driverId || wage !== o.driverWage;

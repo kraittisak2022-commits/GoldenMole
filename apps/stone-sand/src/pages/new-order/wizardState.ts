@@ -161,7 +161,7 @@ export function defaultPaidNow(method: PaymentMethod): boolean {
   return method === 'cash' || method === 'transfer';
 }
 
-export function toDraft(s: WizardState, products: Product[], zoneDriverFee: number): OrderDraft {
+export function toDraft(s: WizardState, products: Product[], driverFeePerTrip: number): OrderDraft {
   if (!s.source || !s.customer || !s.fulfillment || !s.paymentMethod) throw new Error('ข้อมูลออเดอร์ยังไม่ครบ');
   const delivery = s.fulfillment === 'delivery';
   return {
@@ -185,7 +185,7 @@ export function toDraft(s: WizardState, products: Product[], zoneDriverFee: numb
     discountValue: s.discountValue,
     paymentMethod: s.paymentMethod,
     paidNow: s.paymentMethod === 'credit' ? false : s.paidNow,
-    driverWage: delivery && s.driverId ? zoneDriverFee * s.trips : 0,
+    driverWage: delivery && s.driverId ? driverFeePerTrip * s.trips : 0,
     note: s.note,
   };
 }
