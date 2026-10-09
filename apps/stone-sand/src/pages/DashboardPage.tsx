@@ -16,7 +16,6 @@ import { ORDER_SOURCES } from '../types';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export default function DashboardPage() {
-  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const today = toIsoDate();
   const param = params.get('d') ?? '';
@@ -53,11 +52,11 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">สวัสดี {user?.displayName}</h1>
+      <h1 className="sr-only">หน้าแรก</h1>
+      <div className="hidden justify-end md:flex">
         <Link
           to="/new"
-          className="hidden min-h-12 items-center gap-2 rounded bg-primary px-5 text-base font-medium text-primary-foreground hover:bg-primary-hover md:inline-flex"
+          className="inline-flex min-h-12 items-center gap-2 rounded bg-primary px-5 text-base font-medium text-primary-foreground hover:bg-primary-hover"
         >
           <Plus size={20} aria-hidden /> สร้างออเดอร์
         </Link>
