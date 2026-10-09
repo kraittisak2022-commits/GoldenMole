@@ -460,3 +460,129 @@ workflows:
     artifacts:
       - mobile-flutter/build/ios/iphonesimulator/*.app
       - /tmp/xcodebuild_logs/*.log
+
+  # ---------------------------------------------------------------------------
+  # ออเดอร์หิน-ทราย (Flutter, mobile-stone-sand/) — App Store Connect / TestFlight
+  # Bundle ID: com.goldenmole.stonesand
+  # One-time: App ID com.goldenmole.stonesand in Apple Developer → Identifiers and an app record in
+  # App Store Connect. Optional in group goldenmole_dashboard:
+  #   STONE_SAND_APP_STORE_APPLE_ID  Apple ID of this app (build number = latest + 1)
+  #   STONE_SAND_TESTFLIGHT_URL      public TestFlight link shown by the in-app soft-update prompt
+  # ---------------------------------------------------------------------------
+  stone-sand-ios:
+    name: Stone-Sand Orders iOS
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: codemagic
+    environment:
+      groups:
+        - goldenmole_dashboard
+      vars:
+        BUNDLE_ID: "com.goldenmole.stonesand"
+        APP_DIR: "mobile-stone-sand"
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Write Flutter .env from secrets
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/$APP_DIR"
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "ERROR: SUPABASE_URL / SUPABASE_ANON_KEY missing from env group goldenmole_dashboard."
+            exit 1
+          fi
+          {
+            echo "SUPABASE_URL=$SUPABASE_URL"
+            echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
+          } > .env
+      - name: Set up keychain for code signing
+        script: keychain initialize
+      - name: Create and fetch signing files automatically
+        script: |
+          set -euo pipefail
+          if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            echo "ERROR: CERTIFICATE_PRIVATE_KEY is missing from group goldenmole_dashboard."
+            exit 1
+          fi
+          CERT_KEY_PATH="$HOME/cert_key.pem"
+          printf '%s\n' "$CERTIFICATE_PRIVATE_KEY" > "$CERT_KEY_PATH"
+          if ! app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create \
+            --certificate-key=@file:"$CERT_KEY_PATH"; then
+            echo "If you see error 409: revoke ALL Apple Distribution certs, then rebuild."
+            echo "Also create App ID $BUNDLE_ID in Apple Developer → Identifiers."
+            exit 1
+          fi
+      - name: Add certificates to keychain
+        script: keychain add-certificates
+      - name: Set up code signing settings on Xcode project
+        script: xcode-project use-profiles --project "$CM_BUILD_DIR/$APP_DIR/ios/Runner.xcodeproj"
+      - name: Get Flutter packages and CocoaPods
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/$APP_DIR"
+          flutter pub get
+          flutter precache --ios
+          cd ios
+          pod install --repo-update
+      - name: Flutter build ipa
+        script: |
+          set -euo pipefail
+          cd "$CM_BUILD_DIR/$APP_DIR"
+          BUILD_NUMBER_ARG=""
+          NEW_BUILD_NUMBER=""
+          if [ -n "${STONE_SAND_APP_STORE_APPLE_ID:-}" ]; then
+            LATEST=$(app-store-connect get-latest-build-number "$STONE_SAND_APP_STORE_APPLE_ID" 2>/dev/null || true)
+            NEW_BUILD_NUMBER=$(( ${LATEST:-0} + 1 ))
+            BUILD_NUMBER_ARG="--build-number=$NEW_BUILD_NUMBER"
+          fi
+          if [ -z "$NEW_BUILD_NUMBER" ]; then
+            NEW_BUILD_NUMBER=$(grep -E '^version:' pubspec.yaml | sed -E 's/.*\+([0-9]+).*/\1/')
+          fi
+          echo "STONE_SAND_BUILD=$NEW_BUILD_NUMBER" >> "$CM_ENV"
+          # shellcheck disable=SC2086
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist \
+            $BUILD_NUMBER_ARG
+      - name: Publish soft-update version to Supabase
+        script: |
+          set -uo pipefail
+          # Merges stoneSandIos* keys into app_settings.app_defaults; never fails the build.
+          cd "$CM_BUILD_DIR/$APP_DIR"
+          VERSION=$(grep -E '^version:' pubspec.yaml | sed -E 's/^version:[[:space:]]*([0-9.]+).*/\1/')
+          RESP=$(curl -sS --max-time 45 "${SUPABASE_URL}/rest/v1/app_settings?id=eq.default&select=app_defaults" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" || true)
+          if ! echo "$RESP" | jq -e 'type == "array" and length > 0' >/dev/null 2>&1; then
+            echo "WARN: could not read app_settings; skipping soft-update sync."
+            exit 0
+          fi
+          PAYLOAD=$(echo "$RESP" | jq -c --arg v "$VERSION" --arg b "${STONE_SAND_BUILD:-}" --arg u "${STONE_SAND_TESTFLIGHT_URL:-}" '
+            {app_defaults: ((.[0].app_defaults // {})
+              | .stoneSandIosLatestVersion = $v
+              | .stoneSandIosLatestBuild = $b
+              | if ($u | length) > 0 then .stoneSandIosTestFlightURL = $u else . end)}')
+          CODE=$(curl -sS --max-time 45 -o /dev/null -w "%{http_code}" -X PATCH \
+            "${SUPABASE_URL}/rest/v1/app_settings?id=eq.default" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" -H "Prefer: return=minimal" -d "$PAYLOAD" || echo "000")
+          echo "Soft-update sync HTTP $CODE (version=$VERSION build=${STONE_SAND_BUILD:-})"
+    artifacts:
+      - mobile-stone-sand/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+    publishing:
+      email:
+        recipients:
+          - kraittisak2022@gmail.com
+        notify:
+          success: true
+          failure: true
+      app_store_connect:
+        auth: integration
+        # Uploads to App Store Connect, where internal TestFlight testers get it after processing.
+        # External testing needs TestFlight Test Information filled once; then set
+        # submit_to_testflight: true together with expire_build_submitted_for_review: true.
+        submit_to_testflight: false

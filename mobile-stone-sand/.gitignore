@@ -51,5 +51,8 @@ app.*.map.json
 *.keystore
 /fastlane/report.xml
 /fastlane/*.json
+/Gemfile.lock
+/.bundle/
+/vendor/bundle/
 .idea/
 *.iml

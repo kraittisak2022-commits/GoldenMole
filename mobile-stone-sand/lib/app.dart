@@ -7,6 +7,7 @@ import 'data/demo_repo.dart';
 import 'routes.dart';
 import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
+import 'services/app_update.dart';
 import 'theme/app_theme.dart';
 import 'tour/tour_controller.dart';
 import 'tour/tour_overlay.dart';
@@ -46,6 +47,10 @@ class _StoneSandAppState extends State<StoneSandApp> {
     }
     _catalog.reload();
     deleteStaleDemoSessions().catchError((_) {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _navigator.currentContext;
+      if (ctx != null && !_tour.active) maybePromptSoftUpdate(ctx);
+    });
   }
 
   @override

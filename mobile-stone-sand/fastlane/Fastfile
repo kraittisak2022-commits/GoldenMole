@@ -1,0 +1,138 @@
+# frozen_string_literal: true
+
+default_platform(:android)
+
+PACKAGE_NAME = "com.goldenmole.stonesand"
+FLUTTER_ROOT = File.expand_path("..", __dir__)
+AAB_PATH = File.join(FLUTTER_ROOT, "build/app/outputs/bundle/release/app-release.aab")
+METADATA_ROOT = File.join(__dir__, "metadata/android")
+CHANGELOG_LOCALES = %w[th].freeze
+
+def play_json_key_path
+  path = ENV["PLAY_STORE_JSON_KEY_PATH"].to_s.strip
+  UI.user_error!("Set PLAY_STORE_JSON_KEY_PATH to your Google Play service account JSON file.") if path.empty?
+  UI.user_error!("Play JSON key not found: #{path}") unless File.exist?(path)
+  path
+end
+
+def read_pubspec_version
+  pubspec = File.read(File.join(FLUTTER_ROOT, "pubspec.yaml"))
+  match = pubspec.match(/^version:\s*([\d.]+)\+(\d+)/)
+  UI.user_error!("Could not parse version from pubspec.yaml") unless match
+  [match[1], match[2].to_i]
+end
+
+def default_release_name(version_name)
+  name = ENV["PLAY_RELEASE_NAME"].to_s.strip
+  name.empty? ? "#{version_name} — ออเดอร์หิน-ทราย" : name
+end
+
+def changelog_paths(version_code)
+  CHANGELOG_LOCALES.map do |locale|
+    File.join(METADATA_ROOT, locale, "changelogs", "#{version_code}.txt")
+  end
+end
+
+def ensure_changelog_locales!(version_code)
+  paths = changelog_paths(version_code)
+  source = paths.find { |p| File.exist?(p) }
+  UI.user_error!("Missing changelog for versionCode #{version_code}. Create #{paths.first}.") unless source
+  paths.each do |path|
+    next if File.exist?(path)
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, File.read(source, encoding: "UTF-8"))
+    UI.message("Mirrored changelog to #{path}")
+  end
+  paths
+end
+
+def read_dotenv
+  path = File.join(FLUTTER_ROOT, ".env")
+  return {} unless File.exist?(path)
+  File.readlines(path, encoding: "UTF-8").each_with_object({}) do |line, env|
+    key, value = line.strip.split("=", 2)
+    env[key] = value.to_s.strip.delete_prefix('"').delete_suffix('"') if key && !key.start_with?("#") && value
+  end
+end
+
+# Merges stoneSandAndroid* keys into app_settings.app_defaults for the in-app soft-update prompt.
+# Never fails the lane: Play's own in-app update still works without it.
+def sync_soft_update(version_name, version_code)
+  require "json"
+  require "net/http"
+  env = read_dotenv
+  url = ENV["SUPABASE_URL"] || env["SUPABASE_URL"]
+  key = ENV["SUPABASE_ANON_KEY"] || env["SUPABASE_ANON_KEY"]
+  if url.to_s.empty? || key.to_s.empty?
+    UI.important("SUPABASE_URL / SUPABASE_ANON_KEY not set; skipping soft-update sync.")
+    return
+  end
+  uri = URI("#{url.chomp('/')}/rest/v1/app_settings?id=eq.default&select=app_defaults")
+  headers = { "apikey" => key, "Authorization" => "Bearer #{key}", "Content-Type" => "application/json" }
+  Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", read_timeout: 45) do |http|
+    rows = JSON.parse(http.get(uri.request_uri, headers).body)
+    defaults = (rows.is_a?(Array) && rows.first && rows.first["app_defaults"]) || {}
+    defaults = defaults.merge(
+      "stoneSandAndroidLatestVersionCode" => version_code,
+      "stoneSandAndroidLatestVersionName" => version_name
+    )
+    patch = Net::HTTP::Patch.new("/rest/v1/app_settings?id=eq.default", headers.merge("Prefer" => "return=minimal"))
+    patch.body = JSON.generate(app_defaults: defaults)
+    UI.message("Soft-update sync HTTP #{http.request(patch).code} (#{version_name} / #{version_code})")
+  end
+rescue StandardError => e
+  UI.important("Soft-update sync failed (ignored): #{e.message}")
+end
+
+platform :android do
+  desc "Build signed release App Bundle (needs android/key.properties)"
+  lane :build_aab do
+    key_properties = File.join(FLUTTER_ROOT, "android/key.properties")
+    UI.user_error!("Missing #{key_properties}; Play rejects debug-signed bundles.") unless File.exist?(key_properties)
+    Dir.chdir(FLUTTER_ROOT) do
+      sh("flutter", "build", "appbundle", "--release")
+    end
+    UI.user_error!("AAB not found at #{AAB_PATH}") unless File.exist?(AAB_PATH)
+    UI.success("AAB ready: #{AAB_PATH}")
+  end
+
+  desc "Upload the existing AAB to the Play closed testing track with Thai release notes"
+  lane :closed_beta do
+    version_name, version_code = read_pubspec_version
+    track = ENV.fetch("PLAY_STORE_TRACK", "alpha")
+    release_name = default_release_name(version_name)
+    ensure_changelog_locales!(version_code)
+
+    UI.message("Uploading #{version_name} (#{version_code}) to track '#{track}' as '#{release_name}'")
+    upload_to_play_store(
+      json_key: play_json_key_path,
+      package_name: PACKAGE_NAME,
+      track: track,
+      aab: AAB_PATH,
+      version_name: release_name,
+      release_status: "completed",
+      metadata_path: File.expand_path(METADATA_ROOT),
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: false,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+    UI.success("Uploaded to Play closed testing track '#{track}'. Processing may take 15–30 minutes.")
+    sync_soft_update(version_name, version_code) unless ENV["SKIP_SOFT_UPDATE_SYNC"] == "1"
+  end
+
+  desc "Build the AAB then upload to Play closed testing"
+  lane :release_closed do
+    build_aab unless ENV["SKIP_FLUTTER_BUILD"] == "1"
+    closed_beta
+  end
+
+  desc "Verify Google Play API credentials and closed testing track access"
+  lane :verify_play_api do
+    track = ENV.fetch("PLAY_STORE_TRACK", "alpha")
+    validate_play_store_json_key(json_key: play_json_key_path)
+    codes = google_play_track_version_codes(json_key: play_json_key_path, package_name: PACKAGE_NAME, track: track)
+    UI.success("Play API OK — #{PACKAGE_NAME}, track '#{track}', version codes: #{codes.empty? ? '(none yet)' : codes.join(', ')}")
+  end
+end
