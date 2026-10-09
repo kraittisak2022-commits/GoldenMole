@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { lineDiscount } from '../../calc/pricing';
 import { draftTotals } from '../../data/orders';
 import { deliveryFeeFormula, formatDateLongTh, formatMoney, formatNumber, formatPhone, toIsoDate } from '../../lib/format';
-import { ORDER_SOURCE_LABEL, PAYMENT_METHOD_LABEL, type Driver, type OrderItem, type Zone } from '../../types';
+import { PAYMENT_METHOD_LABEL, type Driver, type OrderItem, type Zone } from '../../types';
 import StepTitle from './StepTitle';
 import { stepIndex, type StepKey, type WizardState } from './wizardState';
 
@@ -27,11 +27,9 @@ export default function StepConfirm({ state: s, items, zone, driver, onEdit }: P
       <StepTitle title="ตรวจสอบก่อนออกบิล" subtitle="แตะ 'แก้ไข' เพื่อกลับไปแก้ขั้นตอนนั้น" />
 
       <div className="divide-y divide-border border-y border-border" data-tour="wiz-confirm">
-        <Block title="ประเภทและวันที่" onEdit={edit('source')}>
-          <p className="font-medium">{s.source ? `ออเดอร์${ORDER_SOURCE_LABEL[s.source]}` : '—'}</p>
-          <p className="text-muted">เลขที่ใบส่งของขึ้นต้นด้วย {s.source === 'pit' ? 'TS' : 'DO'}</p>
-          <p className={s.orderDate ? 'font-medium text-warning' : 'text-muted'}>
-            วันที่ออเดอร์ {formatDateLongTh(s.orderDate || toIsoDate())}
+        <Block title="วันที่ออเดอร์" onEdit={edit('source')}>
+          <p className={s.orderDate ? 'font-medium text-warning' : 'font-medium'}>
+            {formatDateLongTh(s.orderDate || toIsoDate())}
             {s.orderDate ? '' : ' (วันนี้)'}
           </p>
         </Block>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import L from 'leaflet';
 import { CircleMarker, GeoJSON, MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { DISTRICT_CENTER, districtOutline, mainRoads } from '../../lib/geo';
@@ -64,47 +64,115 @@ function RouteLayer({ route }: { route: MapRoute }) {
   );
 }
 
-/** OpenStreetMap fallback, used when no Google Maps browser key is configured or Google rejects it. */
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
+const MAP_TYPE_KEY = 'ss-map-type';
+
+function readSatellite(): boolean {
+  try {
+    return localStorage.getItem(MAP_TYPE_KEY) === 'satellite';
+  } catch {
+    return false;
+  }
+}
+
+function MapTypeToggle({ satellite, onChange }: { satellite: boolean; onChange: (satellite: boolean) => void }) {
+  return (
+    <div className="absolute right-2 top-2 z-[1000] flex rounded bg-surface p-0.5 shadow-md" role="radiogroup" aria-label="ชนิดแผนที่">
+      {[false, true].map((sat) => (
+        <button
+          key={String(sat)}
+          type="button"
+          role="radio"
+          aria-checked={satellite === sat}
+          onClick={() => onChange(sat)}
+          className={[
+            'min-h-9 rounded px-3 text-sm font-medium transition-colors cursor-pointer',
+            satellite === sat ? 'bg-primary text-primary-foreground' : 'text-ink hover:bg-subtle',
+          ].join(' ')}
+        >
+          {sat ? 'ดาวเทียม' : 'แผนที่'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BaseTiles({ satellite }: { satellite: boolean }) {
+  if (!satellite) {
+    return (
+      <TileLayer
+        key="osm"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+        maxZoom={19}
+      />
+    );
+  }
+  return (
+    <>
+      <TileLayer
+        key="sat"
+        attribution="Imagery &copy; Esri, Maxar, Earthstar Geographics"
+        url={`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`}
+        maxZoom={19}
+      />
+      <TileLayer key="sat-roads" url={`${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`} maxZoom={19} />
+      <TileLayer key="sat-places" url={`${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`} maxZoom={19} />
+    </>
+  );
+}
+
+/** OpenStreetMap / Esri satellite fallback, used when no Google Maps browser key is configured or Google rejects it. */
 export default function LeafletDeliveryMap({ value, onChange, flyTarget = null, readOnly, route }: DeliveryMapProps) {
   const roadsFc = useMemo(() => ({ type: 'FeatureCollection' as const, features: mainRoads }), []);
   const center = value ?? DISTRICT_CENTER;
+  const [satellite, setSatellite] = useState(readSatellite);
+  const chooseType = (sat: boolean) => {
+    setSatellite(sat);
+    try {
+      localStorage.setItem(MAP_TYPE_KEY, sat ? 'satellite' : 'map');
+    } catch {
+      // Private browsing: the choice is just not remembered.
+    }
+  };
 
   return (
-    <MapContainer
-      center={[center.lat, center.lng]}
-      zoom={value ? 14 : 11}
-      scrollWheelZoom={!readOnly}
-      style={{ height: '100%', width: '100%' }}
-      attributionControl
-    >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      {districtOutline ? (
-        <GeoJSON
-          data={districtOutline}
-          style={{ color: '#1e3a5f', weight: 2, fillColor: '#1e3a5f', fillOpacity: 0.04, dashArray: '6 4' }}
-          interactive={false}
-        />
-      ) : null}
-      <GeoJSON data={roadsFc} style={{ color: '#d97706', weight: 3, opacity: 0.7 }} interactive={false} />
-      {route ? <RouteLayer route={route} /> : null}
-      {value ? (
-        <Marker
-          position={[value.lat, value.lng]}
-          icon={pinIcon}
-          draggable={!readOnly}
-          eventHandlers={{
-            dragend(e) {
-              const p = (e.target as L.Marker).getLatLng();
-              onChange?.({ lat: p.lat, lng: p.lng });
-            },
-          }}
-        />
-      ) : null}
-      {!readOnly && onChange ? <ClickToPin onPick={onChange} /> : null}
-      <FlyTo target={flyTarget} />
-    </MapContainer>
+    <div className="relative h-full w-full">
+      <MapTypeToggle satellite={satellite} onChange={chooseType} />
+      <MapContainer
+        center={[center.lat, center.lng]}
+        zoom={value ? 14 : 11}
+        maxZoom={19}
+        scrollWheelZoom={!readOnly}
+        style={{ height: '100%', width: '100%' }}
+        attributionControl
+      >
+        <BaseTiles satellite={satellite} />
+        {districtOutline ? (
+          <GeoJSON
+            data={districtOutline}
+            style={{ color: '#1e3a5f', weight: 2, fillColor: '#1e3a5f', fillOpacity: 0.04, dashArray: '6 4' }}
+            interactive={false}
+          />
+        ) : null}
+        <GeoJSON data={roadsFc} style={{ color: '#d97706', weight: 3, opacity: 0.7 }} interactive={false} />
+        {route ? <RouteLayer route={route} /> : null}
+        {value ? (
+          <Marker
+            position={[value.lat, value.lng]}
+            icon={pinIcon}
+            draggable={!readOnly}
+            eventHandlers={{
+              dragend(e) {
+                const p = (e.target as L.Marker).getLatLng();
+                onChange?.({ lat: p.lat, lng: p.lng });
+              },
+            }}
+          />
+        ) : null}
+        {!readOnly && onChange ? <ClickToPin onPick={onChange} /> : null}
+        <FlyTo target={flyTarget} />
+      </MapContainer>
+    </div>
   );
 }
