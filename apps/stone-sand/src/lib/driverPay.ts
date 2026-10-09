@@ -29,17 +29,44 @@ export function driverTripRate(
   return { base, extra, perTrip: base > 0 ? base + extra : 0 };
 }
 
+type PayOrder = Pick<Order, 'driverWage' | 'trips' | 'truckSize' | 'roadDistanceKm' | 'deliveryTotal' | 'deliveryDiscount'>;
+
+/** zone = tambon rate for the truck size; stored = wage saved on the order; customerFee = what the customer paid for delivery. */
+export type DriverPaySource = 'zone' | 'stored' | 'customerFee';
+
+export interface DriverPayBreakdown {
+  amount: number;
+  source: DriverPaySource;
+  rate: DriverTripRate;
+}
+
+/** Delivery charged to the customer on the order, after its delivery discount. */
+export function customerDeliveryFee(o: Pick<Order, 'deliveryTotal' | 'deliveryDiscount'>): number {
+  return Math.max(0, o.deliveryTotal - o.deliveryDiscount);
+}
+
 /**
  * Default amount to pay the driver: (tambon rate for the truck size + distance surcharge) × trips.
- * Without a rate it falls back to the wage stored on the order, never to the customer's delivery fee.
+ * While the tambon has no rate for that truck size it uses the wage stored on the order,
+ * and failing that the delivery fee the customer paid for the order.
  */
-export function suggestedDriverPay(
-  o: Pick<Order, 'driverWage' | 'trips' | 'truckSize' | 'roadDistanceKm'>,
-  zone: ZoneRates,
-  delivery: DeliverySettings,
-): number {
-  const { perTrip } = driverTripRate(zone, o.truckSize, o.roadDistanceKm, delivery);
-  return perTrip > 0 ? perTrip * o.trips : o.driverWage;
+export function driverPayBreakdown(o: PayOrder, zone: ZoneRates, delivery: DeliverySettings): DriverPayBreakdown {
+  const rate = driverTripRate(zone, o.truckSize, o.roadDistanceKm, delivery);
+  if (rate.perTrip > 0) return { amount: rate.perTrip * o.trips, source: 'zone', rate };
+  if (o.driverWage > 0) return { amount: o.driverWage, source: 'stored', rate };
+  return { amount: customerDeliveryFee(o), source: 'customerFee', rate };
+}
+
+export function suggestedDriverPay(o: PayOrder, zone: ZoneRates, delivery: DeliverySettings): number {
+  return driverPayBreakdown(o, zone, delivery).amount;
+}
+
+/**
+ * The driver keeps his pay out of the COD money he collected: he hands the rest to the shop,
+ * or the shop pays him what the COD money did not cover.
+ */
+export function settleWithDriver(pay: number, cod: number): { handover: number; topUp: number } {
+  return { handover: Math.max(0, cod - pay), topUp: Math.max(0, pay - cod) };
 }
 
 /** Cash the driver collected from the customer (เก็บเงินปลายทาง) and still has to hand to the shop. */

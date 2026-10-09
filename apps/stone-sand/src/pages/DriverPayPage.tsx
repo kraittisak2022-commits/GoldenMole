@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Check, Trash2, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Check, Trash2, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import PayMethodPicker, { type PayMethod } from '../components/PayMethodPicker';
 import SourceBadge from '../components/SourceBadge';
@@ -15,7 +15,14 @@ import { useCatalog } from '../context/CatalogProvider';
 import { createDriverPayout, deleteDriverPayout, listDriverPayouts } from '../data/driverPayouts';
 import { listDriverUnpaidOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
-import { codToCollect, driverTripRate, suggestedDriverPay, summarizeDriverDues } from '../lib/driverPay';
+import {
+  codToCollect,
+  customerDeliveryFee,
+  driverPayBreakdown,
+  settleWithDriver,
+  suggestedDriverPay,
+  summarizeDriverDues,
+} from '../lib/driverPay';
 import { formatDateShort, formatDateTime, formatMoney, formatNumber, toIsoDate } from '../lib/format';
 import { PAYMENT_METHOD_LABEL, type DriverPayout, type Order } from '../types';
 
@@ -38,7 +45,20 @@ export default function DriverPayPage() {
     () => summarizeDriverDues(unpaid.data ?? [], zoneById, settings.delivery),
     [unpaid.data, zoneById, settings.delivery],
   );
-  const dueTotal = dues.reduce((s, d) => s + d.total, 0);
+  const totals = useMemo(() => {
+    let pay = 0;
+    let cash = 0;
+    let handover = 0;
+    let topUp = 0;
+    for (const d of dues) {
+      const s = settleWithDriver(d.total, d.cash);
+      pay += d.total;
+      cash += d.cash;
+      handover += s.handover;
+      topUp += s.topUp;
+    }
+    return { pay, cash, handover, topUp };
+  }, [dues]);
   const visiblePayouts = (payouts.data ?? []).filter((p) => !selectedDriver || p.driverId === selectedDriver);
   const driverName = (id: string) => driverById(id)?.name ?? 'คนขับ';
 
@@ -65,9 +85,11 @@ export default function DriverPayPage() {
     }
   };
 
+  const loadingDues = unpaid.loading && !unpaid.data;
+
   return (
     <div>
-      <PageHeader title="เคลียร์ค่ารถ" subtitle="จ่ายค่ารถให้คนขับตามออเดอร์ที่วิ่งส่ง แล้วบันทึกว่าจ่ายแล้ว" />
+      <PageHeader title="เคลียร์ค่ารถ" subtitle="หักค่ารถจากเงินเก็บปลายทาง รับเงินส่วนที่เหลือจากคนขับ หรือจ่ายค่ารถส่วนที่ขาด" />
       {actionError ? (
         <div className="mb-4">
           <ErrorBox message={actionError} />
@@ -75,49 +97,71 @@ export default function DriverPayPage() {
       ) : null}
       {paidNo ? (
         <div className="mb-4 flex items-center gap-2 rounded border border-emerald-200 bg-success-soft px-4 py-3 text-sm text-emerald-800">
-          <Check size={18} aria-hidden /> บันทึกจ่ายค่ารถ {paidNo} แล้ว
+          <Check size={18} aria-hidden /> บันทึกเคลียร์ค่ารถ {paidNo} แล้ว
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      {!loadingDues && dues.length ? (
+        <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Stat label="ค่ารถค้างจ่าย" value={formatMoney(totals.pay)} hint={`${dues.length} คนขับ`} />
+          <Stat label="เงินปลายทางที่คนขับถืออยู่" value={formatMoney(totals.cash)} hint="เก็บจากลูกค้าแล้ว ยังไม่ส่งร้าน" />
+          <Stat label="คนขับต้องส่งร้าน" value={formatMoney(totals.handover)} hint="หลังหักค่ารถ" tone={totals.handover ? 'warn' : undefined} />
+          <Stat label="ร้านต้องจ่ายคนขับ" value={formatMoney(totals.topUp)} hint="ค่ารถที่เงินปลายทางไม่พอหัก" tone={totals.topUp ? 'primary' : undefined} />
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <section>
-          <h2 className="mb-2 text-sm font-semibold text-muted">
-            คนขับที่ยังไม่ได้รับค่ารถ{dueTotal ? ` · รวม ${formatMoney(dueTotal)} บาท` : ''}
-          </h2>
+          <h2 className="mb-2 text-sm font-semibold text-muted">คนขับที่ยังไม่ได้เคลียร์</h2>
           {unpaid.error ? <ErrorBox message={unpaid.error} /> : null}
-          {unpaid.loading && !unpaid.data ? (
+          {loadingDues ? (
             <Loading />
           ) : (
             <Card className="overflow-hidden">
               {dues.length ? (
                 <ul className="divide-y divide-border">
-                  {dues.map((row) => (
-                    <li key={row.driverId}>
-                      <button
-                        type="button"
-                        onClick={() => selectDriver(row.driverId)}
-                        className={[
-                          'flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-subtle cursor-pointer',
-                          selectedDriver === row.driverId ? 'bg-primary-soft/60' : '',
-                        ].join(' ')}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium">{driverName(row.driverId)}</p>
-                          <p className="text-xs text-muted">
-                            {row.count} ออเดอร์ · {formatNumber(row.trips)} เที่ยว · ตั้งแต่ {formatDateShort(row.oldestDate)}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold tabular-nums">{formatMoney(row.total)}</p>
-                          {row.cash ? (
-                            <p className="text-xs text-warning">เก็บปลายทาง {formatMoney(row.cash)}</p>
-                          ) : (
-                            <p className="text-xs text-muted">ค่ารถ</p>
-                          )}
-                        </div>
-                      </button>
-                    </li>
-                  ))}
+                  {dues.map((row) => {
+                    const s = settleWithDriver(row.total, row.cash);
+                    const active = selectedDriver === row.driverId;
+                    return (
+                      <li key={row.driverId}>
+                        <button
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => selectDriver(row.driverId)}
+                          className={[
+                            'flex min-h-16 w-full items-center gap-3 border-l-4 px-4 py-3 text-left transition-colors cursor-pointer',
+                            active ? 'border-primary bg-primary-soft/60' : 'border-transparent hover:bg-subtle',
+                          ].join(' ')}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium">{driverName(row.driverId)}</p>
+                            <p className="text-xs text-muted">
+                              {row.count} ออเดอร์ · {formatNumber(row.trips)} เที่ยว · ตั้งแต่ {formatDateShort(row.oldestDate)}
+                            </p>
+                            {row.cash ? (
+                              <p className="text-xs text-muted tabular-nums">
+                                ค่ารถ {formatNumber(row.total)} · เก็บปลายทาง {formatNumber(row.cash)}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="shrink-0 text-right">
+                            {s.handover ? (
+                              <>
+                                <p className="text-xs text-warning">คนขับส่งร้าน</p>
+                                <p className="font-semibold tabular-nums text-warning">{formatMoney(s.handover)}</p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-xs text-muted">ร้านจ่ายคนขับ</p>
+                                <p className="font-semibold tabular-nums">{formatMoney(s.topUp)}</p>
+                              </>
+                            )}
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <Empty title="ไม่มีค่ารถค้างจ่าย" />
@@ -144,14 +188,14 @@ export default function DriverPayPage() {
               }}
             />
           ) : (
-            <Card className="p-5 text-sm text-muted">เลือกคนขับทางซ้ายเพื่อจ่ายค่ารถ</Card>
+            <Card className="p-5 text-sm text-muted">เลือกคนขับทางซ้ายเพื่อเคลียร์ค่ารถ</Card>
           )}
         </section>
       </div>
 
       <section className="mt-8">
         <h2 className="mb-2 text-sm font-semibold text-muted">
-          ประวัติจ่ายค่ารถ{selectedDriver ? ` · ${driverName(selectedDriver)}` : ''}
+          ประวัติเคลียร์ค่ารถ{selectedDriver ? ` · ${driverName(selectedDriver)}` : ''}
         </h2>
         {payouts.error ? <ErrorBox message={payouts.error} /> : null}
         {payouts.loading && !payouts.data ? (
@@ -160,55 +204,93 @@ export default function DriverPayPage() {
           <Card className="overflow-hidden">
             {visiblePayouts.length ? (
               <ul className="divide-y divide-border">
-                {visiblePayouts.map((p) => (
-                  <li key={p.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium tabular-nums">{p.payoutNo}</p>
-                        <Badge tone="success">จ่ายแล้ว · {PAYMENT_METHOD_LABEL[p.method]}</Badge>
+                {visiblePayouts.map((p) => {
+                  const s = settleWithDriver(p.total, p.cashCollected);
+                  return (
+                    <li key={p.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium tabular-nums">{p.payoutNo}</p>
+                          <Badge tone="success">เคลียร์แล้ว · {PAYMENT_METHOD_LABEL[p.method]}</Badge>
+                        </div>
+                        <p className="truncate text-sm">{p.driverName}</p>
+                        <p className="text-xs text-muted">
+                          {formatDateTime(p.createdAt)}
+                          {p.createdBy ? ` · โดย ${p.createdBy}` : ''} · {p.orders.length} ออเดอร์ ·{' '}
+                          {formatNumber(p.orders.reduce((sum, o) => sum + o.trips, 0))} เที่ยว
+                        </p>
+                        <p className="mt-1 flex flex-wrap gap-x-2 text-xs">
+                          {p.orders.map((o) => (
+                            <Link key={o.id} to={`/orders/${o.id}`} className="tabular-nums text-primary underline">
+                              {o.orderNo}
+                            </Link>
+                          ))}
+                        </p>
+                        {p.note ? <p className="mt-1 text-xs text-muted">หมายเหตุ: {p.note}</p> : null}
                       </div>
-                      <p className="truncate text-sm">{p.driverName}</p>
-                      <p className="text-xs text-muted">
-                        {formatDateTime(p.createdAt)}
-                        {p.createdBy ? ` · โดย ${p.createdBy}` : ''} · {p.orders.length} ออเดอร์ ·{' '}
-                        {formatNumber(p.orders.reduce((s, o) => s + o.trips, 0))} เที่ยว
-                      </p>
-                      <p className="mt-1 flex flex-wrap gap-x-2 text-xs">
-                        {p.orders.map((o) => (
-                          <Link key={o.id} to={`/orders/${o.id}`} className="tabular-nums text-primary underline">
-                            {o.orderNo}
-                          </Link>
-                        ))}
-                      </p>
-                      {p.note ? <p className="mt-1 text-xs text-muted">หมายเหตุ: {p.note}</p> : null}
-                    </div>
-                    <div className="text-right text-sm">
-                      <p className="font-semibold tabular-nums">ค่ารถ {formatMoney(p.total)}</p>
-                      {p.cashCollected ? (
-                        <>
-                          <p className="text-xs text-muted tabular-nums">รับเงินสดจากคนขับ {formatMoney(p.cashCollected)}</p>
-                          <p className="text-xs font-medium tabular-nums">
-                            {p.total >= p.cashCollected
-                              ? `ร้านจ่ายคนขับ ${formatMoney(p.total - p.cashCollected)}`
-                              : `คนขับส่งร้าน ${formatMoney(p.cashCollected - p.total)}`}
-                          </p>
-                        </>
+                      <div className="text-right text-sm">
+                        <p className="tabular-nums">ค่ารถ {formatMoney(p.total)}</p>
+                        {p.cashCollected ? (
+                          <>
+                            <p className="text-xs text-muted tabular-nums">เงินปลายทาง {formatMoney(p.cashCollected)}</p>
+                            <p className="text-xs font-semibold tabular-nums">
+                              {s.handover ? `คนขับส่งร้าน ${formatMoney(s.handover)}` : `ร้านจ่ายคนขับ ${formatMoney(s.topUp)}`}
+                            </p>
+                          </>
+                        ) : null}
+                      </div>
+                      {isSuperAdmin ? (
+                        <Button variant="ghost" aria-label={`ลบ ${p.payoutNo}`} onClick={() => remove(p)}>
+                          <Trash2 size={16} aria-hidden />
+                        </Button>
                       ) : null}
-                    </div>
-                    {isSuperAdmin ? (
-                      <Button variant="ghost" aria-label={`ลบ ${p.payoutNo}`} onClick={() => remove(p)}>
-                        <Trash2 size={16} aria-hidden />
-                      </Button>
-                    ) : null}
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
-              <Empty title="ยังไม่มีประวัติจ่ายค่ารถ" />
+              <Empty title="ยังไม่มีประวัติเคลียร์ค่ารถ" />
             )}
           </Card>
         )}
       </section>
+    </div>
+  );
+}
+
+function Stat({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: 'warn' | 'primary' }) {
+  return (
+    <div className="min-w-0 rounded border border-border bg-surface p-4">
+      <p className="truncate text-sm text-muted">{label}</p>
+      <p
+        className={[
+          'mt-1 truncate text-xl font-semibold tabular-nums',
+          tone === 'warn' ? 'text-warning' : tone === 'primary' ? 'text-primary' : 'text-ink',
+        ].join(' ')}
+      >
+        {value}
+      </p>
+      {hint ? <p className="truncate text-xs text-muted">{hint}</p> : null}
+    </div>
+  );
+}
+
+function PaymentBadge({ o }: { o: Order }) {
+  const cod = codToCollect(o);
+  if (cod) return <Badge tone="warning">เก็บปลายทาง {formatNumber(cod)}</Badge>;
+  if (o.paymentStatus === 'paid') return <Badge tone="success">ลูกค้าจ่ายแล้ว</Badge>;
+  if (o.paymentStatus === 'credit') return <Badge>เครดิต</Badge>;
+  return <Badge>ลูกค้ายังไม่จ่าย ({PAYMENT_METHOD_LABEL[o.paymentMethod]})</Badge>;
+}
+
+function StatementRow({ label, value, strong, negative }: { label: ReactNode; value: number; strong?: boolean; negative?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className={strong ? 'font-medium' : 'text-muted'}>{label}</dt>
+      <dd className={['tabular-nums', negative ? 'text-destructive' : '', strong ? 'font-medium' : ''].join(' ')}>
+        {negative ? '−' : ''}
+        {formatMoney(value)}
+      </dd>
     </div>
   );
 }
@@ -250,17 +332,18 @@ function PayoutPanel({
   }, [rangeKey]);
 
   const chosen = inRange.filter((o) => selected.has(o.id));
-  const total = chosen.reduce((s, o) => s + (amounts[o.id] ?? 0), 0);
+  const pay = chosen.reduce((s, o) => s + (amounts[o.id] ?? 0), 0);
   const trips = chosen.reduce((s, o) => s + o.trips, 0);
   const cash = chosen.reduce((s, o) => s + codToCollect(o), 0);
   const codCount = chosen.filter((o) => codToCollect(o) > 0).length;
-  const net = total - cash;
-  const needsMethod = net !== 0;
+  const { handover, topUp } = settleWithDriver(pay, cash);
+  const needsMethod = handover > 0 || topUp > 0;
   const [cashConfirmed, setCashConfirmed] = useState(false);
+  const allChosen = inRange.length > 0 && chosen.length === inRange.length;
 
   useEffect(() => {
     setCashConfirmed(false);
-  }, [cash]);
+  }, [cash, pay]);
 
   const toggle = (id: string) => {
     const next = new Set(selected);
@@ -272,7 +355,7 @@ function PayoutPanel({
   const submit = async () => {
     if (!chosen.length) return setError('เลือกออเดอร์อย่างน้อย 1 รายการ');
     if (needsMethod && !method) return setError('เลือกช่องทางการจ่ายเงิน');
-    if (cash > 0 && !cashConfirmed) return setError('ยืนยันการรับเงินสดจากคนขับก่อน');
+    if (cash > 0 && !cashConfirmed) return setError('ยืนยันการรับเงินจากคนขับก่อน');
     setSaving(true);
     setError('');
     try {
@@ -291,12 +374,19 @@ function PayoutPanel({
     }
   };
 
+  const methodWord = method === 'transfer' ? 'โอน' : method === 'cash' ? 'สด' : '';
+  const submitLabel = handover
+    ? `ยืนยันรับเงิน ${formatMoney(handover)} และเคลียร์ค่ารถ`
+    : topUp
+      ? `ยืนยันจ่ายค่ารถ ${formatMoney(topUp)}`
+      : 'ยืนยันเคลียร์ค่ารถ';
+
   return (
     <Card className="p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h2 className="font-semibold">จ่ายค่ารถ</h2>
-          <p className="text-sm text-muted">{driverName}</p>
+          <h2 className="font-semibold">เคลียร์ค่ารถ · {driverName}</h2>
+          <p className="text-sm text-muted">{orders.length} ออเดอร์ที่ยังไม่ได้เคลียร์</p>
         </div>
         <button
           type="button"
@@ -322,50 +412,59 @@ function PayoutPanel({
           </div>
 
           <div>
-            <p className="mb-1 flex justify-between px-1 text-xs text-muted">
-              <span>ออเดอร์</span>
+            <div className="mb-1 flex items-center justify-between gap-3 px-1 text-xs text-muted">
+              <label className="inline-flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 cursor-pointer accent-[var(--color-primary)]"
+                  checked={allChosen}
+                  disabled={!inRange.length}
+                  onChange={() => setSelected(allChosen ? new Set() : new Set(inRange.map((o) => o.id)))}
+                />
+                เลือกทั้งหมด ({chosen.length}/{inRange.length})
+              </label>
               <span>ค่ารถ (บาท)</span>
-            </p>
-            <ul className="flex max-h-96 flex-col divide-y divide-border overflow-y-auto overflow-x-hidden rounded border border-border">
+            </div>
+            <ul className="flex max-h-[28rem] flex-col divide-y divide-border overflow-y-auto overflow-x-hidden rounded border border-border">
               {inRange.map((o) => {
                 const zone = zoneById(o.zoneId);
-                const rate = driverTripRate(zone, o.truckSize, o.roadDistanceKm, settings.delivery);
+                const b = driverPayBreakdown(o, zone, settings.delivery);
                 const truckLabel = o.truckSize === 3 ? 'รถ 3 คิว' : 'รถ 5 คิว';
+                const isChosen = selected.has(o.id);
                 return (
-                  <li key={o.id} className="flex min-h-14 items-center gap-3 px-3 py-2 text-sm">
+                  <li key={o.id} className={['flex items-start gap-3 px-3 py-2.5 text-sm', isChosen ? '' : 'opacity-60'].join(' ')}>
                     <input
                       type="checkbox"
                       aria-label={`เลือก ${o.orderNo}`}
-                      className="h-5 w-5 shrink-0 cursor-pointer accent-[var(--color-primary)]"
-                      checked={selected.has(o.id)}
+                      className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[var(--color-primary)]"
+                      checked={isChosen}
                       onChange={() => toggle(o.id)}
                     />
                     <button type="button" className="min-w-0 flex-1 text-left cursor-pointer" onClick={() => toggle(o.id)}>
-                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="whitespace-nowrap font-medium tabular-nums">{o.orderNo}</span>
                         <SourceBadge source={o.source} />
                         {o.deliveryStatus !== 'delivered' ? <Badge tone="warning">ยังไม่ส่ง</Badge> : null}
                       </span>
-                      {codToCollect(o) ? (
-                        <span className="block text-xs font-medium text-primary">เก็บเงินปลายทาง {formatNumber(codToCollect(o))}</span>
-                      ) : null}
                       <span className="block truncate text-xs text-muted">
                         {formatDateShort(o.orderDate)} · {o.customer.name}
                       </span>
-                      <span className="block text-xs text-muted">
-                        {o.truckSize ? `${o.truckSize} คิว × ` : ''}
-                        {o.trips} เที่ยว · เก็บลูกค้า {formatNumber(o.deliveryTotal - o.deliveryDiscount)}
+                      <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                        <PaymentBadge o={o} />
+                        <span>
+                          {o.truckSize ? `${o.truckSize} คิว × ` : ''}
+                          {o.trips} เที่ยว · ค่าส่งในบิล {formatNumber(customerDeliveryFee(o))}
+                        </span>
                       </span>
-                      {zone && rate.perTrip ? (
-                        <span className="block text-xs text-muted">
-                          ต.{zone.name} · {truckLabel} {formatNumber(rate.base)}
-                          {rate.extra ? ` + ตามระยะ ${formatNumber(rate.extra)}` : ''} บาท/เที่ยว × {o.trips} เที่ยว
-                        </span>
-                      ) : (
-                        <span className="block text-xs font-medium text-warning">
-                          {zone ? `ต.${zone.name} ยังไม่ได้ตั้งค่ารถ (${truckLabel})` : 'ออเดอร์นี้ไม่มีตำบล'} · ใส่ค่ารถเอง
-                        </span>
-                      )}
+                      <span
+                        className={['mt-1 block text-xs', b.source === 'zone' ? 'text-muted' : 'font-medium text-warning'].join(' ')}
+                      >
+                        {b.source === 'zone' && zone
+                          ? `ค่ารถ ต.${zone.name} ${truckLabel} ${formatNumber(b.rate.base)}${b.rate.extra ? ` + ตามระยะ ${formatNumber(b.rate.extra)}` : ''} × ${o.trips} เที่ยว`
+                          : b.source === 'stored'
+                            ? 'ค่ารถตามที่บันทึกไว้ในออเดอร์'
+                            : `${zone ? `ต.${zone.name} ยังไม่ได้ตั้งค่ารถ (${truckLabel})` : 'ไม่มีตำบล'} · ใช้ค่าส่งในบิลแทน`}
+                      </span>
                     </button>
                     <div className="w-28 shrink-0">
                       <Input
@@ -385,38 +484,54 @@ function PayoutPanel({
               {!inRange.length ? <li className="px-3 py-3 text-sm text-muted">ไม่มีออเดอร์ในช่วงวันที่นี้</li> : null}
             </ul>
             <p className="mt-1 px-1 text-xs text-muted">
-              ตั้งต้นจาก (ค่ารถของตำบลตามขนาดรถ + ค่าเพิ่มตามระยะตามเรท บาท/กม. ของรถ) × จำนวนเที่ยว (ตั้งได้ที่ ตั้งค่า › ค่าส่งตามตำบล และ การคำนวณค่าส่งจากระยะ)
-              แก้ตัวเลขได้ก่อนยืนยัน
+              ค่ารถตั้งต้น = (ค่ารถของตำบลตามขนาดรถ + ตามระยะ) × เที่ยว · ตำบลที่ยังไม่ได้ตั้งค่ารถใช้ค่าส่งในบิลแทน · แก้ตัวเลขได้ก่อนยืนยัน
             </p>
           </div>
 
-          {cash ? (
-            <dl className="flex flex-col gap-1.5 rounded bg-subtle px-4 py-3 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">
-                  ค่ารถ · {chosen.length} ออเดอร์ · {formatNumber(trips)} เที่ยว
-                </dt>
-                <dd className="tabular-nums">{formatMoney(total)}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">หัก เงินเก็บปลายทาง ({codCount} ออเดอร์)</dt>
-                <dd className="tabular-nums text-destructive">-{formatMoney(cash)}</dd>
-              </div>
-              <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-border pt-2">
-                <dt className="font-semibold">{net >= 0 ? 'ร้านจ่ายคนขับ' : 'คนขับต้องส่งเงินให้ร้าน'}</dt>
-                <dd className={['text-xl font-bold tabular-nums', net >= 0 ? 'text-primary' : 'text-warning'].join(' ')}>
-                  {formatMoney(Math.abs(net))}
-                </dd>
-              </div>
+          <div className="rounded border border-border">
+            <dl className="flex flex-col gap-1.5 px-4 py-3 text-sm">
+              {cash ? (
+                <>
+                  <StatementRow label={`เงินที่คนขับเก็บจากลูกค้า (เก็บปลายทาง ${codCount} ออเดอร์)`} value={cash} />
+                  <StatementRow label={`หัก ค่ารถคนขับ (${chosen.length} ออเดอร์ · ${formatNumber(trips)} เที่ยว)`} value={pay} negative />
+                </>
+              ) : (
+                <StatementRow label={`ค่ารถคนขับ (${chosen.length} ออเดอร์ · ${formatNumber(trips)} เที่ยว)`} value={pay} />
+              )}
             </dl>
-          ) : (
-            <div className="flex items-center justify-between gap-3 rounded bg-subtle px-4 py-3">
-              <span className="text-sm text-muted">
-                {chosen.length} ออเดอร์ · {formatNumber(trips)} เที่ยว
+            <div
+              className={[
+                'flex items-center justify-between gap-3 rounded-b border-t px-4 py-3',
+                handover ? 'border-amber-200 bg-warning-soft' : 'border-border bg-subtle',
+              ].join(' ')}
+            >
+              <span className="flex items-center gap-2 font-semibold">
+                {handover ? (
+                  <>
+                    <ArrowDownLeft size={18} className="text-warning" aria-hidden /> คนขับส่งเงินให้ร้าน
+                  </>
+                ) : topUp ? (
+                  <>
+                    <ArrowUpRight size={18} className="text-primary" aria-hidden /> {cash ? 'ร้านจ่ายค่ารถเพิ่ม' : 'ร้านจ่ายค่ารถคนขับ'}
+                  </>
+                ) : (
+                  'หักกันพอดี ไม่ต้องจ่ายเพิ่ม'
+                )}
               </span>
-              <span className="text-xl font-bold tabular-nums text-primary">{formatMoney(total)}</span>
+              <span className={['text-2xl font-bold tabular-nums', handover ? 'text-warning' : 'text-primary'].join(' ')}>
+                {formatMoney(handover || topUp)}
+              </span>
             </div>
-          )}
+          </div>
+
+          {needsMethod ? (
+            <PayMethodPicker
+              value={method}
+              onChange={setMethod}
+              hints={handover ? DRIVER_PAYS_HINTS : PAY_HINTS}
+              label={handover ? 'คนขับส่งเงินให้ร้านทาง' : 'ร้านจ่ายค่ารถทาง'}
+            />
+          ) : null}
 
           {cash ? (
             <label className="flex cursor-pointer items-start gap-3 rounded border-2 border-amber-300 bg-warning-soft px-4 py-3 text-sm">
@@ -427,21 +542,18 @@ function PayoutPanel({
                 onChange={(e) => setCashConfirmed(e.target.checked)}
               />
               <span>
-                <span className="block font-semibold">ได้รับเงินสด {formatMoney(cash)} บาท จากคนขับแล้ว</span>
-                <span className="block text-muted">
-                  เงินค่าสินค้าที่คนขับเก็บจากลูกค้า ออเดอร์เก็บปลายทางจะเปลี่ยนเป็น "จ่ายแล้ว" และออกใบเสร็จให้อัตโนมัติ
+                <span className="block font-semibold">
+                  {handover
+                    ? `ได้รับเงิน${methodWord} ${formatMoney(handover)} บาท จากคนขับแล้ว`
+                    : `คนขับเก็บเงินปลายทาง ${formatMoney(cash)} บาท และหักเป็นค่ารถแล้ว`}
                 </span>
+                <span className="block tabular-nums text-muted">
+                  เก็บจากลูกค้า {formatMoney(cash)} − ค่ารถ {formatMoney(pay)}
+                  {handover ? ` = ${formatMoney(handover)}` : topUp ? ` → ร้านจ่ายเพิ่ม ${formatMoney(topUp)}` : ''}
+                </span>
+                <span className="block text-muted">ออเดอร์เก็บปลายทางจะเปลี่ยนเป็น "จ่ายแล้ว" และออกใบเสร็จให้อัตโนมัติ</span>
               </span>
             </label>
-          ) : null}
-
-          {needsMethod ? (
-            <PayMethodPicker
-              value={method}
-              onChange={setMethod}
-              hints={net > 0 ? PAY_HINTS : DRIVER_PAYS_HINTS}
-              label={net < 0 ? 'คนขับส่งเงินส่วนต่างด้วย' : cash ? 'จ่ายส่วนต่างให้คนขับด้วย' : 'จ่ายค่ารถด้วย'}
-            />
           ) : null}
 
           <Field id="dp-note" label="หมายเหตุ">
@@ -456,7 +568,7 @@ function PayoutPanel({
             onClick={submit}
             disabled={saving || !chosen.length || (needsMethod && !method) || (cash > 0 && !cashConfirmed)}
           >
-            <Check size={18} aria-hidden /> {saving ? 'กำลังบันทึก…' : cash ? 'ยืนยันเคลียร์ค่ารถ' : 'ยืนยันจ่ายค่ารถ'}
+            <Check size={18} aria-hidden /> {saving ? 'กำลังบันทึก…' : submitLabel}
           </Button>
         </div>
       )}

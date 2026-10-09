@@ -1,5 +1,12 @@
 import type { Order } from '../types';
-import { codToCollect, driverTripRate, suggestedDriverPay, summarizeDriverDues } from './driverPay';
+import {
+  codToCollect,
+  driverPayBreakdown,
+  driverTripRate,
+  settleWithDriver,
+  suggestedDriverPay,
+  summarizeDriverDues,
+} from './driverPay';
 
 const make = (patch: Partial<Order>): Order =>
   ({
@@ -54,16 +61,36 @@ describe('suggestedDriverPay', () => {
   });
 
   it('does not use the 5-คิว rate for a 3-คิว truck without its own rate', () => {
-    expect(suggestedDriverPay(make({ truckSize: 3, trips: 2 }), { ...zone, driverFee3: 0 }, delivery)).toBe(0);
+    expect(suggestedDriverPay(make({ truckSize: 3, trips: 2 }), { ...zone, driverFee3: 0 }, delivery)).toBe(600);
   });
 
   it('falls back to the wage stored on the order when the zone has no driver fee', () => {
     expect(suggestedDriverPay(make({ driverWage: 450 }), { ...zone, driverFee: 0, driverFee3: 0 }, delivery)).toBe(450);
-    expect(suggestedDriverPay(make({ driverWage: 450 }), undefined, delivery)).toBe(450);
+    expect(driverPayBreakdown(make({ driverWage: 450 }), undefined, delivery)).toMatchObject({ amount: 450, source: 'stored' });
   });
 
-  it('never uses the delivery fee charged to the customer', () => {
-    expect(suggestedDriverPay(make({ driverWage: 0, deliveryTotal: 1200 }), undefined, delivery)).toBe(0);
+  it("then falls back to the customer's delivery fee after its delivery discount", () => {
+    expect(driverPayBreakdown(make({ deliveryTotal: 250, deliveryDiscount: 50 }), undefined, delivery)).toMatchObject({
+      amount: 200,
+      source: 'customerFee',
+    });
+    expect(suggestedDriverPay(make({ deliveryTotal: 0 }), { ...zone, driverFee: 0 }, delivery)).toBe(0);
+  });
+
+  it('reports the tambon rate as the source when it is set', () => {
+    expect(driverPayBreakdown(make({ truckSize: 5 }), zone, delivery).source).toBe('zone');
+  });
+});
+
+describe('settleWithDriver', () => {
+  it('has the driver hand over the COD money minus his pay', () => {
+    expect(settleWithDriver(250, 3050)).toEqual({ handover: 2800, topUp: 0 });
+  });
+
+  it('has the shop pay what the COD money does not cover', () => {
+    expect(settleWithDriver(450, 200)).toEqual({ handover: 0, topUp: 250 });
+    expect(settleWithDriver(450, 0)).toEqual({ handover: 0, topUp: 450 });
+    expect(settleWithDriver(300, 300)).toEqual({ handover: 0, topUp: 0 });
   });
 });
 
