@@ -46,7 +46,7 @@ class HomeShell extends StatelessWidget {
           : Scaffold(
               appBar: const _BrandBar(),
               body: body,
-              bottomNavigationBar: _BottomTabs(current: current),
+              bottomNavigationBar: BottomTabs(current: current),
             ),
     );
   }
@@ -127,8 +127,8 @@ class _BrandBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
-class _BottomTabs extends StatelessWidget {
-  const _BottomTabs({required this.current});
+class BottomTabs extends StatelessWidget {
+  const BottomTabs({super.key, required this.current});
   final Dest current;
 
   @override
@@ -167,38 +167,41 @@ class _BottomTabs extends StatelessWidget {
           border: Border(top: BorderSide(color: AppColors.border)),
         ),
         padding: EdgeInsets.only(bottom: bottom),
-        child: Row(
-          children: [
-            tab(phoneTabs[0]),
-            tab(phoneTabs[1]),
-            Expanded(
-              child: Center(
-                child: TourTarget(
-                  'new-order',
-                  child: Tooltip(
-                    message: 'สร้างออเดอร์',
-                    child: Material(
-                      color: AppColors.primary,
-                      shape: const CircleBorder(side: BorderSide(color: AppColors.surface, width: 4)),
-                      elevation: 6,
-                      shadowColor: AppColors.primary.withValues(alpha: 0.4),
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: () => openNewOrder(context),
-                        child: const SizedBox(
-                          width: 56,
-                          height: 56,
-                          child: Icon(Icons.add, size: 28, color: Colors.white),
+        child: SizedBox(
+          height: 60,
+          child: Row(
+            children: [
+              tab(phoneTabs[0]),
+              tab(phoneTabs[1]),
+              Expanded(
+                child: Center(
+                  child: TourTarget(
+                    'new-order',
+                    child: Tooltip(
+                      message: 'สร้างออเดอร์',
+                      child: Material(
+                        color: AppColors.primary,
+                        shape: const CircleBorder(side: BorderSide(color: AppColors.surface, width: 4)),
+                        elevation: 6,
+                        shadowColor: AppColors.primary.withValues(alpha: 0.4),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => openNewOrder(context),
+                          child: const SizedBox(
+                            width: 56,
+                            height: 56,
+                            child: Icon(Icons.add, size: 28, color: Colors.white),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            tab(phoneTabs[2]),
-            tab(phoneTabs[3]),
-          ],
+              tab(phoneTabs[2]),
+              tab(phoneTabs[3]),
+            ],
+          ),
         ),
       ),
     );
