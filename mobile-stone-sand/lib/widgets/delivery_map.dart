@@ -317,49 +317,107 @@ class _MapTypeToggle extends StatelessWidget {
   final bool satellite;
   final ValueChanged<bool> onChanged;
 
+  static const _optionW = 92.0;
+  static const _h = 36.0;
+  static const _pad = 3.0;
+  static const _duration = Duration(milliseconds: 220);
+
   @override
   Widget build(BuildContext context) {
-    Widget option(String label, bool sat) {
+    Widget option(String label, IconData icon, bool sat) {
       final active = satellite == sat;
+      final color = active ? Colors.white : AppColors.ink.withValues(alpha: 0.75);
       return Semantics(
         inMutuallyExclusiveGroup: true,
         selected: active,
         button: true,
-        child: Material(
-          color: active ? AppColors.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(6),
-            onTap: () => onChanged(sat),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 36),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Center(
-                  widthFactor: 1,
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: active ? Colors.white : AppColors.ink,
+        label: label,
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: active ? null : () => onChanged(sat),
+          customBorder: const StadiumBorder(),
+          child: Container(
+            width: _optionW,
+            height: _h,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TweenAnimationBuilder<Color?>(
+                  tween: ColorTween(end: color),
+                  duration: _duration,
+                  builder: (_, c, _) => Icon(icon, size: 16, color: c),
+                ),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: AnimatedDefaultTextStyle(
+                      duration: _duration,
+                      style: DefaultTextStyle.of(context).style.merge(TextStyle(
+                            fontSize: 13,
+                            fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                            color: color,
+                          )),
+                      child: Text(label, maxLines: 1),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
         ),
       );
     }
 
-    return Material(
-      color: AppColors.surface,
-      elevation: 2,
-      borderRadius: BorderRadius.circular(8),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(_h),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.16), blurRadius: 10, offset: const Offset(0, 2)),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [option('แผนที่', false), option('ดาวเทียม', true)]),
+        padding: const EdgeInsets.all(_pad),
+        child: Material(
+          type: MaterialType.transparency,
+          child: SizedBox(
+            width: _optionW * 2,
+            height: _h,
+            child: Stack(
+              children: [
+                AnimatedAlign(
+                  duration: _duration,
+                  curve: Curves.easeOutCubic,
+                  alignment: satellite ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    width: _optionW,
+                    height: _h,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(_h),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.35),
+                          blurRadius: 6,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    option('แผนที่', Icons.map_outlined, false),
+                    option('ดาวเทียม', Icons.satellite_alt_outlined, true),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
