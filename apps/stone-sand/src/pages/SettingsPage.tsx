@@ -231,10 +231,10 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
 }
 
 const ZONE_FEE_COLUMNS = [
-  { key: 'feeMin', label: 'ลูกค้า ต่ำสุด', step: 50 },
-  { key: 'feeMax', label: 'ลูกค้า สูงสุด', step: 50 },
-  { key: 'driverFee', label: 'ค่ารถ 5 คิว (บาท/คิว)', step: 5 },
-  { key: 'driverFee3', label: 'ค่ารถ 3 คิว (บาท/คิว)', step: 5 },
+  { key: 'feeMin', label: 'ลูกค้า ต่ำสุด' },
+  { key: 'feeMax', label: 'ลูกค้า สูงสุด' },
+  { key: 'driverFee', label: 'ค่ารถ 5 คิว (บาท/เที่ยว)' },
+  { key: 'driverFee3', label: 'ค่ารถ 3 คิว (บาท/เที่ยว)' },
 ] as const;
 
 function ZonesSection({
@@ -264,7 +264,7 @@ function ZonesSection({
   return (
     <Section
       title="ค่าส่งตามตำบล (บาท/เที่ยว)"
-      subtitle={`ค่าส่งที่ลูกค้าจ่าย: ใกล้ถนนใหญ่ไม่เกิน ${formatNumber(delivery.nearKm)} กม. คิดราคาต่ำสุด ไกลขึ้นคิดเพิ่มตามระยะจนถึงราคาสูงสุด · ค่ารถคนขับ: บาทต่อคิวที่ส่งให้ลูกค้า แยกรถ 5 คิว (ปกติ) กับ 3 คิว ใช้ตั้งต้นตอนเคลียร์ค่ารถ`}
+      subtitle={`ค่าส่งที่ลูกค้าจ่าย: ใกล้ถนนใหญ่ไม่เกิน ${formatNumber(delivery.nearKm)} กม. คิดราคาต่ำสุด ไกลขึ้นคิดเพิ่มตามระยะจนถึงราคาสูงสุด · ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว ใช้ตั้งต้นตอนเคลียร์ค่ารถ (× จำนวนเที่ยว)`}
       saver={saver}
       onSave={() =>
         saver.run(async () => {
@@ -318,7 +318,7 @@ function ZonesSection({
                     type="number"
                     inputMode="numeric"
                     min={0}
-                    step={c.step}
+                    step={50}
                     value={z[c.key]}
                     invalid={c.key === 'feeMax' && z.feeMax < z.feeMin}
                     onChange={(e) => update(z.id, { [c.key]: num(e.target.value) })}

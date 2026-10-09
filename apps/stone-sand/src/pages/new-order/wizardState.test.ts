@@ -82,10 +82,10 @@ describe('toDraft', () => {
       paidNow: true,
       deliveryDiscount: 100,
     });
-    const d = toDraft(s, products, 60);
+    const d = toDraft(s, products, 500);
     expect(d.source).toBe('shop');
     expect(d.items.map((i) => i.amount)).toEqual([2000, 1100]);
-    expect(d.driverWage).toBe(600);
+    expect(d.driverWage).toBe(1000);
     expect(d.deliveryDiscount).toBe(100);
     expect(d.paidNow).toBe(true);
   });

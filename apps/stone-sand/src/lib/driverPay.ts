@@ -1,30 +1,20 @@
-import type { Order, OrderItem, TruckSize, Zone } from '../types';
+import type { Order, TruckSize, Zone } from '../types';
 
 type ZoneDriverFee = Pick<Zone, 'driverFee' | 'driverFee3'> | undefined;
 
-/** Driver fee per คิว for the truck size; trucks of unknown size are paid the normal 5-คิว rate. */
+/** Driver fee per trip for the truck size; trucks of unknown size are paid the normal 5-คิว rate. */
 export function zoneDriverFee(zone: ZoneDriverFee, truckSize: TruckSize | null | undefined): number {
   if (!zone) return 0;
   return truckSize === 3 ? zone.driverFee3 : zone.driverFee;
 }
 
-/** คิว delivered to the customer across all lines. */
-export function deliveredCubes(items: Pick<OrderItem, 'unit' | 'quantity'>[]): number {
-  return items.reduce((s, it) => s + (it.unit === 'คิว' && it.quantity > 0 ? it.quantity : 0), 0);
-}
-
-/** Driver pay for a load: rate per คิว × คิว delivered, in whole baht. */
-export function driverPayFor(perCubic: number, cubes: number): number {
-  return Math.round(perCubic * cubes);
-}
-
 /**
- * Default amount to pay the driver: the tambon's rate per คิว for the truck size × คิว delivered.
+ * Default amount to pay the driver: the tambon's driver fee for the truck size × trips.
  * Without a rate it falls back to the wage stored on the order, never to the customer's delivery fee.
  */
-export function suggestedDriverPay(o: Pick<Order, 'driverWage' | 'truckSize' | 'items'>, zone: ZoneDriverFee): number {
-  const perCubic = zoneDriverFee(zone, o.truckSize);
-  return perCubic > 0 ? driverPayFor(perCubic, deliveredCubes(o.items)) : o.driverWage;
+export function suggestedDriverPay(o: Pick<Order, 'driverWage' | 'trips' | 'truckSize'>, zone: ZoneDriverFee): number {
+  const perTrip = zoneDriverFee(zone, o.truckSize);
+  return perTrip > 0 ? perTrip * o.trips : o.driverWage;
 }
 
 /** Cash the driver collected from the customer (เก็บเงินปลายทาง) and still has to hand to the shop. */
