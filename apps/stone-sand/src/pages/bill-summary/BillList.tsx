@@ -1,12 +1,26 @@
-import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, FileText } from 'lucide-react';
-import DemoBadge from '../../components/DemoBadge';
-import SourceBadge from '../../components/SourceBadge';
-import Badge from '../../components/ui/Badge';
-import { BILL_STAGE, stageAction, type BillStep, type BillSummary, type BillTotals } from '../../lib/billSummary';
-import { formatDateShort, formatMoney } from '../../lib/format';
-import type { Order } from '../../types';
+import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  Circle,
+  CircleDot,
+  FileText,
+} from "lucide-react";
+import DemoBadge from "../../components/DemoBadge";
+import SourceBadge from "../../components/SourceBadge";
+import Badge from "../../components/ui/Badge";
+import {
+  BILL_STAGE,
+  netMargin,
+  stageAction,
+  type BillStep,
+  type BillSummary,
+  type BillTotals,
+} from "../../lib/billSummary";
+import { formatDateShort, formatMoney } from "../../lib/format";
+import type { Order } from "../../types";
 
 export interface BillRowData {
   order: Order;
@@ -14,99 +28,151 @@ export interface BillRowData {
   driverName: string;
 }
 
-function Steps({ steps, cancelled }: { steps: BillStep[]; cancelled: boolean }) {
+/** Desktop columns: bill · ยอดบิล · ค่ารถ · คงเหลือ · actions. Shared by header, rows and footer. */
+const COLS = "lg:grid-cols-[minmax(0,1fr)_8.5rem_8.5rem_9rem_9.5rem]";
+
+function Steps({
+  steps,
+  cancelled,
+}: {
+  steps: BillStep[];
+  cancelled: boolean;
+}) {
+  const shown = steps.filter((s) => s.state !== "skip");
   return (
-    <ol className="grid w-full max-w-md auto-cols-fr grid-flow-col gap-1" aria-label="ขั้นตอน">
-      {steps
-        .filter((s) => s.state !== 'skip')
-        .map((step) => {
-          const current = step.state === 'current' && !cancelled;
-          const color = cancelled
-            ? 'bg-border'
-            : step.state === 'done'
-              ? 'bg-success'
-              : current
-                ? 'bg-warning'
-                : 'bg-border';
-          const status = step.state === 'done' ? 'เสร็จ' : current ? 'ขั้นตอนปัจจุบัน' : 'ยังไม่ถึง';
-          return (
-            <li key={step.key} className="flex min-w-0 flex-col gap-1">
-              <span className={['h-1.5 rounded-full', color].join(' ')} aria-hidden />
-              <span className={['truncate text-[11px]', current ? 'font-medium text-ink' : 'text-muted'].join(' ')}>
-                {step.label}
-                <span className="sr-only">: {status}</span>
-              </span>
-            </li>
-          );
-        })}
+    <ol
+      className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs"
+      aria-label="ขั้นตอน"
+    >
+      {shown.map((step, i) => {
+        const done = step.state === "done" && !cancelled;
+        const current = step.state === "current" && !cancelled;
+        const status = done
+          ? "เสร็จ"
+          : current
+            ? "ขั้นตอนปัจจุบัน"
+            : "ยังไม่ถึง";
+        return (
+          <li key={step.key} className="flex items-center gap-1.5">
+            {i > 0 ? <span className="h-px w-3 bg-border" aria-hidden /> : null}
+            <span
+              className={[
+                "inline-flex items-center gap-1",
+                done
+                  ? "text-ink"
+                  : current
+                    ? "font-semibold text-primary"
+                    : "text-muted",
+              ].join(" ")}
+            >
+              {done ? (
+                <span
+                  className="grid h-4 w-4 place-items-center rounded-full bg-success text-white"
+                  aria-hidden
+                >
+                  <Check size={11} strokeWidth={3} />
+                </span>
+              ) : current ? (
+                <CircleDot size={16} aria-hidden />
+              ) : (
+                <Circle size={16} className="text-muted/50" aria-hidden />
+              )}
+              {step.label}
+              <span className="sr-only">: {status}</span>
+            </span>
+          </li>
+        );
+      })}
     </ol>
   );
 }
 
-function MoneyLine({
+function Cell({
   label,
   children,
-  strong,
-  tone,
+  sub,
 }: {
   label: string;
   children: ReactNode;
-  strong?: boolean;
-  tone?: 'warning';
+  sub?: ReactNode;
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt
-        className={[
-          'min-w-0 truncate',
-          tone === 'warning' ? 'text-warning' : strong ? 'font-medium text-ink' : 'text-muted',
-        ].join(' ')}
-      >
-        {label}
-      </dt>
-      <dd className={['shrink-0 tabular-nums', tone === 'warning' ? 'text-warning' : ''].join(' ')}>{children}</dd>
+    <div className="min-w-0 lg:text-right">
+      <dt className="text-xs text-muted lg:sr-only">{label}</dt>
+      <dd className="whitespace-nowrap tabular-nums">{children}</dd>
+      {sub ? <dd className="mt-0.5 text-xs text-muted">{sub}</dd> : null}
     </div>
   );
 }
 
-function Money({ order: o, summary: s, driverName }: BillRowData) {
-  const cancelled = s.stage === 'cancelled';
-  const loss = s.deliveryMargin < 0 && !cancelled;
+function Figures({ order: o, summary: s }: BillRowData) {
+  const cancelled = s.stage === "cancelled";
+  const delivery = o.fulfillment === "delivery";
+  const loss = delivery && s.deliveryMargin < 0 && !cancelled;
+  const margin = netMargin(s.net, s.revenue);
+
   return (
-    <dl className="flex flex-col gap-1 rounded bg-subtle/70 px-3 py-2.5 text-sm">
-      <MoneyLine label="ยอดบิล" strong>
+    <dl className="grid grid-cols-3 gap-3 rounded bg-subtle/70 px-3 py-2.5 text-sm lg:contents">
+      <Cell
+        label="ยอดบิล"
+        sub={
+          cancelled ? null : s.receivable > 0 ? (
+            <span className="font-medium text-warning">
+              ค้างรับ {formatMoney(s.receivable)}
+            </span>
+          ) : (
+            <span className="text-success">รับเงินครบ</span>
+          )
+        }
+      >
         <span className="font-medium">{formatMoney(s.revenue)}</span>
-      </MoneyLine>
-      <MoneyLine label="ค่าสินค้า">{formatMoney(s.goods)}</MoneyLine>
-      {o.fulfillment === 'delivery' ? (
-        <>
-          <MoneyLine label="ค่าส่งเก็บลูกค้า">{formatMoney(s.deliveryFee)}</MoneyLine>
-          <MoneyLine label={driverName ? `ค่ารถ · ${driverName}` : 'ค่ารถคนขับ'}>
-            {s.driverCost || s.driverCostEstimated ? (
-              <span
-                className={s.driverCostEstimated ? 'text-muted' : ''}
-                title={s.driverCostEstimated ? 'ประมาณตามเรท ยังไม่จ่าย' : 'จ่ายแล้ว'}
-              >
-                {s.driverCostEstimated ? '≈ ' : ''}−{formatMoney(s.driverCost)}
-              </span>
-            ) : (
-              <span className="text-muted">—</span>
-            )}
-          </MoneyLine>
-        </>
-      ) : null}
-      <div className="my-0.5 border-t border-border" />
-      <MoneyLine label="คงเหลือเข้าร้าน" strong>
-        <span className="inline-flex items-center gap-1">
-          {loss ? <AlertTriangle size={14} className="text-warning" aria-label="ขาดทุนค่าส่ง" /> : null}
-          <b className={cancelled ? 'text-muted' : 'text-success'}>{formatMoney(s.net)}</b>
-        </span>
-      </MoneyLine>
-      {s.receivable ? (
-        <MoneyLine label="ค้างรับ" tone="warning">
-          {formatMoney(s.receivable)}
-        </MoneyLine>
-      ) : null}
+      </Cell>
+
+      <Cell
+        label="ค่ารถคนขับ"
+        sub={delivery ? `เก็บค่าส่ง ${formatMoney(s.deliveryFee)}` : "มารับเอง"}
+      >
+        {!delivery || (!s.driverCost && !s.driverCostEstimated) ? (
+          <span className="text-muted">—</span>
+        ) : (
+          <span
+            className={s.driverCostEstimated ? "text-muted" : ""}
+            title={
+              s.driverCostEstimated
+                ? "ประมาณตามเรทตำบล ยังไม่จ่ายคนขับ"
+                : "จ่ายคนขับแล้ว"
+            }
+          >
+            {s.driverCostEstimated ? "≈ " : ""}−{formatMoney(s.driverCost)}
+            <span className="sr-only">
+              {s.driverCostEstimated ? " (ประมาณ ยังไม่จ่าย)" : " (จ่ายแล้ว)"}
+            </span>
+          </span>
+        )}
+      </Cell>
+
+      <Cell
+        label="คงเหลือเข้าร้าน"
+        sub={
+          loss ? (
+            <span className="inline-flex items-center gap-1 text-warning lg:justify-end">
+              <AlertTriangle size={12} aria-hidden /> ค่าส่งขาด{" "}
+              {formatMoney(-s.deliveryMargin)}
+            </span>
+          ) : margin != null && !cancelled ? (
+            `${margin}% ของยอดบิล`
+          ) : null
+        }
+      >
+        <b
+          className={[
+            "font-semibold",
+            cancelled ? "text-muted" : "text-success",
+          ].join(" ")}
+        >
+          {formatMoney(s.net)}
+        </b>
+      </Cell>
     </dl>
   );
 }
@@ -115,64 +181,115 @@ function BillRow(row: BillRowData) {
   const { order: o, summary: s, driverName } = row;
   const meta = BILL_STAGE[s.stage];
   const action = stageAction(o, s.stage);
-  const cancelled = s.stage === 'cancelled';
+  const cancelled = s.stage === "cancelled";
   const fulfillment =
-    o.fulfillment === 'delivery' ? `ส่ง ${o.trips} เที่ยว${driverName ? ` · ${driverName}` : ''}` : 'มารับเอง';
+    o.fulfillment === "delivery"
+      ? `ส่ง ${o.trips} เที่ยว${driverName ? ` · ${driverName}` : ""}`
+      : "มารับเอง";
 
   return (
-    <li className={['px-4 py-4 sm:px-5', cancelled ? 'opacity-60' : ''].join(' ')}>
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-6">
-        <div className="flex min-w-0 flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Link
-              to={`/orders/${o.id}`}
-              className={['max-w-full truncate font-semibold hover:text-primary', cancelled ? 'line-through' : ''].join(' ')}
-            >
-              {o.customer.name}
-            </Link>
-            <Badge tone={meta.tone}>{meta.label}</Badge>
-          </div>
-          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted tabular-nums">
-            <span>
-              {o.orderNo} · {formatDateShort(o.orderDate)}
-            </span>
-            <SourceBadge source={o.source} />
-            {o.demo ? <DemoBadge /> : null}
-            <span className="min-w-0 truncate">· {fulfillment}</span>
-          </p>
-          <Steps steps={s.steps} cancelled={cancelled} />
-          <div className="flex flex-wrap gap-x-4 text-sm">
-            {action ? (
-              <Link to={action.to} className="inline-flex min-h-10 items-center gap-1 font-medium text-primary hover:underline">
-                {action.label} <ArrowRight size={14} aria-hidden />
-              </Link>
-            ) : null}
-            <Link to={`/bill/order/${o.id}`} className="inline-flex min-h-10 items-center gap-1 text-muted hover:text-primary">
-              <FileText size={14} aria-hidden /> ใบส่งของ
-            </Link>
-          </div>
+    <li
+      className={[
+        "grid gap-3 px-4 py-4 transition-colors hover:bg-subtle/40 sm:px-5 lg:items-start lg:gap-x-4",
+        COLS,
+        cancelled ? "opacity-60" : "",
+      ].join(" ")}
+    >
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <Link
+            to={`/orders/${o.id}`}
+            className={[
+              "max-w-full truncate font-semibold text-ink hover:text-primary hover:underline",
+              cancelled ? "line-through" : "",
+            ].join(" ")}
+          >
+            {o.customer.name}
+          </Link>
+          <Badge tone={meta.tone}>{meta.label}</Badge>
         </div>
-        <Money {...row} />
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted tabular-nums">
+          <span className="font-medium text-ink/80">{o.orderNo}</span>
+          <span aria-hidden>·</span>
+          <span>{formatDateShort(o.orderDate)}</span>
+          <SourceBadge source={o.source} />
+          {o.demo ? <DemoBadge /> : null}
+          <span className="min-w-0 truncate">{fulfillment}</span>
+        </p>
+        <div className="mt-1">
+          <Steps steps={s.steps} cancelled={cancelled} />
+        </div>
+      </div>
+
+      <Figures {...row} />
+
+      <div className="flex flex-wrap items-center gap-2 lg:flex-col lg:items-end">
+        {action ? (
+          <Link
+            to={action.to}
+            className="inline-flex min-h-9 items-center gap-1 rounded border border-border bg-surface px-3 text-sm font-medium text-primary hover:border-primary/40 hover:bg-primary-soft"
+          >
+            {action.label} <ArrowRight size={14} aria-hidden />
+          </Link>
+        ) : null}
+        <Link
+          to={`/bill/order/${o.id}`}
+          className="inline-flex min-h-9 items-center gap-1 rounded px-2 text-sm text-muted hover:bg-subtle hover:text-primary"
+        >
+          <FileText size={14} aria-hidden /> ใบส่งของ
+        </Link>
       </div>
     </li>
   );
 }
 
-export default function BillList({ rows, totals }: { rows: BillRowData[]; totals: BillTotals }) {
+export default function BillList({
+  rows,
+  totals,
+}: {
+  rows: BillRowData[];
+  totals: BillTotals;
+}) {
   return (
     <>
+      <div
+        className={[
+          "hidden border-b border-border bg-subtle/60 px-5 py-2.5 text-xs font-medium text-muted lg:grid lg:gap-x-4",
+          COLS,
+        ].join(" ")}
+        aria-hidden
+      >
+        <span>บิล · ขั้นตอน</span>
+        <span className="text-right">ยอดบิล</span>
+        <span className="text-right">ค่ารถคนขับ</span>
+        <span className="text-right">คงเหลือเข้าร้าน</span>
+        <span />
+      </div>
       <ul className="divide-y divide-border">
         {rows.map((r) => (
           <BillRow key={r.order.id} {...r} />
         ))}
       </ul>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border bg-subtle/60 px-4 py-3 text-sm sm:px-5">
-        <span className="text-muted">{totals.count} บิล</span>
-        <span className="tabular-nums">
-          ยอดบิล {formatMoney(totals.revenue)}
-          <span className="text-muted"> · ค่ารถ −{formatMoney(totals.driverCost)}</span> · เหลือ{' '}
-          <b className="text-success">{formatMoney(totals.net)}</b>
+      <div
+        className={[
+          "flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border bg-subtle/60 px-4 py-3 text-sm sm:px-5 lg:grid lg:gap-x-4",
+          COLS,
+        ].join(" ")}
+      >
+        <span className="font-medium">รวม {totals.count} บิล</span>
+        <span className="tabular-nums lg:text-right">
+          <span className="text-muted lg:sr-only">ยอดบิล </span>
+          {formatMoney(totals.revenue)}
         </span>
+        <span className="tabular-nums text-muted lg:text-right">
+          <span className="lg:sr-only">ค่ารถ </span>−
+          {formatMoney(totals.driverCost)}
+        </span>
+        <b className="tabular-nums text-success lg:text-right">
+          <span className="font-normal text-muted lg:sr-only">เหลือ </span>
+          {formatMoney(totals.net)}
+        </b>
+        <span className="hidden lg:block" />
       </div>
     </>
   );

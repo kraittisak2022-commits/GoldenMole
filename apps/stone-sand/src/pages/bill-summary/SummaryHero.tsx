@@ -53,12 +53,14 @@ export default function SummaryHero({ totals, periodLabel }: { totals: BillTotal
             <span className="bg-success" style={{ width: `${keepPct}%` }} />
             <span className="bg-warning" style={{ width: `${100 - keepPct}%` }} />
           </div>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+          <div className="mt-2 flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-muted tabular-nums">
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-success" aria-hidden /> คงเหลือเข้าร้าน
+              <span className="h-2 w-2 rounded-full bg-success" aria-hidden /> คงเหลือเข้าร้าน{' '}
+              <b className="font-medium text-ink">{formatMoney(totals.net)}</b> ({Math.round(keepPct)}%)
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-warning" aria-hidden /> ค่ารถคนขับ
+              <span className="h-2 w-2 rounded-full bg-warning" aria-hidden /> ค่ารถคนขับ{' '}
+              <b className="font-medium text-ink">{formatMoney(totals.driverCost)}</b> ({Math.round(100 - keepPct)}%)
             </span>
           </div>
         </div>
