@@ -21,7 +21,7 @@ const loadBill = () => import('./pages/BillPage');
 const NewOrderPage = lazy(retryImport(loadNewOrder));
 const OrderDetailPage = lazy(retryImport(loadOrderDetail));
 const BillPage = lazy(retryImport(loadBill));
-const BillSummaryPage = lazy(retryImport(() => import('./pages/BillSummaryPage')));
+const BillSummaryPage = lazy(retryImport(() => import('./pages/bill-summary/BillSummaryPage')));
 
 const lazyPage = (node: ReactNode) => <Suspense fallback={<Loading page />}>{node}</Suspense>;
 
