@@ -6,7 +6,7 @@ type ZoneRates = Pick<Zone, 'driverFee' | 'driverFee3'> | undefined;
 export interface DriverTripRate {
   /** Rate for the truck size; trucks of unknown size get the normal 5-คิว rate. 0 = not set. */
   base: number;
-  /** Distance surcharge per trip, the same amount the customer pays on top of the tambon fee. */
+  /** Distance surcharge per trip at the driver's baht/km rate for the truck size. */
   extra: number;
   /** base + extra, or 0 while the base rate is not set. */
   perTrip: number;
@@ -19,8 +19,13 @@ export function driverTripRate(
   delivery: DeliverySettings,
 ): DriverTripRate {
   if (!zone) return { base: 0, extra: 0, perTrip: 0 };
-  const base = truckSize === 3 ? zone.driverFee3 : zone.driverFee;
-  const extra = distanceSurcharge(roadDistanceKm, delivery);
+  const small = truckSize === 3;
+  const base = small ? zone.driverFee3 : zone.driverFee;
+  const extra = distanceSurcharge(roadDistanceKm, {
+    nearKm: delivery.nearKm,
+    perKm: small ? delivery.driverPerKm3 : delivery.driverPerKm5,
+    roundTo: delivery.roundTo,
+  });
   return { base, extra, perTrip: base > 0 ? base + extra : 0 };
 }
 

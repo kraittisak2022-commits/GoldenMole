@@ -17,14 +17,20 @@ const make = (patch: Partial<Order>): Order =>
     ...patch,
   }) as Order;
 
-/** 40 baht per km beyond 0.5 km, rounded up to 50. */
-const delivery = { nearKm: 0.5, perKm: 40, roundTo: 50 };
+/** Beyond 0.5 km: customer 40, 5-คิว driver 60, 3-คิว driver 30 baht per km, rounded up to 50. */
+const delivery = { nearKm: 0.5, perKm: 40, driverPerKm5: 60, driverPerKm3: 30, roundTo: 50 };
 const zone = { driverFee: 350, driverFee3: 250 };
 
 describe('driverTripRate', () => {
-  it('adds the distance surcharge the customer pays to the truck-size rate', () => {
+  it("adds the distance surcharge at the driver's per-km rate for the truck size", () => {
     expect(driverTripRate(zone, 5, 1, delivery)).toEqual({ base: 350, extra: 50, perTrip: 400 });
-    expect(driverTripRate(zone, 3, 2, delivery)).toEqual({ base: 250, extra: 100, perTrip: 350 });
+    expect(driverTripRate(zone, 5, 2, delivery)).toEqual({ base: 350, extra: 100, perTrip: 450 }); // 1.5 × 60 = 90
+    expect(driverTripRate(zone, 3, 2, delivery)).toEqual({ base: 250, extra: 50, perTrip: 300 }); // 1.5 × 30 = 45
+  });
+
+  it("does not depend on the customer's per-km rate", () => {
+    expect(driverTripRate(zone, 5, 2, { ...delivery, perKm: 0 }).extra).toBe(100);
+    expect(driverTripRate(zone, 3, 2, { ...delivery, driverPerKm3: 0 }).extra).toBe(0);
   });
 
   it('has no surcharge near the main road or without a distance', () => {
@@ -90,7 +96,7 @@ describe('summarizeDriverDues', () => {
       delivery,
     );
     expect(dues).toEqual([
-      { driverId: 'drv-b', count: 1, trips: 1, total: 1100, cash: 0, oldestDate: '2026-10-05' },
+      { driverId: 'drv-b', count: 1, trips: 1, total: 1150, cash: 0, oldestDate: '2026-10-05' },
       { driverId: 'drv-a', count: 2, trips: 3, total: 850, cash: 1800, oldestDate: '2026-10-03' },
     ]);
   });

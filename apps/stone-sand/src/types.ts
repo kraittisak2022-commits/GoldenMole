@@ -217,8 +217,11 @@ export interface CompanySettings {
 export interface DeliverySettings {
   /** Distance from the main road with no surcharge. */
   nearKm: number;
-  /** Surcharge in baht per km beyond nearKm, per trip. */
+  /** Customer surcharge in baht per km beyond nearKm, per trip. */
   perKm: number;
+  /** Driver pay in baht per km beyond nearKm, per trip, by truck size (5 คิว is also used when the size is unknown). */
+  driverPerKm5: number;
+  driverPerKm3: number;
   roundTo: number;
 }
 
@@ -273,6 +276,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     taxId: '0523566002017',
     phone: '065-8124686',
   },
-  delivery: { nearKm: 0.5, perKm: 0, roundTo: 50 },
+  delivery: { nearKm: 0.5, perKm: 0, driverPerKm5: 0, driverPerKm3: 0, roundTo: 50 },
   payment: { promptPayId: '', bankText: '', bankName: '', bankAccountNo: '', bankAccountName: '', qrPayload: '' },
 };

@@ -1,6 +1,8 @@
 import type { DeliverySettings } from '../types';
 
-export const DEFAULT_DELIVERY_SETTINGS: DeliverySettings = { nearKm: 0.5, perKm: 0, roundTo: 50 };
+type SurchargeRate = Pick<DeliverySettings, 'nearKm' | 'perKm' | 'roundTo'>;
+
+export const DEFAULT_DELIVERY_SETTINGS: SurchargeRate = { nearKm: 0.5, perKm: 0, roundTo: 50 };
 
 /**
  * Suggested delivery fee per trip: the tambon fee, plus perKm for every km beyond nearKm
@@ -9,13 +11,13 @@ export const DEFAULT_DELIVERY_SETTINGS: DeliverySettings = { nearKm: 0.5, perKm:
 export function suggestDeliveryFee(
   zone: { feeMin: number },
   distanceKm: number | null | undefined,
-  settings: DeliverySettings = DEFAULT_DELIVERY_SETTINGS,
+  settings: SurchargeRate = DEFAULT_DELIVERY_SETTINGS,
 ): number {
   return zone.feeMin + distanceSurcharge(distanceKm, settings);
 }
 
 /** Per-trip surcharge for the distance beyond nearKm; 0 without a distance. */
-export function distanceSurcharge(distanceKm: number | null | undefined, settings: DeliverySettings): number {
+export function distanceSurcharge(distanceKm: number | null | undefined, settings: SurchargeRate): number {
   const { nearKm, perKm, roundTo } = settings;
   if (distanceKm == null || !Number.isFinite(distanceKm) || distanceKm <= nearKm || perKm <= 0) return 0;
   const extra = (distanceKm - nearKm) * perKm;
