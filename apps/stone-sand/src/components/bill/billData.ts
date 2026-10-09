@@ -39,6 +39,8 @@ export interface BillData {
   paidAt?: string | null;
   /** Received so far on a document that is not fully paid yet. */
   paidAmount?: number;
+  /** Pre-filled date under the signatures; blank lines when unset. */
+  signDate?: string;
   note?: string;
   cancelled: boolean;
   verifyToken: string;
@@ -107,6 +109,7 @@ export function billFromOrder(o: Order, kind: 'delivery' | 'receipt', zone?: Zon
     paymentMethod: o.paymentMethod,
     paid: o.paymentStatus === 'paid',
     paidAt: o.paidAt,
+    signDate: kind === 'delivery' ? (o.deliveredAt ?? o.orderDate) : undefined,
     note: o.note,
     cancelled: o.cancelled,
     verifyToken: o.verifyToken,

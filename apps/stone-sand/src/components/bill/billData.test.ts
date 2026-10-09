@@ -70,6 +70,13 @@ describe('billFromOrder', () => {
     expect(bill.refs).toEqual([{ label: 'อ้างอิงใบส่งของ', value: 'DO6910-0001' }]);
   });
 
+  it('dates the delivery note signatures with the delivery date, else the order date', () => {
+    expect(billFromOrder(order, 'delivery').signDate).toBe(order.orderDate);
+    const delivered = { ...order, deliveredAt: '2026-10-09T07:39:46Z' };
+    expect(billFromOrder(delivered, 'delivery').signDate).toBe('2026-10-09T07:39:46Z');
+    expect(billFromOrder(delivered, 'receipt').signDate).toBeUndefined();
+  });
+
   it('pickup orders have no delivery line', () => {
     const bill = billFromOrder({ ...order, fulfillment: 'pickup', trips: 0, deliveryTotal: 0 }, 'delivery');
     expect(bill.lines).toHaveLength(1);

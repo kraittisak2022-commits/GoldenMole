@@ -44,22 +44,34 @@ String qrReference(String text) {
   return clean.length > 25 ? clean.substring(0, 25) : clean;
 }
 
-/// The shop's Thai QR with reference 3 (additional data 62, terminal label 07) set to [ref],
-/// so each bill gets its own QR. Returns [payload] unchanged when it is not a valid Thai QR
-/// or [ref] has no usable characters.
-String withReference3(String payload, String ref) {
+List<_Tlv> _setTlv(List<_Tlv> fields, String id, String value) =>
+    [...fields.where((f) => f.id != id), (id: id, value: value)]..sort((a, b) => a.id.compareTo(b.id));
+
+/// The shop's Thai QR made for one bill: reference 3 (additional data 62, terminal label 07) set to [ref],
+/// and with an [amount] > 0 the amount to pay (54), marked one-time (01 = 12) so banks fill it in.
+/// Returns [payload] unchanged when it is not a valid Thai QR or there is nothing to set.
+String billQrPayload(String payload, {required String ref, num? amount}) {
   final p = payload.trim();
+  if (!isThaiQrPayload(p)) return payload;
+  var fields = _parseTlv(p.substring(0, p.length - 8));
+  if (fields == null) return payload;
+  var changed = false;
+
   final value = qrReference(ref);
-  if (value.isEmpty || !isThaiQrPayload(p)) return payload;
-  final top = _parseTlv(p.substring(0, p.length - 8));
-  if (top == null) return payload;
-  final extra = top.where((f) => f.id == '62').firstOrNull;
+  final extra = fields.where((f) => f.id == '62').firstOrNull;
   final sub = extra == null ? <_Tlv>[] : _parseTlv(extra.value);
-  if (sub == null) return payload;
-  int byId(_Tlv a, _Tlv b) => a.id.compareTo(b.id);
-  final nextSub = [...sub.where((f) => f.id != '07'), (id: '07', value: value)]..sort(byId);
-  final nextTop = [...top.where((f) => f.id != '62'), (id: '62', value: _joinTlv(nextSub))]..sort(byId);
-  final body = '${_joinTlv(nextTop)}6304';
+  if (value.isNotEmpty && sub != null) {
+    fields = _setTlv(fields, '62', _joinTlv(_setTlv(sub, '07', value)));
+    changed = true;
+  }
+
+  if (amount != null && amount.isFinite && amount > 0) {
+    fields = _setTlv(_setTlv(fields, '54', amount.toStringAsFixed(2)), '01', '12');
+    changed = true;
+  }
+
+  if (!changed) return payload;
+  final body = '${_joinTlv(fields)}6304';
   return body + crc16(body);
 }
 

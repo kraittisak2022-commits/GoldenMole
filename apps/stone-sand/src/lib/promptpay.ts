@@ -44,25 +44,37 @@ export function qrReference(text: string): string {
   return text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 25);
 }
 
+const setTlv = (fields: Tlv[], id: string, value: string): Tlv[] =>
+  [...fields.filter((f) => f.id !== id), { id, value }].sort((a, b) => a.id.localeCompare(b.id));
+
 /**
- * The shop's Thai QR with reference 3 (additional data 62, terminal label 07) set to `ref`,
- * so each bill gets its own QR. Returns the payload unchanged when it is not a valid Thai QR
- * or `ref` has no usable characters.
+ * The shop's Thai QR made for one bill: reference 3 (additional data 62, terminal label 07) set to `ref`,
+ * and with an `amount` > 0 the amount to pay (54), marked one-time (01 = 12) so banks fill it in.
+ * Returns the payload unchanged when it is not a valid Thai QR or there is nothing to set.
  */
-export function withReference3(payload: string, ref: string): string {
+export function billQrPayload(payload: string, bill: { ref: string; amount?: number }): string {
   const p = payload.trim();
-  const value = qrReference(ref);
-  if (!value || !isThaiQrPayload(p)) return payload;
-  const top = parseTlv(p.slice(0, -8));
-  if (!top) return payload;
-  const extra = top.find((f) => f.id === '62');
+  if (!isThaiQrPayload(p)) return payload;
+  let fields = parseTlv(p.slice(0, -8));
+  if (!fields) return payload;
+  let changed = false;
+
+  const value = qrReference(bill.ref);
+  const extra = fields.find((f) => f.id === '62');
   const sub = extra ? parseTlv(extra.value) : [];
-  if (!sub) return payload;
-  const nextSub = [...sub.filter((f) => f.id !== '07'), { id: '07', value }].sort((a, b) => a.id.localeCompare(b.id));
-  const nextTop = [...top.filter((f) => f.id !== '62'), { id: '62', value: joinTlv(nextSub) }].sort((a, b) =>
-    a.id.localeCompare(b.id),
-  );
-  const body = `${joinTlv(nextTop)}6304`;
+  if (value && sub) {
+    fields = setTlv(fields, '62', joinTlv(setTlv(sub, '07', value)));
+    changed = true;
+  }
+
+  const { amount } = bill;
+  if (amount != null && Number.isFinite(amount) && amount > 0) {
+    fields = setTlv(setTlv(fields, '54', amount.toFixed(2)), '01', '12');
+    changed = true;
+  }
+
+  if (!changed) return payload;
+  const body = `${joinTlv(fields)}6304`;
   return body + crc16(body);
 }
 

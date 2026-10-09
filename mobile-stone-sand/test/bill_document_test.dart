@@ -76,6 +76,10 @@ void main() {
     expect(find.text('หจก. ทดสอบ'), findsNWidgets(2));
     expect(find.text('สแกน QR เพื่อชำระ'), findsNWidgets(2));
     expect(find.text('อ้างอิง DO69100001'), findsNWidgets(2));
+    // Under the shop QR and under the PromptPay QR, on both copies
+    expect(find.text('ยอด 2,500.00 บาท'), findsNWidgets(4));
+    // Both signers on both copies, dated with the order date until it is delivered
+    expect(find.text('วันที่ 09/10/2569', findRichText: true), findsNWidgets(4));
 
     await tester.runAsync(() async {
       final png = await captureBoundary(key, pixelRatio: 0.5);

@@ -1,7 +1,7 @@
 import { forwardRef, type ReactNode } from 'react';
 import { bahtText } from '../../calc/bahtText';
 import { DOC_TITLE, formatDateShort, formatDateTh, formatDateTime, formatMoney, formatNumber, formatPhone } from '../../lib/format';
-import { promptPayPayload, qrReference, withReference3 } from '../../lib/promptpay';
+import { billQrPayload, promptPayPayload, qrReference } from '../../lib/promptpay';
 import { PAYMENT_METHOD_LABEL, type CompanySettings, type PaymentSettings } from '../../types';
 import logoUrl from '../../assets/pirasit-logo.png';
 import BillStamp from './BillStamp';
@@ -70,12 +70,17 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
   const statement = b.kind === 'statement';
   const partlyPaid = !b.paid && (b.paidAmount ?? 0) > 0;
   const due = partlyPaid ? Math.max(0, b.total - (b.paidAmount ?? 0)) : b.total;
-  const showPromptPay =
-    !b.paid && !b.cancelled && due > 0 && (statement || b.paymentMethod !== 'credit') && !!payment.promptPayId;
+  // A credit delivery note is paid later through its statement, so its QR carries no amount.
+  const payNow = !b.paid && !b.cancelled && due > 0 && (statement || b.paymentMethod !== 'credit');
+  const showPromptPay = payNow && !!payment.promptPayId;
   const ppPayload = showPromptPay ? promptPayPayload(payment.promptPayId, due) : null;
   const showPayChannel = !b.paid && !b.cancelled && !!(payment.qrPayload || payment.bankAccountNo);
-  const billQr = payment.qrPayload ? withReference3(payment.qrPayload, b.docNo) : '';
-  const billRef = billQr && billQr !== payment.qrPayload.trim() ? qrReference(b.docNo) : '';
+  const billQr = payment.qrPayload
+    ? billQrPayload(payment.qrPayload, { ref: b.docNo, amount: payNow ? due : undefined })
+    : '';
+  const qrIsBill = !!billQr && billQr !== payment.qrPayload.trim();
+  const billRef = qrIsBill ? qrReference(b.docNo) : '';
+  const qrAmount = qrIsBill && payNow ? due : 0;
   const [customerSigner, companySigner] = SIGNERS[b.kind];
   const copyLabel = copy === 'original' ? 'ต้นฉบับ / ORIGINAL' : 'สำเนา / COPY';
 
@@ -117,6 +122,9 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
                     ) : null}
                     {payment.bankAccountName ? <p>{payment.bankAccountName}</p> : null}
                     {billQr ? <p className="text-slate-500">สแกน QR เพื่อชำระ</p> : null}
+                    {qrAmount ? (
+                      <p className="font-semibold tabular-nums text-slate-900">ยอด {formatMoney(qrAmount)} บาท</p>
+                    ) : null}
                     {billRef ? <p className="text-slate-500">อ้างอิง {billRef}</p> : null}
                   </div>
                 </div>
@@ -319,9 +327,9 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
         <div className="flex-1" />
 
         <section className={`grid grid-cols-2 ${L.signers}`}>
-          <Signature title={customerSigner} line={L.signLine} />
+          <Signature title={customerSigner} line={L.signLine} date={b.signDate} />
           <div className="relative">
-            <Signature title={companySigner} org={`ในนาม ${company.nameTh}`} line={L.signLine} />
+            <Signature title={companySigner} org={`ในนาม ${company.nameTh}`} line={L.signLine} date={b.signDate} />
             <div className={`pointer-events-none absolute left-1/2 -translate-x-1/2 ${L.stampTop[b.paid ? 0 : 1]}`}>
               <BillStamp size={L.stampSize} paidDate={b.paid ? formatDateTh(b.paidAt || b.date) : undefined} />
             </div>
@@ -383,14 +391,16 @@ function TotalRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Signature({ title, org, line }: { title: string; org?: string; line: string }) {
+function Signature({ title, org, line, date }: { title: string; org?: string; line: string; date?: string }) {
   return (
     <div className="text-center text-[11.5px]">
       <div className={`mx-auto ${line} border-b border-dotted border-slate-500`} />
       <p className="mt-1">( ........................................ )</p>
       <p className="font-semibold">{title}</p>
       {org ? <p className="text-[10px] text-slate-500">{org}</p> : null}
-      <p className="mt-1 text-slate-500">วันที่ ........ / ........ / ........</p>
+      <p className="mt-1 text-slate-500">
+        วันที่ {date ? <span className="tabular-nums text-slate-900">{formatDateTh(date)}</span> : '........ / ........ / ........'}
+      </p>
     </div>
   );
 }

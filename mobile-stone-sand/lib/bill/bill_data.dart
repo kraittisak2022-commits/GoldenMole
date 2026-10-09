@@ -46,6 +46,7 @@ class BillData {
     this.paymentMethod,
     required this.paid,
     this.paidAt,
+    this.signDate,
     this.note,
     required this.cancelled,
     required this.verifyToken,
@@ -72,6 +73,9 @@ class BillData {
   final String? paymentMethod;
   final bool paid;
   final String? paidAt;
+
+  /// Pre-filled date under the signatures; blank lines when null.
+  final String? signDate;
   final String? note;
   final bool cancelled;
   final String verifyToken;
@@ -150,6 +154,7 @@ BillData billFromOrder(Order o, DocKind kind, {Zone? zone, Driver? driver}) {
     paymentMethod: o.paymentMethod.name,
     paid: o.paymentStatus == PaymentStatus.paid,
     paidAt: o.paidAt,
+    signDate: kind == DocKind.delivery ? (o.deliveredAt ?? o.orderDate) : null,
     note: o.note,
     cancelled: o.cancelled,
     verifyToken: o.verifyToken,

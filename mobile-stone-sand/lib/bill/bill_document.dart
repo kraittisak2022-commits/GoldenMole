@@ -161,11 +161,7 @@ class BillDocument extends StatelessWidget {
     final b = bill;
     final l = _layouts[size]!;
     final statement = b.kind == DocKind.statement;
-    final showPromptPay = !b.paid &&
-        !b.cancelled &&
-        b.total > 0 &&
-        (statement || b.paymentMethod != 'credit') &&
-        payment.promptPayId.isNotEmpty;
+    final showPromptPay = _payNow && payment.promptPayId.isNotEmpty;
     final ppPayload = showPromptPay ? promptPayPayload(payment.promptPayId, b.total) : null;
     final (customerSigner, companySigner) = _signers[b.kind]!;
 
@@ -210,7 +206,9 @@ class BillDocument extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: _Signature(title: customerSigner, line: l.signLine, lineTop: l.signLineTop)),
+              Expanded(
+                child: _Signature(title: customerSigner, line: l.signLine, lineTop: l.signLineTop, date: b.signDate),
+              ),
               SizedBox(width: l.signersGap),
               Expanded(
                 child: Stack(
@@ -222,6 +220,7 @@ class BillDocument extends StatelessWidget {
                       org: 'ในนาม ${company.nameTh}',
                       line: l.signLine,
                       lineTop: l.signLineTop,
+                      date: b.signDate,
                     ),
                     Positioned(
                       top: b.paid ? l.stampTopPaid : l.stampTopUnpaid,
@@ -441,12 +440,23 @@ class BillDocument extends StatelessWidget {
   bool get _showPayChannel =>
       !bill.paid && !bill.cancelled && (payment.qrPayload.isNotEmpty || payment.bankAccountNo.isNotEmpty);
 
+  /// A credit delivery note is paid later through its statement, so it asks for no amount now.
+  bool get _payNow =>
+      !bill.paid &&
+      !bill.cancelled &&
+      bill.total > 0 &&
+      (bill.kind == DocKind.statement || bill.paymentMethod != 'credit');
+
   /// Shop bank account and receiving QR, top right of an unpaid bill.
   Widget _payChannel(_Layout l) {
     const small = TextStyle(fontSize: 10, height: 1.3, color: _s700);
     const hint = TextStyle(fontSize: 10, height: 1.3, color: _s500);
-    final qr = payment.qrPayload.isEmpty ? '' : withReference3(payment.qrPayload, bill.docNo);
-    final ref = qr.isNotEmpty && qr != payment.qrPayload.trim() ? qrReference(bill.docNo) : '';
+    final qr = payment.qrPayload.isEmpty
+        ? ''
+        : billQrPayload(payment.qrPayload, ref: bill.docNo, amount: _payNow ? bill.total : null);
+    final qrIsBill = qr.isNotEmpty && qr != payment.qrPayload.trim();
+    final ref = qrIsBill ? qrReference(bill.docNo) : '';
+    final qrAmount = qrIsBill && _payNow ? bill.total : 0.0;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(border: Border.all(color: _s300), borderRadius: BorderRadius.circular(6)),
@@ -484,6 +494,17 @@ class BillDocument extends StatelessWidget {
                 ),
               if (payment.bankAccountName.isNotEmpty) Text(payment.bankAccountName, style: small),
               if (qr.isNotEmpty) const Text('สแกน QR เพื่อชำระ', style: hint),
+              if (qrAmount > 0)
+                Text(
+                  'ยอด ${formatMoney(qrAmount)} บาท',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    height: 1.3,
+                    fontWeight: FontWeight.w600,
+                    color: _s900,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
               if (ref.isNotEmpty) Text('อ้างอิง $ref', style: hint),
             ],
           ),
@@ -813,9 +834,10 @@ class _Box extends StatelessWidget {
 }
 
 class _Signature extends StatelessWidget {
-  const _Signature({required this.title, required this.line, required this.lineTop, this.org});
+  const _Signature({required this.title, required this.line, required this.lineTop, this.org, this.date});
   final String title;
   final String? org;
+  final String? date;
   final double line;
   final double lineTop;
 
@@ -833,7 +855,19 @@ class _Signature extends StatelessWidget {
           Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
           if (org != null) Text(org!, style: const TextStyle(fontSize: 10, color: _s500)),
           const SizedBox(height: 4),
-          const Text('วันที่ ........ / ........ / ........', style: TextStyle(color: _s500)),
+          if (date == null)
+            const Text('วันที่ ........ / ........ / ........', style: TextStyle(color: _s500))
+          else
+            Text.rich(TextSpan(
+              text: 'วันที่ ',
+              style: const TextStyle(color: _s500),
+              children: [
+                TextSpan(
+                  text: formatDateTh(date),
+                  style: const TextStyle(color: _s900, fontFeatures: [FontFeature.tabularFigures()]),
+                ),
+              ],
+            )),
         ],
       ),
     );

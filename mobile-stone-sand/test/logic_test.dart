@@ -381,20 +381,32 @@ void main() {
         '53037645802TH';
 
     test("replaces the shop QR's reference 3 with the bill number and re-signs it", () {
-      final p = withReference3(shopQr, 'DO2610-0005');
+      final p = billQrPayload(shopQr, ref: 'DO2610-0005');
       expect(p.substring(0, p.length - 4), '${head}6214' '0710DO26100005' '6304');
       expect(isThaiQrPayload(p), isTrue);
     });
 
+    test('adds the amount to pay as a one-time QR', () {
+      final p = billQrPayload(shopQr, ref: 'DO2610-0005', amount: 2130);
+      expect(
+        p.substring(0, p.length - 4),
+        '000201010212'
+        '30730016A0000006770101120115010753700088205021916151060181105030020307PIRASIT'
+        '5303764' '54072130.00' '5802TH' '6214' '0710DO26100005' '6304',
+      );
+      expect(isThaiQrPayload(p), isTrue);
+      expect(billQrPayload(shopQr, ref: 'DO1', amount: 0), contains('010211'));
+    });
+
     test('adds reference 3 to a QR without additional data', () {
-      final p = withReference3(promptPayPayload('0801234567')!, 'BL2610-0004');
+      final p = billQrPayload(promptPayPayload('0801234567')!, ref: 'BL2610-0004');
       expect(p, contains('5802TH' '6214' '0710BL26100004' '6304'));
       expect(isThaiQrPayload(p), isTrue);
     });
 
-    test('leaves the payload alone when it is not a Thai QR or the reference is empty', () {
-      expect(withReference3('https://example.com', 'DO1'), 'https://example.com');
-      expect(withReference3(shopQr, '--'), shopQr);
+    test('leaves the payload alone when it is not a Thai QR or there is nothing to set', () {
+      expect(billQrPayload('https://example.com', ref: 'DO1', amount: 50), 'https://example.com');
+      expect(billQrPayload(shopQr, ref: '--'), shopQr);
       expect(qrReference('do2610-0005'), 'DO26100005');
     });
   });
