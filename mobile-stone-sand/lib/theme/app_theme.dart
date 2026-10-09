@@ -40,6 +40,13 @@ ThemeData buildAppTheme() {
   );
   return ThemeData(
     useMaterial3: true,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: ZoomPageTransitionsBuilder(allowEnterRouteSnapshotting: false),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.fuchsia: FadeUpwardsPageTransitionsBuilder(),
+      },
+    ),
     colorScheme: scheme,
     fontFamily: kFontFamily,
     scaffoldBackgroundColor: AppColors.subtle,
@@ -73,22 +80,14 @@ ThemeData buildAppTheme() {
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: border,
       enabledBorder: border,
-      focusedBorder: border.copyWith(
-        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-      ),
-      errorBorder: border.copyWith(
-        borderSide: const BorderSide(color: AppColors.destructive),
-      ),
+      focusedBorder: border.copyWith(borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+      errorBorder: border.copyWith(borderSide: const BorderSide(color: AppColors.destructive)),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: const Size(48, 48),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kRadius)),
-        textStyle: const TextStyle(
-          fontFamily: kFontFamily,
-          fontWeight: FontWeight.w600,
-          fontSize: 15,
-        ),
+        textStyle: const TextStyle(fontFamily: kFontFamily, fontWeight: FontWeight.w600, fontSize: 15),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -97,11 +96,7 @@ ThemeData buildAppTheme() {
         foregroundColor: AppColors.ink,
         side: const BorderSide(color: AppColors.border),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kRadius)),
-        textStyle: const TextStyle(
-          fontFamily: kFontFamily,
-          fontWeight: FontWeight.w600,
-          fontSize: 15,
-        ),
+        textStyle: const TextStyle(fontFamily: kFontFamily, fontWeight: FontWeight.w600, fontSize: 15),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
@@ -114,8 +109,75 @@ ThemeData buildAppTheme() {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       side: const BorderSide(color: AppColors.border),
       labelStyle: const TextStyle(fontFamily: kFontFamily, fontSize: 13),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
     ),
-    snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+    listTileTheme: const ListTileThemeData(
+      contentPadding: EdgeInsets.symmetric(horizontal: 16),
+      minVerticalPadding: 8,
+      visualDensity: VisualDensity.standard,
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: AppColors.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      dragHandleColor: AppColors.border,
+      dragHandleSize: Size(40, 4),
+    ),
+    dialogTheme: const DialogThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(kRadius + 4))),
+      elevation: 3,
+      titleTextStyle: TextStyle(
+        fontFamily: kFontFamily,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        color: AppColors.ink,
+        height: 1.3,
+      ),
+      contentTextStyle: TextStyle(fontFamily: kFontFamily, fontSize: 15, color: AppColors.muted, height: 1.5),
+      backgroundColor: AppColors.surface,
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: AppColors.primary,
+      linearTrackColor: AppColors.border,
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? AppColors.primary : null),
+      trackColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? AppColors.primarySoft : null,
+      ),
+      trackOutlineColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? Colors.transparent : null,
+      ),
+    ),
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith((s) {
+        if (s.contains(WidgetState.selected)) return AppColors.primary;
+        return Colors.transparent;
+      }),
+      checkColor: const WidgetStatePropertyAll(Colors.white),
+      side: const BorderSide(color: AppColors.border, width: 1.5),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: AppColors.surface,
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(kRadius),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      labelTextStyle: const WidgetStatePropertyAll(
+        TextStyle(fontFamily: kFontFamily, fontSize: 14, color: AppColors.ink),
+      ),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      elevation: 6,
+      backgroundColor: AppColors.ink,
+      contentTextStyle: const TextStyle(fontFamily: kFontFamily, fontSize: 14, color: Colors.white, height: 1.4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(kRadius)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: AppColors.surface,
       indicatorColor: AppColors.primarySoft,

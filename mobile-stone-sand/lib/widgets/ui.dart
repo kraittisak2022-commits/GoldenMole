@@ -7,13 +7,13 @@ import '../theme/app_theme.dart';
 export '../logic/order_status.dart' show BadgeTone;
 
 ({Color bg, Color fg, Color border}) toneColors(BadgeTone tone) => switch (tone) {
-      BadgeTone.success => (bg: AppColors.successSoft, fg: const Color(0xFF065F46), border: const Color(0xFFA7F3D0)),
-      BadgeTone.warning => (bg: AppColors.warningSoft, fg: const Color(0xFF92400E), border: const Color(0xFFFDE68A)),
-      BadgeTone.danger => (bg: AppColors.destructiveSoft, fg: const Color(0xFFB91C1C), border: const Color(0xFFFECACA)),
-      BadgeTone.info => (bg: AppColors.primarySoft, fg: AppColors.primary, border: const Color(0xFFDBEAFE)),
-      BadgeTone.violet => (bg: AppColors.violetSoft, fg: const Color(0xFF6D28D9), border: const Color(0xFFDDD6FE)),
-      BadgeTone.neutral => (bg: AppColors.subtle, fg: const Color(0xFF334155), border: AppColors.border),
-    };
+  BadgeTone.success => (bg: AppColors.successSoft, fg: const Color(0xFF065F46), border: const Color(0xFFA7F3D0)),
+  BadgeTone.warning => (bg: AppColors.warningSoft, fg: const Color(0xFF92400E), border: const Color(0xFFFDE68A)),
+  BadgeTone.danger => (bg: AppColors.destructiveSoft, fg: const Color(0xFFB91C1C), border: const Color(0xFFFECACA)),
+  BadgeTone.info => (bg: AppColors.primarySoft, fg: AppColors.primary, border: const Color(0xFFDBEAFE)),
+  BadgeTone.violet => (bg: AppColors.violetSoft, fg: const Color(0xFF6D28D9), border: const Color(0xFFDDD6FE)),
+  BadgeTone.neutral => (bg: AppColors.subtle, fg: const Color(0xFF334155), border: AppColors.border),
+};
 
 class AppBadge extends StatelessWidget {
   const AppBadge(this.label, {super.key, this.tone = BadgeTone.neutral, this.icon});
@@ -35,7 +35,10 @@ class AppBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[Icon(icon, size: 12, color: c.fg), const SizedBox(width: 4)],
-          Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.fg, height: 1.4)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.fg, height: 1.4),
+          ),
         ],
       ),
     );
@@ -77,8 +80,7 @@ class DemoBadge extends StatelessWidget {
   const DemoBadge({super.key});
 
   @override
-  Widget build(BuildContext context) =>
-      const AppBadge('ตัวอย่าง', tone: BadgeTone.violet, icon: Icons.school_outlined);
+  Widget build(BuildContext context) => const AppBadge('ตัวอย่าง', tone: BadgeTone.violet, icon: Icons.school_outlined);
 }
 
 class ErrorBox extends StatelessWidget {
@@ -103,8 +105,7 @@ class ErrorBox extends StatelessWidget {
           Expanded(
             child: Text(message, style: const TextStyle(fontSize: 14, color: Color(0xFFB91C1C))),
           ),
-          if (onRetry != null)
-            TextButton(onPressed: onRetry, child: const Text('ลองใหม่')),
+          if (onRetry != null) TextButton(onPressed: onRetry, child: const Text('ลองใหม่')),
         ],
       ),
     );
@@ -133,7 +134,9 @@ class Notice extends StatelessWidget {
         children: [
           Icon(icon, size: 18, color: c.fg),
           const SizedBox(width: 8),
-          Expanded(child: Text(text, style: TextStyle(fontSize: 14, color: c.fg))),
+          Expanded(
+            child: Text(text, style: TextStyle(fontSize: 14, color: c.fg)),
+          ),
         ],
       ),
     );
@@ -148,32 +151,67 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.inbox_outlined, size: 30, color: Color(0xFFCBD5E1)),
-          const SizedBox(height: 10),
-          Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: AppColors.muted)),
-          if (action != null) ...[const SizedBox(height: 10), action!],
+          Container(
+            width: 56,
+            height: 56,
+            decoration: const BoxDecoration(color: AppColors.subtle, shape: BoxShape.circle),
+            child: const Icon(Icons.inbox_outlined, size: 28, color: Color(0xFFCBD5E1)),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14, color: AppColors.muted, height: 1.4),
+          ),
+          if (action != null) ...[const SizedBox(height: 12), action!],
         ],
       ),
     );
   }
 }
 
-class SkeletonBox extends StatelessWidget {
+/// Animated placeholder block — gentle opacity pulse, no external packages.
+class SkeletonBox extends StatefulWidget {
   const SkeletonBox({super.key, this.width, this.height = 14, this.radius = 6});
   final double? width;
   final double height;
   final double radius;
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(color: AppColors.subtle, borderRadius: BorderRadius.circular(radius)),
-      );
+  State<SkeletonBox> createState() => _SkeletonBoxState();
+}
+
+class _SkeletonBoxState extends State<SkeletonBox> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+    _opacity = Tween<double>(begin: 0.45, end: 1.0).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+    _ctrl.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+    opacity: _opacity,
+    child: Container(
+      width: widget.width,
+      height: widget.height,
+      decoration: BoxDecoration(color: AppColors.subtle, borderRadius: BorderRadius.circular(widget.radius)),
+    ),
+  );
 }
 
 /// Placeholder rows shaped like the lists they stand in for.
@@ -353,10 +391,7 @@ class CountChip extends StatelessWidget {
               ),
               if (count != null) ...[
                 const SizedBox(width: 6),
-                Text(
-                  '$count',
-                  style: TextStyle(fontSize: 12, color: active ? Colors.white70 : AppColors.muted),
-                ),
+                Text('$count', style: TextStyle(fontSize: 12, color: active ? Colors.white70 : AppColors.muted)),
               ],
             ],
           ),
@@ -401,17 +436,16 @@ class Segmented<T> extends StatelessWidget {
                     alignment: Alignment.center,
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                     child: Text.rich(
-                      TextSpan(children: [
-                        TextSpan(text: labelOf(v)),
-                        if (trailingOf != null)
-                          TextSpan(
-                            text: ' ${trailingOf!(v)}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: v == selected ? Colors.white70 : AppColors.muted,
+                      TextSpan(
+                        children: [
+                          TextSpan(text: labelOf(v)),
+                          if (trailingOf != null)
+                            TextSpan(
+                              text: ' ${trailingOf!(v)}',
+                              style: TextStyle(fontSize: 12, color: v == selected ? Colors.white70 : AppColors.muted),
                             ),
-                          ),
-                      ]),
+                        ],
+                      ),
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -477,10 +511,9 @@ class InfoRow extends StatelessWidget {
 void showSnack(BuildContext context, String message, {bool error = false}) {
   final messenger = ScaffoldMessenger.maybeOf(context);
   messenger?.hideCurrentSnackBar();
-  messenger?.showSnackBar(SnackBar(
-    content: Text(message),
-    backgroundColor: error ? AppColors.destructive : AppColors.ink,
-  ));
+  messenger?.showSnackBar(
+    SnackBar(content: Text(message), backgroundColor: error ? AppColors.destructive : AppColors.ink),
+  );
 }
 
 Future<bool> confirmDialog(
@@ -509,11 +542,7 @@ Future<bool> confirmDialog(
 }
 
 /// Bottom sheet with a title, scrollable body and safe-area padding.
-Future<T?> showAppSheet<T>(
-  BuildContext context, {
-  required String title,
-  required WidgetBuilder builder,
-}) {
+Future<T?> showAppSheet<T>(BuildContext context, {required String title, required WidgetBuilder builder}) {
   return showModalBottomSheet<T>(
     context: context,
     isScrollControlled: true,

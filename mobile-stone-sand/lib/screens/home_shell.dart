@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../auth/auth_scope.dart';
 import '../routes.dart';
@@ -140,17 +141,45 @@ class BottomTabs extends StatelessWidget {
       final color = active ? AppColors.primary : AppColors.muted;
       return Expanded(
         child: InkWell(
-          onTap: () => shell.select(d),
+          onTap: () {
+            HapticFeedback.selectionClick();
+            shell.select(d);
+          },
+          highlightColor: AppColors.primarySoft.withValues(alpha: 0.6),
+          splashColor: AppColors.primarySoft.withValues(alpha: 0.8),
           child: SizedBox(
             height: 60,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            // Stack lets the indicator overlay the bottom without adding to the
+            // Column intrinsic height (Thai text renders taller than fontSize).
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                Icon(active ? d.activeIcon : d.icon, size: 22, color: color),
-                const SizedBox(height: 2),
-                Text(
-                  d.label,
-                  style: TextStyle(fontSize: 12, color: color, fontWeight: active ? FontWeight.w600 : FontWeight.w400),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(active ? d.activeIcon : d.icon, size: 22, color: color),
+                    const SizedBox(height: 2),
+                    Text(
+                      d.label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: color,
+                        fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+                // Animated pill indicator — zero cost on the Column's height.
+                Positioned(
+                  bottom: 4,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOutCubic,
+                    width: active ? 16.0 : 0.0,
+                    height: 3.0,
+                    decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(1.5)),
+                  ),
                 ),
               ],
             ),
@@ -182,11 +211,14 @@ class BottomTabs extends StatelessWidget {
                       child: Material(
                         color: AppColors.primary,
                         shape: const CircleBorder(side: BorderSide(color: AppColors.surface, width: 4)),
-                        elevation: 6,
-                        shadowColor: AppColors.primary.withValues(alpha: 0.4),
+                        elevation: 4,
+                        shadowColor: AppColors.primary.withValues(alpha: 0.35),
                         child: InkWell(
                           customBorder: const CircleBorder(),
-                          onTap: () => openNewOrder(context),
+                          onTap: () {
+                            HapticFeedback.mediumImpact();
+                            openNewOrder(context);
+                          },
                           child: const SizedBox(
                             width: 56,
                             height: 56,
