@@ -7,6 +7,7 @@ import 'package:mobile_stone_sand/screens/customers_screen.dart';
 import 'package:mobile_stone_sand/screens/driver_pay_screen.dart';
 import 'package:mobile_stone_sand/screens/drivers_screen.dart';
 import 'package:mobile_stone_sand/screens/settings_screen.dart';
+import 'package:mobile_stone_sand/widgets/ui.dart';
 
 const _snap = CustomerSnapshot(name: 'ร้านทดสอบ');
 
@@ -135,7 +136,10 @@ void main() {
     expect(find.text('ตัวอย่าง ต.วังแก้ว: 1 กม. = 500 · 5 กม. = 650 · 8 กม. = 900 · 12 กม. = 1,000'), findsOneWidget);
 
     await tester.scrollUntilVisible(find.text('หมายเลขพร้อมเพย์'), 200, scrollable: find.byType(Scrollable).first);
-    final pp = find.descendant(of: find.byType(PaymentSection), matching: find.byType(TextField)).first;
+    final pp = find.descendant(
+      of: find.widgetWithText(FieldLabel, 'หมายเลขพร้อมเพย์'),
+      matching: find.byType(TextField),
+    );
     await tester.enterText(pp, '123');
     await tester.pump();
     expect(find.text('รูปแบบไม่ถูกต้อง'), findsOneWidget);

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../auth/auth_scope.dart';
 import '../calc/delivery_fee.dart';
@@ -734,13 +735,22 @@ class PaymentSection extends StatefulWidget {
 class _PaymentSectionState extends State<PaymentSection> with _Saver {
   late final _promptPay = TextEditingController(text: widget.payment.promptPayId);
   late final _bank = TextEditingController(text: widget.payment.bankText);
+  late final _bankName = TextEditingController(text: widget.payment.bankName);
+  late final _accountNo = TextEditingController(text: widget.payment.bankAccountNo);
+  late final _accountName = TextEditingController(text: widget.payment.bankAccountName);
+  late String _qrPayload = widget.payment.qrPayload;
 
   @override
   void didUpdateWidget(covariant PaymentSection old) {
     super.didUpdateWidget(old);
     if (!identical(old.payment, widget.payment)) {
-      _promptPay.text = widget.payment.promptPayId;
-      _bank.text = widget.payment.bankText;
+      final p = widget.payment;
+      _promptPay.text = p.promptPayId;
+      _bank.text = p.bankText;
+      _bankName.text = p.bankName;
+      _accountNo.text = p.bankAccountNo;
+      _accountName.text = p.bankAccountName;
+      _qrPayload = p.qrPayload;
     }
   }
 
@@ -748,6 +758,9 @@ class _PaymentSectionState extends State<PaymentSection> with _Saver {
   void dispose() {
     _promptPay.dispose();
     _bank.dispose();
+    _bankName.dispose();
+    _accountNo.dispose();
+    _accountName.dispose();
     super.dispose();
   }
 
@@ -758,7 +771,8 @@ class _PaymentSectionState extends State<PaymentSection> with _Saver {
     final valid = _ppValid;
     return _SettingsCard(
       title: 'ช่องทางรับเงิน',
-      subtitle: 'ถ้าใส่พร้อมเพย์ บิลที่ยังไม่จ่ายจะมี QR ให้ลูกค้าสแกนจ่ายพร้อมยอดเงิน',
+      subtitle: 'บัญชีธนาคารและ QR รับเงินจะแสดงที่หัวบิลด้านขวาของบิลที่ยังไม่ชำระ'
+          ' · ถ้าใส่พร้อมเพย์ บิลจะมี QR พร้อมยอดเงินเพิ่มอีกอัน',
       saving: saving,
       error: saveError,
       saved: saved,
@@ -768,12 +782,51 @@ class _PaymentSectionState extends State<PaymentSection> with _Saver {
         }
         await saveSetting(
           'payment',
-          PaymentSettings(promptPayId: _promptPay.text.trim(), bankText: _bank.text.trim()).toJson(),
+          PaymentSettings(
+            promptPayId: _promptPay.text.trim(),
+            bankText: _bank.text.trim(),
+            bankName: _bankName.text.trim(),
+            bankAccountNo: _accountNo.text.trim(),
+            bankAccountName: _accountName.text.trim(),
+            qrPayload: _qrPayload.trim(),
+          ).toJson(),
         );
       }),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          FieldLabel('ธนาคาร', child: TextField(controller: _bankName)),
+          const SizedBox(height: 12),
+          FieldLabel(
+            'เลขบัญชี',
+            child: TextField(controller: _accountNo, keyboardType: TextInputType.number),
+          ),
+          const SizedBox(height: 12),
+          FieldLabel('ชื่อบัญชี', child: TextField(controller: _accountName)),
+          const SizedBox(height: 12),
+          FieldLabel(
+            'QR รับเงิน',
+            hint: 'อัปโหลดหรือเปลี่ยนรูป QR ได้ที่หน้าตั้งค่าบนเว็บ',
+            child: Row(
+              children: [
+                if (_qrPayload.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: AppColors.border),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: QrImageView(data: _qrPayload, size: 72, padding: EdgeInsets.zero, semanticsLabel: 'QR รับเงิน'),
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton(onPressed: () => setState(() => _qrPayload = ''), child: const Text('ลบ QR')),
+                ] else
+                  const Text('ยังไม่มี QR รับเงิน', style: TextStyle(color: AppColors.muted)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           FieldLabel(
             'หมายเลขพร้อมเพย์',
             hint: 'เบอร์มือถือ หรือ เลขผู้เสียภาษีของ หจก.',
@@ -786,8 +839,8 @@ class _PaymentSectionState extends State<PaymentSection> with _Saver {
           ),
           const SizedBox(height: 12),
           FieldLabel(
-            'ข้อความบัญชีธนาคาร',
-            hint: 'เช่น กสิกรไทย 123-4-56789-0 หจก. พีรสิทธิ์ วัสดุก่อสร้าง',
+            'ข้อความเพิ่มเติมท้ายบิล (ไม่บังคับ)',
+            hint: 'แสดงตรงส่วนการชำระเงินด้านล่างของบิล',
             child: TextField(controller: _bank),
           ),
         ],

@@ -789,16 +789,42 @@ class CompanySettings {
 }
 
 class PaymentSettings {
-  const PaymentSettings({this.promptPayId = '', this.bankText = ''});
+  const PaymentSettings({
+    this.promptPayId = '',
+    this.bankText = '',
+    this.bankName = '',
+    this.bankAccountNo = '',
+    this.bankAccountName = '',
+    this.qrPayload = '',
+  });
   final String promptPayId;
+
+  /// Extra line printed in the payment part at the bottom of the bill.
   final String bankText;
+  final String bankName;
+  final String bankAccountNo;
+  final String bankAccountName;
+
+  /// Thai QR / PromptPay payload read from the shop's QR image (set on the web).
+  final String qrPayload;
 
   factory PaymentSettings.fromJson(Map<String, dynamic>? j) => PaymentSettings(
         promptPayId: (j?['promptPayId'] as String?) ?? '',
         bankText: (j?['bankText'] as String?) ?? '',
+        bankName: (j?['bankName'] as String?) ?? '',
+        bankAccountNo: (j?['bankAccountNo'] as String?) ?? '',
+        bankAccountName: (j?['bankAccountName'] as String?) ?? '',
+        qrPayload: (j?['qrPayload'] as String?) ?? '',
       );
 
-  Map<String, dynamic> toJson() => {'promptPayId': promptPayId, 'bankText': bankText};
+  Map<String, dynamic> toJson() => {
+        'promptPayId': promptPayId,
+        'bankText': bankText,
+        'bankName': bankName,
+        'bankAccountNo': bankAccountNo,
+        'bankAccountName': bankAccountName,
+        'qrPayload': qrPayload,
+      };
 }
 
 class AppSettings {

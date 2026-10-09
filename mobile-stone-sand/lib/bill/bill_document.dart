@@ -24,7 +24,6 @@ const _s200 = Color(0xFFE2E8F0);
 const _s100 = Color(0xFFF1F5F9);
 const _s50 = Color(0xFFF8FAFC);
 const _emerald = Color(0xFF047857);
-const _amber = Color(0xFFB45309);
 const _stampInk = Color(0xFF1D4ED8);
 const _tab = [FontFeature.tabularFigures()];
 
@@ -43,6 +42,7 @@ class _Layout {
     required this.companyEn,
     required this.companyEnSpacing,
     required this.title,
+    required this.payQr,
     required this.infoWidth,
     required this.totalsWidth,
     required this.padRows,
@@ -64,6 +64,7 @@ class _Layout {
   final double companyEn;
   final double companyEnSpacing;
   final double title;
+  final double payQr;
   final double infoWidth;
   final double totalsWidth;
   final int padRows;
@@ -89,6 +90,7 @@ const _layouts = {
     companyEn: 9.5,
     companyEnSpacing: 0.95,
     title: 22,
+    payQr: 72,
     infoWidth: 248,
     totalsWidth: 256,
     padRows: 5,
@@ -111,6 +113,7 @@ const _layouts = {
     companyEn: 8.5,
     companyEnSpacing: 0.25,
     title: 19,
+    payQr: 64,
     infoWidth: 208,
     totalsWidth: 224,
     padRows: 3,
@@ -411,6 +414,10 @@ class BillDocument extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (_showPayChannel) ...[
+                    const SizedBox(height: 8),
+                    _payChannel(l),
+                  ],
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
@@ -433,6 +440,57 @@ class BillDocument extends StatelessWidget {
         const SizedBox(height: 2),
         Container(height: 1, color: _navy.withValues(alpha: 0.35)),
       ],
+    );
+  }
+
+  bool get _showPayChannel =>
+      !bill.paid && !bill.cancelled && (payment.qrPayload.isNotEmpty || payment.bankAccountNo.isNotEmpty);
+
+  /// Shop bank account and receiving QR, top right of an unpaid bill.
+  Widget _payChannel(_Layout l) {
+    const small = TextStyle(fontSize: 10, height: 1.3, color: _s700);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(border: Border.all(color: _s300), borderRadius: BorderRadius.circular(6)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (payment.qrPayload.isNotEmpty) ...[
+            SizedBox.square(
+              dimension: l.payQr,
+              child: QrImageView(
+                data: payment.qrPayload,
+                padding: EdgeInsets.zero,
+                size: l.payQr,
+                semanticsLabel: 'QR รับเงิน',
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('ช่องทางรับเงิน', style: TextStyle(fontSize: 10, height: 1.3, fontWeight: FontWeight.w600, color: _navy)),
+              if (payment.bankName.isNotEmpty) Text(payment.bankName, style: small),
+              if (payment.bankAccountNo.isNotEmpty)
+                Text(
+                  payment.bankAccountNo,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    height: 1.3,
+                    fontWeight: FontWeight.w600,
+                    color: _s900,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              if (payment.bankAccountName.isNotEmpty) Text(payment.bankAccountName, style: small),
+              if (payment.qrPayload.isNotEmpty)
+                const Text('สแกน QR เพื่อชำระ', style: TextStyle(fontSize: 10, height: 1.3, color: _s500)),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -615,12 +673,12 @@ class BillDocument extends StatelessWidget {
         ),
       ));
     } else {
-      final status = b.paid
+      final Widget? status = b.paid
           ? Text('ชำระแล้ว${(b.paidAt ?? '').isNotEmpty ? ' ${formatDateTh(b.paidAt)}' : ''}',
               style: const TextStyle(fontWeight: FontWeight.w700, color: _emerald))
           : b.paymentMethod == 'credit'
               ? const Text('เครดิต — รวมเคลียร์ในใบวางบิลรายเดือน', style: TextStyle(fontWeight: FontWeight.w700))
-              : const Text('ยังไม่ชำระ', style: TextStyle(fontWeight: FontWeight.w700, color: _amber));
+              : null;
       children.add(DefaultTextStyle.merge(
         style: const TextStyle(fontSize: 11.5),
         child: Column(
@@ -654,11 +712,13 @@ class BillDocument extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 4),
-            Row(children: [
-              const Text('สถานะ: ', style: TextStyle(color: _s600)),
-              Flexible(child: status),
-            ]),
+            if (status != null) ...[
+              const SizedBox(height: 4),
+              Row(children: [
+                const Text('สถานะ: ', style: TextStyle(color: _s600)),
+                Flexible(child: status),
+              ]),
+            ],
             if (!b.paid && payment.bankText.isNotEmpty && b.paymentMethod != 'credit')
               Text(payment.bankText, style: const TextStyle(color: _s600)),
           ],

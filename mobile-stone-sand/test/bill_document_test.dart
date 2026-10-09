@@ -28,7 +28,14 @@ const _order = Order(
   ],
 );
 
-const _payment = PaymentSettings(promptPayId: '0812345678', bankText: 'กสิกรไทย 123-4-56789-0');
+const _payment = PaymentSettings(
+  promptPayId: '0812345678',
+  bankText: 'โอนแล้วส่งสลิปทางไลน์',
+  bankName: 'กสิกรไทย',
+  bankAccountNo: '123-4-56789-0',
+  bankAccountName: 'หจก. ทดสอบ',
+  qrPayload: '00020101021129370016A000000677010111011300668123456785802TH530376463042A2B',
+);
 
 Future<void> _pump(WidgetTester tester, Widget sheet, GlobalKey key) async {
   tester.view.physicalSize = const Size(1400, 1000);
@@ -62,7 +69,11 @@ void main() {
     expect(find.text('(สองพันห้าร้อยบาทถ้วน)'), findsNWidgets(2));
     expect(find.text('สแกนจ่ายด้วยพร้อมเพย์'), findsNWidgets(2));
     expect(find.text('สแกนเพื่อตรวจสอบความถูกต้องของเอกสาร'), findsNWidgets(2));
-    expect(find.text('ยังไม่ชำระ'), findsNWidgets(2));
+    expect(find.text('ยังไม่ชำระ'), findsNothing);
+    expect(find.text('ช่องทางรับเงิน'), findsNWidgets(2));
+    expect(find.text('123-4-56789-0'), findsNWidgets(2));
+    expect(find.text('หจก. ทดสอบ'), findsNWidgets(2));
+    expect(find.text('สแกน QR เพื่อชำระ'), findsNWidgets(2));
 
     await tester.runAsync(() async {
       final png = await captureBoundary(key, pixelRatio: 0.5);
@@ -91,6 +102,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('ใบเสร็จรับเงิน'), findsOneWidget);
     expect(find.text('สแกนจ่ายด้วยพร้อมเพย์'), findsNothing);
+    expect(find.text('ช่องทางรับเงิน'), findsNothing);
     expect(find.text('ชำระเงินแล้ว'), findsOneWidget);
     expect(find.text('ยกเลิก / VOID'), findsOneWidget);
   });
