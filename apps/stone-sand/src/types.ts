@@ -43,9 +43,9 @@ export interface Zone {
   name: string;
   feeMin: number;
   feeMax: number;
-  /** Paid to the driver per trip with a 5-คิว truck; feeMin/feeMax are what the customer is charged. */
+  /** Paid to the driver per คิว delivered with a 5-คิว truck; feeMin/feeMax are the customer's fee per trip. */
   driverFee: number;
-  /** Paid to the driver per trip with a 3-คิว truck. */
+  /** Paid to the driver per คิว delivered with a 3-คิว truck. */
   driverFee3: number;
   sortOrder: number;
 }

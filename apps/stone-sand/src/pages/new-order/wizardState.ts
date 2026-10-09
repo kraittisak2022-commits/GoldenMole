@@ -1,6 +1,7 @@
 import { lineAmount } from '../../calc/pricing';
 import { totalTrips, truckFits, truckForLoads, type Load } from '../../calc/trips';
 import type { OrderDraft } from '../../data/orders';
+import { deliveredCubes, driverPayFor } from '../../lib/driverPay';
 import type { Customer, DiscountType, Fulfillment, OrderItem, OrderSource, PaymentMethod, Product, TruckSize } from '../../types';
 
 export interface WizardState {
@@ -161,14 +162,15 @@ export function defaultPaidNow(method: PaymentMethod): boolean {
   return method === 'cash' || method === 'transfer';
 }
 
-export function toDraft(s: WizardState, products: Product[], zoneDriverFee: number): OrderDraft {
+export function toDraft(s: WizardState, products: Product[], driverFeePerCubic: number): OrderDraft {
   if (!s.source || !s.customer || !s.fulfillment || !s.paymentMethod) throw new Error('ข้อมูลออเดอร์ยังไม่ครบ');
   const delivery = s.fulfillment === 'delivery';
+  const items = buildItems(products, quantitiesOf(s.loads), s.unitDiscounts);
   return {
     source: s.source,
     orderDate: s.orderDate || null,
     customer: s.customer,
-    items: buildItems(products, quantitiesOf(s.loads), s.unitDiscounts),
+    items,
     fulfillment: s.fulfillment,
     deliveryAddress: s.deliveryAddress,
     pinLat: s.pin?.lat ?? null,
@@ -185,7 +187,7 @@ export function toDraft(s: WizardState, products: Product[], zoneDriverFee: numb
     discountValue: s.discountValue,
     paymentMethod: s.paymentMethod,
     paidNow: s.paymentMethod === 'credit' ? false : s.paidNow,
-    driverWage: delivery && s.driverId ? zoneDriverFee * s.trips : 0,
+    driverWage: delivery && s.driverId ? driverPayFor(driverFeePerCubic, deliveredCubes(items)) : 0,
     note: s.note,
   };
 }

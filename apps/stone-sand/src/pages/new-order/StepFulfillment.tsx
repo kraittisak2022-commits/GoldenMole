@@ -10,7 +10,7 @@ import Field from '../../components/ui/Field';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Textarea from '../../components/ui/Textarea';
-import { zoneDriverFee } from '../../lib/driverPay';
+import { driverPayFor, zoneDriverFee } from '../../lib/driverPay';
 import { distanceToMainRoad, findTambon } from '../../lib/geo';
 import { formatMoney, formatNumber, formatPhone } from '../../lib/format';
 import { parseLatLng } from '../../lib/latlng';
@@ -24,7 +24,7 @@ import {
   type Zone,
 } from '../../types';
 import StepTitle from './StepTitle';
-import type { WizardState } from './wizardState';
+import { quantitiesOf, totalQuantity, type WizardState } from './wizardState';
 
 interface Props {
   state: WizardState;
@@ -52,7 +52,8 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
   const [group, setGroup] = useState<GroupFilter>('all');
 
   const zone = zones.find((z) => z.id === s.zoneId);
-  const driverFeePerTrip = zoneDriverFee(zone, s.truckSize);
+  const driverFeePerCubic = zoneDriverFee(zone, s.truckSize);
+  const cubes = totalQuantity(quantitiesOf(s.loads));
   const largestPerTrip = Math.max(0, ...loadLines.map((l) => l.perTrip));
 
   const chooseFulfillment = (f: 'pickup' | 'delivery') => {
@@ -425,10 +426,10 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                 />
                 <span>
                   ยืนยันว่ารถ <b>{selectedDriver.name}</b> เข้าหน้างานได้และมีคิวว่าง
-                  {zone && driverFeePerTrip ? (
+                  {zone && driverFeePerCubic ? (
                     <span className="block text-muted">
-                      ค่ารถคนขับ ต.{zone.name} รถ {s.truckSize} คิว {formatNumber(driverFeePerTrip)} × {s.trips} ={' '}
-                      {formatMoney(driverFeePerTrip * s.trips)} บาท
+                      ค่ารถคนขับ ต.{zone.name} (รถ {s.truckSize} คิว) {formatNumber(driverFeePerCubic)} บาท/คิว × {formatNumber(cubes)} คิว ={' '}
+                      {formatMoney(driverPayFor(driverFeePerCubic, cubes))} บาท
                     </span>
                   ) : null}
                 </span>
