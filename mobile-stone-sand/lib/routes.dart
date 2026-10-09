@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 
 import 'screens/bill_screen.dart';
+import 'screens/customers_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/driver_pay_screen.dart';
+import 'screens/drivers_screen.dart';
 import 'screens/menu_screen.dart';
 import 'screens/new_order/new_order_screen.dart';
 import 'screens/order_detail_screen.dart';
 import 'screens/orders_screen.dart';
-import 'widgets/ui.dart';
+import 'screens/settings_screen.dart';
+import 'screens/statements_screen.dart';
 
 /// Top-level sections, in the web's NAV_ITEMS order plus the phone menu.
 enum Dest {
@@ -97,8 +101,12 @@ class ShellScope extends InheritedNotifier<ShellController> {
 Widget sectionBody(Dest d, Map<String, String> params, {Key? key}) => switch (d) {
       Dest.dashboard => DashboardScreen(key: key, params: params),
       Dest.orders => OrdersScreen(key: key, params: params),
+      Dest.customers => CustomersScreen(key: key, params: params),
+      Dest.statements => StatementsScreen(key: key, params: params),
+      Dest.driverPay => DriverPayScreen(key: key, params: params),
+      Dest.drivers => DriversScreen(key: key),
+      Dest.settings => SettingsScreen(key: key),
       Dest.menu => MenuScreen(key: key),
-      _ => Center(key: key, child: const EmptyState('กำลังพัฒนา')),
     };
 
 class _SectionPage extends StatelessWidget {
@@ -137,5 +145,8 @@ Future<void> openOrderBill(BuildContext context, String orderId, {bool created =
   return replace ? nav.pushReplacement(route) : nav.push(route);
 }
 
-Future<void> openStatementBill(BuildContext context, String statementId) => Navigator.of(context, rootNavigator: true)
-    .push(MaterialPageRoute<void>(builder: (_) => BillScreen.statement(statementId: statementId)));
+Future<void> openStatementBill(BuildContext context, String statementId, {bool replace = false}) {
+  final route = MaterialPageRoute<void>(builder: (_) => BillScreen.statement(statementId: statementId));
+  final nav = Navigator.of(context, rootNavigator: true);
+  return replace ? nav.pushReplacement(route) : nav.push(route);
+}

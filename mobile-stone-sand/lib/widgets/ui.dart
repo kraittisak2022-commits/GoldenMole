@@ -111,6 +111,35 @@ class ErrorBox extends StatelessWidget {
   }
 }
 
+/// Tinted one-line banner, e.g. a success message after saving.
+class Notice extends StatelessWidget {
+  const Notice({super.key, required this.text, this.icon = Icons.info_outline, this.tone = BadgeTone.info});
+  final String text;
+  final IconData icon;
+  final BadgeTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = toneColors(tone);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: c.bg,
+        borderRadius: BorderRadius.circular(kRadius),
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: c.fg),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: TextStyle(fontSize: 14, color: c.fg))),
+        ],
+      ),
+    );
+  }
+}
+
 class EmptyState extends StatelessWidget {
   const EmptyState(this.title, {super.key, this.action});
   final String title;

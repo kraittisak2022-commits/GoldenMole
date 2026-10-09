@@ -6,17 +6,24 @@ import '../theme/app_theme.dart';
 
 const kMaxContentWidth = 1100.0;
 
-/// Pull-to-refresh scroll body centred at [kMaxContentWidth].
+/// Pull-to-refresh scroll body centred at [maxWidth].
 class PageScroll extends StatelessWidget {
-  const PageScroll({super.key, required this.children, this.onRefresh, this.bottomPadding = 24});
+  const PageScroll({
+    super.key,
+    required this.children,
+    this.onRefresh,
+    this.bottomPadding = 24,
+    this.maxWidth = kMaxContentWidth,
+  });
   final List<Widget> children;
   final Future<void> Function()? onRefresh;
   final double bottomPadding;
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final side = math.max(16.0, (width - kMaxContentWidth) / 2);
+    final side = math.max(16.0, (width - maxWidth) / 2);
     final list = ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(side, 16, side, bottomPadding),
