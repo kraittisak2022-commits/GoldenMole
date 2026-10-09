@@ -274,12 +274,20 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
           </section>
 
           <section className="flex flex-col gap-4 rounded border border-border bg-surface p-4">
-            <Field id="f-zone" label="ตำบลที่จัดส่ง *" hint={zone ? `ค่าส่ง ${formatNumber(zone.feeMin)}-${formatNumber(zone.feeMax)} บาท/เที่ยว` : undefined}>
+            <Field id="f-zone" label="ตำบลที่จัดส่ง *" hint={
+                zone
+                  ? `ค่าส่ง ${formatNumber(zone.feeMin)} บาท/เที่ยว` +
+                    (settings.delivery.perKm > 0
+                      ? ` + ${formatNumber(settings.delivery.perKm)} บาท/กม. เมื่อห่างถนนใหญ่เกิน ${formatNumber(settings.delivery.nearKm)} กม.`
+                      : '')
+                  : undefined
+              }
+            >
               <Select id="f-zone" value={s.zoneId ?? ''} onChange={(e) => chooseZone(e.target.value)}>
                 <option value="">— เลือกตำบล —</option>
                 {zones.map((z) => (
                   <option key={z.id} value={z.id}>
-                    {z.name} ({formatNumber(z.feeMin)}-{formatNumber(z.feeMax)})
+                    {z.name} ({formatNumber(z.feeMin)})
                   </option>
                 ))}
               </Select>

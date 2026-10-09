@@ -19,7 +19,6 @@ const mapZone = (row: any): Zone => ({
   id: row.id,
   name: row.name,
   feeMin: toNum(row.fee_min),
-  feeMax: toNum(row.fee_max),
   driverFee: toNum(row.driver_fee),
   driverFee3: toNum(row.driver_fee_3),
   sortOrder: row.sort_order,
@@ -64,20 +63,21 @@ export async function listZones(): Promise<Zone[]> {
   return (data || []).map(mapZone);
 }
 
-export async function saveZone(z: Pick<Zone, 'id' | 'name' | 'feeMin' | 'feeMax' | 'driverFee' | 'driverFee3'>): Promise<void> {
+/** fee_max is no longer used for pricing; it is kept equal to fee_min to satisfy CHECK (fee_max >= fee_min). */
+export async function saveZone(z: Pick<Zone, 'id' | 'name' | 'feeMin' | 'driverFee' | 'driverFee3'>): Promise<void> {
   const { error } = await supabase
     .from('ss_zones')
-    .update({ name: z.name.trim(), fee_min: z.feeMin, fee_max: z.feeMax, driver_fee: z.driverFee, driver_fee_3: z.driverFee3 })
+    .update({ name: z.name.trim(), fee_min: z.feeMin, fee_max: z.feeMin, driver_fee: z.driverFee, driver_fee_3: z.driverFee3 })
     .eq('id', z.id);
   if (error) throw new Error(error.message);
 }
 
-export async function createZone(z: Pick<Zone, 'name' | 'feeMin' | 'feeMax' | 'driverFee' | 'driverFee3' | 'sortOrder'>): Promise<void> {
+export async function createZone(z: Pick<Zone, 'name' | 'feeMin' | 'driverFee' | 'driverFee3' | 'sortOrder'>): Promise<void> {
   const { error } = await supabase.from('ss_zones').insert({
     id: newId('zone'),
     name: z.name.trim(),
     fee_min: z.feeMin,
-    fee_max: z.feeMax,
+    fee_max: z.feeMin,
     driver_fee: z.driverFee,
     driver_fee_3: z.driverFee3,
     sort_order: z.sortOrder,

@@ -41,9 +41,9 @@ export interface Product {
 export interface Zone {
   id: string;
   name: string;
+  /** Customer delivery fee per trip near the main road; the distance surcharge is added on top. */
   feeMin: number;
-  feeMax: number;
-  /** Paid to the driver per trip with a 5-คิว truck; feeMin/feeMax are what the customer is charged. */
+  /** Paid to the driver per trip with a 5-คิว truck. */
   driverFee: number;
   /** Paid to the driver per trip with a 3-คิว truck. */
   driverFee3: number;
@@ -215,8 +215,10 @@ export interface CompanySettings {
 }
 
 export interface DeliverySettings {
+  /** Distance from the main road with no surcharge. */
   nearKm: number;
-  maxKm: number;
+  /** Surcharge in baht per km beyond nearKm, per trip. */
+  perKm: number;
   roundTo: number;
 }
 
@@ -265,6 +267,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     taxId: '0523566002017',
     phone: '065-8124686',
   },
-  delivery: { nearKm: 3, maxKm: 10, roundTo: 50 },
+  delivery: { nearKm: 0.5, perKm: 0, roundTo: 50 },
   payment: { promptPayId: '', bankText: '' },
 };

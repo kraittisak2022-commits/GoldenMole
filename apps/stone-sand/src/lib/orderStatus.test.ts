@@ -101,7 +101,7 @@ describe('summarizeOutstanding', () => {
 
 describe('driverMessage', () => {
   it('includes the map link and cash to collect', () => {
-    const msg = driverMessage(base, { id: 'thung-hua', name: 'ทุ่งฮั้ว', feeMin: 300, feeMax: 400, driverFee: 0, driverFee3: 0, sortOrder: 1 }, undefined);
+    const msg = driverMessage(base, { id: 'thung-hua', name: 'ทุ่งฮั้ว', feeMin: 300, driverFee: 0, driverFee3: 0, sortOrder: 1 }, undefined);
     expect(msg).toContain('https://www.google.com/maps?q=19.200000,99.600000');
     expect(msg).toContain('เก็บเงินปลายทาง');
     expect(msg).toContain('ตำบล: ทุ่งฮั้ว');

@@ -17,9 +17,9 @@ const make = (patch: Partial<Order>): Order =>
     ...patch,
   }) as Order;
 
-const delivery = { nearKm: 0.5, maxKm: 3, roundTo: 50 };
-/** Customer pays 240 near the road, up to 340 at 3 km. */
-const zone = { feeMin: 240, feeMax: 340, driverFee: 350, driverFee3: 250 };
+/** 40 baht per km beyond 0.5 km, rounded up to 50. */
+const delivery = { nearKm: 0.5, perKm: 40, roundTo: 50 };
+const zone = { driverFee: 350, driverFee3: 250 };
 
 describe('driverTripRate', () => {
   it('adds the distance surcharge the customer pays to the truck-size rate', () => {
@@ -74,8 +74,8 @@ describe('codToCollect', () => {
 
 describe('summarizeDriverDues', () => {
   const zones: Record<string, typeof zone> = {
-    near: { feeMin: 150, feeMax: 150, driverFee: 300, driverFee3: 200 },
-    far: { feeMin: 240, feeMax: 340, driverFee: 1000, driverFee3: 800 },
+    near: { driverFee: 300, driverFee3: 200 },
+    far: { driverFee: 1000, driverFee3: 800 },
   };
   const zoneOf = (id: string | null) => (id ? zones[id] : undefined);
 

@@ -231,10 +231,9 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
 }
 
 const ZONE_FEE_COLUMNS = [
-  { key: 'feeMin', label: 'ลูกค้า ต่ำสุด' },
-  { key: 'feeMax', label: 'ลูกค้า สูงสุด' },
-  { key: 'driverFee', label: 'ค่ารถ 5 คิว (บาท/เที่ยว)' },
-  { key: 'driverFee3', label: 'ค่ารถ 3 คิว (บาท/เที่ยว)' },
+  { key: 'feeMin', label: 'ค่าส่งลูกค้า' },
+  { key: 'driverFee', label: 'ค่ารถ 5 คิว' },
+  { key: 'driverFee3', label: 'ค่ารถ 3 คิว' },
 ] as const;
 
 function ZonesSection({
@@ -251,25 +250,23 @@ function ZonesSection({
   useEffect(() => setRows(zones), [zones]);
   const saver = useSaver(onSaved);
   const update = (id: string, patch: Partial<Zone>) => setRows(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  const invalid = rows.find((r) => r.feeMax < r.feeMin);
   const add = () =>
-    setRows([...rows, { id: `${NEW_PREFIX}${Date.now()}`, name: '', feeMin: 0, feeMax: 0, driverFee: 0, driverFee3: 0, sortOrder: nextSort(rows) }]);
+    setRows([...rows, { id: `${NEW_PREFIX}${Date.now()}`, name: '', feeMin: 0, driverFee: 0, driverFee3: 0, sortOrder: nextSort(rows) }]);
   const remove = (z: Zone) => {
     if (isNew(z.id) || window.confirm(`ลบ ต.${z.name}? กดบันทึกเพื่อยืนยัน`)) setRows(rows.filter((r) => r.id !== z.id));
   };
   const cols = isSuperAdmin
-    ? 'grid-cols-[1fr_1fr_1fr_1fr_auto] sm:grid-cols-[1fr_5.5rem_5.5rem_5.5rem_5.5rem_auto]'
-    : 'grid-cols-4 sm:grid-cols-[1fr_5.5rem_5.5rem_5.5rem_5.5rem]';
+    ? 'grid-cols-[1fr_1fr_1fr_auto] sm:grid-cols-[1fr_6rem_6rem_6rem_auto]'
+    : 'grid-cols-3 sm:grid-cols-[1fr_6rem_6rem_6rem]';
 
   return (
     <Section
       title="ค่าส่งตามตำบล (บาท/เที่ยว)"
-      subtitle={`ค่าส่งที่ลูกค้าจ่าย: ใกล้ถนนใหญ่ไม่เกิน ${formatNumber(delivery.nearKm)} กม. คิดราคาต่ำสุด ไกลขึ้นคิดเพิ่มตามระยะจนถึงราคาสูงสุด · ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว บวกค่าส่งเพิ่มตามระยะแบบเดียวกับลูกค้า ใช้ตั้งต้นตอนเคลียร์ค่ารถ`}
+      subtitle={`ค่าส่งลูกค้า: ราคาต่อเที่ยวเมื่อหน้างานห่างถนนใหญ่ไม่เกิน ${formatNumber(delivery.nearKm)} กม. ไกลกว่านั้นบวกเพิ่ม ${formatNumber(delivery.perKm)} บาท/กม. · ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว บวกค่าส่งเพิ่มตามระยะแบบเดียวกับลูกค้า ใช้ตั้งต้นตอนเคลียร์ค่ารถ`}
       saver={saver}
       onSave={() =>
         saver.run(async () => {
           if (rows.some((r) => !r.name.trim())) throw new Error('กรุณาใส่ชื่อตำบลให้ครบ');
-          if (invalid) throw new Error(`ต.${invalid.name}: ราคาสูงสุดต้องไม่น้อยกว่าราคาต่ำสุด`);
           for (const z of zones) {
             if (!rows.some((r) => r.id === z.id)) await deleteZone(z.id);
           }
@@ -320,7 +317,6 @@ function ZonesSection({
                     min={0}
                     step={50}
                     value={z[c.key]}
-                    invalid={c.key === 'feeMax' && z.feeMax < z.feeMin}
                     onChange={(e) => update(z.id, { [c.key]: num(e.target.value) })}
                   />
                 </label>
@@ -355,17 +351,16 @@ function DeliverySection({ settings, zones, onSaved }: { settings: AppSettings; 
       saver={saver}
       onSave={() =>
         saver.run(async () => {
-          if (form.maxKm <= form.nearKm) throw new Error('ระยะไกลสุดต้องมากกว่าระยะใกล้');
-          await saveSetting('delivery', form);
+          await saveSetting('delivery', { nearKm: form.nearKm, perKm: form.perKm, roundTo: form.roundTo });
         })
       }
     >
       <div className="grid grid-cols-3 gap-3">
-        <Field id="ds-near" label="ระยะใกล้ (กม.)" hint="ไม่เกินนี้ = ราคาต่ำสุด">
-          <Input id="ds-near" type="number" min={0} step={0.5} value={form.nearKm} onChange={(e) => setForm({ ...form, nearKm: num(e.target.value) })} />
+        <Field id="ds-per" label="บาท/กม." hint="คิดเพิ่มต่อเที่ยว">
+          <Input id="ds-per" type="number" min={0} step={5} value={form.perKm} onChange={(e) => setForm({ ...form, perKm: num(e.target.value) })} />
         </Field>
-        <Field id="ds-max" label="ระยะไกลสุด (กม.)" hint="ตั้งแต่นี้ = ราคาสูงสุด">
-          <Input id="ds-max" type="number" min={0} step={0.5} value={form.maxKm} onChange={(e) => setForm({ ...form, maxKm: num(e.target.value) })} />
+        <Field id="ds-near" label="ไม่คิดเพิ่ม (กม. แรก)" hint="ห่างถนนใหญ่ไม่เกินนี้ ไม่บวก">
+          <Input id="ds-near" type="number" min={0} step={0.5} value={form.nearKm} onChange={(e) => setForm({ ...form, nearKm: num(e.target.value) })} />
         </Field>
         <Field id="ds-round" label="ปัดขึ้นทีละ (บาท)">
           <Input id="ds-round" type="number" min={0} step={10} value={form.roundTo} onChange={(e) => setForm({ ...form, roundTo: num(e.target.value) })} />
@@ -374,7 +369,7 @@ function DeliverySection({ settings, zones, onSaved }: { settings: AppSettings; 
       {sample ? (
         <p className="mt-3 rounded bg-subtle px-3 py-2 text-sm text-muted">
           ตัวอย่าง ต.{sample.name}:{' '}
-          {[1, 5, 8, 12].map((km) => `${km} กม. = ${formatNumber(suggestDeliveryFee(sample, km, form))}`).join(' · ')}
+          {[0.5, 1, 3, 5].map((km) => `${km} กม. = ${formatNumber(suggestDeliveryFee(sample, km, form))}`).join(' · ')}
         </p>
       ) : null}
     </Section>

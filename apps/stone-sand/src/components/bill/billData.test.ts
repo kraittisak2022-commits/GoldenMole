@@ -46,7 +46,7 @@ const order: Order = {
 
 describe('billFromOrder', () => {
   it('adds delivery and surcharge lines that sum to the gross amount', () => {
-    const bill = billFromOrder(order, 'delivery', { id: 'thung-hua', name: 'ทุ่งฮั้ว', feeMin: 300, feeMax: 400, driverFee: 0, driverFee3: 0, sortOrder: 1 });
+    const bill = billFromOrder(order, 'delivery', { id: 'thung-hua', name: 'ทุ่งฮั้ว', feeMin: 300, driverFee: 0, driverFee3: 0, sortOrder: 1 });
     expect(bill.lines.map((l) => l.amount)).toEqual([2000, 700, 100]);
     expect(bill.lines.reduce((s, l) => s + l.amount, 0)).toBe(bill.gross);
     expect(bill.gross - bill.discountAmount).toBe(bill.total);

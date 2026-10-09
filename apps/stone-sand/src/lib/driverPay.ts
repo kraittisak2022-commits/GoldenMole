@@ -1,12 +1,12 @@
-import { suggestDeliveryFee } from '../calc/deliveryFee';
+import { distanceSurcharge } from '../calc/deliveryFee';
 import type { DeliverySettings, Order, TruckSize, Zone } from '../types';
 
-type ZoneRates = Pick<Zone, 'feeMin' | 'feeMax' | 'driverFee' | 'driverFee3'> | undefined;
+type ZoneRates = Pick<Zone, 'driverFee' | 'driverFee3'> | undefined;
 
 export interface DriverTripRate {
   /** Rate for the truck size; trucks of unknown size get the normal 5-คิว rate. 0 = not set. */
   base: number;
-  /** Distance surcharge per trip, the same amount the customer pays above the tambon's lowest fee. */
+  /** Distance surcharge per trip, the same amount the customer pays on top of the tambon fee. */
   extra: number;
   /** base + extra, or 0 while the base rate is not set. */
   perTrip: number;
@@ -20,7 +20,7 @@ export function driverTripRate(
 ): DriverTripRate {
   if (!zone) return { base: 0, extra: 0, perTrip: 0 };
   const base = truckSize === 3 ? zone.driverFee3 : zone.driverFee;
-  const extra = suggestDeliveryFee(zone, roadDistanceKm, delivery) - zone.feeMin;
+  const extra = distanceSurcharge(roadDistanceKm, delivery);
   return { base, extra, perTrip: base > 0 ? base + extra : 0 };
 }
 

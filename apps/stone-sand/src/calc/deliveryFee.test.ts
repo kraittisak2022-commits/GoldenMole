@@ -1,43 +1,32 @@
-import { suggestDeliveryFee } from './deliveryFee';
+import { distanceSurcharge, suggestDeliveryFee } from './deliveryFee';
 
-const thungHua = { feeMin: 300, feeMax: 400 };
-const wangThong = { feeMin: 1200, feeMax: 1500 };
+const wangTai = { feeMin: 240 };
+const settings = { nearKm: 0.5, perKm: 40, roundTo: 50 };
 
 describe('suggestDeliveryFee', () => {
-  it('uses the lowest fee within 3 km of the main road', () => {
-    expect(suggestDeliveryFee(thungHua, 0)).toBe(300);
-    expect(suggestDeliveryFee(thungHua, 2.4)).toBe(300);
-    expect(suggestDeliveryFee(thungHua, 3)).toBe(300);
+  it('is the tambon fee within the free distance of the main road', () => {
+    expect(suggestDeliveryFee(wangTai, 0, settings)).toBe(240);
+    expect(suggestDeliveryFee(wangTai, 0.5, settings)).toBe(240);
   });
 
-  it('scales between 3 km and maxKm, rounded up to 50', () => {
-    expect(suggestDeliveryFee(thungHua, 4)).toBe(350);
-    expect(suggestDeliveryFee(thungHua, 6.5)).toBe(350);
-    expect(suggestDeliveryFee(thungHua, 7)).toBe(400);
-    expect(suggestDeliveryFee(wangThong, 6.5)).toBe(1350);
+  it('adds baht per km beyond the free distance, rounded up to 50', () => {
+    expect(suggestDeliveryFee(wangTai, 1, settings)).toBe(290); // 0.5 km × 40 = 20 → 50
+    expect(suggestDeliveryFee(wangTai, 3, settings)).toBe(340); // 2.5 km × 40 = 100
+    expect(suggestDeliveryFee(wangTai, 3.1, settings)).toBe(390); // 2.6 km × 40 = 104 → 150
   });
 
-  it('uses the highest fee at or beyond maxKm', () => {
-    expect(suggestDeliveryFee(thungHua, 10)).toBe(400);
-    expect(suggestDeliveryFee(wangThong, 25)).toBe(1500);
+  it('has no cap', () => {
+    expect(suggestDeliveryFee(wangTai, 10.5, settings)).toBe(640); // 10 km × 40 = 400
   });
 
-  it('falls back to the lowest fee without a distance', () => {
-    expect(suggestDeliveryFee(thungHua, null)).toBe(300);
-    expect(suggestDeliveryFee(thungHua, Number.NaN)).toBe(300);
+  it('falls back to the tambon fee without a distance or a rate', () => {
+    expect(suggestDeliveryFee(wangTai, null, settings)).toBe(240);
+    expect(suggestDeliveryFee(wangTai, Number.NaN, settings)).toBe(240);
+    expect(suggestDeliveryFee(wangTai, 5, { ...settings, perKm: 0 })).toBe(240);
   });
 
-  it('rounds only the distance surcharge, so a base fee off the 50 grid is kept', () => {
-    const wangTai = { feeMin: 240, feeMax: 340 };
-    const settings = { nearKm: 0.5, maxKm: 3, roundTo: 50 };
-    expect(suggestDeliveryFee(wangTai, 0.4, settings)).toBe(240);
-    expect(suggestDeliveryFee(wangTai, 1, settings)).toBe(290);
-    expect(suggestDeliveryFee(wangTai, 2, settings)).toBe(340);
-    expect(suggestDeliveryFee({ feeMin: 150, feeMax: 150 }, 2, settings)).toBe(150);
-  });
-
-  it('respects custom settings', () => {
-    expect(suggestDeliveryFee(wangThong, 5, { nearKm: 2, maxKm: 8, roundTo: 100 })).toBe(1400);
-    expect(suggestDeliveryFee(wangThong, 5, { nearKm: 2, maxKm: 8, roundTo: 0 })).toBe(1350);
+  it('respects other rounding', () => {
+    expect(distanceSurcharge(1.8, { nearKm: 0.5, perKm: 35, roundTo: 10 })).toBe(50); // 45.5 → 50
+    expect(distanceSurcharge(1.8, { nearKm: 0.5, perKm: 35, roundTo: 0 })).toBe(46);
   });
 });
