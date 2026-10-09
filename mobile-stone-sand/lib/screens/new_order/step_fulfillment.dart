@@ -23,7 +23,8 @@ class LoadLine {
   final Load load;
 }
 
-double _fee(Zone z, num? km, DeliverySettings settings) => suggestDeliveryFee(z.feeMin, z.feeMax, km, settings).toDouble();
+double _fee(Zone z, WizardState st, DeliverySettings settings) =>
+    suggestDeliveryFee(z.feeMin, st.roadDistanceKm, st.truckSize, settings).toDouble();
 
 /// Current device position, or an error message.
 Future<(LatLngValue?, String)> currentPosition() async {
@@ -120,7 +121,7 @@ class _StepFulfillmentState extends State<StepFulfillment> {
         next = next.copyWith(zoneId: matched.id, tambonMethod: tambon!.method);
         feeZone = matched;
       }
-      if (!st.feeTouched && feeZone != null) next = next.copyWith(feePerTrip: _fee(feeZone, road?.km, delivery));
+      if (!st.feeTouched && feeZone != null) next = next.copyWith(feePerTrip: _fee(feeZone, next, delivery));
       return next;
     };
   }
@@ -186,30 +187,36 @@ class _StepFulfillmentState extends State<StepFulfillment> {
     widget.patch((st) {
       var next = st.copyWith(zoneId: id, tambonMethod: id == null ? null : 'manual');
       if (z != null && !st.feeTouched) {
-        next = next.copyWith(feePerTrip: _fee(z, st.roadDistanceKm, widget.settings.delivery));
+        next = next.copyWith(feePerTrip: _fee(z, st, widget.settings.delivery));
       }
       return next;
     });
+  }
+
+  /// The per-km rate depends on the truck size, so an untouched fee follows it.
+  WizardState _refee(WizardState st) {
+    final z = _zoneById(st.zoneId);
+    return z == null || st.feeTouched ? st : st.copyWith(feePerTrip: _fee(z, st, widget.settings.delivery));
   }
 
   void _setTruck(int size) {
     widget.patch((st) {
       final keepDriver = st.driverTruckSize == size;
       final next = st.copyWith(truckSize: size, truckTouched: true);
-      return keepDriver ? next : next.copyWith(driverId: null, driverTruckSize: null, driverConfirmed: false);
+      return _refee(keepDriver ? next : next.copyWith(driverId: null, driverTruckSize: null, driverConfirmed: false));
     });
   }
 
   void _chooseDriver(Driver d) {
     widget.patch((st) => st.driverId == d.id
         ? st.copyWith(driverId: null, driverTruckSize: null, driverConfirmed: false)
-        : st.copyWith(
+        : _refee(st.copyWith(
             driverId: d.id,
             driverTruckSize: d.truckSize,
             driverConfirmed: false,
             truckSize: d.truckSize,
             truckTouched: true,
-          ));
+          )));
   }
 
   @override
@@ -384,7 +391,11 @@ class _StepFulfillmentState extends State<StepFulfillment> {
         children: [
           FieldLabel(
             'ตำบลที่จัดส่ง *',
-            hint: zone == null ? null : 'ค่าส่ง ${formatNumber(zone.feeMin)}-${formatNumber(zone.feeMax)} บาท/เที่ยว',
+            hint: zone == null
+                ? null
+                : 'ค่าส่ง ${formatNumber(zone.feeMin)} บาท/เที่ยว'
+                    '${perKmFor(s.truckSize, delivery) > 0 ? ' + ${formatNumber(perKmFor(s.truckSize, delivery))} บาท/กม. '
+                        '(รถ ${s.truckSize == 3 ? 3 : 5} คิว) เมื่อห่างถนนใหญ่เกิน ${formatNumber(delivery.nearKm)} กม.' : ''}',
             child: DropdownButtonFormField<String?>(
               key: ValueKey('zone:${s.zoneId}'),
               initialValue: zone?.id,
@@ -394,7 +405,7 @@ class _StepFulfillmentState extends State<StepFulfillment> {
                 for (final z in widget.zones)
                   DropdownMenuItem<String?>(
                     value: z.id,
-                    child: Text('${z.name} (${formatNumber(z.feeMin)}-${formatNumber(z.feeMax)})'),
+                    child: Text('${z.name} (${formatNumber(z.feeMin)})'),
                   ),
               ],
               onChanged: _chooseZone,
@@ -519,10 +530,10 @@ class _StepFulfillmentState extends State<StepFulfillment> {
               alignment: Alignment.centerLeft,
               child: TextButton(
                 onPressed: () => widget.patch(
-                  (st) => st.copyWith(feePerTrip: _fee(zone, st.roadDistanceKm, delivery), feeTouched: false),
+                  (st) => st.copyWith(feePerTrip: _fee(zone, st, delivery), feeTouched: false),
                 ),
                 child: Text(
-                  'ใช้ค่าส่งที่ระบบแนะนำ (${formatNumber(_fee(zone, s.roadDistanceKm, delivery))})',
+                  'ใช้ค่าส่งที่ระบบแนะนำ (${formatNumber(_fee(zone, s, delivery))})',
                   style: const TextStyle(decoration: TextDecoration.underline),
                 ),
               ),

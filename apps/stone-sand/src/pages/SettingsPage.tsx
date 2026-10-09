@@ -349,7 +349,7 @@ function DeliverySection({ settings, zones, onSaved }: { settings: AppSettings; 
   return (
     <Section
       title="การคำนวณค่าส่งจากระยะ"
-      subtitle="ระยะวัดตามถนนที่รถวิ่งจริง จากถนนสายหลักที่ใกล้ที่สุดเข้าไปถึงหมุดหน้างาน (ถ้าวัดตามถนนไม่ได้จะใช้ระยะเส้นตรง) · ค่าส่งเพิ่มตามระยะปัดขึ้นเป็นหลักสิบ"
+      subtitle="ระยะวัดตามถนนที่รถวิ่งจริง จากถนนสายหลักที่ใกล้ที่สุดเข้าไปถึงหมุดหน้างาน (ถ้าวัดตามถนนไม่ได้จะใช้ระยะเส้นตรง) · ส่วนที่เกินคิดเป็นกิโลเต็ม เศษกิโลนับเป็น 1 กม. (เช่น ไม่คิด 1 กม. แรก ระยะ 2.4 กม. = คิด 2 กม.)"
       saver={saver}
       onSave={() =>
         saver.run(async () => {
@@ -391,7 +391,7 @@ function DeliverySection({ settings, zones, onSaved }: { settings: AppSettings; 
           ตัวอย่างค่าส่งลูกค้า ต.{sample.name} (บาท/เที่ยว)
           {([5, 3] as TruckSize[]).map((size) => (
             <span key={size} className="block">
-              รถ {size} คิว: {[0.5, 1, 3, 5].map((km) => `${km} กม. = ${formatNumber(suggestDeliveryFee(sample, km, size, form))}`).join(' · ')}
+              รถ {size} คิว: {[1, 1.4, 2.4, 5].map((km) => `${km} กม. = ${formatNumber(suggestDeliveryFee(sample, km, size, form))}`).join(' · ')}
             </span>
           ))}
         </p>

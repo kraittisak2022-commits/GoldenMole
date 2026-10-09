@@ -8,7 +8,7 @@ export function perKmFor(truckSize: TruckSize | null | undefined, delivery: KmRa
 }
 
 /**
- * Suggested delivery fee per trip: the tambon fee, plus the truck size's baht/km for every km
+ * Suggested delivery fee per trip: the tambon fee, plus the truck size's baht/km for every started km
  * beyond nearKm between the main road and the pin. The customer and the driver share that rate.
  */
 export function suggestDeliveryFee(
@@ -20,12 +20,15 @@ export function suggestDeliveryFee(
   return zone.feeMin + distanceSurcharge(distanceKm, { nearKm: delivery.nearKm, perKm: perKmFor(truckSize, delivery) });
 }
 
-const ROUND_UP_TO = 10;
+/** Whole km beyond nearKm, any part of a km counting as a full km (1.4 km past → 2 km). */
+export function chargedKm(distanceKm: number | null | undefined, nearKm: number): number {
+  if (distanceKm == null || !Number.isFinite(distanceKm) || distanceKm <= nearKm) return 0;
+  // Rounded to metres first so 2.0 − 1 stays 1 km despite floating-point error
+  return Math.ceil(Math.round((distanceKm - nearKm) * 1000) / 1000);
+}
 
-/** Per-trip surcharge for the distance beyond nearKm, rounded up to the next 10 baht; 0 without a distance. */
+/** Per-trip surcharge: the baht/km for each started km beyond nearKm; 0 without a distance. */
 export function distanceSurcharge(distanceKm: number | null | undefined, rate: { nearKm: number; perKm: number }): number {
-  const { nearKm, perKm } = rate;
-  if (distanceKm == null || !Number.isFinite(distanceKm) || distanceKm <= nearKm || perKm <= 0) return 0;
-  const satang = Math.round((distanceKm - nearKm) * perKm * 100);
-  return Math.ceil(satang / (ROUND_UP_TO * 100)) * ROUND_UP_TO;
+  if (rate.perKm <= 0) return 0;
+  return chargedKm(distanceKm, rate.nearKm) * rate.perKm;
 }

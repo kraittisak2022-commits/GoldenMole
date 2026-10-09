@@ -30,9 +30,9 @@ const zone = { driverFee: 350, driverFee3: 250 };
 
 describe('driverTripRate', () => {
   it('adds the distance surcharge at the per-km rate for the truck size', () => {
-    expect(driverTripRate(zone, 5, 1, delivery)).toEqual({ base: 350, extra: 30, perTrip: 380 }); // 0.5 × 60
-    expect(driverTripRate(zone, 5, 2, delivery)).toEqual({ base: 350, extra: 90, perTrip: 440 }); // 1.5 × 60
-    expect(driverTripRate(zone, 3, 2, delivery)).toEqual({ base: 250, extra: 50, perTrip: 300 }); // 1.5 × 30 = 45 → 50
+    expect(driverTripRate(zone, 5, 1, delivery)).toEqual({ base: 350, extra: 60, perTrip: 410 }); // 0.5 → 1 km × 60
+    expect(driverTripRate(zone, 5, 2, delivery)).toEqual({ base: 350, extra: 120, perTrip: 470 }); // 1.5 → 2 km × 60
+    expect(driverTripRate(zone, 3, 2, delivery)).toEqual({ base: 250, extra: 60, perTrip: 310 }); // 1.5 → 2 km × 30
   });
 
   it('has no surcharge while the rate for the truck size is 0', () => {
@@ -51,7 +51,7 @@ describe('driverTripRate', () => {
 
 describe('suggestedDriverPay', () => {
   it('is (truck-size rate + distance surcharge) times trips, ignoring the wage stored on the order', () => {
-    expect(suggestedDriverPay(make({ truckSize: 5, trips: 3, roadDistanceKm: 1, driverWage: 450 }), zone, delivery)).toBe(1140);
+    expect(suggestedDriverPay(make({ truckSize: 5, trips: 3, roadDistanceKm: 1, driverWage: 450 }), zone, delivery)).toBe(1230);
     expect(suggestedDriverPay(make({ truckSize: 3, trips: 2, driverWage: 450 }), zone, delivery)).toBe(500);
   });
 
@@ -126,7 +126,7 @@ describe('summarizeDriverDues', () => {
       delivery,
     );
     expect(dues).toEqual([
-      { driverId: 'drv-b', count: 1, trips: 1, total: 1150, cash: 0, oldestDate: '2026-10-05' },
+      { driverId: 'drv-b', count: 1, trips: 1, total: 1180, cash: 0, oldestDate: '2026-10-05' },
       { driverId: 'drv-a', count: 2, trips: 3, total: 850, cash: 1800, oldestDate: '2026-10-03' },
     ]);
   });

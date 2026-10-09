@@ -553,34 +553,32 @@ class DeliverySection extends StatefulWidget {
 
 class _DeliverySectionState extends State<DeliverySection> with _Saver {
   late num _near = widget.settings.nearKm;
-  late num _max = widget.settings.maxKm;
-  late num _round = widget.settings.roundTo;
+  late num _per5 = widget.settings.driverPerKm5;
+  late num _per3 = widget.settings.driverPerKm3;
 
   @override
   void didUpdateWidget(covariant DeliverySection old) {
     super.didUpdateWidget(old);
     if (!identical(old.settings, widget.settings)) {
       _near = widget.settings.nearKm;
-      _max = widget.settings.maxKm;
-      _round = widget.settings.roundTo;
+      _per5 = widget.settings.driverPerKm5;
+      _per3 = widget.settings.driverPerKm3;
     }
   }
 
-  DeliverySettings get _form => widget.settings.copyWith(nearKm: _near, maxKm: _max, roundTo: _round);
+  DeliverySettings get _form => widget.settings.copyWith(nearKm: _near, driverPerKm5: _per5, driverPerKm3: _per3);
 
   @override
   Widget build(BuildContext context) {
     final sample = widget.zones.firstOrNull;
     return _SettingsCard(
       title: 'การคำนวณค่าส่งจากระยะ',
-      subtitle: 'ระยะวัดจากหมุดหน้างานถึงถนนสายหลักที่ใกล้ที่สุด (เส้นตรง)',
+      subtitle: 'ระยะวัดจากหมุดหน้างานถึงถนนสายหลักที่ใกล้ที่สุด · '
+          'ส่วนที่เกินคิดเป็นกิโลเต็ม เศษกิโลนับเป็น 1 กม. (เช่น ไม่คิด 1 กม. แรก ระยะ 2.4 กม. = คิด 2 กม.)',
       saving: saving,
       error: saveError,
       saved: saved,
-      onSave: () => runSave(() async {
-        if (_max <= _near) throw const AppException('ระยะไกลสุดต้องมากกว่าระยะใกล้');
-        await saveSetting('delivery', _form.toJson());
-      }),
+      onSave: () => runSave(() => saveSetting('delivery', _form.toJson())),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -589,28 +587,25 @@ class _DeliverySectionState extends State<DeliverySection> with _Saver {
             children: [
               Expanded(
                 child: FieldLabel(
-                  'ระยะใกล้ (กม.)',
-                  hint: 'ไม่เกินนี้ = ราคาต่ำสุด',
+                  'ค่ารถ 5 คิว บาท/กม.',
+                  hint: 'คิดจากลูกค้าและจ่ายคนขับ ต่อเที่ยว',
+                  child: NumberField(value: _per5, onChanged: (v) => setState(() => _per5 = math.max(0, v))),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FieldLabel(
+                  'ค่ารถ 3 คิว บาท/กม.',
+                  hint: 'คิดจากลูกค้าและจ่ายคนขับ ต่อเที่ยว',
+                  child: NumberField(value: _per3, onChanged: (v) => setState(() => _per3 = math.max(0, v))),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FieldLabel(
+                  'ไม่คิดเพิ่ม (กม. แรก)',
+                  hint: 'ห่างถนนใหญ่ไม่เกินนี้ ไม่บวก',
                   child: NumberField(value: _near, onChanged: (v) => setState(() => _near = math.max(0, v))),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FieldLabel(
-                  'ระยะไกลสุด (กม.)',
-                  hint: 'ตั้งแต่นี้ = ราคาสูงสุด',
-                  child: NumberField(value: _max, onChanged: (v) => setState(() => _max = math.max(0, v))),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FieldLabel(
-                  'ปัดขึ้นทีละ (บาท)',
-                  child: NumberField(
-                    value: _round,
-                    decimal: false,
-                    onChanged: (v) => setState(() => _round = math.max(0, v)),
-                  ),
                 ),
               ),
             ],
@@ -621,8 +616,9 @@ class _DeliverySectionState extends State<DeliverySection> with _Saver {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(color: AppColors.subtle, borderRadius: BorderRadius.circular(kRadius)),
               child: Text(
-                'ตัวอย่าง ต.${sample.name}: ${[1, 5, 8, 12].map((km) => '$km กม. = '
-                    '${formatNumber(suggestDeliveryFee(sample.feeMin, sample.feeMax, km, _form))}').join(' · ')}',
+                'ตัวอย่างค่าส่งลูกค้า ต.${sample.name} (บาท/เที่ยว)\n'
+                '${[5, 3].map((size) => 'รถ $size คิว: ${[1, 1.4, 2.4, 5].map((km) => '$km กม. = '
+                    '${formatNumber(suggestDeliveryFee(sample.feeMin, km, size, _form))}').join(' · ')}').join('\n')}',
                 style: const TextStyle(fontSize: 14, color: AppColors.muted),
               ),
             ),

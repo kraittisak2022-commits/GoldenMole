@@ -1,27 +1,27 @@
-import { distanceSurcharge, perKmFor, suggestDeliveryFee } from './deliveryFee';
+import { chargedKm, distanceSurcharge, perKmFor, suggestDeliveryFee } from './deliveryFee';
 
 const wangTai = { feeMin: 240 };
-const delivery = { nearKm: 0.5, driverPerKm5: 40, driverPerKm3: 30 };
+const delivery = { nearKm: 1, driverPerKm5: 50, driverPerKm3: 30 };
 
 describe('suggestDeliveryFee', () => {
-  it('is the tambon fee within the free distance of the main road', () => {
+  it('is the tambon fee within the free first km', () => {
     expect(suggestDeliveryFee(wangTai, 0, 5, delivery)).toBe(240);
-    expect(suggestDeliveryFee(wangTai, 0.5, 3, delivery)).toBe(240);
+    expect(suggestDeliveryFee(wangTai, 1, 3, delivery)).toBe(240);
   });
 
-  it('adds the truck size baht per km beyond the free distance, rounded up to 10', () => {
-    expect(suggestDeliveryFee(wangTai, 1, 5, delivery)).toBe(260); // 0.5 km × 40 = 20
-    expect(suggestDeliveryFee(wangTai, 3, 5, delivery)).toBe(340); // 2.5 km × 40 = 100
-    expect(suggestDeliveryFee(wangTai, 3, 3, delivery)).toBe(320); // 2.5 km × 30 = 75 → 80
-    expect(suggestDeliveryFee(wangTai, 3.12, 3, delivery)).toBe(320); // 2.62 km × 30 = 78.6 → 80
+  it('adds the truck size baht/km for every started km beyond the first', () => {
+    expect(suggestDeliveryFee(wangTai, 1.4, 5, delivery)).toBe(290); // 0.4 km → 1 km × 50
+    expect(suggestDeliveryFee(wangTai, 1.7, 3, delivery)).toBe(270); // 0.7 km → 1 km × 30
+    expect(suggestDeliveryFee(wangTai, 2.4, 5, delivery)).toBe(340); // 1.4 km → 2 km × 50
+    expect(suggestDeliveryFee(wangTai, 2, 5, delivery)).toBe(290); // exactly 1 km × 50
   });
 
   it('uses the 5-คิว rate when the truck size is unknown', () => {
-    expect(suggestDeliveryFee(wangTai, 3, null, delivery)).toBe(340);
+    expect(suggestDeliveryFee(wangTai, 2.4, null, delivery)).toBe(340);
   });
 
   it('has no cap', () => {
-    expect(suggestDeliveryFee(wangTai, 10.5, 5, delivery)).toBe(640); // 10 km × 40
+    expect(suggestDeliveryFee(wangTai, 10.5, 5, delivery)).toBe(740); // 9.5 km → 10 km × 50
   });
 
   it('falls back to the tambon fee without a distance or a rate', () => {
@@ -31,23 +31,32 @@ describe('suggestDeliveryFee', () => {
   });
 });
 
-describe('distanceSurcharge', () => {
-  it('rounds up to the next 10 baht', () => {
-    expect(distanceSurcharge(2.3, { nearKm: 1, perKm: 40 })).toBe(60); // 52
-    expect(distanceSurcharge(2.3, { nearKm: 1, perKm: 50 })).toBe(70); // 65
-    expect(distanceSurcharge(1.01, { nearKm: 1, perKm: 50 })).toBe(10); // 0.5
+describe('chargedKm', () => {
+  it('counts any part of a km as a full km', () => {
+    expect(chargedKm(1.01, 1)).toBe(1);
+    expect(chargedKm(1.4, 1)).toBe(1);
+    expect(chargedKm(2.4, 1)).toBe(2);
+    expect(chargedKm(0.8, 1)).toBe(0);
   });
 
-  it('keeps exact tens despite floating-point error', () => {
-    expect(distanceSurcharge(1.3, { nearKm: 0.1, perKm: 50 })).toBe(60); // 1.2 × 50 = 60.000000000000014
-    expect(distanceSurcharge(2.1, { nearKm: 0.5, perKm: 50 })).toBe(80); // 1.6 × 50
+  it('keeps whole km despite floating-point error', () => {
+    expect(chargedKm(1.3, 0.3)).toBe(1); // 1.3 − 0.3 = 1.0000000000000002
+    expect(chargedKm(3.3, 1.1)).toBe(3); // 2.1999999999999997
+  });
+});
+
+describe('distanceSurcharge', () => {
+  it('is the rate times the charged km', () => {
+    expect(distanceSurcharge(2.4, { nearKm: 1, perKm: 50 })).toBe(100);
+    expect(distanceSurcharge(1.7, { nearKm: 1, perKm: 30 })).toBe(30);
+    expect(distanceSurcharge(2.4, { nearKm: 1, perKm: 0 })).toBe(0);
   });
 });
 
 describe('perKmFor', () => {
   it('picks the rate for the truck size', () => {
     expect(perKmFor(3, delivery)).toBe(30);
-    expect(perKmFor(5, delivery)).toBe(40);
-    expect(perKmFor(undefined, delivery)).toBe(40);
+    expect(perKmFor(5, delivery)).toBe(50);
+    expect(perKmFor(undefined, delivery)).toBe(50);
   });
 });

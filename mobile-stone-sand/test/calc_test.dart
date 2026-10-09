@@ -164,47 +164,40 @@ void main() {
   });
 
   group('suggestDeliveryFee', () {
-    test('uses the lowest fee within 3 km of the main road', () {
-      expect(suggestDeliveryFee(300, 400, 0), 300);
-      expect(suggestDeliveryFee(300, 400, 2.4), 300);
-      expect(suggestDeliveryFee(300, 400, 3), 300);
+    const delivery = DeliverySettings(nearKm: 1, driverPerKm5: 50, driverPerKm3: 30);
+
+    test('is the tambon fee within the free first km', () {
+      expect(suggestDeliveryFee(240, 0, 5, delivery), 240);
+      expect(suggestDeliveryFee(240, 1, 3, delivery), 240);
     });
 
-    test('scales between 3 km and maxKm, rounded up to 50', () {
-      expect(suggestDeliveryFee(300, 400, 4), 350);
-      expect(suggestDeliveryFee(300, 400, 6.5), 350);
-      expect(suggestDeliveryFee(300, 400, 7), 400);
-      expect(suggestDeliveryFee(1200, 1500, 6.5), 1350);
+    test('adds the truck size baht/km for every started km beyond the first', () {
+      expect(suggestDeliveryFee(240, 1.4, 5, delivery), 290); // 0.4 km → 1 km × 50
+      expect(suggestDeliveryFee(240, 1.7, 3, delivery), 270); // 0.7 km → 1 km × 30
+      expect(suggestDeliveryFee(240, 2.4, 5, delivery), 340); // 1.4 km → 2 km × 50
+      expect(suggestDeliveryFee(240, 2, 5, delivery), 290);
     });
 
-    test('uses the highest fee at or beyond maxKm', () {
-      expect(suggestDeliveryFee(300, 400, 10), 400);
-      expect(suggestDeliveryFee(1200, 1500, 25), 1500);
+    test('uses the 5-คิว rate when the truck size is unknown', () {
+      expect(suggestDeliveryFee(240, 2.4, null, delivery), 340);
     });
 
-    test('falls back to the lowest fee without a distance', () {
-      expect(suggestDeliveryFee(300, 400, null), 300);
-      expect(suggestDeliveryFee(300, 400, double.nan), 300);
+    test('falls back to the tambon fee without a distance or a rate', () {
+      expect(suggestDeliveryFee(240, null, 5, delivery), 240);
+      expect(suggestDeliveryFee(240, double.nan, 5, delivery), 240);
+      expect(suggestDeliveryFee(240, 5, 3, delivery.copyWith(driverPerKm3: 0)), 240);
     });
 
-    test('respects custom settings', () {
-      expect(suggestDeliveryFee(1200, 1500, 5, const DeliverySettings(nearKm: 2, maxKm: 8, roundTo: 100)), 1400);
-      expect(suggestDeliveryFee(1200, 1500, 5, const DeliverySettings(nearKm: 2, maxKm: 8, roundTo: 0)), 1350);
+    test('counts whole km despite floating-point error', () {
+      expect(chargedKm(1.3, 0.3), 1);
+      expect(chargedKm(3.3, 1.1), 3);
     });
 
-    test('rounds only the distance surcharge, so a base fee off the 50 grid is kept', () {
-      const settings = DeliverySettings(nearKm: 0.5, maxKm: 3, roundTo: 50);
-      expect(suggestDeliveryFee(240, 340, 0.4, settings), 240);
-      expect(suggestDeliveryFee(240, 340, 1, settings), 290);
-      expect(suggestDeliveryFee(240, 340, 2, settings), 340);
-      expect(suggestDeliveryFee(150, 150, 2, settings), 150);
-    });
-
-    test('keeps the web per-km rates when saving', () {
-      final saved = DeliverySettings.fromJson({'nearKm': 1, 'driverPerKm5': 50, 'driverPerKm3': 40})
-          .copyWith(nearKm: 2)
-          .toJson();
-      expect(saved, {'driverPerKm5': 50, 'driverPerKm3': 40, 'nearKm': 2, 'maxKm': 10, 'roundTo': 50});
+    test('keeps other stored keys and drops the old range settings when saving', () {
+      final saved = DeliverySettings.fromJson(
+        {'nearKm': 1, 'driverPerKm5': 50, 'driverPerKm3': 40, 'maxKm': 10, 'roundTo': 50, 'other': true},
+      ).copyWith(nearKm: 2).toJson();
+      expect(saved, {'other': true, 'nearKm': 2, 'driverPerKm5': 50, 'driverPerKm3': 40});
     });
   });
 
