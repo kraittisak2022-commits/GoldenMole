@@ -14,6 +14,7 @@ import { driverTripRate } from '../../lib/driverPay';
 import { distanceToMainRoad, findTambon } from '../../lib/geo';
 import { formatMoney, formatNumber, formatPhone } from '../../lib/format';
 import { parseLatLng } from '../../lib/latlng';
+import { describePin, pinPlaceText } from '../../lib/places';
 import { fetchRoadRoute } from '../../lib/roadRoute';
 import {
   ROUTE_GROUP_LABEL,
@@ -99,6 +100,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
     const start = distanceToMainRoad(pinLat, pinLng)?.point;
     return start ? { path: [start, pin], label, byRoad: false } : null;
   }, [pinLat, pinLng, roadKm, byRoad, roadPathForPin, measuringRoad]);
+  const place = useMemo(() => (pinLat != null && pinLng != null ? describePin(pinLat, pinLng) : null), [pinLat, pinLng]);
   const largestPerTrip = Math.max(0, ...loadLines.map((l) => l.perTrip));
 
   const chooseFulfillment = (f: 'pickup' | 'delivery') => {
@@ -134,7 +136,12 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
 
   const onPin = (p: LatLng) => {
     setGeoError('');
-    patch(pinPatch(p));
+    const next = pinPatch(p);
+    const address = s.deliveryAddress.trim();
+    const prevAuto = place ? pinPlaceText(place) : '';
+    const auto = pinPlaceText(describePin(p.lat, p.lng));
+    if (auto && (!address || address === prevAuto)) next.deliveryAddress = auto;
+    patch(next);
   };
 
   const locate = () => {
@@ -268,6 +275,28 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
 
             {s.pin ? (
               <div className="grid grid-cols-2 gap-2 text-sm">
+                <InfoTile
+                  label="หมู่บ้าน (ใกล้หมุดที่สุด)"
+                  value={place?.village?.name ?? '—'}
+                  hint={
+                    place?.village
+                      ? place.village.km < 0.2
+                        ? 'หมุดอยู่กลางหมู่บ้าน'
+                        : `ห่างกลางหมู่บ้าน ~${formatNumber(place.village.km)} กม.`
+                      : 'ไม่พบหมู่บ้านในระยะ 4 กม.'
+                  }
+                />
+                <InfoTile
+                  label="ซอย / ถนน"
+                  value={place?.road?.name ?? '—'}
+                  hint={
+                    place?.road
+                      ? place.road.m <= 20
+                        ? 'หมุดอยู่บนเส้นนี้'
+                        : `ห่างจากหมุด ~${formatNumber(place.road.m)} ม.`
+                      : 'ไม่มีชื่อซอยในแผนที่ใกล้หมุด'
+                  }
+                />
                 <InfoTile label="ตำบล (จากหมุด)" value={zone?.name ?? '—'} hint={tambonHint(s.tambonMethod)} />
                 <InfoTile
                   label={s.roadDistanceByRoad ? 'ระยะตามถนนจากถนนใหญ่' : 'ห่างถนนใหญ่ (เส้นตรง)'}

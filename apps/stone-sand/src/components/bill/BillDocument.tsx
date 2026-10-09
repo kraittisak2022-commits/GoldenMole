@@ -263,16 +263,16 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
                     </span>
                   ))}
                 </div>
-                <p className="mt-1 text-slate-600">
-                  สถานะ:{' '}
-                  {b.paid ? (
-                    <b className="text-emerald-700">ชำระแล้ว{b.paidAt ? ` ${formatDateTh(b.paidAt)}` : ''}</b>
-                  ) : b.paymentMethod === 'credit' ? (
-                    <b>เครดิต — รวมเคลียร์ในใบวางบิลรายเดือน</b>
-                  ) : (
-                    <b className="text-amber-700">ยังไม่ชำระ</b>
-                  )}
-                </p>
+                {b.paid || b.paymentMethod === 'credit' ? (
+                  <p className="mt-1 text-slate-600">
+                    สถานะ:{' '}
+                    {b.paid ? (
+                      <b className="text-emerald-700">ชำระแล้ว{b.paidAt ? ` ${formatDateTh(b.paidAt)}` : ''}</b>
+                    ) : (
+                      <b>เครดิต — รวมเคลียร์ในใบวางบิลรายเดือน</b>
+                    )}
+                  </p>
+                ) : null}
                 {!b.paid && payment.bankText && b.paymentMethod !== 'credit' ? (
                   <p className="text-slate-600">{payment.bankText}</p>
                 ) : null}

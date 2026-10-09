@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ChevronDown, Minus, Plus } from 'lucide-react';
 import { lineAmount } from '../../calc/pricing';
 import { totalTrips, truckForLoads, type Load } from '../../calc/trips';
@@ -13,8 +13,10 @@ interface Props {
   onChange: (loads: Record<string, Load>) => void;
 }
 
-const PER_TRIP = [1, 2, 3, 4, 5];
-const CATEGORIES = Object.keys(PRODUCT_CATEGORY_LABEL) as ProductCategory[];
+const PER_TRIP = [3, 5];
+/** The biggest truck carries 5 คิว, so a larger custom load could never be delivered. */
+const MAX_PER_TRIP = 5;
+const CATEGORIES: ProductCategory[] = ['sand', 'stone'];
 
 export default function StepProducts({ products, loads, onChange }: Props) {
   const active = products.filter((p) => p.active);
@@ -30,10 +32,9 @@ export default function StepProducts({ products, loads, onChange }: Props) {
     onChange(next);
   };
 
-  const pickPerTrip = (id: string, perTrip: number) => {
+  const setPerTrip = (id: string, perTrip: number | null) => {
     const cur = loads[id];
-    if (cur?.perTrip === perTrip) return setLoad(id, null);
-    setLoad(id, { perTrip, trips: Math.max(1, cur?.trips ?? 0) });
+    setLoad(id, perTrip ? { perTrip, trips: Math.max(1, cur?.trips ?? 0) } : null);
   };
 
   const setTrips = (id: string, trips: number) => {
@@ -56,7 +57,7 @@ export default function StepProducts({ products, loads, onChange }: Props) {
 
   return (
     <div className="step-enter flex flex-col gap-6">
-      <StepTitle title="เลือกสินค้า" subtitle="เลือกหมวด หิน หรือ ทราย แล้วเลือกคิวต่อเที่ยวและจำนวนเที่ยว" />
+      <StepTitle title="เลือกสินค้า" subtitle="เลือกหมวด ทราย หรือ หิน แล้วเลือกคิวต่อเที่ยวและจำนวนเที่ยว" />
       <div className="flex flex-col gap-3" data-tour="wiz-products">
         {CATEGORIES.map((c) => {
           const list = active.filter((p) => p.category === c);
@@ -100,7 +101,7 @@ export default function StepProducts({ products, loads, onChange }: Props) {
                       product={p}
                       load={loads[p.id]}
                       qty={quantities[p.id] || 0}
-                      onPerTrip={(n) => pickPerTrip(p.id, n)}
+                      onPerTrip={(n) => setPerTrip(p.id, n)}
                       onTrips={(n) => setTrips(p.id, n)}
                     />
                   ))}
@@ -132,9 +133,37 @@ function ProductCard({
   product: Product;
   load: Load | undefined;
   qty: number;
-  onPerTrip: (perTrip: number) => void;
+  onPerTrip: (perTrip: number | null) => void;
   onTrips: (trips: number) => void;
 }) {
+  const [custom, setCustom] = useState(() => !!load && !PER_TRIP.includes(load.perTrip));
+  const [customText, setCustomText] = useState(() => (custom && load ? String(load.perTrip) : ''));
+  const customValue = Number(customText);
+  const customInvalid = customText.trim() !== '' && !(customValue > 0 && customValue <= MAX_PER_TRIP);
+
+  const pickQuick = (n: number) => {
+    setCustom(false);
+    setCustomText('');
+    onPerTrip(load?.perTrip === n && !custom ? null : n);
+  };
+
+  const toggleCustom = () => {
+    if (custom) {
+      setCustom(false);
+      setCustomText('');
+      if (load && !PER_TRIP.includes(load.perTrip)) onPerTrip(null);
+      return;
+    }
+    setCustom(true);
+    if (load) onPerTrip(null);
+  };
+
+  const typeCustom = (text: string) => {
+    setCustomText(text);
+    const n = Number(text);
+    onPerTrip(text.trim() !== '' && n > 0 && n <= MAX_PER_TRIP ? n : null);
+  };
+
   return (
     <div className={['px-4 py-4 transition-colors sm:px-5', qty > 0 ? 'bg-primary-soft/40' : ''].join(' ')}>
       <div className="flex items-start justify-between gap-2">
@@ -192,23 +221,60 @@ function ProductCard({
       </div>
 
       <p className="mt-4 text-sm text-muted">คิวต่อเที่ยว</p>
-      <div className="mt-2 grid grid-cols-5 gap-2" role="radiogroup" aria-label={`คิวต่อเที่ยว ${p.name}`}>
+      <div className="mt-2 grid grid-cols-3 gap-2" role="radiogroup" aria-label={`คิวต่อเที่ยว ${p.name}`}>
         {PER_TRIP.map((n) => (
-          <button
-            key={n}
-            type="button"
-            role="radio"
-            aria-checked={load?.perTrip === n}
-            onClick={() => onPerTrip(n)}
-            className={[
-              'min-h-11 rounded-full text-sm transition-colors cursor-pointer',
-              load?.perTrip === n ? 'bg-ink font-semibold text-white' : 'bg-subtle text-ink hover:bg-border',
-            ].join(' ')}
-          >
+          <PerTripChip key={n} active={!custom && load?.perTrip === n} onClick={() => pickQuick(n)}>
             {n} คิว
-          </button>
+          </PerTripChip>
         ))}
+        <PerTripChip active={custom} onClick={toggleCustom}>
+          อื่นๆ
+        </PerTripChip>
       </div>
+      {custom ? (
+        <div className="mt-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0.5}
+              max={MAX_PER_TRIP}
+              step={0.5}
+              autoFocus
+              aria-label={`ระบุคิวต่อเที่ยว ${p.name}`}
+              aria-invalid={customInvalid}
+              value={customText}
+              placeholder="เช่น 2 หรือ 2.5"
+              onChange={(e) => typeCustom(e.target.value)}
+              className={[
+                'h-11 w-full min-w-0 flex-1 rounded border bg-surface px-3 text-base tabular-nums',
+                customInvalid ? 'border-destructive' : 'border-border',
+              ].join(' ')}
+            />
+            <span className="shrink-0 text-sm text-muted">คิว / เที่ยว</span>
+          </div>
+          {customInvalid ? (
+            <p className="mt-1 text-xs text-destructive">ใส่ได้ไม่เกิน {MAX_PER_TRIP} คิวต่อเที่ยว (รถใหญ่สุด 5 คิว)</p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function PerTripChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={[
+        'min-h-11 rounded-full text-sm transition-colors cursor-pointer',
+        active ? 'bg-ink font-semibold text-white' : 'bg-subtle text-ink hover:bg-border',
+      ].join(' ')}
+    >
+      {children}
+    </button>
   );
 }
