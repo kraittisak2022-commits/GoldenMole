@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../auth/auth_scope.dart';
+import '../auth/session.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ui.dart';
 
@@ -12,18 +13,50 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
   final _username = TextEditingController();
   final _password = TextEditingController();
+  final _usernameFocus = FocusNode();
   final _passwordFocus = FocusNode();
   bool _showPassword = false;
   bool _busy = false;
+  bool _remember = true;
   String _error = '';
+
+  late final AnimationController _animCtrl;
+  late final Animation<double> _fadeAnim;
+  late final Animation<Offset> _slideAnim;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 280));
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic);
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.06),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
+
+    // Prefill last username.
+    final last = readLastUsername();
+    if (last != null) {
+      _username.text = last;
+      // Focus password field when username is already known.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _passwordFocus.requestFocus();
+      });
+    }
+
+    _animCtrl.forward();
+  }
 
   @override
   void dispose() {
+    _animCtrl.dispose();
     _username.dispose();
     _password.dispose();
+    _usernameFocus.dispose();
     _passwordFocus.dispose();
     super.dispose();
   }
@@ -36,7 +69,9 @@ class _LoginScreenState extends State<LoginScreen> {
       _busy = true;
     });
     try {
-      await AuthScope.read(context).signIn(_username.text, _password.text);
+      await AuthScope.read(context).signIn(_username.text, _password.text, remember: _remember);
+      // Let the platform password manager offer to save credentials.
+      TextInput.finishAutofillContext();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString().isEmpty ? 'เข้าสู่ระบบไม่สำเร็จ' : e.toString());
     } finally {
@@ -66,10 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Center(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.all(48),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 384),
-                          child: _form(),
-                        ),
+                        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 384), child: _animatedForm()),
                       ),
                     ),
                   ),
@@ -99,7 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ],
                             ),
-                            child: _form(),
+                            child: _animatedForm(),
                           ),
                         ),
                       ),
@@ -118,6 +150,13 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Widget _animatedForm() {
+    return FadeTransition(
+      opacity: _fadeAnim,
+      child: SlideTransition(position: _slideAnim, child: _form()),
+    );
+  }
+
   Widget _form() {
     return AutofillGroup(
       child: Column(
@@ -126,15 +165,13 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           const Text('เข้าสู่ระบบ', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
-          const Text(
-            'กรอกชื่อผู้ใช้และรหัสผ่านเพื่อใช้งาน',
-            style: TextStyle(fontSize: 14, color: AppColors.muted),
-          ),
+          const Text('กรอกชื่อผู้ใช้และรหัสผ่านเพื่อใช้งาน', style: TextStyle(fontSize: 14, color: AppColors.muted)),
           const SizedBox(height: 24),
           FieldLabel(
             'ชื่อผู้ใช้',
             child: TextField(
               controller: _username,
+              focusNode: _usernameFocus,
               autofillHints: const [AutofillHints.username],
               autocorrect: false,
               enableSuggestions: false,
@@ -173,8 +210,10 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          _RememberRow(value: _remember, onChanged: (v) => setState(() => _remember = v)),
           if (_error.isNotEmpty) ...[const SizedBox(height: 16), ErrorBox(_error)],
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           SizedBox(
             height: 52,
             child: FilledButton(
@@ -201,6 +240,55 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+// ─── Remember-me row ──────────────────────────────────────────────────────────
+
+class _RememberRow extends StatelessWidget {
+  const _RememberRow({required this.value, required this.onChanged});
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      behavior: HitTestBehavior.opaque,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 44),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: Checkbox(
+                value: value,
+                onChanged: (v) => onChanged(v ?? value),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('จดจำการเข้าสู่ระบบ', style: TextStyle(fontSize: 14)),
+                  Text(
+                    'ไม่ต้องเข้าสู่ระบบใหม่ 30 วัน',
+                    style: TextStyle(fontSize: 12, color: AppColors.muted.withValues(alpha: 0.8)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Hero / decorative sections (unchanged) ───────────────────────────────────
+
 class _Hero extends StatelessWidget {
   const _Hero({required this.wide, required this.year});
   final bool wide;
@@ -218,12 +306,7 @@ class _Hero extends StatelessWidget {
         Text(
           wide ? 'ระบบจัดการออเดอร์\nหิน-ทราย' : 'ระบบจัดการออเดอร์ หิน-ทราย',
           textAlign: wide ? TextAlign.left : TextAlign.center,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: wide ? 36 : 24,
-            fontWeight: FontWeight.w600,
-            height: 1.25,
-          ),
+          style: TextStyle(color: Colors.white, fontSize: wide ? 36 : 24, fontWeight: FontWeight.w600, height: 1.25),
         ),
         const SizedBox(height: 8),
         Text(
@@ -239,12 +322,13 @@ class _Hero extends StatelessWidget {
         children: [
           Positioned.fill(
             top: null,
-            child: SizedBox(height: wide ? 256 : 112, child: CustomPaint(painter: _PilesPainter())),
+            child: SizedBox(
+              height: wide ? 256 : 112,
+              child: CustomPaint(painter: _PilesPainter()),
+            ),
           ),
           Padding(
-            padding: wide
-                ? const EdgeInsets.all(56)
-                : EdgeInsets.fromLTRB(24, top + 56, 24, 80),
+            padding: wide ? const EdgeInsets.all(56) : EdgeInsets.fromLTRB(24, top + 48, 24, 64),
             child: wide
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -294,10 +378,7 @@ class _MarkPainter extends CustomPainter {
     final front = Paint()..color = Colors.white;
     canvas.drawPath(Path()..addPolygon([p(14, 34), p(25.5, 13), p(38, 34)], true), back);
     canvas.drawPath(Path()..addPolygon([p(5, 34), p(17, 10), p(29, 34)], true), front);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromPoints(p(5, 37), p(38, 40)), Radius.circular(1.5 * sx)),
-      front,
-    );
+    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromPoints(p(5, 37), p(38, 40)), Radius.circular(1.5 * sx)), front);
   }
 
   @override

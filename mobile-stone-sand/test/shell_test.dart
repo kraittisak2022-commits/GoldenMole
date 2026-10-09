@@ -39,7 +39,10 @@ void main() {
     expect(find.text('ชื่อผู้ใช้'), findsOneWidget);
     expect(find.text('รหัสผ่าน'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(FilledButton, 'เข้าสู่ระบบ'));
+    final submit = find.widgetWithText(FilledButton, 'เข้าสู่ระบบ');
+    await tester.ensureVisible(submit);
+    await tester.pumpAndSettle();
+    await tester.tap(submit);
     await tester.pumpAndSettle();
     expect(find.text('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน'), findsOneWidget);
     expect(auth.isAuthenticated, isFalse);

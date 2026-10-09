@@ -26,10 +26,12 @@ class AuthController extends ChangeNotifier {
 
   String get by => _user?.by ?? '';
 
-  Future<void> signIn(String username, String password) async {
+  Future<void> signIn(String username, String password, {bool remember = false}) async {
     final session = await signInWithAdminUsers(username, password);
-    saveSession(session);
-    _set(session);
+    final remembered = session.copyWith(remember: remember);
+    saveSession(remembered);
+    saveLastUsername(username.trim());
+    _set(remembered);
   }
 
   void signOut() {
@@ -44,27 +46,30 @@ class AuthController extends ChangeNotifier {
   }
 
   /// Re-checks the account on start; signs out when it was removed or lost access.
+  /// For remembered sessions, slides the TTL so active users never get logged out.
   Future<void> recheck() async {
     final u = _user;
     if (u == null) return;
     final res = await checkSession(u.id);
     if (_user?.id != u.id) return;
     if (!res.allowed) return signOut();
-    if (res.role == null) return;
-    if (res.role == u.role && res.orderSource == u.orderSource) return;
-    final next = u.copyWith(role: res.role, orderSource: res.orderSource, clearSource: res.orderSource == null);
-    saveSession(next);
-    _set(next);
+
+    final roleChanged = res.role != null && (res.role != u.role || res.orderSource != u.orderSource);
+    if (roleChanged) {
+      final next = u.copyWith(role: res.role, orderSource: res.orderSource, clearSource: res.orderSource == null);
+      saveSession(next);
+      _set(slideSession(next));
+      return;
+    }
+    // Role and source are unchanged, so listeners need no rebuild.
+    _user = slideSession(u);
   }
 }
 
 class AuthScope extends InheritedNotifier<AuthController> {
-  const AuthScope({super.key, required AuthController controller, required super.child})
-      : super(notifier: controller);
+  const AuthScope({super.key, required AuthController controller, required super.child}) : super(notifier: controller);
 
-  static AuthController of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<AuthScope>()!.notifier!;
+  static AuthController of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<AuthScope>()!.notifier!;
 
-  static AuthController read(BuildContext context) =>
-      context.getInheritedWidgetOfExactType<AuthScope>()!.notifier!;
+  static AuthController read(BuildContext context) => context.getInheritedWidgetOfExactType<AuthScope>()!.notifier!;
 }

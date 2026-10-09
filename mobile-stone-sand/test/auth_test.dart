@@ -49,14 +49,15 @@ void main() {
   });
 
   group('session', () {
-    StoneSandSession make(DateTime loginAt) => StoneSandSession(
-          id: 'u1',
-          username: 'admin',
-          displayName: 'แอดมิน',
-          role: 'Admin',
-          orderSource: OrderSource.pit,
-          loginAt: loginAt.toUtc().toIso8601String(),
-        );
+    StoneSandSession make(DateTime loginAt, {bool remember = false}) => StoneSandSession(
+      id: 'u1',
+      username: 'admin',
+      displayName: 'แอดมิน',
+      role: 'Admin',
+      orderSource: OrderSource.pit,
+      loginAt: loginAt.toUtc().toIso8601String(),
+      remember: remember,
+    );
 
     test('round-trips and keeps the order source limit', () {
       saveSession(make(DateTime.now()));
@@ -66,10 +67,82 @@ void main() {
       expect(s?.by, 'แอดมิน');
     });
 
-    test('expires after 12 hours', () {
+    test('expires after 12 hours (non-remembered)', () {
       saveSession(make(DateTime.now().subtract(const Duration(hours: 13))));
       expect(readSession(), isNull);
       expect(Prefs.instance.getString('stone_sand_session_v1'), isNull);
+    });
+
+    test('non-remembered session still valid at 11 hours', () {
+      final s = make(DateTime.now().subtract(const Duration(hours: 11)));
+      saveSession(s);
+      expect(readSession(), isNotNull);
+    });
+
+    test('remembered session valid at 29 days', () {
+      final loginAt = DateTime.now().subtract(const Duration(days: 29));
+      saveSession(make(loginAt, remember: true));
+      expect(readSession(), isNotNull);
+    });
+
+    test('remembered session expires at 31 days', () {
+      final loginAt = DateTime.now().subtract(const Duration(days: 31));
+      saveSession(make(loginAt, remember: true));
+      expect(readSession(), isNull);
+      expect(Prefs.instance.getString('stone_sand_session_v1'), isNull);
+    });
+
+    test('old JSON without remember field parses as remember=false', () {
+      // Simulate legacy stored JSON that has no 'remember' key.
+      final recentTs = DateTime.now().subtract(const Duration(minutes: 1)).toUtc().toIso8601String();
+      final legacyJson =
+          '{"id":"u1","username":"admin","displayName":"แอดมิน","role":"Admin","orderSource":null,'
+          '"loginAt":"$recentTs"}';
+      Prefs.instance.setString('stone_sand_session_v1', legacyJson);
+      final s = readSession();
+      expect(s, isNotNull);
+      expect(s!.remember, isFalse);
+    });
+
+    test('slideSession updates loginAt and session stays readable', () {
+      final old = make(DateTime.now().subtract(const Duration(days: 25)), remember: true);
+      saveSession(old);
+      slideSession(readSession()!);
+      final fresh = readSession();
+      expect(fresh, isNotNull);
+      // After sliding, a "29 days ago" offset should still be within TTL.
+      final loginAt = DateTime.tryParse(fresh!.loginAt)!;
+      expect(DateTime.now().difference(loginAt).inMinutes, lessThan(2));
+    });
+
+    test('slideSession is no-op for non-remembered sessions', () {
+      final s = make(DateTime.now());
+      saveSession(s);
+      slideSession(s); // should not throw or change remember flag
+      final loaded = readSession();
+      expect(loaded?.remember, isFalse);
+    });
+  });
+
+  group('last username', () {
+    test('saves and reads back', () {
+      saveLastUsername('สมชาย');
+      expect(readLastUsername(), 'สมชาย');
+    });
+
+    test('empty string is not saved', () {
+      saveLastUsername('');
+      expect(readLastUsername(), isNull);
+    });
+
+    test('survives multiple overwrites', () {
+      saveLastUsername('alice');
+      saveLastUsername('bob');
+      expect(readLastUsername(), 'bob');
+    });
+
+    test('returns null when nothing stored', () {
+      expect(readLastUsername(), isNull);
     });
   });
 
