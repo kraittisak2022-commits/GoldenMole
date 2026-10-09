@@ -1,4 +1,4 @@
-import { distanceSurcharge } from '../calc/deliveryFee';
+import { distanceSurcharge, perKmFor } from '../calc/deliveryFee';
 import type { DeliverySettings, Order, TruckSize, Zone } from '../types';
 
 type ZoneRates = Pick<Zone, 'driverFee' | 'driverFee3'> | undefined;
@@ -21,11 +21,7 @@ export function driverTripRate(
   if (!zone) return { base: 0, extra: 0, perTrip: 0 };
   const small = truckSize === 3;
   const base = small ? zone.driverFee3 : zone.driverFee;
-  const extra = distanceSurcharge(roadDistanceKm, {
-    nearKm: delivery.nearKm,
-    perKm: small ? delivery.driverPerKm3 : delivery.driverPerKm5,
-    roundTo: delivery.roundTo,
-  });
+  const extra = distanceSurcharge(roadDistanceKm, { nearKm: delivery.nearKm, perKm: perKmFor(truckSize, delivery) });
   return { base, extra, perTrip: base > 0 ? base + extra : 0 };
 }
 

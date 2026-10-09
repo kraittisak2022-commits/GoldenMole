@@ -566,7 +566,7 @@ class _DeliverySectionState extends State<DeliverySection> with _Saver {
     }
   }
 
-  DeliverySettings get _form => DeliverySettings(nearKm: _near, maxKm: _max, roundTo: _round);
+  DeliverySettings get _form => widget.settings.copyWith(nearKm: _near, maxKm: _max, roundTo: _round);
 
   @override
   Widget build(BuildContext context) {

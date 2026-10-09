@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Check, Plus, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
-import { distanceSurcharge, suggestDeliveryFee } from '../calc/deliveryFee';
+import { suggestDeliveryFee } from '../calc/deliveryFee';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Field from '../components/ui/Field';
@@ -16,7 +16,7 @@ import { formatNumber } from '../lib/format';
 import { decodeQrImage } from '../lib/decodeQrImage';
 import { isThaiQrPayload, promptPayTarget } from '../lib/promptpay';
 import QrImage from '../components/bill/QrImage';
-import { PRODUCT_CATEGORY_LABEL, type AppSettings, type Product, type ProductCategory, type Zone } from '../types';
+import { PRODUCT_CATEGORY_LABEL, type AppSettings, type Product, type ProductCategory, type TruckSize, type Zone } from '../types';
 
 export default function SettingsPage() {
   const { products, zones, settings, loading, error, reload } = useCatalog();
@@ -264,7 +264,7 @@ function ZonesSection({
   return (
     <Section
       title="ค่าส่งตามตำบล (บาท/เที่ยว)"
-      subtitle={`ค่าส่งลูกค้า: ราคาต่อเที่ยวเมื่อหน้างานห่างถนนใหญ่ไม่เกิน ${formatNumber(delivery.nearKm)} กม. ไกลกว่านั้นบวกเพิ่ม ${formatNumber(delivery.perKm)} บาท/กม. · ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว บวกค่าส่งเพิ่มตามระยะตามเรท บาท/กม. ของคนขับ ใช้ตั้งต้นตอนเคลียร์ค่ารถ`}
+      subtitle={`ค่าส่งลูกค้า: ราคาต่อเที่ยวเมื่อหน้างานห่างถนนใหญ่ไม่เกิน ${formatNumber(delivery.nearKm)} กม. ไกลกว่านั้นบวกเพิ่มตามเรท บาท/กม. ของขนาดรถ (รถ 5 คิว ${formatNumber(delivery.driverPerKm5)} · รถ 3 คิว ${formatNumber(delivery.driverPerKm3)}) · ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว บวกค่าส่งเพิ่มตามระยะด้วยเรทเดียวกับลูกค้า ใช้ตั้งต้นตอนเคลียร์ค่ารถ`}
       saver={saver}
       onSave={() =>
         saver.run(async () => {
@@ -355,19 +355,14 @@ function DeliverySection({ settings, zones, onSaved }: { settings: AppSettings; 
         saver.run(async () => {
           await saveSetting('delivery', {
             nearKm: form.nearKm,
-            perKm: form.perKm,
             driverPerKm5: form.driverPerKm5,
             driverPerKm3: form.driverPerKm3,
-            roundTo: form.roundTo,
           });
         })
       }
     >
       <div className="grid grid-cols-3 gap-3">
-        <Field id="ds-per" label="ลูกค้า บาท/กม." hint="ค่าส่งเพิ่มต่อเที่ยว">
-          <Input id="ds-per" type="number" min={0} step={5} value={form.perKm} onChange={(e) => setForm({ ...form, perKm: num(e.target.value) })} />
-        </Field>
-        <Field id="ds-drv5" label="ค่ารถ 5 คิว บาท/กม." hint="คนขับได้เพิ่มต่อเที่ยว">
+        <Field id="ds-drv5" label="ค่ารถ 5 คิว บาท/กม." hint="คิดจากลูกค้าและจ่ายคนขับ ต่อเที่ยว">
           <Input
             id="ds-drv5"
             type="number"
@@ -377,7 +372,7 @@ function DeliverySection({ settings, zones, onSaved }: { settings: AppSettings; 
             onChange={(e) => setForm({ ...form, driverPerKm5: num(e.target.value) })}
           />
         </Field>
-        <Field id="ds-drv3" label="ค่ารถ 3 คิว บาท/กม." hint="คนขับได้เพิ่มต่อเที่ยว">
+        <Field id="ds-drv3" label="ค่ารถ 3 คิว บาท/กม." hint="คิดจากลูกค้าและจ่ายคนขับ ต่อเที่ยว">
           <Input
             id="ds-drv3"
             type="number"
@@ -390,17 +385,15 @@ function DeliverySection({ settings, zones, onSaved }: { settings: AppSettings; 
         <Field id="ds-near" label="ไม่คิดเพิ่ม (กม. แรก)" hint="ห่างถนนใหญ่ไม่เกินนี้ ไม่บวก">
           <Input id="ds-near" type="number" min={0} step={0.5} value={form.nearKm} onChange={(e) => setForm({ ...form, nearKm: num(e.target.value) })} />
         </Field>
-        <Field id="ds-round" label="ปัดขึ้นทีละ (บาท)">
-          <Input id="ds-round" type="number" min={0} step={10} value={form.roundTo} onChange={(e) => setForm({ ...form, roundTo: num(e.target.value) })} />
-        </Field>
       </div>
       {sample ? (
         <p className="mt-3 rounded bg-subtle px-3 py-2 text-sm text-muted">
-          ตัวอย่างค่าส่งลูกค้า ต.{sample.name}:{' '}
-          {[0.5, 1, 3, 5].map((km) => `${km} กม. = ${formatNumber(suggestDeliveryFee(sample, km, form))}`).join(' · ')}
-          <br />
-          คนขับได้เพิ่มที่ 3 กม.: รถ 5 คิว +{formatNumber(distanceSurcharge(3, { ...form, perKm: form.driverPerKm5 }))} · รถ 3 คิว +
-          {formatNumber(distanceSurcharge(3, { ...form, perKm: form.driverPerKm3 }))} บาท/เที่ยว
+          ตัวอย่างค่าส่งลูกค้า ต.{sample.name} (บาท/เที่ยว)
+          {([5, 3] as TruckSize[]).map((size) => (
+            <span key={size} className="block">
+              รถ {size} คิว: {[0.5, 1, 3, 5].map((km) => `${km} กม. = ${formatNumber(suggestDeliveryFee(sample, km, size, form))}`).join(' · ')}
+            </span>
+          ))}
         </p>
       ) : null}
     </Section>

@@ -199,6 +199,13 @@ void main() {
       expect(suggestDeliveryFee(240, 340, 2, settings), 340);
       expect(suggestDeliveryFee(150, 150, 2, settings), 150);
     });
+
+    test('keeps the web per-km rates when saving', () {
+      final saved = DeliverySettings.fromJson({'nearKm': 1, 'driverPerKm5': 50, 'driverPerKm3': 40})
+          .copyWith(nearKm: 2)
+          .toJson();
+      expect(saved, {'driverPerKm5': 50, 'driverPerKm3': 40, 'nearKm': 2, 'maxKm': 10, 'roundTo': 50});
+    });
   });
 
   group('bahtText', () {

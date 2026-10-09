@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, Crosshair, Link2, MapPin, Pencil, Phone, Store, Truck } from 'lucide-react';
-import { suggestDeliveryFee } from '../../calc/deliveryFee';
+import { perKmFor, suggestDeliveryFee } from '../../calc/deliveryFee';
 import { truckFits, type Load } from '../../calc/trips';
 import DeliveryMap, { type LatLng, type MapRoute } from '../../components/map/DeliveryMap';
 import Badge from '../../components/ui/Badge';
@@ -63,10 +63,11 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
   const roadFailed = !!pinKey && roadFailedKey === pinKey;
   const measuringRoad = !!pinKey && !s.roadDistanceByRoad && !roadFailed;
   const [roadPath, setRoadPath] = useState<{ key: string; path: LatLng[] } | null>(null);
-  const latest = useRef({ s, zones, delivery: settings.delivery });
+  const suggestedFee = zone ? suggestDeliveryFee(zone, s.roadDistanceKm, s.truckSize, settings.delivery) : null;
+
   useEffect(() => {
-    latest.current = { s, zones, delivery: settings.delivery };
-  });
+    if (!s.feeTouched && suggestedFee != null && suggestedFee !== s.feePerTrip) patch({ feePerTrip: suggestedFee });
+  }, [s.feeTouched, s.feePerTrip, suggestedFee, patch]);
 
   useEffect(() => {
     if (pinLat == null || pinLng == null || s.roadDistanceByRoad || roadFailedKey === `${pinLat},${pinLng}`) return;
@@ -78,13 +79,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
       if (!route) return setRoadFailedKey(`${pinLat},${pinLng}`);
       const { km } = route;
       setRoadPath({ key: `${pinLat},${pinLng}`, path: route.path });
-      const cur = latest.current;
-      const feeZone = cur.zones.find((z) => z.id === cur.s.zoneId);
-      patch({
-        roadDistanceKm: km,
-        roadDistanceByRoad: true,
-        ...(!cur.s.feeTouched && feeZone ? { feePerTrip: suggestDeliveryFee(feeZone, km, cur.delivery) } : {}),
-      });
+      patch({ roadDistanceKm: km, roadDistanceByRoad: true });
     });
     return () => ctrl.abort();
   }, [pinLat, pinLng, s.roadDistanceByRoad, roadFailedKey, patch]);
@@ -124,13 +119,10 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
       roadLabel: road?.roadLabel ?? '',
     };
     const matched = tambon ? zones.find((z) => z.name === tambon.name) : undefined;
-    let feeZone = zone;
     if (matched && s.tambonMethod !== 'manual') {
       next.zoneId = matched.id;
       next.tambonMethod = tambon!.method;
-      feeZone = matched;
     }
-    if (!s.feeTouched && feeZone) next.feePerTrip = suggestDeliveryFee(feeZone, road?.km, settings.delivery);
     return next;
   };
 
@@ -173,16 +165,9 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
     setCoordText('');
   };
 
-  const chooseZone = (id: string) => {
-    const z = zones.find((x) => x.id === id);
-    const next: Partial<WizardState> = { zoneId: id || null, tambonMethod: id ? 'manual' : null };
-    if (z && !s.feeTouched) next.feePerTrip = suggestDeliveryFee(z, s.roadDistanceKm, settings.delivery);
-    patch(next);
-  };
+  const chooseZone = (id: string) => patch({ zoneId: id || null, tambonMethod: id ? 'manual' : null });
 
-  const resetFee = () => {
-    if (zone) patch({ feePerTrip: suggestDeliveryFee(zone, s.roadDistanceKm, settings.delivery), feeTouched: false });
-  };
+  const resetFee = () => patch({ feeTouched: false });
 
   const noDriver: Partial<WizardState> = { driverId: null, driverTruckSize: null, driverConfirmed: false };
 
@@ -323,8 +308,8 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
             <Field id="f-zone" label="ตำบลที่จัดส่ง *" hint={
                 zone
                   ? `ค่าส่ง ${formatNumber(zone.feeMin)} บาท/เที่ยว` +
-                    (settings.delivery.perKm > 0
-                      ? ` + ${formatNumber(settings.delivery.perKm)} บาท/กม. เมื่อห่างถนนใหญ่เกิน ${formatNumber(settings.delivery.nearKm)} กม.`
+                    (perKmFor(s.truckSize, settings.delivery) > 0
+                      ? ` + ${formatNumber(perKmFor(s.truckSize, settings.delivery))} บาท/กม. (รถ ${s.truckSize === 3 ? 3 : 5} คิว) เมื่อห่างถนนใหญ่เกิน ${formatNumber(settings.delivery.nearKm)} กม.`
                       : '')
                   : undefined
               }
@@ -429,9 +414,9 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                 />
               </Field>
             </div>
-            {s.feeTouched && zone ? (
+            {s.feeTouched && suggestedFee != null ? (
               <button type="button" onClick={resetFee} className="-mt-2 self-start text-sm text-primary underline cursor-pointer">
-                ใช้ค่าส่งที่ระบบแนะนำ ({formatNumber(suggestDeliveryFee(zone, s.roadDistanceKm, settings.delivery))})
+                ใช้ค่าส่งที่ระบบแนะนำ ({formatNumber(suggestedFee)})
               </button>
             ) : null}
 

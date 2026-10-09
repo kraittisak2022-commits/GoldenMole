@@ -24,19 +24,18 @@ const make = (patch: Partial<Order>): Order =>
     ...patch,
   }) as Order;
 
-/** Beyond 0.5 km: customer 40, 5-คิว driver 60, 3-คิว driver 30 baht per km, rounded up to 50. */
-const delivery = { nearKm: 0.5, perKm: 40, driverPerKm5: 60, driverPerKm3: 30, roundTo: 50 };
+/** Beyond 0.5 km: 5-คิว 60, 3-คิว 30 baht per km. */
+const delivery = { nearKm: 0.5, driverPerKm5: 60, driverPerKm3: 30 };
 const zone = { driverFee: 350, driverFee3: 250 };
 
 describe('driverTripRate', () => {
-  it("adds the distance surcharge at the driver's per-km rate for the truck size", () => {
-    expect(driverTripRate(zone, 5, 1, delivery)).toEqual({ base: 350, extra: 50, perTrip: 400 });
-    expect(driverTripRate(zone, 5, 2, delivery)).toEqual({ base: 350, extra: 100, perTrip: 450 }); // 1.5 × 60 = 90
-    expect(driverTripRate(zone, 3, 2, delivery)).toEqual({ base: 250, extra: 50, perTrip: 300 }); // 1.5 × 30 = 45
+  it('adds the distance surcharge at the per-km rate for the truck size', () => {
+    expect(driverTripRate(zone, 5, 1, delivery)).toEqual({ base: 350, extra: 30, perTrip: 380 }); // 0.5 × 60
+    expect(driverTripRate(zone, 5, 2, delivery)).toEqual({ base: 350, extra: 90, perTrip: 440 }); // 1.5 × 60
+    expect(driverTripRate(zone, 3, 2, delivery)).toEqual({ base: 250, extra: 45, perTrip: 295 }); // 1.5 × 30
   });
 
-  it("does not depend on the customer's per-km rate", () => {
-    expect(driverTripRate(zone, 5, 2, { ...delivery, perKm: 0 }).extra).toBe(100);
+  it('has no surcharge while the rate for the truck size is 0', () => {
     expect(driverTripRate(zone, 3, 2, { ...delivery, driverPerKm3: 0 }).extra).toBe(0);
   });
 
@@ -52,7 +51,7 @@ describe('driverTripRate', () => {
 
 describe('suggestedDriverPay', () => {
   it('is (truck-size rate + distance surcharge) times trips, ignoring the wage stored on the order', () => {
-    expect(suggestedDriverPay(make({ truckSize: 5, trips: 3, roadDistanceKm: 1, driverWage: 450 }), zone, delivery)).toBe(1200);
+    expect(suggestedDriverPay(make({ truckSize: 5, trips: 3, roadDistanceKm: 1, driverWage: 450 }), zone, delivery)).toBe(1140);
     expect(suggestedDriverPay(make({ truckSize: 3, trips: 2, driverWage: 450 }), zone, delivery)).toBe(500);
   });
 

@@ -3,10 +3,13 @@ import 'dart:math' as math;
 import 'pricing.dart';
 
 class DeliverySettings {
-  const DeliverySettings({required this.nearKm, required this.maxKm, required this.roundTo});
+  const DeliverySettings({required this.nearKm, required this.maxKm, required this.roundTo, this.extra = const {}});
   final num nearKm;
   final num maxKm;
   final num roundTo;
+
+  /// Keys the web app also stores (baht/km by truck size); kept so saving here does not drop them.
+  final Map<String, dynamic> extra;
 
   static const defaults = DeliverySettings(nearKm: 3, maxKm: 10, roundTo: 50);
 
@@ -14,9 +17,17 @@ class DeliverySettings {
         nearKm: (j?['nearKm'] as num?) ?? defaults.nearKm,
         maxKm: (j?['maxKm'] as num?) ?? defaults.maxKm,
         roundTo: (j?['roundTo'] as num?) ?? defaults.roundTo,
+        extra: {...?j}..removeWhere((k, _) => k == 'nearKm' || k == 'maxKm' || k == 'roundTo'),
       );
 
-  Map<String, dynamic> toJson() => {'nearKm': nearKm, 'maxKm': maxKm, 'roundTo': roundTo};
+  DeliverySettings copyWith({num? nearKm, num? maxKm, num? roundTo}) => DeliverySettings(
+        nearKm: nearKm ?? this.nearKm,
+        maxKm: maxKm ?? this.maxKm,
+        roundTo: roundTo ?? this.roundTo,
+        extra: extra,
+      );
+
+  Map<String, dynamic> toJson() => {...extra, 'nearKm': nearKm, 'maxKm': maxKm, 'roundTo': roundTo};
 }
 
 /// Suggested delivery fee per trip for a tambon fee range, from the straight-line distance

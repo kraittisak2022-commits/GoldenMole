@@ -1,25 +1,28 @@
-import type { DeliverySettings } from '../types';
+import type { DeliverySettings, TruckSize } from '../types';
 
-type SurchargeRate = Pick<DeliverySettings, 'nearKm' | 'perKm' | 'roundTo'>;
+type KmRates = Pick<DeliverySettings, 'nearKm' | 'driverPerKm5' | 'driverPerKm3'>;
 
-export const DEFAULT_DELIVERY_SETTINGS: SurchargeRate = { nearKm: 0.5, perKm: 0, roundTo: 50 };
+/** Baht per km for the truck size; trucks of unknown size use the normal 5-คิว rate. */
+export function perKmFor(truckSize: TruckSize | null | undefined, delivery: KmRates): number {
+  return truckSize === 3 ? delivery.driverPerKm3 : delivery.driverPerKm5;
+}
 
 /**
- * Suggested delivery fee per trip: the tambon fee, plus perKm for every km beyond nearKm
- * between the main road and the pin. Only the surcharge is rounded up, and it has no cap.
+ * Suggested delivery fee per trip: the tambon fee, plus the truck size's baht/km for every km
+ * beyond nearKm between the main road and the pin. The customer and the driver share that rate.
  */
 export function suggestDeliveryFee(
   zone: { feeMin: number },
   distanceKm: number | null | undefined,
-  settings: SurchargeRate = DEFAULT_DELIVERY_SETTINGS,
+  truckSize: TruckSize | null | undefined,
+  delivery: KmRates,
 ): number {
-  return zone.feeMin + distanceSurcharge(distanceKm, settings);
+  return zone.feeMin + distanceSurcharge(distanceKm, { nearKm: delivery.nearKm, perKm: perKmFor(truckSize, delivery) });
 }
 
-/** Per-trip surcharge for the distance beyond nearKm; 0 without a distance. */
-export function distanceSurcharge(distanceKm: number | null | undefined, settings: SurchargeRate): number {
-  const { nearKm, perKm, roundTo } = settings;
+/** Per-trip surcharge for the distance beyond nearKm, to the nearest baht; 0 without a distance. */
+export function distanceSurcharge(distanceKm: number | null | undefined, rate: { nearKm: number; perKm: number }): number {
+  const { nearKm, perKm } = rate;
   if (distanceKm == null || !Number.isFinite(distanceKm) || distanceKm <= nearKm || perKm <= 0) return 0;
-  const extra = (distanceKm - nearKm) * perKm;
-  return roundTo > 0 ? Math.ceil(extra / roundTo) * roundTo : Math.round(extra);
+  return Math.round((distanceKm - nearKm) * perKm);
 }
