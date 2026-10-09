@@ -7,6 +7,7 @@ import '../../data/catalog_scope.dart';
 import '../../data/customers_repo.dart';
 import '../../data/db.dart';
 import '../../data/orders_repo.dart';
+import '../../data/scope.dart';
 import '../../logic/format.dart';
 import '../../logic/wizard_state.dart';
 import '../../models/models.dart';
@@ -15,6 +16,7 @@ import '../../theme/app_theme.dart';
 import '../../tour/tour_controller.dart';
 import '../../tour/tour_steps.dart';
 import '../../widgets/ui.dart';
+import 'order_created_dialog.dart';
 import 'step_confirm.dart';
 import 'step_customer.dart';
 import 'step_fulfillment.dart';
@@ -174,6 +176,11 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
       final order = await createOrder(toDraft(_state, products, driver?.wagePerTrip ?? 0), by);
       clearDraft();
       if (!mounted) return;
+      // The guided tour expects to land on the bill straight away
+      if (order.fulfillment == Fulfillment.delivery && demoSession() == null) {
+        await showOrderCreatedDialog(context, order);
+        if (!mounted) return;
+      }
       await openOrderBill(context, order.id, created: true, replace: true);
     } catch (e) {
       if (!mounted) return;

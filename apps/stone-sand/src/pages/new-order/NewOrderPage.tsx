@@ -10,7 +10,9 @@ import { getCustomer } from '../../data/customers';
 import { createOrder, draftTotals } from '../../data/orders';
 import { driverTripRate } from '../../lib/driverPay';
 import { formatDateShort, formatMoney } from '../../lib/format';
-import { ORDER_SOURCE_LABEL, type Customer, type OrderSource } from '../../types';
+import { demoSession } from '../../tour/tourSession';
+import { ORDER_SOURCE_LABEL, type Customer, type Order, type OrderSource } from '../../types';
+import OrderCreatedModal from './OrderCreatedModal';
 import StepConfirm from './StepConfirm';
 import StepCustomer from './StepCustomer';
 import StepFulfillment from './StepFulfillment';
@@ -71,6 +73,7 @@ export default function NewOrderPage() {
   const [stepError, setStepError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [created, setCreated] = useState<Order | null>(null);
 
   const patch = useCallback((p: Partial<WizardState>) => setState((prev) => withDeliveryPlan({ ...prev, ...p })), []);
 
@@ -155,6 +158,8 @@ export default function NewOrderPage() {
     setStep(target);
   };
 
+  const openBill = (order: Order) => navigate(`/bill/order/${order.id}?created=1`, { replace: true });
+
   const submit = async () => {
     for (let i = 0; i < STEPS.length - 1; i += 1) {
       const err = validateStep(i, state);
@@ -169,7 +174,9 @@ export default function NewOrderPage() {
     try {
       const order = await createOrder(toDraft(state, products, driverTripRate(zone, state.truckSize, state.roadDistanceKm, settings.delivery).perTrip), user?.displayName || user?.username || '');
       clearDraft();
-      navigate(`/bill/order/${order.id}?created=1`, { replace: true });
+      // The guided tour expects to land on the bill straight away
+      if (order.fulfillment === 'delivery' && !demoSession()) setCreated(order);
+      else openBill(order);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'บันทึกออเดอร์ไม่สำเร็จ');
       setSubmitting(false);
@@ -307,6 +314,8 @@ export default function NewOrderPage() {
           </div>
         </div>
       </footer>
+
+      {created ? <OrderCreatedModal order={created} onBill={() => openBill(created)} /> : null}
     </div>
   );
 }
