@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../auth/auth_scope.dart';
 import '../data/catalog_scope.dart';
@@ -80,6 +83,22 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
         final id => s.name == id,
       };
 
+  Future<void> _shareCsv(List<_Row> rows) async {
+    final csv = billSummaryCsv(rows.map((r) => (order: r.order, summary: r.summary, driverName: r.driverName)));
+    final name = 'สรุปบิล-${toIsoDate()}.csv';
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile.fromData(utf8.encode(csv), mimeType: 'text/csv', name: name)],
+          fileNameOverrides: [name],
+          subject: 'สรุปบิล',
+        ),
+      );
+    } catch (e) {
+      if (mounted) showSnack(context, 'ส่งออกไม่สำเร็จ: $e', error: true);
+    }
+  }
+
   List<_Row> _sorted(List<_Row> rows) {
     int byDate(_Row a, _Row b) {
       final d = a.order.orderDate.compareTo(b.order.orderDate);
@@ -129,7 +148,6 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
         final visible = _sorted(searched.where((r) => _matchesStage(r.summary.stage)).toList());
         final totals = totalBills(searched.map((r) => r.summary));
         final visibleTotals = totalBills(visible.map((r) => r.summary));
-        final margin = netMargin(totals.net, totals.revenue);
         final losses = searched
             .where((r) => r.summary.deliveryMargin < 0 && r.summary.stage != BillStage.cancelled)
             .length;
@@ -153,6 +171,7 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
           onChanged: (r) => r == null ? null : _setRange(r),
         );
         final sortSelect = DropdownButtonFormField<_Sort>(
+          key: ValueKey(_sort),
           initialValue: _sort,
           isExpanded: true,
           decoration: const InputDecoration(prefixIcon: Icon(Icons.sort, size: 20)),
@@ -168,9 +187,14 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
         return PageScroll(
           onRefresh: _orders.load,
           children: [
-            const PageHeader(
+            PageHeader(
               title: 'สรุปบิล',
               subtitle: 'แต่ละบิลได้ค่าของเท่าไร หักค่ารถเท่าไร เหลือเข้าร้านเท่าไร และติดขั้นตอนไหน',
+              action: OutlinedButton.icon(
+                onPressed: visible.isEmpty ? null : () => _shareCsv(visible),
+                icon: const Icon(Icons.download_outlined, size: 18),
+                label: const Text('ส่งออก Excel'),
+              ),
             ),
             if (width >= 600)
               Row(children: [
@@ -201,44 +225,10 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
               const SizedBox(height: 12),
             ],
             if (_orders.error != null) ...[ErrorBox(_orders.error!, onRetry: _orders.load), const SizedBox(height: 12)],
-            GridRows(
-              columns: width >= 1024 ? 3 : 2,
-              children: [
-                KpiCard(
-                  label: 'ยอดบิลรวม',
-                  value: formatMoney(totals.revenue),
-                  hint: '${totals.count} บิล',
-                  pending: _orders.pending,
-                ),
-                KpiCard(label: 'ค่าสินค้า', value: formatMoney(totals.goods), hint: 'หลังหักส่วนลด', pending: _orders.pending),
-                KpiCard(
-                  label: 'ค่าส่งเก็บลูกค้า',
-                  value: formatMoney(totals.deliveryFee),
-                  hint: 'หลังหักส่วนลดค่าส่ง',
-                  pending: _orders.pending,
-                ),
-                KpiCard(
-                  label: 'หักค่ารถคนขับ',
-                  value: formatMoney(totals.driverCost),
-                  hint: totals.driverCostPending > 0 ? 'ยังไม่จ่าย ${formatMoney(totals.driverCostPending)}' : 'จ่ายครบแล้ว',
-                  pending: _orders.pending,
-                ),
-                KpiCard(
-                  label: 'คงเหลือเข้าร้าน',
-                  value: formatMoney(totals.net),
-                  hint: margin != null ? '$margin% ของยอดบิล' : null,
-                  valueColor: AppColors.success,
-                  pending: _orders.pending,
-                ),
-                KpiCard(
-                  label: 'ค้างรับ',
-                  value: formatMoney(totals.receivable),
-                  hint: 'รับแล้ว ${formatMoney(totals.received)}',
-                  warn: totals.receivable > 0,
-                  pending: _orders.pending,
-                ),
-              ],
-            ),
+            if (_orders.pending)
+              const LoadingList(rows: 2)
+            else
+              SummaryHero(totals: totals, periodLabel: _range.label),
             const SizedBox(height: 12),
             if (losses > 0) ...[
               AppCard(
@@ -251,9 +241,27 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
                     const Icon(Icons.warning_amber_rounded, size: 18, color: AppColors.warning),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        'มี $losses บิลที่ค่ารถคนขับสูงกว่าค่าส่งที่เก็บลูกค้า (ขาดทุนค่าส่ง) เรียง "เหลือน้อยสุด" เพื่อดู',
-                        style: const TextStyle(fontSize: 14, color: AppColors.warning),
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            'มี $losses บิลที่ค่ารถคนขับสูงกว่าค่าส่งที่เก็บลูกค้า ',
+                            style: const TextStyle(fontSize: 14, color: AppColors.warning),
+                          ),
+                          InkWell(
+                            onTap: () => setState(() => _sort = _Sort.netAsc),
+                            child: const Text(
+                              'ดูบิลที่เหลือน้อยสุดก่อน',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.warning,
+                                decoration: TextDecoration.underline,
+                                decorationColor: AppColors.warning,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -319,6 +327,174 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
           ],
         );
       },
+    );
+  }
+}
+
+/// Period totals: what the shop keeps, how the bill splits, and what is still owed.
+class SummaryHero extends StatelessWidget {
+  const SummaryHero({super.key, required this.totals, required this.periodLabel});
+  final BillTotals totals;
+  final String periodLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = totals;
+    final margin = netMargin(t.net, t.revenue);
+    final keep = t.revenue > 0 ? (t.net / t.revenue).clamp(0.0, 1.0) : 0.0;
+    final keepFlex = (keep * 1000).round();
+
+    final kept = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('คงเหลือเข้าร้าน · $periodLabel', style: const TextStyle(fontSize: 14, color: AppColors.muted)),
+        const SizedBox(height: 4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            formatMoney(t.net),
+            style: const TextStyle(
+              fontSize: 30,
+              fontWeight: FontWeight.w600,
+              color: AppColors.success,
+              letterSpacing: -0.5,
+              fontFeatures: tabular,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text('จาก ${t.count} บิล${margin != null ? ' · $margin% ของยอดบิล' : ''}', style: const TextStyle(fontSize: 14, color: AppColors.muted)),
+      ],
+    );
+    final owed = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(6)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ค้างรับ', style: TextStyle(fontSize: 14, color: AppColors.muted)),
+          Text(
+            formatMoney(t.receivable),
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: t.receivable > 0 ? AppColors.warning : AppColors.ink,
+              fontFeatures: tabular,
+            ),
+          ),
+          Text('รับแล้ว ${formatMoney(t.received)}', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+        ],
+      ),
+    );
+
+    Widget legend(Color c, String label) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+            const SizedBox(width: 6),
+            Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+          ],
+        );
+
+    Widget stat(String label, String value, [String? hint]) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+              const SizedBox(height: 2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, fontFeatures: tabular)),
+              ),
+              if (hint != null) Text(hint, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+            ],
+          ),
+        );
+    final stats = [
+      stat('ยอดบิล', formatMoney(t.revenue)),
+      stat('ค่าสินค้า', formatMoney(t.goods), 'หลังหักส่วนลด'),
+      stat('ค่าส่งเก็บลูกค้า', formatMoney(t.deliveryFee), 'หลังหักส่วนลดค่าส่ง'),
+      stat(
+        'หักค่ารถคนขับ',
+        '−${formatMoney(t.driverCost)}',
+        t.driverCostPending > 0 ? 'ยังไม่จ่าย ${formatMoney(t.driverCostPending)}' : 'จ่ายครบแล้ว',
+      ),
+    ];
+    final columns = MediaQuery.sizeOf(context).width >= 1024 ? 4 : 2;
+
+    return AppCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: LayoutBuilder(
+              builder: (context, c) => c.maxWidth >= 640
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [Expanded(child: kept), const SizedBox(width: 16), SizedBox(width: 224, child: owed)],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [kept, const SizedBox(height: 16), owed],
+                    ),
+            ),
+          ),
+          if (t.revenue > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Semantics(
+                    label: 'คงเหลือ ${(keep * 100).round()}% ค่ารถคนขับ ${(100 - keep * 100).round()}% ของยอดบิล',
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(5),
+                      child: SizedBox(
+                        height: 10,
+                        child: Row(
+                          children: [
+                            if (keepFlex > 0) Expanded(flex: keepFlex, child: const ColoredBox(color: AppColors.success)),
+                            if (keepFlex < 1000)
+                              Expanded(flex: 1000 - keepFlex, child: const ColoredBox(color: AppColors.warning)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 4,
+                    children: [
+                      legend(AppColors.success, 'คงเหลือเข้าร้าน'),
+                      legend(AppColors.warning, 'ค่ารถคนขับ'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          const Divider(height: 1),
+          for (var r = 0; r < stats.length; r += columns) ...[
+            if (r > 0) const Divider(height: 1),
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = r; i < r + columns; i++) ...[
+                    if (i > r) const VerticalDivider(width: 1),
+                    Expanded(child: stats[i]),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

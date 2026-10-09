@@ -142,4 +142,30 @@ void main() {
     expect(netMargin(5200, 5700), 91);
     expect(netMargin(0, 0), isNull);
   });
+
+  test('CSV export has a BOM, Thai headers and quoted cells', () {
+    final order = _o();
+    final csv = billSummaryCsv([(order: order, summary: summarizeBill(order), driverName: 'สมชาย, ใจดี')]);
+    expect(csv.startsWith('\uFEFFเลขที่,วันที่,ลูกค้า,'), isTrue);
+    final row = csv.split('\n')[1];
+    expect(row, startsWith('TS6910-0001,2026-10-09,ลูกค้า,จัดส่ง,"สมชาย, ใจดี",5700,5000,700,'));
+    expect(row, endsWith(BillStage.payDriver.label));
+  });
+
+  testWidgets('summary hero shows what the shop keeps and fits a narrow phone', (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final totals = totalBills([summarizeBill(_o()), summarizeBill(_o(paymentStatus: PaymentStatus.unpaid, cleared: false))]);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(child: SummaryHero(totals: totals, periodLabel: 'เดือนนี้')),
+      ),
+    ));
+    expect(find.text('คงเหลือเข้าร้าน · เดือนนี้'), findsOneWidget);
+    expect(find.textContaining('จาก 2 บิล'), findsOneWidget);
+    expect(find.text('ค้างรับ'), findsOneWidget);
+    expect(find.text('หักค่ารถคนขับ'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

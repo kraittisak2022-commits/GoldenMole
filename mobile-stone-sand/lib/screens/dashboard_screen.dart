@@ -9,6 +9,7 @@ import '../routes.dart';
 import '../theme/app_theme.dart';
 import '../tour/tour_controller.dart';
 import '../tour/tour_steps.dart';
+import '../widgets/calendar_picker.dart';
 import '../widgets/loader.dart';
 import '../widgets/order_row.dart';
 import '../widgets/page.dart';
@@ -72,6 +73,10 @@ class _DashboardScreenState extends State<DashboardScreen> with ReloadOnDataChan
         final isToday = _date == today;
         final monthOrders = _month.data ?? const <Order>[];
         final dayOrders = monthOrders.where((o) => o.orderDate == _date).toList();
+        final dayCounts = <String, int>{};
+        for (final o in monthOrders) {
+          if (!o.cancelled) dayCounts[o.orderDate] = (dayCounts[o.orderDate] ?? 0) + 1;
+        }
         final day = periodStats(dayOrders);
         final monthStats = periodStats(monthOrders);
         final openOrders = _open.data ?? const <Order>[];
@@ -129,7 +134,7 @@ class _DashboardScreenState extends State<DashboardScreen> with ReloadOnDataChan
                 ),
                 const SizedBox(height: 16),
               ],
-              _DateBar(date: _date, isToday: isToday, onChange: _setDate),
+              _DateBar(date: _date, today: today, counts: dayCounts, onChange: _setDate),
               if (error != null) ...[const SizedBox(height: 16), ErrorBox(error, onRetry: reloadAll)],
               const SizedBox(height: 16),
               TourTarget(
@@ -227,21 +232,19 @@ class _DashboardScreenState extends State<DashboardScreen> with ReloadOnDataChan
 }
 
 class _DateBar extends StatelessWidget {
-  const _DateBar({required this.date, required this.isToday, required this.onChange});
+  const _DateBar({required this.date, required this.today, required this.counts, required this.onChange});
   final String date;
-  final bool isToday;
+  final String today;
+
+  /// Orders per ISO day in the month of [date].
+  final Map<String, int> counts;
   final ValueChanged<String> onChange;
 
+  bool get isToday => date == today;
+
   Future<void> _pick(BuildContext context) async {
-    final current = toDate(date) ?? DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: current,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(DateTime.now().year + 2, 12, 31),
-      helpText: 'เลือกวันที่',
-    );
-    if (picked != null) onChange(toIsoDate(picked));
+    final picked = await showCalendarPicker(context, value: date, today: today, counts: counts);
+    if (picked != null) onChange(picked);
   }
 
   @override

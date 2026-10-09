@@ -179,3 +179,50 @@ BillTotals totalBills(Iterable<BillSummary> rows) {
 
 /// Share of the bill the shop keeps, as a whole percent; null when there is no revenue.
 int? netMargin(double net, double revenue) => revenue > 0 ? (net / revenue * 100).round() : null;
+
+String _csvCell(Object v) {
+  final s = v is double ? (v == v.roundToDouble() ? '${v.toInt()}' : '$v') : '$v';
+  return RegExp(r'[",\n]').hasMatch(s) ? '"${s.replaceAll('"', '""')}"' : s;
+}
+
+/// Spreadsheet export; the BOM makes Excel read the Thai text as UTF-8.
+String billSummaryCsv(Iterable<({Order order, BillSummary summary, String driverName})> rows) {
+  const header = [
+    'เลขที่',
+    'วันที่',
+    'ลูกค้า',
+    'รับสินค้า',
+    'คนขับ',
+    'ยอดบิล',
+    'ค่าสินค้า',
+    'ค่าส่งเก็บลูกค้า',
+    'ค่ารถคนขับ',
+    'ค่ารถ (ประมาณ)',
+    'คงเหลือเข้าร้าน',
+    'กำไรค่าส่ง',
+    'รับเงินแล้ว',
+    'ค้างรับ',
+    'ขั้นตอน',
+  ];
+  final lines = [
+    for (final (:order, :summary, :driverName) in rows)
+      [
+        order.orderNo,
+        order.orderDate,
+        order.customer.name,
+        order.fulfillment == Fulfillment.delivery ? 'จัดส่ง' : 'มารับเอง',
+        driverName,
+        summary.revenue,
+        summary.goods,
+        summary.deliveryFee,
+        summary.driverCost,
+        summary.driverCostEstimated ? 'ใช่' : '',
+        summary.net,
+        summary.deliveryMargin,
+        summary.received,
+        summary.receivable,
+        summary.stage.label,
+      ].map(_csvCell).join(','),
+  ];
+  return '\uFEFF${[header.join(','), ...lines].join('\n')}';
+}
