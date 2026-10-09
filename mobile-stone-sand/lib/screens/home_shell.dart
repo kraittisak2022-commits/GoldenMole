@@ -63,14 +63,36 @@ class _KeepTab extends StatefulWidget {
   State<_KeepTab> createState() => _KeepTabState();
 }
 
-class _KeepTabState extends State<_KeepTab> {
+class _KeepTabState extends State<_KeepTab> with SingleTickerProviderStateMixin {
   bool _built = false;
+  late final _enter = AnimationController(vsync: this, duration: const Duration(milliseconds: 220), value: 1);
+  late final _curve = CurvedAnimation(parent: _enter, curve: Curves.easeOutCubic);
+  late final _slide = Tween(begin: const Offset(0, 0.012), end: Offset.zero).animate(_curve);
+
+  @override
+  void didUpdateWidget(covariant _KeepTab old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active && !MediaQuery.disableAnimationsOf(context)) _enter.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _curve.dispose();
+    _enter.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     if (widget.active) _built = true;
     if (!_built) return const SizedBox.shrink();
-    return TickerMode(enabled: widget.active, child: widget.child);
+    return FadeTransition(
+      opacity: _curve,
+      child: SlideTransition(
+        position: _slide,
+        child: TickerMode(enabled: widget.active, child: widget.child),
+      ),
+    );
   }
 }
 
@@ -158,15 +180,27 @@ class BottomTabs extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(active ? d.activeIcon : d.icon, size: 22, color: color),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      switchInCurve: Curves.easeOutBack,
+                      transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
+                      child: Icon(
+                        active ? d.activeIcon : d.icon,
+                        key: ValueKey(active),
+                        size: 22,
+                        color: color,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(
-                      d.label,
+                    AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 200),
                       style: TextStyle(
+                        fontFamily: kFontFamily,
                         fontSize: 12,
                         color: color,
                         fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                       ),
+                      child: Text(d.label),
                     ),
                   ],
                 ),

@@ -133,10 +133,10 @@ class _StatementsScreenState extends State<StatementsScreen> with ReloadOnDataCh
               if (_error.isNotEmpty) ...[ErrorBox(_error), const SizedBox(height: 12)],
               const SectionTitle('ลูกค้าที่ยังไม่เคลียร์บิล'),
               if (_uncleared.error != null) ErrorBox(_uncleared.error!, onRetry: _uncleared.load),
-              if (_uncleared.pending)
-                const LoadingList()
-              else
-                AppCard(
+              Reveal(
+                pending: _uncleared.pending,
+                placeholder: const LoadingList(),
+                child: AppCard(
                   child: summary.isEmpty
                       ? const EmptyState('ไม่มียอดค้าง ทุกบิลเคลียร์แล้ว')
                       : Column(
@@ -148,6 +148,7 @@ class _StatementsScreenState extends State<StatementsScreen> with ReloadOnDataCh
                           ],
                         ),
                 ),
+              ),
               const SizedBox(height: 24),
               SectionTitle('ใบวางบิล${openTotal != 0 ? ' · รอเก็บเงิน ${formatMoney(openTotal)} บาท' : ''}'),
               Wrap(
@@ -165,10 +166,10 @@ class _StatementsScreenState extends State<StatementsScreen> with ReloadOnDataCh
               ),
               const SizedBox(height: 10),
               if (_statements.error != null) ErrorBox(_statements.error!, onRetry: _statements.load),
-              if (_statements.pending)
-                const LoadingList()
-              else
-                AppCard(
+              Reveal(
+                pending: _statements.pending,
+                placeholder: const LoadingList(),
+                child: AppCard(
                   child: visible.isEmpty
                       ? const EmptyState('ยังไม่มีใบวางบิล')
                       : Column(
@@ -187,6 +188,7 @@ class _StatementsScreenState extends State<StatementsScreen> with ReloadOnDataCh
                           ],
                         ),
                 ),
+              ),
             ],
           ),
         );

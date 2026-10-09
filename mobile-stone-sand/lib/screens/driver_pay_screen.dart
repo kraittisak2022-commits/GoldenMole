@@ -155,10 +155,10 @@ class _DriverPayScreenState extends State<DriverPayScreen> with ReloadOnDataChan
             ],
             const SectionTitle('คนขับที่ยังไม่ได้เคลียร์'),
             if (_unpaid.error != null) ErrorBox(_unpaid.error!, onRetry: _unpaid.load),
-            if (_unpaid.pending)
-              const LoadingList()
-            else
-              AppCard(
+            Reveal(
+              pending: _unpaid.pending,
+              placeholder: const LoadingList(),
+              child: AppCard(
                 child: dues.isEmpty
                     ? const EmptyState('ไม่มีค่ารถค้างจ่าย')
                     : Column(
@@ -175,6 +175,7 @@ class _DriverPayScreenState extends State<DriverPayScreen> with ReloadOnDataChan
                         ],
                       ),
               ),
+            ),
             const SizedBox(height: 24),
             Row(
               children: [
@@ -184,10 +185,10 @@ class _DriverPayScreenState extends State<DriverPayScreen> with ReloadOnDataChan
               ],
             ),
             if (_payouts.error != null) ErrorBox(_payouts.error!, onRetry: _payouts.load),
-            if (_payouts.pending)
-              const LoadingList()
-            else
-              AppCard(
+            Reveal(
+              pending: _payouts.pending,
+              placeholder: const LoadingList(),
+              child: AppCard(
                 child: payouts.isEmpty
                     ? const EmptyState('ยังไม่มีประวัติจ่ายค่ารถ')
                     : Column(
@@ -199,6 +200,7 @@ class _DriverPayScreenState extends State<DriverPayScreen> with ReloadOnDataChan
                         ],
                       ),
               ),
+            ),
           ],
         );
       },

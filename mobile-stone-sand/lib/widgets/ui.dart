@@ -263,15 +263,103 @@ class AppCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    // A Material (not a decorated Container) so InkWell ripples inside the card stay visible.
+    return Material(
+      color: color ?? AppColors.surface,
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: color ?? AppColors.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(kRadius),
-        border: Border.all(color: borderColor ?? AppColors.border),
+        side: BorderSide(color: borderColor ?? AppColors.border),
       ),
-      padding: padding,
-      child: child,
+      child: padding == null ? child : Padding(padding: padding!, child: child),
+    );
+  }
+}
+
+/// Cross-fades from a loading [placeholder] to [child] once [pending] clears.
+class Reveal extends StatelessWidget {
+  const Reveal({super.key, required this.pending, required this.placeholder, required this.child});
+  final bool pending;
+  final Widget placeholder;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      layoutBuilder: (current, previous) =>
+          Stack(alignment: Alignment.topCenter, children: [...previous, ?current]),
+      child: KeyedSubtree(key: ValueKey(pending), child: pending ? placeholder : child),
+    );
+  }
+}
+
+/// A bordered card of divided rows that only builds the rows on screen; use inside [PageScroll.slivers].
+class SliverCardList extends StatefulWidget {
+  const SliverCardList({super.key, required this.itemCount, required this.itemBuilder, this.header, this.footer});
+  final int itemCount;
+  final IndexedWidgetBuilder itemBuilder;
+  final Widget? header;
+  final Widget? footer;
+
+  @override
+  State<SliverCardList> createState() => _SliverCardListState();
+}
+
+class _SliverCardListState extends State<SliverCardList> with SingleTickerProviderStateMixin {
+  late final _fade = AnimationController(vsync: this, duration: const Duration(milliseconds: 220))..forward();
+  late final _opacity = CurvedAnimation(parent: _fade, curve: Curves.easeOut);
+
+  @override
+  void dispose() {
+    _opacity.dispose();
+    _fade.dispose();
+    super.dispose();
+  }
+
+  Widget _row(BuildContext context, int i, int count) {
+    final header = widget.header;
+    final footer = widget.footer;
+    final Widget child;
+    if (header != null && i == 0) {
+      child = header;
+    } else if (footer != null && i == count - 1) {
+      child = footer;
+    } else {
+      child = widget.itemBuilder(context, i - (header == null ? 0 : 1));
+    }
+    Widget row = Material(type: MaterialType.transparency, child: child);
+    if (i == 0 || i == count - 1) {
+      const radius = Radius.circular(kRadius);
+      row = ClipRRect(
+        borderRadius: BorderRadius.vertical(
+          top: i == 0 ? radius : Radius.zero,
+          bottom: i == count - 1 ? radius : Radius.zero,
+        ),
+        child: row,
+      );
+    }
+    if (i == 0) return row;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const Divider(height: 1), row]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = widget.itemCount + (widget.header == null ? 0 : 1) + (widget.footer == null ? 0 : 1);
+    final shape = BorderRadius.circular(kRadius);
+    final list = SliverList.builder(itemCount: count, itemBuilder: (context, i) => _row(context, i, count));
+    return SliverFadeTransition(
+      opacity: _opacity,
+      sliver: DecoratedSliver(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(borderRadius: shape, border: Border.all(color: AppColors.border)),
+        sliver: DecoratedSliver(
+          decoration: BoxDecoration(color: AppColors.surface, borderRadius: shape),
+          sliver: list,
+        ),
+      ),
     );
   }
 }

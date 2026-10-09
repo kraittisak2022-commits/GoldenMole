@@ -11,11 +11,15 @@ class PageScroll extends StatelessWidget {
   const PageScroll({
     super.key,
     required this.children,
+    this.slivers = const [],
     this.onRefresh,
     this.bottomPadding = 24,
     this.maxWidth = kMaxContentWidth,
   });
   final List<Widget> children;
+
+  /// Lazily built content placed after [children], e.g. a [SliverCardList] of long lists.
+  final List<Widget> slivers;
   final Future<void> Function()? onRefresh;
   final double bottomPadding;
   final double maxWidth;
@@ -24,10 +28,16 @@ class PageScroll extends StatelessWidget {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final side = math.max(16.0, (width - maxWidth) / 2);
-    final list = ListView(
+    final list = CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(side, 16, side, bottomPadding),
-      children: children,
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(side, 16, side, slivers.isEmpty ? bottomPadding : 0),
+          sliver: SliverList.list(children: children),
+        ),
+        for (final s in slivers) SliverPadding(padding: EdgeInsets.symmetric(horizontal: side), sliver: s),
+        if (slivers.isNotEmpty) SliverToBoxAdapter(child: SizedBox(height: bottomPadding)),
+      ],
     );
     if (onRefresh == null) return list;
     return RefreshIndicator(onRefresh: onRefresh!, child: list);

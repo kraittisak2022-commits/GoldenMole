@@ -89,6 +89,16 @@ class _CustomersScreenState extends State<CustomersScreen> with ReloadOnDataChan
             .toList();
         return PageScroll(
           onRefresh: reloadAll,
+          slivers: [
+            if (!_customers.pending && visible.isNotEmpty)
+              SliverCardList(
+                itemCount: visible.length,
+                itemBuilder: (_, i) {
+                  final c = visible[i];
+                  return _CustomerRow(customer: c, balance: balances[c.id] ?? 0, onTap: () => _open(c));
+                },
+              ),
+          ],
           children: [
             PageHeader(
               title: 'ลูกค้า',
@@ -121,19 +131,8 @@ class _CustomersScreenState extends State<CustomersScreen> with ReloadOnDataChan
             ],
             if (_customers.pending)
               const LoadingList(rows: 5)
-            else
-              AppCard(
-                child: visible.isEmpty
-                    ? EmptyState(query.isNotEmpty ? 'ไม่พบลูกค้า' : 'ยังไม่มีลูกค้า')
-                    : Column(
-                        children: [
-                          for (final (i, c) in visible.indexed) ...[
-                            if (i > 0) const Divider(height: 1),
-                            _CustomerRow(customer: c, balance: balances[c.id] ?? 0, onTap: () => _open(c)),
-                          ],
-                        ],
-                      ),
-              ),
+            else if (visible.isEmpty)
+              AppCard(child: EmptyState(query.isNotEmpty ? 'ไม่พบลูกค้า' : 'ยังไม่มีลูกค้า')),
           ],
         );
       },

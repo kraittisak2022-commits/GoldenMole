@@ -127,6 +127,28 @@ class _OrdersScreenState extends State<OrdersScreen> with ReloadOnDataChange {
 
         return PageScroll(
           onRefresh: _orders.load,
+          slivers: [
+            if (!_orders.pending && visible.isNotEmpty)
+              SliverCardList(
+                itemCount: visible.length,
+                itemBuilder: (_, i) => OrderRow(order: visible[i]),
+                header: Container(
+                  color: AppColors.subtle.withValues(alpha: 0.6),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Text('${visible.length} รายการ', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                      const Spacer(),
+                      Text(
+                        'รวม ${formatMoney(visibleTotal)}'
+                        '${visibleOutstanding != 0 ? ' · ค้าง ${formatMoney(visibleOutstanding)}' : ''}',
+                        style: const TextStyle(fontSize: 12, color: AppColors.muted, fontFeatures: tabular),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
           children: [
             PageHeader(
               title: 'ออเดอร์',
@@ -185,25 +207,6 @@ class _OrdersScreenState extends State<OrdersScreen> with ReloadOnDataChange {
                   action: TextButton(
                     onPressed: () => openNewOrder(context),
                     child: const Text('สร้างออเดอร์ใหม่'),
-                  ),
-                ),
-              )
-            else
-              OrderList(
-                orders: visible,
-                header: Container(
-                  color: AppColors.subtle.withValues(alpha: 0.6),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    children: [
-                      Text('${visible.length} รายการ', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-                      const Spacer(),
-                      Text(
-                        'รวม ${formatMoney(visibleTotal)}'
-                        '${visibleOutstanding != 0 ? ' · ค้าง ${formatMoney(visibleOutstanding)}' : ''}',
-                        style: const TextStyle(fontSize: 12, color: AppColors.muted, fontFeatures: tabular),
-                      ),
-                    ],
                   ),
                 ),
               ),

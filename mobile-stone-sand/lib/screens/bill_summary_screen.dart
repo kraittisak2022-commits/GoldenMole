@@ -186,6 +186,43 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
 
         return PageScroll(
           onRefresh: _orders.load,
+          slivers: [
+            if (!_orders.pending && visible.isNotEmpty)
+              SliverCardList(
+                itemCount: visible.length,
+                itemBuilder: (_, i) =>
+                    BillTile(order: visible[i].order, summary: visible[i].summary, driverName: visible[i].driverName),
+                footer: Container(
+                  color: AppColors.subtle.withValues(alpha: 0.6),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Text('${visible.length} รายการ', style: const TextStyle(fontSize: 13, color: AppColors.muted)),
+                      const Spacer(),
+                      Text.rich(
+                        TextSpan(children: [
+                          TextSpan(text: 'ยอดบิล ${formatMoney(visibleTotals.revenue)} · เหลือ '),
+                          TextSpan(
+                            text: formatMoney(visibleTotals.net),
+                            style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.success),
+                          ),
+                        ]),
+                        style: const TextStyle(fontSize: 13, fontFeatures: tabular),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: Text(
+                  'ค่ารถที่มีเครื่องหมาย ≈ คือค่ารถที่ยังไม่ได้จ่ายคนขับ ยอดจริงจะใช้ตามที่บันทึกตอนเคลียร์ค่ารถ · บิลที่ยกเลิกไม่นับรวมยอด',
+                  style: TextStyle(fontSize: 12, color: AppColors.muted),
+                ),
+              ),
+            ),
+          ],
           children: [
             PageHeader(
               title: 'สรุปบิล',
@@ -225,10 +262,11 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
               const SizedBox(height: 12),
             ],
             if (_orders.error != null) ...[ErrorBox(_orders.error!, onRetry: _orders.load), const SizedBox(height: 12)],
-            if (_orders.pending)
-              const LoadingList(rows: 2)
-            else
-              SummaryHero(totals: totals, periodLabel: _range.label),
+            Reveal(
+              pending: _orders.pending,
+              placeholder: const LoadingList(rows: 2),
+              child: SummaryHero(totals: totals, periodLabel: _range.label),
+            ),
             const SizedBox(height: 12),
             if (losses > 0) ...[
               AppCard(
@@ -285,45 +323,7 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
             if (_orders.pending)
               const LoadingList()
             else if (visible.isEmpty)
-              AppCard(child: EmptyState(query.isNotEmpty ? 'ไม่พบบิลที่ค้นหา' : 'ยังไม่มีบิลในช่วงนี้'))
-            else
-              AppCard(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var i = 0; i < visible.length; i++) ...[
-                      if (i > 0) const Divider(height: 1),
-                      BillTile(order: visible[i].order, summary: visible[i].summary, driverName: visible[i].driverName),
-                    ],
-                    Container(
-                      color: AppColors.subtle.withValues(alpha: 0.6),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: Row(
-                        children: [
-                          Text('${visible.length} รายการ', style: const TextStyle(fontSize: 13, color: AppColors.muted)),
-                          const Spacer(),
-                          Text.rich(
-                            TextSpan(children: [
-                              TextSpan(text: 'ยอดบิล ${formatMoney(visibleTotals.revenue)} · เหลือ '),
-                              TextSpan(
-                                text: formatMoney(visibleTotals.net),
-                                style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.success),
-                              ),
-                            ]),
-                            style: const TextStyle(fontSize: 13, fontFeatures: tabular),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 12),
-            const Text(
-              'ค่ารถที่มีเครื่องหมาย ≈ คือค่ารถที่ยังไม่ได้จ่ายคนขับ ยอดจริงจะใช้ตามที่บันทึกตอนเคลียร์ค่ารถ · บิลที่ยกเลิกไม่นับรวมยอด',
-              style: TextStyle(fontSize: 12, color: AppColors.muted),
-            ),
+              AppCard(child: EmptyState(query.isNotEmpty ? 'ไม่พบบิลที่ค้นหา' : 'ยังไม่มีบิลในช่วงนี้')),
           ],
         );
       },

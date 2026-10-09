@@ -99,19 +99,20 @@ class _DashboardScreenState extends State<DashboardScreen> with ReloadOnDataChan
             SectionTitle(
               'ออเดอร์${isToday ? 'วันนี้' : 'วันที่เลือก'} ${dayOrders.isNotEmpty ? '(${dayOrders.length})' : ''}',
             ),
-            if (monthPending)
-              const LoadingList()
-            else if (dayOrders.isEmpty)
-              AppCard(child: EmptyState(isToday ? 'ยังไม่มีออเดอร์วันนี้' : 'ไม่มีออเดอร์ในวันที่เลือก'))
-            else
-              OrderList(orders: dayOrders),
+            Reveal(
+              pending: monthPending,
+              placeholder: const LoadingList(),
+              child: dayOrders.isEmpty
+                  ? AppCard(child: EmptyState(isToday ? 'ยังไม่มีออเดอร์วันนี้' : 'ไม่มีออเดอร์ในวันที่เลือก'))
+                  : OrderList(orders: dayOrders),
+            ),
           ],
         );
         final summarySection = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SectionTitle('สรุปวัน'),
-            if (monthPending) const LoadingList(rows: 2) else SummaryCard(stats: day),
+            Reveal(pending: monthPending, placeholder: const LoadingList(rows: 2), child: SummaryCard(stats: day)),
           ],
         );
 
@@ -222,7 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen> with ReloadOnDataChan
               ],
               const SizedBox(height: 24),
               SectionTitle('สรุปเดือน${thMonths[ymd[1] - 1]} ${ymd[0] + 543}'),
-              if (monthPending) const LoadingList(rows: 2) else SummaryCard(stats: monthStats),
+              Reveal(pending: monthPending, placeholder: const LoadingList(rows: 2), child: SummaryCard(stats: monthStats)),
             ],
           ),
         );
