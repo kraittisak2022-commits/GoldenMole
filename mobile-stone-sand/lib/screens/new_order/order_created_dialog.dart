@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/catalog_scope.dart';
+import '../../logic/driver_pay.dart' show driverTripRate;
 import '../../logic/order_status.dart';
 import '../../models/models.dart';
 import '../../theme/app_theme.dart';
@@ -10,7 +11,11 @@ import '../../theme/app_theme.dart';
 /// Completes when the user chooses "ออกบิล" (or dismisses the dialog).
 Future<void> showOrderCreatedDialog(BuildContext context, Order order) {
   final catalog = CatalogScope.read(context);
-  final message = driverMessage(order, catalog.zoneById(order.zoneId), catalog.driverById(order.driverId));
+  final zone = catalog.zoneById(order.zoneId);
+  final pay = order.driverWage > 0
+      ? order.driverWage
+      : driverTripRate(zone, order.truckSize, order.roadDistanceKm, catalog.settings.delivery).perTrip * order.trips;
+  final message = driverMessage(order, zone, catalog.driverById(order.driverId), pay);
   return showDialog<void>(
     context: context,
     barrierDismissible: false,

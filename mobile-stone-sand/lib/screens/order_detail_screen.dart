@@ -598,7 +598,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final wagePaid = o.driverPayoutId != null;
     final locked = o.cancelled || wagePaid;
     final dirty = (_driverId.isEmpty ? null : _driverId) != o.driverId || _wage != o.driverWage;
-    final message = driverMessage(o, zone, catalog.driverById(_driverId) ?? driver);
+    final message = driverMessage(o, zone, catalog.driverById(_driverId) ?? driver, _wage);
     final drivers = catalog.drivers.where((d) => d.active || d.id == o.driverId).toList();
     final hasPin = o.pinLat != null && o.pinLng != null;
 

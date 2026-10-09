@@ -135,6 +135,35 @@ void main() {
     expect(find.text('ไปเคลียร์ค่ารถ'), findsOneWidget);
     expect(find.text('คงเหลือเข้าร้าน'), findsOneWidget);
     expect(find.textContaining('≈'), findsOneWidget);
+    expect(find.textContaining('ค้างรับ '), findsOneWidget);
+    expect(find.textContaining('เก็บค่าส่ง '), findsOneWidget);
+    expect(find.textContaining('% ของยอดบิล'), findsOneWidget);
+    expect(find.textContaining('ส่ง 2 เที่ยว · สมชาย'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('ขั้นตอนปัจจุบัน')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('wide table rows line up with the header and totals footer', (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final paid = _o(driverPayoutId: 'dpo-1');
+    final summary = summarizeBill(paid);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: Column(children: [
+            const BillTableHeader(),
+            BillTile(order: paid, summary: summary, driverName: 'สมชาย', wide: true),
+            BillTableFooter(totals: totalBills([summary]), wide: true),
+          ]),
+        ),
+      ),
+    ));
+    expect(find.text('ค่ารถคนขับ'), findsOneWidget);
+    expect(find.text('รับเงินครบ'), findsOneWidget);
+    expect(find.text('รวม 1 บิล'), findsOneWidget);
+    expect(find.textContaining('≈'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

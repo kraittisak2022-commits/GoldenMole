@@ -234,6 +234,16 @@ void main() {
       expect(driverMessage(base.copyWith(driverToken: 'abc123', cancelled: true), null, null), isNot(contains('/d/')));
     });
 
+    test('tells the driver his pay for the job', () {
+      expect(
+        driverMessage(base.copyWith(driverWage: 940), null, null),
+        contains('ค่ารถรอบนี้: 940 บาท (เที่ยวละ 470 × 2 เที่ยว)'),
+      );
+      expect(driverMessage(base.copyWith(trips: 1), null, null, 350).split('\n'), contains('ค่ารถรอบนี้: 350 บาท'));
+      expect(driverMessage(base.copyWith(driverWage: 945), null, null).split('\n'), contains('ค่ารถรอบนี้: 945 บาท'));
+      expect(driverMessage(base.copyWith(driverWage: 0), null, null), isNot(contains('ค่ารถรอบนี้')));
+    });
+
     test('labels the driver cash report in the history', () {
       const e = StatusLogEntry(at: '2026-10-09T08:00:00Z', by: 'คนขับ อ้ายโก (ลิงก์)', event: 'driver_cash:2130.00');
       expect(orderLogLabel(e, (_) => null), 'คนขับแจ้งเก็บเงินปลายทาง 2,130.00 บาท');

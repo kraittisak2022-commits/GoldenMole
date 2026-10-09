@@ -127,6 +127,7 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
     final catalog = CatalogScope.of(context);
     final source = locked != null ? null : _source;
     final width = MediaQuery.sizeOf(context).width;
+    final wide = width >= 960;
     return ListenableBuilder(
       listenable: _orders,
       builder: (context, _) {
@@ -190,28 +191,14 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
             if (!_orders.pending && visible.isNotEmpty)
               SliverCardList(
                 itemCount: visible.length,
-                itemBuilder: (_, i) =>
-                    BillTile(order: visible[i].order, summary: visible[i].summary, driverName: visible[i].driverName),
-                footer: Container(
-                  color: AppColors.subtle.withValues(alpha: 0.6),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Row(
-                    children: [
-                      Text('${visible.length} รายการ', style: const TextStyle(fontSize: 13, color: AppColors.muted)),
-                      const Spacer(),
-                      Text.rich(
-                        TextSpan(children: [
-                          TextSpan(text: 'ยอดบิล ${formatMoney(visibleTotals.revenue)} · เหลือ '),
-                          TextSpan(
-                            text: formatMoney(visibleTotals.net),
-                            style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.success),
-                          ),
-                        ]),
-                        style: const TextStyle(fontSize: 13, fontFeatures: tabular),
-                      ),
-                    ],
-                  ),
+                itemBuilder: (_, i) => BillTile(
+                  order: visible[i].order,
+                  summary: visible[i].summary,
+                  driverName: visible[i].driverName,
+                  wide: wide,
                 ),
+                header: wide ? const BillTableHeader() : null,
+                footer: BillTableFooter(totals: visibleTotals, wide: wide),
               ),
             const SliverToBoxAdapter(
               child: Padding(
@@ -388,14 +375,27 @@ class SummaryHero extends StatelessWidget {
       ),
     );
 
-    Widget legend(Color c, String label) => Row(
+    Widget legend(Color c, String label, double amount, int pct) => Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(width: 8, height: 8, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
             const SizedBox(width: 6),
-            Text(label, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+            Flexible(
+              child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(text: '$label '),
+                  TextSpan(
+                    text: formatMoney(amount),
+                    style: const TextStyle(fontWeight: FontWeight.w500, color: AppColors.ink),
+                  ),
+                  TextSpan(text: ' ($pct%)'),
+                ]),
+                style: const TextStyle(fontSize: 12, color: AppColors.muted, fontFeatures: tabular),
+              ),
+            ),
           ],
         );
+    final keepPct = (keep * 100).round();
 
     Widget stat(String label, String value, [String? hint]) => Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -470,9 +470,10 @@ class SummaryHero extends StatelessWidget {
                   Wrap(
                     spacing: 16,
                     runSpacing: 4,
+                    alignment: WrapAlignment.spaceBetween,
                     children: [
-                      legend(AppColors.success, 'คงเหลือเข้าร้าน'),
-                      legend(AppColors.warning, 'ค่ารถคนขับ'),
+                      legend(AppColors.success, 'คงเหลือเข้าร้าน', t.net, keepPct),
+                      legend(AppColors.warning, 'ค่ารถคนขับ', t.driverCost, 100 - keepPct),
                     ],
                   ),
                 ],
@@ -499,11 +500,103 @@ class SummaryHero extends StatelessWidget {
   }
 }
 
+/// Fixed widths of the ยอดบิล · ค่ารถ · คงเหลือ · actions columns in the wide table; shared by header, rows and footer.
+const _cols = [128.0, 128.0, 136.0, 148.0];
+const _colGap = 16.0;
+
+Widget _tableRow(Widget first, List<Widget> cells) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: first),
+        for (var i = 0; i < cells.length; i++) ...[
+          const SizedBox(width: _colGap),
+          SizedBox(width: _cols[i], child: cells[i]),
+        ],
+      ],
+    );
+
+/// Column titles of the wide table.
+class BillTableHeader extends StatelessWidget {
+  const BillTableHeader({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.muted);
+    return ExcludeSemantics(
+      child: Container(
+        color: AppColors.subtle.withValues(alpha: 0.6),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: _tableRow(const Text('บิล · ขั้นตอน', style: style), const [
+          Text('ยอดบิล', style: style, textAlign: TextAlign.right),
+          Text('ค่ารถคนขับ', style: style, textAlign: TextAlign.right),
+          Text('คงเหลือเข้าร้าน', style: style, textAlign: TextAlign.right),
+          SizedBox.shrink(),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Totals under the list, in the table's columns when [wide].
+class BillTableFooter extends StatelessWidget {
+  const BillTableFooter({super.key, required this.totals, this.wide = false});
+  final BillTotals totals;
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    const num = TextStyle(fontSize: 14, fontFeatures: tabular);
+    const muted = TextStyle(fontSize: 14, color: AppColors.muted);
+    final count = Text('รวม ${totals.count} บิล', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500));
+    final revenue = formatMoney(totals.revenue);
+    final driver = '−${formatMoney(totals.driverCost)}';
+    final net = Text(
+      formatMoney(totals.net),
+      textAlign: TextAlign.right,
+      style: num.copyWith(fontWeight: FontWeight.w700, color: AppColors.success),
+    );
+    return Container(
+      color: AppColors.subtle.withValues(alpha: 0.6),
+      padding: EdgeInsets.symmetric(horizontal: wide ? 20 : 16, vertical: 12),
+      child: wide
+          ? _tableRow(count, [
+              Text(revenue, style: num, textAlign: TextAlign.right),
+              Text(driver, style: num.copyWith(color: AppColors.muted), textAlign: TextAlign.right),
+              net,
+              const SizedBox.shrink(),
+            ])
+          : Wrap(
+              spacing: 16,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                count,
+                Text.rich(TextSpan(children: [
+                  const TextSpan(text: 'ยอดบิล ', style: muted),
+                  TextSpan(text: revenue, style: num),
+                ])),
+                Text.rich(TextSpan(children: [
+                  const TextSpan(text: 'ค่ารถ ', style: muted),
+                  TextSpan(text: driver, style: num.copyWith(color: AppColors.muted)),
+                ])),
+                Text.rich(TextSpan(children: [
+                  const TextSpan(text: 'เหลือ ', style: muted),
+                  TextSpan(text: net.data, style: net.style),
+                ])),
+              ],
+            ),
+    );
+  }
+}
+
 class BillTile extends StatelessWidget {
-  const BillTile({super.key, required this.order, required this.summary, this.driverName = ''});
+  const BillTile({super.key, required this.order, required this.summary, this.driverName = '', this.wide = false});
   final Order order;
   final BillSummary summary;
   final String driverName;
+
+  /// Table row with aligned columns (tablets) instead of the stacked phone card.
+  final bool wide;
 
   ({String label, VoidCallback onTap})? _action(BuildContext context) {
     final o = order;
@@ -528,131 +621,230 @@ class BillTile extends StatelessWidget {
     };
   }
 
+  List<Widget> _figures() {
+    final o = order;
+    final s = summary;
+    final cancelled = s.stage == BillStage.cancelled;
+    final delivery = o.fulfillment == Fulfillment.delivery;
+    final loss = delivery && s.deliveryMargin < 0 && !cancelled;
+    final margin = netMargin(s.net, s.revenue);
+    const num = TextStyle(fontSize: 14, fontFeatures: tabular);
+    const sub = TextStyle(fontSize: 12, color: AppColors.muted);
+
+    return [
+      _Figure(
+        label: 'ยอดบิล',
+        wide: wide,
+        value: Text(formatMoney(s.revenue), style: num.copyWith(fontWeight: FontWeight.w500)),
+        sub: cancelled
+            ? null
+            : s.receivable > 0
+                ? Text(
+                    'ค้างรับ ${formatMoney(s.receivable)}',
+                    style: sub.copyWith(color: AppColors.warning, fontWeight: FontWeight.w500),
+                  )
+                : Text('รับเงินครบ', style: sub.copyWith(color: AppColors.success)),
+      ),
+      _Figure(
+        label: 'ค่ารถคนขับ',
+        wide: wide,
+        value: !delivery || (s.driverCost == 0 && !s.driverCostEstimated)
+            ? const Text('—', style: TextStyle(fontSize: 14, color: AppColors.muted))
+            : Semantics(
+                label: s.driverCostEstimated ? 'ประมาณ ยังไม่จ่ายคนขับ' : 'จ่ายคนขับแล้ว',
+                child: Text(
+                  '${s.driverCostEstimated ? '≈ ' : ''}−${formatMoney(s.driverCost)}',
+                  style: num.copyWith(color: s.driverCostEstimated ? AppColors.muted : AppColors.ink),
+                ),
+              ),
+        sub: Text(delivery ? 'เก็บค่าส่ง ${formatMoney(s.deliveryFee)}' : 'มารับเอง', style: sub),
+      ),
+      _Figure(
+        label: 'คงเหลือเข้าร้าน',
+        wide: wide,
+        value: Text(
+          formatMoney(s.net),
+          style: num.copyWith(fontWeight: FontWeight.w700, color: cancelled ? AppColors.muted : AppColors.success),
+        ),
+        sub: loss
+            ? Text.rich(
+                TextSpan(children: [
+                  const WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: Icon(Icons.warning_amber_rounded, size: 12, color: AppColors.warning),
+                  ),
+                  TextSpan(text: ' ค่าส่งขาด ${formatMoney(-s.deliveryMargin)}'),
+                ]),
+                textAlign: wide ? TextAlign.right : TextAlign.left,
+                style: sub.copyWith(color: AppColors.warning),
+              )
+            : margin != null && !cancelled
+                ? Text('$margin% ของยอดบิล', style: sub)
+                : null,
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final o = order;
     final s = summary;
     final cancelled = s.stage == BillStage.cancelled;
     final action = _action(context);
-    const numStyle = TextStyle(fontSize: 14, fontFeatures: tabular);
-    const labelStyle = TextStyle(fontSize: 14, color: AppColors.muted);
+    final fulfillment = o.fulfillment == Fulfillment.delivery
+        ? 'ส่ง ${o.trips} เที่ยว${driverName.isNotEmpty ? ' · $driverName' : ''}'
+        : 'มารับเอง';
+    const meta = TextStyle(fontSize: 12, color: AppColors.muted, fontFeatures: tabular);
 
-    Widget line(String label, Widget value, {TextStyle? style}) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Row(children: [
-            Expanded(child: Text(label, style: style ?? labelStyle, overflow: TextOverflow.ellipsis)),
-            value,
-          ]),
-        );
+    final info = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              o.customer.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                decoration: cancelled ? TextDecoration.lineThrough : null,
+              ),
+            ),
+            AppBadge(s.stage.label, tone: s.stage.tone),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(o.orderNo, style: meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.ink.withValues(alpha: 0.8))),
+            Text('· ${formatDateShort(o.orderDate)}', style: meta),
+            SourceBadge(o.source),
+            if (o.demo) const DemoBadge(),
+            Text(fulfillment, maxLines: 1, overflow: TextOverflow.ellipsis, style: meta),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _Steps(steps: s.steps, cancelled: cancelled),
+      ],
+    );
 
-    final driverCost = s.driverCost == 0 && !s.driverCostEstimated
-        ? const Text('—', style: labelStyle)
-        : Text(
-            '${s.driverCostEstimated ? '≈ ' : ''}−${formatMoney(s.driverCost)}',
-            style: numStyle.copyWith(color: s.driverCostEstimated ? AppColors.muted : AppColors.ink),
+    final actionButton = action == null
+        ? null
+        : OutlinedButton.icon(
+            onPressed: action.onTap,
+            iconAlignment: IconAlignment.end,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 36),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              visualDensity: VisualDensity.compact,
+            ),
+            icon: const Icon(Icons.arrow_forward, size: 16),
+            label: Text(action.label),
           );
+    final billButton = TextButton.icon(
+      onPressed: () => openOrderBill(context, o.id),
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.muted,
+        minimumSize: const Size(0, 36),
+        visualDensity: VisualDensity.compact,
+      ),
+      icon: const Icon(Icons.description_outlined, size: 16),
+      label: const Text('ใบส่งของ'),
+    );
+    final figures = _figures();
 
     return Opacity(
       opacity: cancelled ? 0.6 : 1,
       child: InkWell(
         onTap: () => openOrder(context, o.id),
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                o.customer.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  decoration: cancelled ? TextDecoration.lineThrough : null,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    '${o.orderNo} · ${formatDateShort(o.orderDate)}',
-                    style: const TextStyle(fontSize: 12, color: AppColors.muted, fontFeatures: tabular),
+          padding: EdgeInsets.symmetric(horizontal: wide ? 20 : 16, vertical: 16),
+          child: wide
+              ? _tableRow(info, [
+                  ...figures,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [?actionButton, billButton],
                   ),
-                  SourceBadge(o.source),
-                  if (o.demo) const DemoBadge(),
-                  AppBadge(s.stage.label, tone: s.stage.tone),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(color: AppColors.subtle, borderRadius: BorderRadius.circular(8)),
-                child: Column(
+                ])
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    line('ยอดบิล', Text(formatMoney(s.revenue), style: numStyle.copyWith(fontWeight: FontWeight.w500))),
-                    line('ค่าสินค้า', Text(formatMoney(s.goods), style: numStyle)),
-                    if (o.fulfillment == Fulfillment.delivery) ...[
-                      line('ค่าส่งเก็บลูกค้า', Text(formatMoney(s.deliveryFee), style: numStyle)),
-                      line(driverName.isEmpty ? 'ค่ารถ' : 'ค่ารถ ($driverName)', driverCost),
-                    ],
-                    const Divider(height: 12),
-                    line(
-                      'คงเหลือเข้าร้าน',
-                      Row(mainAxisSize: MainAxisSize.min, children: [
-                        if (s.deliveryMargin < 0 && !cancelled) ...[
-                          const Icon(Icons.warning_amber_rounded, size: 16, color: AppColors.warning),
-                          const SizedBox(width: 4),
-                        ],
-                        Text(
-                          formatMoney(s.net),
-                          style: numStyle.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: cancelled ? AppColors.muted : AppColors.success,
-                          ),
-                        ),
-                      ]),
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
-                    if (s.receivable > 0)
-                      line(
-                        'ค้างรับ',
-                        Text(formatMoney(s.receivable), style: numStyle.copyWith(color: AppColors.warning)),
-                        style: const TextStyle(fontSize: 14, color: AppColors.warning),
+                    info,
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.subtle.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(kRadius),
                       ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (var i = 0; i < figures.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 12),
+                            Expanded(child: figures[i]),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [?actionButton, billButton],
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              _Steps(steps: s.steps, cancelled: cancelled),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 4,
-                children: [
-                  if (action != null)
-                    TextButton.icon(
-                      onPressed: action.onTap,
-                      icon: const Icon(Icons.arrow_forward, size: 16),
-                      label: Text(action.label),
-                    ),
-                  TextButton.icon(
-                    onPressed: () => openOrderBill(context, o.id),
-                    style: TextButton.styleFrom(foregroundColor: AppColors.muted),
-                    icon: const Icon(Icons.description_outlined, size: 16),
-                    label: const Text('ใบส่งของ'),
-                  ),
-                ],
-              ),
-            ],
-          ),
         ),
       ),
     );
   }
 }
 
+/// One money figure: label above on phones; in the wide table the column header names it.
+class _Figure extends StatelessWidget {
+  const _Figure({required this.label, required this.value, this.sub, this.wide = false});
+  final String label;
+  final Widget value;
+  final Widget? sub;
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    final align = wide ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    return MergeSemantics(
+      child: Column(
+        crossAxisAlignment: align,
+        children: [
+          if (wide)
+            Semantics(label: label, child: const SizedBox.shrink())
+          else
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: wide ? Alignment.centerRight : Alignment.centerLeft,
+            child: value,
+          ),
+          if (sub != null) ...[
+            const SizedBox(height: 2),
+            DefaultTextStyle.merge(textAlign: wide ? TextAlign.right : TextAlign.left, child: sub!),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Bill steps with a check (done), a dot (current) or an empty circle (not yet), so state is not colour-only.
 class _Steps extends StatelessWidget {
   const _Steps({required this.steps, required this.cancelled});
   final List<BillStep> steps;
@@ -661,41 +853,58 @@ class _Steps extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shown = steps.where((s) => s.state != BillStepState.skip).toList();
-    return Row(
-      children: [
-        for (var i = 0; i < shown.length; i++) ...[
-          if (i > 0) const SizedBox(width: 4),
-          Expanded(child: _step(shown[i])),
+    return Semantics(
+      container: true,
+      label: 'ขั้นตอน',
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (var i = 0; i < shown.length; i++) ...[
+            if (i > 0) Container(width: 12, height: 1, color: AppColors.border),
+            _step(shown[i]),
+          ],
         ],
-      ],
+      ),
     );
   }
 
   Widget _step(BillStep step) {
-    final color = cancelled
-        ? AppColors.border
-        : switch (step.state) {
-            BillStepState.done => AppColors.success,
-            BillStepState.current => AppColors.warning,
-            _ => AppColors.border,
-          };
+    final done = step.state == BillStepState.done && !cancelled;
     final current = step.state == BillStepState.current && !cancelled;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(height: 6, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
-        const SizedBox(height: 4),
-        Text(
-          step.label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 11,
-            color: current ? AppColors.ink : AppColors.muted,
-            fontWeight: current ? FontWeight.w500 : FontWeight.w400,
+    final icon = done
+        ? Container(
+            width: 16,
+            height: 16,
+            decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
+            child: const Icon(Icons.check, size: 11, color: Colors.white),
+          )
+        : current
+            ? const Icon(Icons.radio_button_checked, size: 16, color: AppColors.primary)
+            : Icon(Icons.circle_outlined, size: 16, color: AppColors.muted.withValues(alpha: 0.5));
+    return Semantics(
+      label: '${step.label}: ${done ? 'เสร็จ' : current ? 'ขั้นตอนปัจจุบัน' : 'ยังไม่ถึง'}',
+      excludeSemantics: true,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          icon,
+          const SizedBox(width: 4),
+          Text(
+            step.label,
+            style: TextStyle(
+              fontSize: 12,
+              color: done
+                  ? AppColors.ink
+                  : current
+                      ? AppColors.primary
+                      : AppColors.muted,
+              fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

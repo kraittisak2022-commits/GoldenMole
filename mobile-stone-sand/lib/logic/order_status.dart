@@ -71,8 +71,10 @@ BadgeInfo deliveryBadge(Order o) {
   return (tone: tone, label: o.deliveryStatus.label);
 }
 
-/// Text the sales desk pastes into LINE for the driver.
-String driverMessage(Order o, Zone? zone, Driver? driver) {
+/// Text the sales desk pastes into LINE for the driver; [driverPay] (default: the stored wage) is the driver's
+/// own pay and never goes on the customer's bill.
+String driverMessage(Order o, Zone? zone, Driver? driver, [double? driverPay]) {
+  final pay = driverPay ?? o.driverWage;
   final lines = <String>[
     'ออเดอร์ ${o.orderNo}${driver != null ? ' · ${driver.name}' : ''}',
     'ลูกค้า: ${o.customer.name}${o.customer.phone.isNotEmpty ? ' ${formatPhone(o.customer.phone)}' : ''}',
@@ -84,6 +86,13 @@ String driverMessage(Order o, Zone? zone, Driver? driver) {
   if (o.pinLat != null && o.pinLng != null) lines.add('แผนที่: ${googleMapsUrl(o.pinLat!, o.pinLng!)}');
   final cod = codToCollect(o);
   if (cod != 0) lines.add('เก็บเงินปลายทาง: ${formatMoney(cod)} บาท');
+  if (pay > 0) {
+    final perTrip = pay / o.trips;
+    final split = o.trips > 1 && perTrip == perTrip.roundToDouble()
+        ? ' (เที่ยวละ ${formatNumber(perTrip)} × ${o.trips} เที่ยว)'
+        : '';
+    lines.add('ค่ารถรอบนี้: ${formatNumber(pay)} บาท$split');
+  }
   if (o.note.isNotEmpty) lines.add('หมายเหตุ: ${o.note}');
   if (o.driverToken.isNotEmpty && o.fulfillment == Fulfillment.delivery && !o.cancelled) {
     lines
