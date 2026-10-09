@@ -57,7 +57,7 @@ const DRIVERS: Record<string, TruckSize> = {
   พ่อเลี้ยงตุ๋ย: 5,
 };
 
-const DELIVERY: DeliverySettings = { nearKm: 1, driverPerKm5: 50, driverPerKm3: 30 };
+const DELIVERY: DeliverySettings = { nearKm: 5, customerPerKm: 50, driverPerKm5: 50, driverPerKm3: 30 };
 
 const money = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 });

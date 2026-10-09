@@ -26,7 +26,7 @@ const make = (patch: Partial<Order> = {}): Order =>
     ...patch,
   }) as Order;
 
-const delivery = { nearKm: 1, driverPerKm5: 0, driverPerKm3: 0 };
+const delivery = { nearKm: 1, customerPerKm: 0, driverPerKm5: 0, driverPerKm3: 0 };
 const zoneOf = () => ({ driverFee: 250, driverFee3: 200 });
 const sum = (o: Order) => summarizeBill(o, zoneOf, delivery);
 

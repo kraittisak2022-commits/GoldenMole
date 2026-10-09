@@ -173,28 +173,28 @@ void main() {
   });
 
   group('suggestTripFee', () {
-    const delivery = DeliverySettings(nearKm: 1, driverPerKm5: 50, driverPerKm3: 30);
+    const delivery = DeliverySettings(nearKm: 5, customerPerKm: 50, driverPerKm5: 50, driverPerKm3: 30);
 
-    test('is free within the first km', () {
-      expect(suggestTripFee(0, 5, delivery), 0);
-      expect(suggestTripFee(1, 3, delivery), 0);
+    test('is the normal price within 5 km of the main road', () {
+      expect(suggestTripFee(0, delivery), 0);
+      expect(suggestTripFee(3.2, delivery), 0);
+      expect(suggestTripFee(5, delivery), 0);
     });
 
-    test('charges the truck size baht/km for every started km beyond the first', () {
-      expect(suggestTripFee(1.4, 5, delivery), 50); // 0.4 km → 1 km × 50
-      expect(suggestTripFee(1.7, 3, delivery), 30); // 0.7 km → 1 km × 30
-      expect(suggestTripFee(2.4, 5, delivery), 100); // 1.4 km → 2 km × 50
-      expect(suggestTripFee(2, 5, delivery), 50);
+    test('charges 50 baht for every started km beyond 5 km', () {
+      expect(suggestTripFee(5.4, delivery), 50); // 0.4 km → 1 km × 50
+      expect(suggestTripFee(6, delivery), 50);
+      expect(suggestTripFee(7.4, delivery), 150); // 2.4 km → 3 km × 50
     });
 
-    test('uses the 5-คิว rate when the truck size is unknown', () {
-      expect(suggestTripFee(2.4, null, delivery), 100);
+    test('uses the customer rate whatever the truck size', () {
+      expect(suggestTripFee(7.4, delivery.copyWith(driverPerKm5: 80, driverPerKm3: 10)), 150);
     });
 
     test('is 0 without a distance or a rate', () {
-      expect(suggestTripFee(null, 5, delivery), 0);
-      expect(suggestTripFee(double.nan, 5, delivery), 0);
-      expect(suggestTripFee(5, 3, delivery.copyWith(driverPerKm3: 0)), 0);
+      expect(suggestTripFee(null, delivery), 0);
+      expect(suggestTripFee(double.nan, delivery), 0);
+      expect(suggestTripFee(9, delivery.copyWith(customerPerKm: 0)), 0);
     });
 
     test('counts whole km despite floating-point error', () {
@@ -206,7 +206,7 @@ void main() {
       final saved = DeliverySettings.fromJson(
         {'nearKm': 1, 'driverPerKm5': 50, 'driverPerKm3': 40, 'maxKm': 10, 'roundTo': 50, 'other': true},
       ).copyWith(nearKm: 2).toJson();
-      expect(saved, {'other': true, 'nearKm': 2, 'driverPerKm5': 50, 'driverPerKm3': 40});
+      expect(saved, {'other': true, 'nearKm': 2, 'customerPerKm': 0, 'driverPerKm5': 50, 'driverPerKm3': 40});
     });
   });
 

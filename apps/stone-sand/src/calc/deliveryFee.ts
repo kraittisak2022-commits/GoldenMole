@@ -1,22 +1,19 @@
 import type { DeliverySettings, TruckSize } from '../types';
 
-type KmRates = Pick<DeliverySettings, 'nearKm' | 'driverPerKm5' | 'driverPerKm3'>;
+type DriverKmRates = Pick<DeliverySettings, 'driverPerKm5' | 'driverPerKm3'>;
+type CustomerKmRate = Pick<DeliverySettings, 'nearKm' | 'customerPerKm'>;
 
-/** Baht per km for the truck size; trucks of unknown size use the normal 5-คิว rate. */
-export function perKmFor(truckSize: TruckSize | null | undefined, delivery: KmRates): number {
+/** Driver baht per km for the truck size; trucks of unknown size use the normal 5-คิว rate. */
+export function perKmFor(truckSize: TruckSize | null | undefined, delivery: DriverKmRates): number {
   return truckSize === 3 ? delivery.driverPerKm3 : delivery.driverPerKm5;
 }
 
 /**
- * Suggested customer fee per trip on top of the tambon's baht/คิว: the truck size's baht/km for every
- * started km beyond nearKm between the main road and the pin. The driver is paid the same rate.
+ * Suggested customer fee per trip on top of the tambon's baht/คิว: customerPerKm for every started km
+ * beyond nearKm between the main road and the pin, whatever the truck size.
  */
-export function suggestTripFee(
-  distanceKm: number | null | undefined,
-  truckSize: TruckSize | null | undefined,
-  delivery: KmRates,
-): number {
-  return distanceSurcharge(distanceKm, { nearKm: delivery.nearKm, perKm: perKmFor(truckSize, delivery) });
+export function suggestTripFee(distanceKm: number | null | undefined, delivery: CustomerKmRate): number {
+  return distanceSurcharge(distanceKm, { nearKm: delivery.nearKm, perKm: delivery.customerPerKm });
 }
 
 /** Whole km beyond nearKm, any part of a km counting as a full km (1.4 km past → 2 km). */

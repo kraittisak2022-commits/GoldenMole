@@ -1,32 +1,32 @@
 import { chargedKm, distanceSurcharge, perKmFor, suggestTripFee } from './deliveryFee';
 
-const delivery = { nearKm: 1, driverPerKm5: 50, driverPerKm3: 30 };
+const delivery = { nearKm: 5, customerPerKm: 50, driverPerKm5: 50, driverPerKm3: 30 };
 
 describe('suggestTripFee', () => {
-  it('is free within the first km', () => {
-    expect(suggestTripFee(0, 5, delivery)).toBe(0);
-    expect(suggestTripFee(1, 3, delivery)).toBe(0);
+  it('is the normal price within 5 km of the main road', () => {
+    expect(suggestTripFee(0, delivery)).toBe(0);
+    expect(suggestTripFee(3.2, delivery)).toBe(0);
+    expect(suggestTripFee(5, delivery)).toBe(0);
   });
 
-  it('charges the truck size baht/km for every started km beyond the first', () => {
-    expect(suggestTripFee(1.4, 5, delivery)).toBe(50); // 0.4 km → 1 km × 50
-    expect(suggestTripFee(1.7, 3, delivery)).toBe(30); // 0.7 km → 1 km × 30
-    expect(suggestTripFee(2.4, 5, delivery)).toBe(100); // 1.4 km → 2 km × 50
-    expect(suggestTripFee(2, 5, delivery)).toBe(50); // exactly 1 km × 50
+  it('charges 50 baht for every started km beyond 5 km', () => {
+    expect(suggestTripFee(5.4, delivery)).toBe(50); // 0.4 km → 1 km × 50
+    expect(suggestTripFee(6, delivery)).toBe(50); // exactly 1 km × 50
+    expect(suggestTripFee(7.4, delivery)).toBe(150); // 2.4 km → 3 km × 50
   });
 
-  it('uses the 5-คิว rate when the truck size is unknown', () => {
-    expect(suggestTripFee(2.4, null, delivery)).toBe(100);
+  it('uses the customer rate whatever the truck size', () => {
+    expect(suggestTripFee(7.4, { ...delivery, driverPerKm5: 80, driverPerKm3: 10 })).toBe(150);
   });
 
   it('has no cap', () => {
-    expect(suggestTripFee(10.5, 5, delivery)).toBe(500); // 9.5 km → 10 km × 50
+    expect(suggestTripFee(14.5, delivery)).toBe(500); // 9.5 km → 10 km × 50
   });
 
   it('is 0 without a distance or a rate', () => {
-    expect(suggestTripFee(null, 5, delivery)).toBe(0);
-    expect(suggestTripFee(Number.NaN, 5, delivery)).toBe(0);
-    expect(suggestTripFee(5, 3, { ...delivery, driverPerKm3: 0 })).toBe(0);
+    expect(suggestTripFee(null, delivery)).toBe(0);
+    expect(suggestTripFee(Number.NaN, delivery)).toBe(0);
+    expect(suggestTripFee(9, { ...delivery, customerPerKm: 0 })).toBe(0);
   });
 });
 

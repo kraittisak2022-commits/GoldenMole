@@ -25,7 +25,7 @@ const make = (patch: Partial<Order>): Order =>
   }) as Order;
 
 /** Beyond 0.5 km: 5-คิว 60, 3-คิว 30 baht per km, rounded up to 10. */
-const delivery = { nearKm: 0.5, driverPerKm5: 60, driverPerKm3: 30 };
+const delivery = { nearKm: 0.5, customerPerKm: 0, driverPerKm5: 60, driverPerKm3: 30 };
 const zone = { driverFee: 350, driverFee3: 250 };
 
 describe('driverTripRate', () => {

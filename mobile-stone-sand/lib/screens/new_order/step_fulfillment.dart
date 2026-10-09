@@ -30,7 +30,7 @@ class LoadLine {
 /// The suggested fees: the tambon's baht/คิว, plus the per-trip distance surcharge.
 WizardState _withFee(Zone z, WizardState st, DeliverySettings settings) => st.copyWith(
       feePerCubic: z.feePerCubic,
-      feePerTrip: suggestTripFee(st.roadDistanceKm, st.truckSize, settings).toDouble(),
+      feePerTrip: suggestTripFee(st.roadDistanceKm, settings).toDouble(),
     );
 
 /// Current device position, or an error message.
@@ -504,8 +504,8 @@ class _StepFulfillmentState extends State<StepFulfillment> {
             hint: zone == null
                 ? null
                 : 'ค่าส่ง ${formatNumber(zone.feePerCubic)} บาท/คิว'
-                    '${perKmFor(s.truckSize, delivery) > 0 ? ' + ${formatNumber(perKmFor(s.truckSize, delivery))} บาท/กม./เที่ยว '
-                        '(รถ ${s.truckSize == 3 ? 3 : 5} คิว) เมื่อห่างถนนใหญ่เกิน ${formatNumber(delivery.nearKm)} กม.' : ''}',
+                    '${delivery.customerPerKm > 0 ? ' + ${formatNumber(delivery.customerPerKm)} บาท/กม./เที่ยว '
+                        'เมื่อห่างถนนใหญ่เกิน ${formatNumber(delivery.nearKm)} กม.' : ''}',
             child: DropdownButtonFormField<String?>(
               key: ValueKey('zone:${s.zoneId}'),
               initialValue: zone?.id,

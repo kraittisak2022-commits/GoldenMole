@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, Crosshair, Link2, MapPin, Pencil, Phone, Store, Truck } from 'lucide-react';
-import { perKmFor, suggestTripFee } from '../../calc/deliveryFee';
+import { suggestTripFee } from '../../calc/deliveryFee';
 import { round2 } from '../../calc/pricing';
 import { truckFits, type Load } from '../../calc/trips';
 import DeliveryMap, { type LatLng, type MapRoute } from '../../components/map/DeliveryMap';
@@ -66,7 +66,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
   const measuringRoad = !!pinKey && !s.roadDistanceByRoad && !roadFailed;
   const [roadPath, setRoadPath] = useState<{ key: string; path: LatLng[] } | null>(null);
   const suggestedPerCubic = zone ? zone.feePerCubic : null;
-  const suggestedPerTrip = zone ? suggestTripFee(s.roadDistanceKm, s.truckSize, settings.delivery) : null;
+  const suggestedPerTrip = zone ? suggestTripFee(s.roadDistanceKm, settings.delivery) : null;
 
   useEffect(() => {
     if (s.feeTouched || suggestedPerCubic == null || suggestedPerTrip == null) return;
@@ -315,8 +315,8 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
             <Field id="f-zone" label="ตำบลที่จัดส่ง *" hint={
                 zone
                   ? `ค่าส่ง ${formatNumber(zone.feePerCubic)} บาท/คิว` +
-                    (perKmFor(s.truckSize, settings.delivery) > 0
-                      ? ` + ${formatNumber(perKmFor(s.truckSize, settings.delivery))} บาท/กม./เที่ยว (รถ ${s.truckSize === 3 ? 3 : 5} คิว) เมื่อห่างถนนใหญ่เกิน ${formatNumber(settings.delivery.nearKm)} กม.`
+                    (settings.delivery.customerPerKm > 0
+                      ? ` + ${formatNumber(settings.delivery.customerPerKm)} บาท/กม./เที่ยว เมื่อห่างถนนใหญ่เกิน ${formatNumber(settings.delivery.nearKm)} กม.`
                       : '')
                   : undefined
               }

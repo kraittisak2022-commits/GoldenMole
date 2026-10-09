@@ -448,10 +448,10 @@ class _ZonesSectionState extends State<ZonesSection> with _Saver {
     const head = TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.muted);
     return _SettingsCard(
       title: 'ค่าส่งตามตำบล',
-      subtitle: 'ค่าส่งลูกค้า: บาทต่อคิว คูณจำนวนคิวที่สั่ง ถ้าหน้างานห่างถนนใหญ่เกิน '
-          '${formatNumber(widget.delivery.nearKm)} กม. บวกเพิ่มต่อเที่ยวตามเรท บาท/กม. ของขนาดรถ '
-          '(รถ 5 คิว ${formatNumber(widget.delivery.driverPerKm5)} · รถ 3 คิว ${formatNumber(widget.delivery.driverPerKm3)}) '
-          '· ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว บวกค่าส่งเพิ่มตามระยะด้วยเรทเดียวกับลูกค้า '
+      subtitle: 'ค่าส่งลูกค้า: บาทต่อคิว คูณจำนวนคิวที่สั่ง ถ้าหน้างานห่างถนนหลักเกิน '
+          '${formatNumber(widget.delivery.nearKm)} กม. บวกเพิ่ม ${formatNumber(widget.delivery.customerPerKm)} บาท/กม. ต่อเที่ยว '
+          '· ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว เกินระยะเดียวกันบวกตามขนาดรถ '
+          '(รถ 5 คิว ${formatNumber(widget.delivery.driverPerKm5)} · รถ 3 คิว ${formatNumber(widget.delivery.driverPerKm3)} บาท/กม.) '
           'ใช้ตั้งต้นตอนเคลียร์ค่ารถ',
       saving: saving,
       error: saveError,
@@ -581,6 +581,7 @@ class DeliverySection extends StatefulWidget {
 
 class _DeliverySectionState extends State<DeliverySection> with _Saver {
   late num _near = widget.settings.nearKm;
+  late num _cust = widget.settings.customerPerKm;
   late num _per5 = widget.settings.driverPerKm5;
   late num _per3 = widget.settings.driverPerKm3;
 
@@ -589,52 +590,56 @@ class _DeliverySectionState extends State<DeliverySection> with _Saver {
     super.didUpdateWidget(old);
     if (!identical(old.settings, widget.settings)) {
       _near = widget.settings.nearKm;
+      _cust = widget.settings.customerPerKm;
       _per5 = widget.settings.driverPerKm5;
       _per3 = widget.settings.driverPerKm3;
     }
   }
 
-  DeliverySettings get _form => widget.settings.copyWith(nearKm: _near, driverPerKm5: _per5, driverPerKm3: _per3);
+  DeliverySettings get _form =>
+      widget.settings.copyWith(nearKm: _near, customerPerKm: _cust, driverPerKm5: _per5, driverPerKm3: _per3);
+
+  List<num> get _exampleKms => [_near, _near + 0.4, _near + 2.4, _near + 5];
+
+  Widget _field(String label, String hint, num value, ValueChanged<num> onChanged) => FieldLabel(
+        label,
+        hint: hint,
+        child: NumberField(value: value, onChanged: (v) => setState(() => onChanged(math.max(0, v)))),
+      );
 
   @override
   Widget build(BuildContext context) {
+    final form = _form;
+    String examples(num Function(num km) fee) =>
+        _exampleKms.map((km) => '${formatNumber(km)} กม. = +${formatNumber(fee(km))}').join(' · ');
     return _SettingsCard(
       title: 'การคำนวณค่าส่งจากระยะ',
-      subtitle: 'ระยะวัดจากหมุดหน้างานถึงถนนสายหลักที่ใกล้ที่สุด · '
-          'ส่วนที่เกินคิดเป็นกิโลเต็ม เศษกิโลนับเป็น 1 กม. (เช่น ไม่คิด 1 กม. แรก ระยะ 2.4 กม. = คิด 2 กม.)',
+      subtitle: 'ระยะวัดตามถนนที่รถวิ่งจริง จากถนนสายหลักบนแผนที่ที่ใกล้ที่สุดเข้าไปถึงหมุดหน้างาน '
+          '(ถ้าวัดตามถนนไม่ได้จะใช้ระยะเส้นตรง) · ภายในระยะที่ไม่คิดเพิ่มใช้ราคาปกติของตำบล '
+          'ส่วนที่เกินคิดเป็นกิโลเต็ม เศษกิโลนับเป็น 1 กม. '
+          '(เช่น ไม่คิด ${formatNumber(_near)} กม. แรก ระยะ ${formatNumber(_near + 2.4)} กม. = คิด 3 กม.)',
       saving: saving,
       error: saveError,
       saved: saved,
-      onSave: () => runSave(() => saveSetting('delivery', _form.toJson())),
+      onSave: () => runSave(() => saveSetting('delivery', form.toJson())),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: FieldLabel(
-                  'ค่ารถ 5 คิว บาท/กม.',
-                  hint: 'คิดจากลูกค้าและจ่ายคนขับ ต่อเที่ยว',
-                  child: NumberField(value: _per5, onChanged: (v) => setState(() => _per5 = math.max(0, v))),
-                ),
-              ),
+              Expanded(child: _field('ไม่คิดเพิ่ม (กม. แรก)', 'ห่างถนนหลักไม่เกินนี้ ราคาปกติ', _near, (v) => _near = v)),
               const SizedBox(width: 12),
-              Expanded(
-                child: FieldLabel(
-                  'ค่ารถ 3 คิว บาท/กม.',
-                  hint: 'คิดจากลูกค้าและจ่ายคนขับ ต่อเที่ยว',
-                  child: NumberField(value: _per3, onChanged: (v) => setState(() => _per3 = math.max(0, v))),
-                ),
-              ),
+              Expanded(child: _field('ค่าส่งลูกค้า บาท/กม.', 'บวกในบิล ต่อเที่ยว ทุกขนาดรถ', _cust, (v) => _cust = v)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _field('ค่ารถ 5 คิว บาท/กม.', 'จ่ายคนขับ ต่อเที่ยว', _per5, (v) => _per5 = v)),
               const SizedBox(width: 12),
-              Expanded(
-                child: FieldLabel(
-                  'ไม่คิดเพิ่ม (กม. แรก)',
-                  hint: 'ห่างถนนใหญ่ไม่เกินนี้ ไม่บวก',
-                  child: NumberField(value: _near, onChanged: (v) => setState(() => _near = math.max(0, v))),
-                ),
-              ),
+              Expanded(child: _field('ค่ารถ 3 คิว บาท/กม.', 'จ่ายคนขับ ต่อเที่ยว', _per3, (v) => _per3 = v)),
             ],
           ),
           const SizedBox(height: 12),
@@ -642,9 +647,9 @@ class _DeliverySectionState extends State<DeliverySection> with _Saver {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(color: AppColors.subtle, borderRadius: BorderRadius.circular(kRadius)),
             child: Text(
-              'ตัวอย่างค่าส่งเพิ่มตามระยะ (บาท/เที่ยว บวกจากค่าส่งต่อคิวของตำบล)\n'
-              '${[5, 3].map((size) => 'รถ $size คิว: ${[1, 1.4, 2.4, 5].map((km) => '$km กม. = '
-                  '+${formatNumber(suggestTripFee(km, size, _form))}').join(' · ')}').join('\n')}',
+              'ตัวอย่างค่าส่งเพิ่มตามระยะ (บาท/เที่ยว)\n'
+              'ลูกค้า: ${examples((km) => suggestTripFee(km, form))}\n'
+              '${[5, 3].map((size) => 'คนขับรถ $size คิว: ${examples((km) => distanceSurcharge(km, nearKm: form.nearKm, perKm: perKmFor(size, form)))}').join('\n')}',
               style: const TextStyle(fontSize: 14, color: AppColors.muted),
             ),
           ),

@@ -36,6 +36,6 @@ Sign in with an `admin_users` account.
 
 ## Delivery fee rule
 
-The pin decides the tambon and the distance to the nearest main road. Within `nearKm` (default 3 km) the fee is the tambon's minimum; it then rises linearly to the tambon's maximum at `maxKm` (default 10 km), rounded up to `roundTo` baht (default 50). All three values and the per-tambon fee ranges are editable in Settings. Staff can always override the tambon and fee.
+The pin decides the tambon and the road distance from the nearest main road on the map. Within `nearKm` (5 km) the customer pays the tambon's normal baht/คิว; beyond it each trip adds `customerPerKm` (50 baht) for every started km, whatever the truck size. The driver gets the tambon's per-trip rate plus `driverPerKm5` / `driverPerKm3` per started km beyond the same `nearKm`. All values are editable in Settings. Staff can always override the tambon and fee.
 
 See [DEPLOY.md](DEPLOY.md) for Vercel setup.

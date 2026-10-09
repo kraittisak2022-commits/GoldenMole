@@ -275,7 +275,7 @@ void main() {
           roadDistanceKm: roadDistanceKm,
         );
 
-    const delivery = DeliverySettings(nearKm: 1, driverPerKm5: 50, driverPerKm3: 30);
+    const delivery = DeliverySettings(nearKm: 1, customerPerKm: 0, driverPerKm5: 50, driverPerKm3: 30);
     const wangNuea = Zone(id: 'wang-nuea', name: 'วังเหนือ', feePerCubic: 0, driverFee: 700, driverFee3: 500, sortOrder: 1);
     const unset = Zone(id: 'unset', name: 'ใหม่', feePerCubic: 40, sortOrder: 2);
     Zone? zoneOf(String? id) => {'wang-nuea': wangNuea, 'unset': unset}[id];

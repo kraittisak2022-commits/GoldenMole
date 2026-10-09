@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Check, Plus, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
-import { suggestTripFee } from '../calc/deliveryFee';
+import { distanceSurcharge, perKmFor, suggestTripFee } from '../calc/deliveryFee';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Field from '../components/ui/Field';
@@ -264,7 +264,7 @@ function ZonesSection({
   return (
     <Section
       title="ค่าส่งตามตำบล"
-      subtitle={`ค่าส่งลูกค้า: บาทต่อคิว คูณจำนวนคิวที่สั่ง ถ้าหน้างานห่างถนนใหญ่เกิน ${formatNumber(delivery.nearKm)} กม. บวกเพิ่มต่อเที่ยวตามเรท บาท/กม. ของขนาดรถ (รถ 5 คิว ${formatNumber(delivery.driverPerKm5)} · รถ 3 คิว ${formatNumber(delivery.driverPerKm3)}) · ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว บวกค่าส่งเพิ่มตามระยะด้วยเรทเดียวกับลูกค้า ใช้ตั้งต้นตอนเคลียร์ค่ารถ`}
+      subtitle={`ค่าส่งลูกค้า: บาทต่อคิว คูณจำนวนคิวที่สั่ง ถ้าหน้างานห่างถนนหลักเกิน ${formatNumber(delivery.nearKm)} กม. บวกเพิ่ม ${formatNumber(delivery.customerPerKm)} บาท/กม. ต่อเที่ยว · ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว เกินระยะเดียวกันบวกตามขนาดรถ (รถ 5 คิว ${formatNumber(delivery.driverPerKm5)} · รถ 3 คิว ${formatNumber(delivery.driverPerKm3)} บาท/กม.) ใช้ตั้งต้นตอนเคลียร์ค่ารถ`}
       saver={saver}
       onSave={() =>
         saver.run(async () => {
@@ -340,6 +340,9 @@ function ZonesSection({
   );
 }
 
+/** Distances that show the free band, a part km and a few whole km past it. */
+const exampleKms = (nearKm: number) => [nearKm, nearKm + 0.4, nearKm + 2.4, nearKm + 5];
+
 function DeliverySection({ settings, onSaved }: { settings: AppSettings; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState(settings.delivery);
   useEffect(() => setForm(settings.delivery), [settings.delivery]);
@@ -348,20 +351,34 @@ function DeliverySection({ settings, onSaved }: { settings: AppSettings; onSaved
   return (
     <Section
       title="การคำนวณค่าส่งจากระยะ"
-      subtitle="ระยะวัดตามถนนที่รถวิ่งจริง จากถนนสายหลักที่ใกล้ที่สุดเข้าไปถึงหมุดหน้างาน (ถ้าวัดตามถนนไม่ได้จะใช้ระยะเส้นตรง) · ส่วนที่เกินคิดเป็นกิโลเต็ม เศษกิโลนับเป็น 1 กม. (เช่น ไม่คิด 1 กม. แรก ระยะ 2.4 กม. = คิด 2 กม.)"
+      subtitle={`ระยะวัดตามถนนที่รถวิ่งจริง จากถนนสายหลักบนแผนที่ที่ใกล้ที่สุดเข้าไปถึงหมุดหน้างาน (ถ้าวัดตามถนนไม่ได้จะใช้ระยะเส้นตรง) · ภายในระยะที่ไม่คิดเพิ่มใช้ราคาปกติของตำบล ส่วนที่เกินคิดเป็นกิโลเต็ม เศษกิโลนับเป็น 1 กม. (เช่น ไม่คิด ${formatNumber(form.nearKm)} กม. แรก ระยะ ${formatNumber(form.nearKm + 2.4)} กม. = คิด 3 กม.)`}
       saver={saver}
       onSave={() =>
         saver.run(async () => {
           await saveSetting('delivery', {
             nearKm: form.nearKm,
+            customerPerKm: form.customerPerKm,
             driverPerKm5: form.driverPerKm5,
             driverPerKm3: form.driverPerKm3,
           });
         })
       }
     >
-      <div className="grid grid-cols-3 gap-3">
-        <Field id="ds-drv5" label="ค่ารถ 5 คิว บาท/กม." hint="คิดจากลูกค้าและจ่ายคนขับ ต่อเที่ยว">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Field id="ds-near" label="ไม่คิดเพิ่ม (กม. แรก)" hint="ห่างถนนหลักไม่เกินนี้ ราคาปกติ">
+          <Input id="ds-near" type="number" min={0} step={0.5} value={form.nearKm} onChange={(e) => setForm({ ...form, nearKm: num(e.target.value) })} />
+        </Field>
+        <Field id="ds-cust" label="ค่าส่งลูกค้า บาท/กม." hint="บวกในบิล ต่อเที่ยว ทุกขนาดรถ">
+          <Input
+            id="ds-cust"
+            type="number"
+            min={0}
+            step={5}
+            value={form.customerPerKm}
+            onChange={(e) => setForm({ ...form, customerPerKm: num(e.target.value) })}
+          />
+        </Field>
+        <Field id="ds-drv5" label="ค่ารถ 5 คิว บาท/กม." hint="จ่ายคนขับ ต่อเที่ยว">
           <Input
             id="ds-drv5"
             type="number"
@@ -371,7 +388,7 @@ function DeliverySection({ settings, onSaved }: { settings: AppSettings; onSaved
             onChange={(e) => setForm({ ...form, driverPerKm5: num(e.target.value) })}
           />
         </Field>
-        <Field id="ds-drv3" label="ค่ารถ 3 คิว บาท/กม." hint="คิดจากลูกค้าและจ่ายคนขับ ต่อเที่ยว">
+        <Field id="ds-drv3" label="ค่ารถ 3 คิว บาท/กม." hint="จ่ายคนขับ ต่อเที่ยว">
           <Input
             id="ds-drv3"
             type="number"
@@ -381,15 +398,18 @@ function DeliverySection({ settings, onSaved }: { settings: AppSettings; onSaved
             onChange={(e) => setForm({ ...form, driverPerKm3: num(e.target.value) })}
           />
         </Field>
-        <Field id="ds-near" label="ไม่คิดเพิ่ม (กม. แรก)" hint="ห่างถนนใหญ่ไม่เกินนี้ ไม่บวก">
-          <Input id="ds-near" type="number" min={0} step={0.5} value={form.nearKm} onChange={(e) => setForm({ ...form, nearKm: num(e.target.value) })} />
-        </Field>
       </div>
       <p className="mt-3 rounded bg-subtle px-3 py-2 text-sm text-muted">
-        ตัวอย่างค่าส่งเพิ่มตามระยะ (บาท/เที่ยว บวกจากค่าส่งต่อคิวของตำบล)
+        ตัวอย่างค่าเพิ่มตามระยะ (บาท/เที่ยว บวกจากราคาปกติของตำบล)
+        <span className="block">
+          ลูกค้า: {exampleKms(form.nearKm).map((km) => `${formatNumber(km)} กม. = +${formatNumber(suggestTripFee(km, form))}`).join(' · ')}
+        </span>
         {([5, 3] as TruckSize[]).map((size) => (
           <span key={size} className="block">
-            รถ {size} คิว: {[1, 1.4, 2.4, 5].map((km) => `${km} กม. = +${formatNumber(suggestTripFee(km, size, form))}`).join(' · ')}
+            คนขับรถ {size} คิว:{' '}
+            {exampleKms(form.nearKm)
+              .map((km) => `${formatNumber(km)} กม. = +${formatNumber(distanceSurcharge(km, { nearKm: form.nearKm, perKm: perKmFor(size, form) }))}`)
+              .join(' · ')}
           </span>
         ))}
       </p>
