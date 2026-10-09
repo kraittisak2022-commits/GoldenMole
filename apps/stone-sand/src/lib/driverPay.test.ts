@@ -17,12 +17,17 @@ const make = (patch: Partial<Order>): Order =>
   }) as Order;
 
 describe('suggestedDriverPay', () => {
-  it('uses the wage set on the order', () => {
-    expect(suggestedDriverPay(make({ driverWage: 450 }))).toBe(450);
+  it('is the zone driver fee times trips, ignoring the wage stored on the order', () => {
+    expect(suggestedDriverPay(make({ trips: 3, driverWage: 450, deliveryTotal: 1800 }), { driverFee: 350 })).toBe(1050);
   });
 
-  it('falls back to the delivery fee charged when no wage is set', () => {
-    expect(suggestedDriverPay(make({ driverWage: 0, deliveryTotal: 1200 }))).toBe(1200);
+  it('falls back to the wage stored on the order when the zone has no driver fee', () => {
+    expect(suggestedDriverPay(make({ driverWage: 450 }), { driverFee: 0 })).toBe(450);
+    expect(suggestedDriverPay(make({ driverWage: 450 }), undefined)).toBe(450);
+  });
+
+  it('never uses the delivery fee charged to the customer', () => {
+    expect(suggestedDriverPay(make({ driverWage: 0, deliveryTotal: 1200 }), undefined)).toBe(0);
   });
 });
 
@@ -38,19 +43,25 @@ describe('codToCollect', () => {
 });
 
 describe('summarizeDriverDues', () => {
-  it('groups by driver with count, trips, suggested pay, COD cash and oldest date', () => {
-    const dues = summarizeDriverDues([
-      make({ id: 'o1', trips: 2, deliveryTotal: 1000, orderDate: '2026-10-07', paymentMethod: 'cod', total: 1800 }),
-      make({ id: 'o2', trips: 1, driverWage: 300, orderDate: '2026-10-03' }),
-      make({ id: 'o3', driverId: 'drv-b', trips: 1, deliveryTotal: 2500 }),
-    ]);
+  const zones: Record<string, { driverFee: number }> = { near: { driverFee: 300 }, far: { driverFee: 1000 } };
+  const zoneOf = (id: string | null) => (id ? zones[id] : undefined);
+
+  it('groups by driver with count, trips, zone-based pay, COD cash and oldest date', () => {
+    const dues = summarizeDriverDues(
+      [
+        make({ id: 'o1', zoneId: 'near', trips: 2, orderDate: '2026-10-07', paymentMethod: 'cod', total: 1800 }),
+        make({ id: 'o2', zoneId: null, trips: 1, driverWage: 250, orderDate: '2026-10-03' }),
+        make({ id: 'o3', zoneId: 'far', driverId: 'drv-b', trips: 1, deliveryTotal: 2500 }),
+      ],
+      zoneOf,
+    );
     expect(dues).toEqual([
-      { driverId: 'drv-b', count: 1, trips: 1, total: 2500, cash: 0, oldestDate: '2026-10-05' },
-      { driverId: 'drv-a', count: 2, trips: 3, total: 1300, cash: 1800, oldestDate: '2026-10-03' },
+      { driverId: 'drv-b', count: 1, trips: 1, total: 1000, cash: 0, oldestDate: '2026-10-05' },
+      { driverId: 'drv-a', count: 2, trips: 3, total: 850, cash: 1800, oldestDate: '2026-10-03' },
     ]);
   });
 
   it('skips orders without a driver', () => {
-    expect(summarizeDriverDues([make({ driverId: null })])).toEqual([]);
+    expect(summarizeDriverDues([make({ driverId: null })], zoneOf)).toEqual([]);
   });
 });

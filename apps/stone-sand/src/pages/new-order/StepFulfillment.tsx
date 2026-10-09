@@ -423,10 +423,10 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                 />
                 <span>
                   ยืนยันว่ารถ <b>{selectedDriver.name}</b> เข้าหน้างานได้และมีคิวว่าง
-                  {selectedDriver.wagePerTrip ? (
+                  {zone?.driverFee ? (
                     <span className="block text-muted">
-                      ค่าจ้างคนขับ {formatNumber(selectedDriver.wagePerTrip)} × {s.trips} ={' '}
-                      {formatMoney(selectedDriver.wagePerTrip * s.trips)} บาท
+                      ค่ารถคนขับ ต.{zone.name} {formatNumber(zone.driverFee)} × {s.trips} ={' '}
+                      {formatMoney(zone.driverFee * s.trips)} บาท
                     </span>
                   ) : null}
                 </span>

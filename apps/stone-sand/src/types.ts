@@ -43,6 +43,8 @@ export interface Zone {
   name: string;
   feeMin: number;
   feeMax: number;
+  /** Paid to the driver per trip; feeMin/feeMax are what the customer is charged. */
+  driverFee: number;
   sortOrder: number;
 }
 

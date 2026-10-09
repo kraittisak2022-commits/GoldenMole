@@ -166,7 +166,7 @@ export default function NewOrderPage() {
     setSubmitting(true);
     setSubmitError('');
     try {
-      const order = await createOrder(toDraft(state, products, driver?.wagePerTrip ?? 0), user?.displayName || user?.username || '');
+      const order = await createOrder(toDraft(state, products, zone?.driverFee ?? 0), user?.displayName || user?.username || '');
       clearDraft();
       navigate(`/bill/order/${order.id}?created=1`, { replace: true });
     } catch (err) {

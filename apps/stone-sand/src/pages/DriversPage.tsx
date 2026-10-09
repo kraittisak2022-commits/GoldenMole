@@ -12,7 +12,7 @@ import Select from '../components/ui/Select';
 import { ErrorBox, Loading } from '../components/ui/States';
 import { useCatalog } from '../context/CatalogProvider';
 import { deleteDriver, saveDriver } from '../data/drivers';
-import { formatNumber, formatPhone } from '../lib/format';
+import { formatPhone } from '../lib/format';
 import { ROUTE_GROUP_LABEL, type Driver, type RouteGroup, type TruckSize } from '../types';
 
 type DriverForm = Omit<Driver, 'id' | 'sortOrder'> & { id?: string };
@@ -81,8 +81,7 @@ export default function DriversPage() {
                           <div className="min-w-0">
                             <p className={['font-medium', d.active ? '' : 'text-muted line-through'].join(' ')}>{d.name}</p>
                             <p className="text-xs text-muted">
-                              {[d.village, d.wagePerTrip ? `ค่าจ้าง ${formatNumber(d.wagePerTrip)}/เที่ยว` : ''].filter(Boolean).join(' · ') ||
-                                '—'}
+                              {d.village || '—'}
                             </p>
                           </div>
                           <div className="flex shrink-0 items-center gap-1">
@@ -249,17 +248,6 @@ function DriverFormModal({ initial, onClose, onSaved }: { initial: DriverForm; o
             />
           </Field>
         </div>
-        <Field id="dv-wage" label="ค่าจ้างต่อเที่ยว (บาท)" hint="ใช้คำนวณค่าจ้างอัตโนมัติเมื่อเลือกคนขับในออเดอร์">
-          <Input
-            id="dv-wage"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            value={form.wagePerTrip || ''}
-            placeholder="0"
-            onChange={(e) => setForm({ ...form, wagePerTrip: Math.max(0, Number(e.target.value) || 0) })}
-          />
-        </Field>
         <div className="flex flex-col gap-2">
           <p className="text-sm font-medium">เบอร์โทร</p>
           {form.contacts.map((c, i) => (

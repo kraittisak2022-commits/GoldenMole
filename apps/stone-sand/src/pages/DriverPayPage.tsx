@@ -25,7 +25,7 @@ const DRIVER_PAYS_HINTS: Record<PayMethod, string> = { cash: 'คนขับส
 export default function DriverPayPage() {
   const { user, isSuperAdmin } = useAuth();
   const by = user?.displayName || user?.username || '';
-  const { driverById } = useCatalog();
+  const { driverById, zoneById } = useCatalog();
   const [params, setParams] = useSearchParams();
   const selectedDriver = params.get('driver');
 
@@ -34,7 +34,7 @@ export default function DriverPayPage() {
   const [actionError, setActionError] = useState('');
   const [paidNo, setPaidNo] = useState('');
 
-  const dues = useMemo(() => summarizeDriverDues(unpaid.data ?? []), [unpaid.data]);
+  const dues = useMemo(() => summarizeDriverDues(unpaid.data ?? [], zoneById), [unpaid.data, zoneById]);
   const dueTotal = dues.reduce((s, d) => s + d.total, 0);
   const visiblePayouts = (payouts.data ?? []).filter((p) => !selectedDriver || p.driverId === selectedDriver);
   const driverName = (id: string) => driverById(id)?.name ?? 'คนขับ';
@@ -225,13 +225,14 @@ function PayoutPanel({
   onClose: () => void;
   onPaid: (payoutNo: string) => void;
 }) {
+  const { zoneById } = useCatalog();
   const today = toIsoDate();
   const oldest = orders[0]?.orderDate ?? today;
   const [from, setFrom] = useState(oldest);
   const [to, setTo] = useState(today < oldest ? oldest : today);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [amounts, setAmounts] = useState<Record<string, number>>(() =>
-    Object.fromEntries(orders.map((o) => [o.id, suggestedDriverPay(o)])),
+    Object.fromEntries(orders.map((o) => [o.id, suggestedDriverPay(o, zoneById(o.zoneId))])),
   );
   const [method, setMethod] = useState<PayMethod | null>(null);
   const [note, setNote] = useState('');
@@ -323,50 +324,62 @@ function PayoutPanel({
               <span>ค่ารถ (บาท)</span>
             </p>
             <ul className="flex max-h-96 flex-col divide-y divide-border overflow-y-auto overflow-x-hidden rounded border border-border">
-              {inRange.map((o) => (
-                <li key={o.id} className="flex min-h-14 items-center gap-3 px-3 py-2 text-sm">
-                  <input
-                    type="checkbox"
-                    aria-label={`เลือก ${o.orderNo}`}
-                    className="h-5 w-5 shrink-0 cursor-pointer accent-[var(--color-primary)]"
-                    checked={selected.has(o.id)}
-                    onChange={() => toggle(o.id)}
-                  />
-                  <button type="button" className="min-w-0 flex-1 text-left cursor-pointer" onClick={() => toggle(o.id)}>
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <span className="whitespace-nowrap font-medium tabular-nums">{o.orderNo}</span>
-                      <SourceBadge source={o.source} />
-                      {o.deliveryStatus !== 'delivered' ? <Badge tone="warning">ยังไม่ส่ง</Badge> : null}
-                    </span>
-                    {codToCollect(o) ? (
-                      <span className="block text-xs font-medium text-primary">เก็บเงินปลายทาง {formatNumber(codToCollect(o))}</span>
-                    ) : null}
-                    <span className="block truncate text-xs text-muted">
-                      {formatDateShort(o.orderDate)} · {o.customer.name}
-                    </span>
-                    <span className="block text-xs text-muted">
-                      {o.truckSize ? `${o.truckSize} คิว × ` : ''}
-                      {o.trips} เที่ยว · เก็บลูกค้า {formatNumber(o.deliveryTotal - o.deliveryDiscount)}
-                    </span>
-                  </button>
-                  <div className="w-28 shrink-0">
-                    <Input
-                      aria-label={`ค่ารถ ${o.orderNo}`}
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      className="px-3 text-right tabular-nums"
-                      value={amounts[o.id] || ''}
-                      placeholder="0"
-                      onChange={(e) => setAmounts({ ...amounts, [o.id]: Math.max(0, Number(e.target.value) || 0) })}
+              {inRange.map((o) => {
+                const zone = zoneById(o.zoneId);
+                return (
+                  <li key={o.id} className="flex min-h-14 items-center gap-3 px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      aria-label={`เลือก ${o.orderNo}`}
+                      className="h-5 w-5 shrink-0 cursor-pointer accent-[var(--color-primary)]"
+                      checked={selected.has(o.id)}
+                      onChange={() => toggle(o.id)}
                     />
-                  </div>
-                </li>
-              ))}
+                    <button type="button" className="min-w-0 flex-1 text-left cursor-pointer" onClick={() => toggle(o.id)}>
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span className="whitespace-nowrap font-medium tabular-nums">{o.orderNo}</span>
+                        <SourceBadge source={o.source} />
+                        {o.deliveryStatus !== 'delivered' ? <Badge tone="warning">ยังไม่ส่ง</Badge> : null}
+                      </span>
+                      {codToCollect(o) ? (
+                        <span className="block text-xs font-medium text-primary">เก็บเงินปลายทาง {formatNumber(codToCollect(o))}</span>
+                      ) : null}
+                      <span className="block truncate text-xs text-muted">
+                        {formatDateShort(o.orderDate)} · {o.customer.name}
+                      </span>
+                      <span className="block text-xs text-muted">
+                        {o.truckSize ? `${o.truckSize} คิว × ` : ''}
+                        {o.trips} เที่ยว · เก็บลูกค้า {formatNumber(o.deliveryTotal - o.deliveryDiscount)}
+                      </span>
+                      {zone?.driverFee ? (
+                        <span className="block text-xs text-muted">
+                          ต.{zone.name} · ค่ารถ {formatNumber(zone.driverFee)} × {o.trips} เที่ยว
+                        </span>
+                      ) : (
+                        <span className="block text-xs font-medium text-warning">
+                          {zone ? `ต.${zone.name} ยังไม่ได้ตั้งค่ารถคนขับ` : 'ออเดอร์นี้ไม่มีตำบล'} · ใส่ค่ารถเอง
+                        </span>
+                      )}
+                    </button>
+                    <div className="w-28 shrink-0">
+                      <Input
+                        aria-label={`ค่ารถ ${o.orderNo}`}
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        className="px-3 text-right tabular-nums"
+                        value={amounts[o.id] || ''}
+                        placeholder="0"
+                        onChange={(e) => setAmounts({ ...amounts, [o.id]: Math.max(0, Number(e.target.value) || 0) })}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
               {!inRange.length ? <li className="px-3 py-3 text-sm text-muted">ไม่มีออเดอร์ในช่วงวันที่นี้</li> : null}
             </ul>
             <p className="mt-1 px-1 text-xs text-muted">
-              ตั้งต้นจากค่าจ้างคนขับในออเดอร์ ถ้ายังไม่ได้ใส่จะใช้ค่าส่งที่เก็บจากลูกค้า แก้ตัวเลขได้ก่อนยืนยัน
+              ตั้งต้นจากค่ารถคนขับของตำบล × จำนวนเที่ยว (ตั้งได้ที่ ตั้งค่า › ค่าส่งตามตำบล) แก้ตัวเลขได้ก่อนยืนยัน
             </p>
           </div>
 

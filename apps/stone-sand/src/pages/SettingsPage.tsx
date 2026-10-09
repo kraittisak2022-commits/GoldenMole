@@ -230,6 +230,12 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
   );
 }
 
+const ZONE_FEE_COLUMNS = [
+  { key: 'feeMin', label: 'ลูกค้า ต่ำสุด' },
+  { key: 'feeMax', label: 'ลูกค้า สูงสุด' },
+  { key: 'driverFee', label: 'ค่ารถคนขับ' },
+] as const;
+
 function ZonesSection({
   zones,
   delivery,
@@ -245,16 +251,19 @@ function ZonesSection({
   const saver = useSaver(onSaved);
   const update = (id: string, patch: Partial<Zone>) => setRows(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const invalid = rows.find((r) => r.feeMax < r.feeMin);
-  const add = () => setRows([...rows, { id: `${NEW_PREFIX}${Date.now()}`, name: '', feeMin: 0, feeMax: 0, sortOrder: nextSort(rows) }]);
+  const add = () =>
+    setRows([...rows, { id: `${NEW_PREFIX}${Date.now()}`, name: '', feeMin: 0, feeMax: 0, driverFee: 0, sortOrder: nextSort(rows) }]);
   const remove = (z: Zone) => {
     if (isNew(z.id) || window.confirm(`ลบ ต.${z.name}? กดบันทึกเพื่อยืนยัน`)) setRows(rows.filter((r) => r.id !== z.id));
   };
-  const cols = isSuperAdmin ? 'grid-cols-[1fr_5.5rem_5.5rem_auto]' : 'grid-cols-[1fr_6rem_6rem]';
+  const cols = isSuperAdmin
+    ? 'grid-cols-[1fr_1fr_1fr_auto] sm:grid-cols-[1fr_6rem_6rem_6rem_auto]'
+    : 'grid-cols-3 sm:grid-cols-[1fr_6rem_6rem_6rem]';
 
   return (
     <Section
       title="ค่าส่งตามตำบล (บาท/เที่ยว)"
-      subtitle={`ใกล้ถนนใหญ่ไม่เกิน ${formatNumber(delivery.nearKm)} กม. คิดราคาต่ำสุด ไกลขึ้นคิดเพิ่มตามระยะจนถึงราคาสูงสุด`}
+      subtitle={`ค่าส่งที่ลูกค้าจ่าย: ใกล้ถนนใหญ่ไม่เกิน ${formatNumber(delivery.nearKm)} กม. คิดราคาต่ำสุด ไกลขึ้นคิดเพิ่มตามระยะจนถึงราคาสูงสุด · ค่ารถคนขับ: ใช้ตั้งต้นตอนเคลียร์ค่ารถ (× จำนวนเที่ยว)`}
       saver={saver}
       onSave={() =>
         saver.run(async () => {
@@ -269,50 +278,53 @@ function ZonesSection({
               continue;
             }
             const before = zones.find((z) => z.id === r.id);
-            if (before && (before.feeMin !== r.feeMin || before.feeMax !== r.feeMax || before.name !== r.name)) await saveZone(r);
+            if (
+              before &&
+              (before.feeMin !== r.feeMin || before.feeMax !== r.feeMax || before.driverFee !== r.driverFee || before.name !== r.name)
+            )
+              await saveZone(r);
           }
         })
       }
     >
       <div className="overflow-hidden rounded border border-border">
-        <div className={`grid ${cols} gap-2 bg-subtle px-3 py-2 text-xs font-medium text-muted`}>
+        <div className={`hidden ${cols} gap-2 bg-subtle px-3 py-2 text-xs font-medium text-muted sm:grid`}>
           <span>ตำบล</span>
-          <span>ต่ำสุด</span>
-          <span>สูงสุด</span>
+          {ZONE_FEE_COLUMNS.map((c) => (
+            <span key={c.key}>{c.label}</span>
+          ))}
           {isSuperAdmin ? <span className="w-11" /> : null}
         </div>
         <ul className="divide-y divide-border">
           {rows.map((z) => (
-            <li key={z.id} className={`grid ${cols} items-center gap-2 px-3 py-2`}>
-              {isSuperAdmin ? (
-                <Input
-                  aria-label="ชื่อตำบล"
-                  placeholder="ชื่อตำบล"
-                  value={z.name}
-                  onChange={(e) => update(z.id, { name: e.target.value })}
-                />
-              ) : (
-                <span className="text-sm font-medium">{z.name}</span>
-              )}
-              <Input
-                aria-label={`ค่าส่งต่ำสุด ${z.name}`}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                step={50}
-                value={z.feeMin}
-                onChange={(e) => update(z.id, { feeMin: num(e.target.value) })}
-              />
-              <Input
-                aria-label={`ค่าส่งสูงสุด ${z.name}`}
-                type="number"
-                inputMode="numeric"
-                min={0}
-                step={50}
-                value={z.feeMax}
-                invalid={z.feeMax < z.feeMin}
-                onChange={(e) => update(z.id, { feeMax: num(e.target.value) })}
-              />
+            <li key={z.id} className={`grid ${cols} items-end gap-2 px-3 py-2 sm:items-center`}>
+              <div className="col-span-full sm:col-span-1">
+                {isSuperAdmin ? (
+                  <Input
+                    aria-label="ชื่อตำบล"
+                    placeholder="ชื่อตำบล"
+                    value={z.name}
+                    onChange={(e) => update(z.id, { name: e.target.value })}
+                  />
+                ) : (
+                  <span className="text-sm font-medium">{z.name}</span>
+                )}
+              </div>
+              {ZONE_FEE_COLUMNS.map((c) => (
+                <label key={c.key} className="flex min-w-0 flex-col gap-1">
+                  <span className="text-xs text-muted sm:hidden">{c.label}</span>
+                  <Input
+                    aria-label={`${c.label} ${z.name}`}
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={50}
+                    value={z[c.key]}
+                    invalid={c.key === 'feeMax' && z.feeMax < z.feeMin}
+                    onChange={(e) => update(z.id, { [c.key]: num(e.target.value) })}
+                  />
+                </label>
+              ))}
               {isSuperAdmin ? <RemoveButton label={`ลบ ต.${z.name}`} onClick={() => remove(z)} /> : null}
             </li>
           ))}

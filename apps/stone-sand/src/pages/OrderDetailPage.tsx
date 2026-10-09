@@ -126,8 +126,7 @@ export default function OrderDetailPage() {
 
   const pickDriver = (value: string) => {
     setDriverId(value);
-    const d = driverById(value);
-    if (d) setWage(d.wagePerTrip * o.trips);
+    if (value && zone?.driverFee) setWage(zone.driverFee * o.trips);
   };
   const driverDirty = (driverId || null) !== o.driverId || wage !== o.driverWage;
   const saveDriver = () =>
