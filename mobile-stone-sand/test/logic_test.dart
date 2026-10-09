@@ -146,6 +146,40 @@ void main() {
         ['c1', OrderSource.pit, 800],
       ]);
     });
+
+    test('deducts partial payments once per statement', () {
+      Statement stm(String id, String status, double paid) => Statement.fromRow({
+            'id': id,
+            'status': status,
+            'total': 1500,
+            'payments': [
+              {'id': 'p-$id', 'amount': paid, 'method': 'cash', 'paid_at': '2026-10-05T03:00:00Z'},
+            ],
+          });
+      final paid = statementPaidMap([stm('stm-1', 'open', 700), stm('stm-2', 'cleared', 999)]);
+      expect(paid, {'stm-1': 700});
+      final rows = summarizeOutstanding([
+        base.copyWith(id: 'o1', total: 1000, statementId: 'stm-1'),
+        base.copyWith(id: 'o2', total: 500, statementId: 'stm-1'),
+        base.copyWith(id: 'o3', total: 200),
+      ], paid);
+      expect([rows.single.total, rows.single.unbilledTotal, rows.single.count], [1000, 200, 3]);
+    });
+
+    test('statement balance is the total less payments, 0 once cleared', () {
+      final s = Statement.fromRow({
+        'id': 's1',
+        'status': 'open',
+        'total': 5200,
+        'payments': [
+          {'id': 'p2', 'amount': 1000, 'method': 'transfer', 'paid_at': '2026-10-09T03:00:00Z'},
+          {'id': 'p1', 'amount': 2000, 'method': 'cash', 'paid_at': '2026-10-02T03:00:00Z'},
+        ],
+      });
+      expect([s.paidAmount, s.balance], [3000, 2200]);
+      expect(s.payments.map((p) => p.id), ['p1', 'p2']);
+      expect(Statement.fromRow({'status': 'cleared', 'total': 5200}).balance, 0);
+    });
   });
 
   group('driverMessage', () {

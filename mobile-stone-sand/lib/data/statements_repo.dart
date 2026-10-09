@@ -2,7 +2,9 @@ import '../models/models.dart';
 import 'db.dart';
 import 'scope.dart';
 
-const _statementSelect = '*, links:ss_statement_orders(order_id)';
+const _statementSelect =
+    '*, links:ss_statement_orders(order_id),'
+    ' payments:ss_payments!ss_payments_statement_id_fkey(id, amount, method, paid_at, note, created_by)';
 
 Future<List<Statement>> listStatements({String? customerId}) => guard(() async {
       var q = scoped(db.from('ss_statements').select(_statementSelect));
@@ -40,13 +42,30 @@ Future<Statement> createStatement({
   return s;
 }
 
+/// Records part (or the rest) of a statement; it clears once payments reach its total.
 /// [method]: 'cash' | 'transfer'
-Future<Statement> clearStatement(String id, String method, String by) async {
-  await guard(() => db.rpc('ss_clear_statement', params: {'p_statement_id': id, 'p_method': method, 'p_by': by}));
+Future<Statement> payStatement({
+  required String id,
+  required double amount,
+  required String method,
+  required String note,
+  required String by,
+}) async {
+  await guard(
+    () => db.rpc(
+      'ss_pay_statement',
+      params: {'p_statement_id': id, 'p_amount': amount, 'p_method': method, 'p_note': note, 'p_by': by},
+    ),
+  );
   final s = await getStatement(id);
   if (s == null) throw const AppException('ไม่พบใบวางบิล');
   notifyDataChanged();
   return s;
+}
+
+Future<void> deleteStatementPayment(String paymentId, String by) async {
+  await guard(() => db.rpc('ss_delete_statement_payment', params: {'p_payment_id': paymentId, 'p_by': by}));
+  notifyDataChanged();
 }
 
 /// Works on cleared statements too: their orders go back to outstanding.

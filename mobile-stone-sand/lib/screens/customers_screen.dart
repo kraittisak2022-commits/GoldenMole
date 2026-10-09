@@ -7,6 +7,7 @@ import '../auth/auth_scope.dart';
 import '../data/customers_repo.dart';
 import '../data/db.dart';
 import '../data/orders_repo.dart';
+import '../data/statements_repo.dart';
 import '../logic/customer_search.dart';
 import '../logic/format.dart';
 import '../logic/order_status.dart';
@@ -19,10 +20,10 @@ import '../widgets/page.dart';
 import '../widgets/ui.dart';
 import 'new_order/wizard_widgets.dart';
 
-/// Outstanding balance per customer id across both order sources.
-Map<String, double> customerBalances(List<Order> uncleared) {
+/// Outstanding balance per customer id across both order sources, less partial payments on open statements.
+Map<String, double> customerBalances(List<Order> uncleared, [List<Statement> statements = const []]) {
   final map = <String, double>{};
-  for (final row in summarizeOutstanding(uncleared)) {
+  for (final row in summarizeOutstanding(uncleared, statementPaidMap(statements))) {
     map[row.customerId] = (map[row.customerId] ?? 0) + row.total;
   }
   return map;
@@ -39,11 +40,12 @@ class CustomersScreen extends StatefulWidget {
 class _CustomersScreenState extends State<CustomersScreen> with ReloadOnDataChange {
   final _customers = Loader<List<Customer>>(listCustomers);
   final _uncleared = Loader<List<Order>>(() => listUnclearedOrders());
+  final _statements = Loader<List<Statement>>(() => listStatements());
   final _query = TextEditingController();
   bool _onlyOutstanding = false;
 
   @override
-  List<Loader<dynamic>> get loaders => [_customers, _uncleared];
+  List<Loader<dynamic>> get loaders => [_customers, _uncleared, _statements];
 
   @override
   void initState() {
@@ -61,6 +63,7 @@ class _CustomersScreenState extends State<CustomersScreen> with ReloadOnDataChan
   void dispose() {
     _customers.dispose();
     _uncleared.dispose();
+    _statements.dispose();
     _query.dispose();
     super.dispose();
   }
@@ -78,7 +81,7 @@ class _CustomersScreenState extends State<CustomersScreen> with ReloadOnDataChan
     return ListenableBuilder(
       listenable: Listenable.merge(loaders),
       builder: (context, _) {
-        final balances = customerBalances(_uncleared.data ?? const []);
+        final balances = customerBalances(_uncleared.data ?? const [], _statements.data ?? const []);
         final total = balances.values.fold<double>(0, (s, v) => s + v);
         final query = _query.text;
         final visible = (_customers.data ?? const <Customer>[])
@@ -217,11 +220,12 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> with Reload
   late Customer _c = widget.customer;
   late final _orders = Loader<List<Order>>(() => listOrders(customerId: _c.id, limit: 100));
   late final _uncleared = Loader<List<Order>>(() => listUnclearedOrders(customerId: _c.id));
+  late final _statements = Loader<List<Statement>>(() => listStatements(customerId: _c.id));
   bool _deleting = false;
   String _error = '';
 
   @override
-  List<Loader<dynamic>> get loaders => [_orders, _uncleared];
+  List<Loader<dynamic>> get loaders => [_orders, _uncleared, _statements];
 
   @override
   void initState() {
@@ -233,6 +237,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> with Reload
   void dispose() {
     _orders.dispose();
     _uncleared.dispose();
+    _statements.dispose();
     super.dispose();
   }
 
@@ -286,7 +291,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> with Reload
         listenable: Listenable.merge(loaders),
         builder: (context, _) {
           final orders = _orders.data ?? const <Order>[];
-          final balance = customerBalances(_uncleared.data ?? const [])[c.id] ?? 0;
+          final balance = customerBalances(_uncleared.data ?? const [], _statements.data ?? const [])[c.id] ?? 0;
           final spent = orders.where((o) => !o.cancelled).fold<double>(0, (s, o) => s + o.total);
           return RefreshIndicator(
             onRefresh: reloadAll,

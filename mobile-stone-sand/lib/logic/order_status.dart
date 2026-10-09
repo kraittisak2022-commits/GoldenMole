@@ -161,8 +161,15 @@ class CustomerOutstanding {
   String oldestDate;
 }
 
-List<CustomerOutstanding> summarizeOutstanding(List<Order> orders) {
+/// Partial payments already received on open statements, by statement id.
+Map<String, double> statementPaidMap(List<Statement> statements) => {
+  for (final s in statements)
+    if (!s.isCleared && s.paidAmount > 0) s.id: s.paidAmount,
+};
+
+List<CustomerOutstanding> summarizeOutstanding(List<Order> orders, [Map<String, double> paidByStatement = const {}]) {
   final map = <String, CustomerOutstanding>{};
+  final deducted = <String>{};
   for (final o in orders) {
     final amount = outstanding(o);
     if (amount == 0) continue;
@@ -179,6 +186,8 @@ List<CustomerOutstanding> summarizeOutstanding(List<Order> orders) {
     );
     row.total += amount;
     row.count += 1;
+    final sid = o.statementId;
+    if (sid != null && deducted.add(sid)) row.total -= paidByStatement[sid] ?? 0;
     if (o.statementId == null) {
       row.unbilledTotal += amount;
       row.unbilledCount += 1;

@@ -148,4 +148,44 @@ void main() {
     expect(find.text(DocKind.statement.th), findsOneWidget);
     expect(find.text('จำนวน 25 รายการ'), findsOneWidget);
   });
+
+  testWidgets('partly paid statement asks only for the rest', (tester) async {
+    final key = GlobalKey();
+    final orders = [_order, _order.copyWith(id: 'o2', orderNo: 'DO6910-0002')];
+    final s = Statement(
+      id: 's1',
+      statementNo: 'BL6910-0001',
+      source: OrderSource.shop,
+      customerId: 'c1',
+      customer: const CustomerSnapshot(name: 'ร้านทดสอบ'),
+      periodFrom: '2026-10-01',
+      periodTo: '2026-10-31',
+      total: 5000,
+      status: 'open',
+      verifyToken: 'st',
+      orderIds: [for (final o in orders) o.id],
+      payments: const [
+        StatementPayment(id: 'p1', amount: 2000, method: 'cash', paidAt: '2026-10-05T03:00:00Z'),
+      ],
+    );
+    await _pump(
+      tester,
+      BillA4Page(
+        child: BillDocument(
+          bill: billFromStatement(s, orders),
+          copy: BillCopy.original,
+          company: CompanySettings.defaults,
+          payment: _payment,
+          size: BillSize.a4,
+        ),
+      ),
+      key,
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('หัก รับชำระแล้ว'), findsOneWidget);
+    expect(find.text('-2,000.00'), findsOneWidget);
+    expect(find.text('คงค้างชำระ'), findsOneWidget);
+    expect(find.text('3,000.00'), findsOneWidget);
+    expect(find.textContaining('กรุณาชำระส่วนที่เหลือ', findRichText: true), findsOneWidget);
+  });
 }

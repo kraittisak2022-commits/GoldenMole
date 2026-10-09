@@ -24,6 +24,9 @@ const _s200 = Color(0xFFE2E8F0);
 const _s100 = Color(0xFFF1F5F9);
 const _s50 = Color(0xFFF8FAFC);
 const _emerald = Color(0xFF047857);
+const _amber600 = Color(0xFFD97706);
+const _amber700 = Color(0xFFB45309);
+const _amber800 = Color(0xFF92400E);
 const _stampInk = Color(0xFF1D4ED8);
 const _tab = [FontFeature.tabularFigures()];
 
@@ -162,7 +165,7 @@ class BillDocument extends StatelessWidget {
     final l = _layouts[size]!;
     final statement = b.kind == DocKind.statement;
     final showPromptPay = _payNow && payment.promptPayId.isNotEmpty;
-    final ppPayload = showPromptPay ? promptPayPayload(payment.promptPayId, b.total) : null;
+    final ppPayload = showPromptPay ? promptPayPayload(payment.promptPayId, _due) : null;
     final (customerSigner, companySigner) = _signers[b.kind]!;
 
     final body = Column(
@@ -440,12 +443,14 @@ class BillDocument extends StatelessWidget {
   bool get _showPayChannel =>
       !bill.paid && !bill.cancelled && (payment.qrPayload.isNotEmpty || payment.bankAccountNo.isNotEmpty);
 
+  bool get _partlyPaid => !bill.paid && bill.paidAmount > 0;
+
+  /// What is still owed: the total less partial payments on an open statement.
+  double get _due => _partlyPaid ? math.max(0, bill.total - bill.paidAmount) : bill.total;
+
   /// A credit delivery note is paid later through its statement, so it asks for no amount now.
   bool get _payNow =>
-      !bill.paid &&
-      !bill.cancelled &&
-      bill.total > 0 &&
-      (bill.kind == DocKind.statement || bill.paymentMethod != 'credit');
+      !bill.paid && !bill.cancelled && _due > 0 && (bill.kind == DocKind.statement || bill.paymentMethod != 'credit');
 
   /// Shop bank account and receiving QR, top right of an unpaid bill.
   Widget _payChannel(_Layout l) {
@@ -453,10 +458,10 @@ class BillDocument extends StatelessWidget {
     const hint = TextStyle(fontSize: 10, height: 1.3, color: _s500);
     final qr = payment.qrPayload.isEmpty
         ? ''
-        : billQrPayload(payment.qrPayload, ref: bill.docNo, amount: _payNow ? bill.total : null);
+        : billQrPayload(payment.qrPayload, ref: bill.docNo, amount: _payNow ? _due : null);
     final qrIsBill = qr.isNotEmpty && qr != payment.qrPayload.trim();
     final ref = qrIsBill ? qrReference(bill.docNo) : '';
-    final qrAmount = qrIsBill && _payNow ? bill.total : 0.0;
+    final qrAmount = qrIsBill && _payNow ? _due : 0.0;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(border: Border.all(color: _s300), borderRadius: BorderRadius.circular(6)),
@@ -684,10 +689,20 @@ class BillDocument extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('การชำระเงิน', style: TextStyle(fontWeight: FontWeight.w600, color: _s900)),
-            Text(b.paid
-                ? 'ชำระแล้ว${(b.paymentMethod ?? '').isNotEmpty ? ' (${paymentMethodLabel(b.paymentMethod)})' : ''}'
-                    '${(b.paidAt ?? '').isNotEmpty ? ' เมื่อ ${formatDateTh(b.paidAt)}' : ''}'
-                : 'กรุณาชำระตามยอดข้างต้น${payment.bankText.isNotEmpty ? ' · ${payment.bankText}' : ''}'),
+            if (_partlyPaid)
+              Text.rich(TextSpan(children: [
+                TextSpan(text: 'รับชำระแล้ว ${formatMoney(b.paidAmount)} บาท · กรุณาชำระส่วนที่เหลือ '),
+                TextSpan(
+                  text: '${formatMoney(_due)} บาท',
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: _amber700),
+                ),
+                if (payment.bankText.isNotEmpty) TextSpan(text: ' · ${payment.bankText}'),
+              ]))
+            else
+              Text(b.paid
+                  ? 'ชำระแล้ว${(b.paymentMethod ?? '').isNotEmpty ? ' (${paymentMethodLabel(b.paymentMethod)})' : ''}'
+                      '${(b.paidAt ?? '').isNotEmpty ? ' เมื่อ ${formatDateTh(b.paidAt)}' : ''}'
+                  : 'กรุณาชำระตามยอดข้างต้น${payment.bankText.isNotEmpty ? ' · ${payment.bankText}' : ''}'),
           ],
         ),
       ));
@@ -762,7 +777,7 @@ class BillDocument extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('สแกนจ่ายด้วยพร้อมเพย์', style: TextStyle(fontWeight: FontWeight.w600, color: _s900)),
-                    Text('ยอด ${formatMoney(b.total)} บาท'),
+                    Text('ยอด ${formatMoney(_due)} บาท'),
                     Text('พร้อมเพย์ ${payment.promptPayId}'),
                   ],
                 ),
@@ -812,6 +827,37 @@ class BillDocument extends StatelessWidget {
             ),
           ]),
         ),
+        if (_partlyPaid) ...[
+          const SizedBox(height: 4),
+          row('หัก รับชำระแล้ว', '-${formatMoney(b.paidAmount)}'),
+          Container(
+            margin: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              border: Border.all(color: _amber600, width: 2),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'คงค้างชำระ',
+                    style: TextStyle(fontWeight: FontWeight.w600, color: _amber800),
+                  ),
+                ),
+                Text(
+                  formatMoney(_due),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: _amber800,
+                    fontFeatures: _tab,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const Padding(
           padding: EdgeInsets.only(top: 4),
           child: Text('ราคานี้ไม่มีภาษีมูลค่าเพิ่ม', textAlign: TextAlign.right, style: TextStyle(fontSize: 10.5, color: _s500)),

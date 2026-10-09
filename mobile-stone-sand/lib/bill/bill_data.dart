@@ -46,6 +46,7 @@ class BillData {
     this.paymentMethod,
     required this.paid,
     this.paidAt,
+    this.paidAmount = 0,
     this.signDate,
     this.note,
     required this.cancelled,
@@ -73,6 +74,9 @@ class BillData {
   final String? paymentMethod;
   final bool paid;
   final String? paidAt;
+
+  /// Partial payments already received on an open statement.
+  final double paidAmount;
 
   /// Pre-filled date under the signatures; blank lines when null.
   final String? signDate;
@@ -204,6 +208,7 @@ BillData billFromStatement(Statement s, List<Order> orders) {
     paymentMethod: s.paymentMethod,
     paid: s.isCleared,
     paidAt: s.clearedAt,
+    paidAmount: s.isCleared ? 0 : s.paidAmount,
     note: s.note,
     cancelled: false,
     verifyToken: s.verifyToken,

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../calc/delivery_fee.dart';
 import '../calc/pricing.dart';
 import '../logic/customer_search.dart';
@@ -739,6 +741,7 @@ class Statement {
     this.createdBy,
     this.createdAt = '',
     this.orderIds = const [],
+    this.payments = const [],
     this.demo = false,
   });
 
@@ -762,9 +765,17 @@ class Statement {
   final String? createdBy;
   final String createdAt;
   final List<String> orderIds;
+
+  /// Oldest first.
+  final List<StatementPayment> payments;
   final bool demo;
 
   bool get isCleared => status == 'cleared';
+
+  double get paidAmount => payments.fold(0, (s, p) => s + p.amount);
+
+  /// total − paidAmount; 0 once cleared.
+  double get balance => isCleared ? 0 : math.max(0, total - paidAmount);
 
   factory Statement.fromRow(Map<String, dynamic> r) => Statement(
         id: _str(r['id']),
@@ -785,7 +796,43 @@ class Statement {
         orderIds: (r['links'] is List)
             ? (r['links'] as List).whereType<Map>().map((l) => _str(l['order_id'])).toList()
             : const [],
+        payments: (r['payments'] is List)
+            ? ((r['payments'] as List)
+                    .whereType<Map>()
+                    .map((p) => StatementPayment.fromRow(Map<String, dynamic>.from(p)))
+                    .toList()
+                  ..sort((a, b) => a.paidAt.compareTo(b.paidAt)))
+            : const [],
         demo: r['demo_session'] != null,
+      );
+}
+
+class StatementPayment {
+  const StatementPayment({
+    required this.id,
+    required this.amount,
+    required this.method,
+    required this.paidAt,
+    this.note = '',
+    this.createdBy,
+  });
+
+  final String id;
+  final double amount;
+
+  /// 'cash' | 'transfer'
+  final String method;
+  final String paidAt;
+  final String note;
+  final String? createdBy;
+
+  factory StatementPayment.fromRow(Map<String, dynamic> r) => StatementPayment(
+        id: _str(r['id']),
+        amount: _num(r['amount']),
+        method: r['method'] == 'transfer' ? 'transfer' : 'cash',
+        paidAt: _str(r['paid_at']),
+        note: _str(r['note']),
+        createdBy: r['created_by'] as String?,
       );
 }
 

@@ -65,9 +65,12 @@ class _StatementsScreenState extends State<StatementsScreen> with ReloadOnDataCh
     super.dispose();
   }
 
+  List<CustomerOutstanding> get _summary =>
+      summarizeOutstanding(_uncleared.data ?? const [], statementPaidMap(_statements.data ?? const []));
+
   void _openCreate(String customerId, OrderSource? source) {
     final auth = AuthScope.read(context);
-    final summary = summarizeOutstanding(_uncleared.data ?? const []);
+    final summary = _summary;
     final picked =
         auth.lockedSource ??
         source ??
@@ -81,8 +84,10 @@ class _StatementsScreenState extends State<StatementsScreen> with ReloadOnDataCh
   }
 
   Future<void> _clear(Statement s) async {
-    final ok = await showClearStatementSheet(context, s);
-    if (ok && mounted) showSnack(context, 'เคลียร์บิล ${s.statementNo} แล้ว');
+    final cleared = await showReceivePaymentSheet(context, s);
+    if (cleared != null && mounted) {
+      showSnack(context, cleared ? 'เคลียร์บิล ${s.statementNo} แล้ว' : 'บันทึกรับชำระ ${s.statementNo} แล้ว');
+    }
   }
 
   Future<void> _remove(Statement s) async {
@@ -111,10 +116,10 @@ class _StatementsScreenState extends State<StatementsScreen> with ReloadOnDataCh
     return ListenableBuilder(
       listenable: Listenable.merge(loaders),
       builder: (context, _) {
-        final summary = summarizeOutstanding(_uncleared.data ?? const []);
+        final summary = _summary;
         final all = _statements.data ?? const <Statement>[];
         final visible = all.where(_filter.matches).toList();
-        final openTotal = all.where((s) => !s.isCleared).fold<double>(0, (sum, s) => sum + s.total);
+        final openTotal = all.where((s) => !s.isCleared).fold<double>(0, (sum, s) => sum + s.balance);
         final counts = {for (final f in StatementFilter.values) f: all.where(f.matches).length};
         return TourMarker(
           page: TourPage.statements,
@@ -171,6 +176,7 @@ class _StatementsScreenState extends State<StatementsScreen> with ReloadOnDataCh
                             for (final (i, s) in visible.indexed) ...[
                               if (i > 0) const Divider(height: 1),
                               _StatementRow(
+                                key: ValueKey(s.id),
                                 statement: s,
                                 highlight: s.id == highlight,
                                 canDelete: !s.isCleared || superAdmin,
@@ -247,8 +253,9 @@ class _OutstandingRow extends StatelessWidget {
   }
 }
 
-class _StatementRow extends StatelessWidget {
+class _StatementRow extends StatefulWidget {
   const _StatementRow({
+    super.key,
     required this.statement,
     required this.highlight,
     required this.canDelete,
@@ -262,8 +269,15 @@ class _StatementRow extends StatelessWidget {
   final VoidCallback onDelete;
 
   @override
+  State<_StatementRow> createState() => _StatementRowState();
+}
+
+class _StatementRowState extends State<_StatementRow> {
+  late bool _expanded = widget.highlight;
+
+  @override
   Widget build(BuildContext context) {
-    final s = statement;
+    final s = widget.statement;
     final tourRow = s.demo && !s.isCleared;
     final row = _row(context, s, tourRow);
     return tourRow ? TourTarget('st-demo-row', child: row) : row;
@@ -272,60 +286,94 @@ class _StatementRow extends StatelessWidget {
   Widget _row(BuildContext context, Statement s, bool tourRow) {
     final clear = FilledButton.icon(
       style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-      onPressed: onClear,
+      onPressed: widget.onClear,
       icon: const Icon(Icons.check, size: 18),
       label: const Text('เคลียร์บิล'),
     );
+    final partial = !s.isCleared && s.paidAmount > 0;
     return Container(
-      color: highlight ? AppColors.warningSoft : null,
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+      color: widget.highlight ? AppColors.warningSoft : null,
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          s.statementNo,
-                          style: const TextStyle(fontWeight: FontWeight.w500, fontFeatures: tabular),
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, right: 6),
+                  child: AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 150),
+                    child: const Icon(Icons.expand_more, size: 20, color: AppColors.muted),
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            s.statementNo,
+                            style: const TextStyle(fontWeight: FontWeight.w500, fontFeatures: tabular),
+                          ),
+                          SourceBadge(s.source),
+                          if (s.demo) const DemoBadge(),
+                          if (s.isCleared)
+                            AppBadge(
+                              'เคลียร์แล้ว${(s.paymentMethod ?? '').isNotEmpty ? ' · ${PaymentMethod.parse(s.paymentMethod).label}' : ''}',
+                              tone: BadgeTone.success,
+                            )
+                          else if (partial)
+                            AppBadge('จ่ายบางส่วน · ${s.payments.length} ครั้ง', tone: BadgeTone.info)
+                          else
+                            const AppBadge('รอเคลียร์', tone: BadgeTone.warning),
+                        ],
+                      ),
+                      Text(s.customer.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(
+                        '${formatDateShort(s.periodFrom)} – ${formatDateShort(s.periodTo)} · ${s.orderIds.length} ออเดอร์',
+                        style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: partial
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'ค้าง ${formatMoney(s.balance)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.warning,
+                                fontFeatures: tabular,
+                              ),
+                            ),
+                            Text(
+                              'จ่ายแล้ว ${formatMoney(s.paidAmount)} / ${formatMoney(s.total)}',
+                              style: const TextStyle(fontSize: 12, color: AppColors.muted, fontFeatures: tabular),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          formatMoney(s.total),
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontFeatures: tabular),
                         ),
-                        SourceBadge(s.source),
-                        if (s.demo) const DemoBadge(),
-                        if (s.isCleared)
-                          AppBadge(
-                            'เคลียร์แล้ว${(s.paymentMethod ?? '').isNotEmpty ? ' · ${PaymentMethod.parse(s.paymentMethod).label}' : ''}',
-                            tone: BadgeTone.success,
-                          )
-                        else
-                          const AppBadge('รอเคลียร์', tone: BadgeTone.warning),
-                      ],
-                    ),
-                    Text(s.customer.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    Text(
-                      '${formatDateShort(s.periodFrom)} – ${formatDateShort(s.periodTo)} · ${s.orderIds.length} ออเดอร์',
-                      style: const TextStyle(fontSize: 12, color: AppColors.muted),
-                    ),
-                  ],
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Text(
-                  formatMoney(s.total),
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontFeatures: tabular),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
+          if (_expanded) ...[const SizedBox(height: 8), _StatementDetails(statement: s)],
           const SizedBox(height: 8),
           Row(
             children: [
@@ -339,10 +387,10 @@ class _StatementRow extends StatelessWidget {
                 Expanded(child: tourRow ? TourTarget('st-clear', child: clear) : clear)
               else
                 const Spacer(),
-              if (canDelete)
+              if (widget.canDelete)
                 IconButton(
                   tooltip: 'ลบ ${s.statementNo}',
-                  onPressed: onDelete,
+                  onPressed: widget.onDelete,
                   icon: const Icon(Icons.delete_outline, color: AppColors.muted),
                 ),
             ],
@@ -353,32 +401,250 @@ class _StatementRow extends StatelessWidget {
   }
 }
 
-/// Asks for cash/transfer and clears the statement; true when it was cleared.
-Future<bool> showClearStatementSheet(BuildContext context, Statement s) async {
-  final by = AuthScope.read(context).by;
-  final ok = await showAppSheet<bool>(
-    context,
-    title: 'ยืนยันเคลียร์บิล',
-    builder: (ctx) => _ClearSheet(statement: s, by: by),
-  );
-  return ok ?? false;
+/// The statement's orders and payments, loaded when the row is expanded.
+class _StatementDetails extends StatefulWidget {
+  const _StatementDetails({required this.statement});
+  final Statement statement;
+
+  @override
+  State<_StatementDetails> createState() => _StatementDetailsState();
 }
 
-class _ClearSheet extends StatefulWidget {
-  const _ClearSheet({required this.statement, required this.by});
+class _StatementDetailsState extends State<_StatementDetails> {
+  late final _orders = Loader<List<Order>>(() => getOrdersByIds(widget.statement.orderIds));
+
+  @override
+  void initState() {
+    super.initState();
+    _orders.load();
+  }
+
+  @override
+  void dispose() {
+    _orders.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.statement;
+    const small = TextStyle(fontSize: 12, color: AppColors.muted);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.subtle.withValues(alpha: 0.5),
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('รายการในใบวางบิล', style: TextStyle(fontWeight: FontWeight.w500)),
+          Text(
+            'รอบบิล ${formatDateShort(s.periodFrom)} – ${formatDateShort(s.periodTo)} · ออกเมื่อ ${formatDateTime(s.createdAt)}'
+            '${(s.createdBy ?? '').isNotEmpty ? ' · โดย ${s.createdBy}' : ''}',
+            style: small,
+          ),
+          const SizedBox(height: 8),
+          ListenableBuilder(
+            listenable: _orders,
+            builder: (context, _) {
+              if (_orders.error != null) return ErrorBox(_orders.error!, onRetry: _orders.load);
+              if (_orders.pending) return const LoadingList();
+              final rows = [...?_orders.data]
+                ..sort(
+                  (a, b) =>
+                      a.orderDate != b.orderDate ? a.orderDate.compareTo(b.orderDate) : a.orderNo.compareTo(b.orderNo),
+                );
+              return AppCard(
+                child: rows.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Text('ไม่พบออเดอร์ในใบวางบิลนี้', style: TextStyle(color: AppColors.muted)),
+                      )
+                    : Column(
+                        children: [
+                          for (final (i, o) in rows.indexed) ...[
+                            if (i > 0) const Divider(height: 1),
+                            InkWell(
+                              onTap: () => openOrder(context, o.id),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Wrap(
+                                            spacing: 6,
+                                            crossAxisAlignment: WrapCrossAlignment.center,
+                                            children: [
+                                              Text(
+                                                o.orderNo,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w500,
+                                                  color: AppColors.primary,
+                                                  fontFeatures: tabular,
+                                                ),
+                                              ),
+                                              Text(formatDateShort(o.orderDate), style: small),
+                                              if ((o.receiptNo ?? '').isNotEmpty)
+                                                Text('ใบเสร็จ ${o.receiptNo}', style: small),
+                                              if (o.cancelled) const AppBadge('ยกเลิก', tone: BadgeTone.danger),
+                                            ],
+                                          ),
+                                          Text(
+                                            '${o.items.map((it) => '${it.name} ${formatNumber(it.quantity)} ${it.unit}').join(', ')}'
+                                            '${o.fulfillment == Fulfillment.delivery ? ' · ส่ง ${o.trips} เที่ยว' : ' · มารับเอง'}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: small,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      formatMoney(o.total),
+                                      style: const TextStyle(fontWeight: FontWeight.w500, fontFeatures: tabular),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _AmountLine(label: 'รวม ${s.orderIds.length} ออเดอร์', value: formatMoney(s.total), bold: true),
+                for (final p in s.payments)
+                  _AmountLine(
+                    label:
+                        'รับชำระ ${formatDateTime(p.paidAt)} · ${PaymentMethod.parse(p.method).label}'
+                        '${p.note.isNotEmpty ? ' · ${p.note}' : ''}',
+                    value: '-${formatMoney(p.amount)}',
+                    color: AppColors.success,
+                    small: true,
+                  ),
+                const Divider(height: 12),
+                _AmountLine(
+                  label: s.isCleared ? 'เคลียร์แล้ว' : 'ค้างชำระ',
+                  value: s.isCleared
+                      ? (s.clearedAt != null ? formatDateTime(s.clearedAt) : '')
+                      : formatMoney(s.balance),
+                  color: s.isCleared ? AppColors.success : AppColors.warning,
+                  bold: true,
+                ),
+              ],
+            ),
+          ),
+          if (s.note.isNotEmpty) ...[const SizedBox(height: 6), Text('หมายเหตุ: ${s.note}', style: small)],
+        ],
+      ),
+    );
+  }
+}
+
+class _AmountLine extends StatelessWidget {
+  const _AmountLine({required this.label, required this.value, this.color, this.bold = false, this.small = false});
+  final String label;
+  final String value;
+  final Color? color;
+  final bool bold;
+  final bool small;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: small ? 12 : 14,
+                color: bold ? null : AppColors.muted,
+                fontWeight: bold ? FontWeight.w500 : null,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: small ? 12 : 14,
+              color: color,
+              fontWeight: bold ? FontWeight.w700 : null,
+              fontFeatures: tabular,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Records a full or partial payment on the statement. Returns true when it cleared,
+/// false when a partial payment was saved, null when nothing was saved.
+Future<bool?> showReceivePaymentSheet(BuildContext context, Statement s) {
+  final by = AuthScope.read(context).by;
+  return showAppSheet<bool>(
+    context,
+    title: 'รับชำระ / เคลียร์บิล',
+    builder: (ctx) => _ReceivePaymentSheet(statement: s, by: by),
+  );
+}
+
+enum _PayMode { full, partial }
+
+class _ReceivePaymentSheet extends StatefulWidget {
+  const _ReceivePaymentSheet({required this.statement, required this.by});
   final Statement statement;
   final String by;
 
   @override
-  State<_ClearSheet> createState() => _ClearSheetState();
+  State<_ReceivePaymentSheet> createState() => _ReceivePaymentSheetState();
 }
 
-class _ClearSheetState extends State<_ClearSheet> {
+class _ReceivePaymentSheetState extends State<_ReceivePaymentSheet> {
+  late Statement _s = widget.statement;
+  _PayMode _mode = _PayMode.full;
+  final _amount = TextEditingController();
+  final _note = TextEditingController();
   String? _method;
   bool _busy = false;
   String _error = '';
 
-  Future<void> _confirm() async {
+  @override
+  void dispose() {
+    _amount.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  double get _partialAmount => ((double.tryParse(_amount.text.replaceAll(',', '')) ?? 0) * 100).round() / 100;
+
+  String get _partialProblem {
+    if (_mode != _PayMode.partial) return '';
+    final a = _partialAmount;
+    if (a <= 0) return 'ใส่ยอดที่ลูกค้าจ่ายมา';
+    if (a >= _s.balance) return 'ยอดเท่ากับหรือเกินยอดค้าง เลือก "จ่ายครบ" แทน';
+    return '';
+  }
+
+  Future<void> _submit(double amount) async {
     final method = _method;
     if (method == null) return;
     setState(() {
@@ -386,50 +652,221 @@ class _ClearSheetState extends State<_ClearSheet> {
       _error = '';
     });
     try {
-      await clearStatement(widget.statement.id, method, widget.by);
-      if (mounted) Navigator.of(context).pop(true);
+      final s = await payStatement(id: _s.id, amount: amount, method: method, note: _note.text.trim(), by: widget.by);
+      if (mounted) Navigator.of(context).pop(s.isCleared);
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = errorText(e, 'เคลียร์บิลไม่สำเร็จ');
+          _error = errorText(e, 'บันทึกรับชำระไม่สำเร็จ');
           _busy = false;
         });
       }
     }
   }
 
+  Future<void> _removePayment(StatementPayment p) async {
+    final ok = await confirmDialog(
+      context,
+      title: 'ลบการรับชำระ ${formatMoney(p.amount)} บาท?',
+      message: formatDateTime(p.paidAt),
+      confirmLabel: 'ลบ',
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    setState(() {
+      _busy = true;
+      _error = '';
+    });
+    try {
+      await deleteStatementPayment(p.id, widget.by);
+      final s = await getStatement(_s.id);
+      if (mounted && s != null) setState(() => _s = s);
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e, 'ลบไม่สำเร็จ'));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final s = widget.statement;
+    final s = _s;
+    final balance = s.balance;
+    final partialAmount = _partialAmount;
+    final amount = _mode == _PayMode.full ? balance : partialAmount;
+    final problem = _partialProblem;
+    final remaining = math.max(0.0, ((balance - amount) * 100).round() / 100);
+    final ready = _method != null && amount > 0 && problem.isEmpty;
+    const muted = TextStyle(fontSize: 14, color: AppColors.muted);
     return TourTarget(
       'st-clear-modal',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('${s.statementNo} · ${s.customer.name}', style: const TextStyle(fontSize: 14)),
-          Text(
-            '${formatMoney(s.total)} บาท',
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primary,
-              fontFeatures: tabular,
+          Text('${s.statementNo} · ${s.customer.name}', style: muted),
+          const SizedBox(height: 8),
+          AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _AmountLine(label: 'ยอดใบวางบิล', value: formatMoney(s.total)),
+                if (s.paidAmount > 0)
+                  _AmountLine(
+                    label: 'รับชำระแล้ว ${s.payments.length} ครั้ง',
+                    value: '-${formatMoney(s.paidAmount)}',
+                    color: AppColors.success,
+                  ),
+                const Divider(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    const Expanded(
+                      child: Text('ยอดค้างชำระ', style: TextStyle(fontWeight: FontWeight.w500)),
+                    ),
+                    Text(
+                      formatMoney(balance),
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                        fontFeatures: tabular,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
+          if (s.payments.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('ประวัติรับชำระ', style: TextStyle(fontWeight: FontWeight.w500)),
+            const SizedBox(height: 6),
+            AppCard(
+              child: Column(
+                children: [
+                  for (final (i, p) in s.payments.indexed) ...[
+                    if (i > 0) const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${formatDateTime(p.paidAt)} · ${PaymentMethod.parse(p.method).label}',
+                                  style: const TextStyle(fontFeatures: tabular),
+                                ),
+                                if (p.note.isNotEmpty || (p.createdBy ?? '').isNotEmpty)
+                                  Text(
+                                    [
+                                      p.note,
+                                      if ((p.createdBy ?? '').isNotEmpty) 'โดย ${p.createdBy}',
+                                    ].where((t) => t.isNotEmpty).join(' · '),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            formatMoney(p.amount),
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontFeatures: tabular),
+                          ),
+                          IconButton(
+                            tooltip: 'ลบการรับชำระ ${formatMoney(p.amount)}',
+                            onPressed: _busy ? null : () => _removePayment(p),
+                            icon: const Icon(Icons.delete_outline, color: AppColors.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
+          const Text('ลูกค้าจ่าย', style: TextStyle(fontWeight: FontWeight.w500)),
+          const SizedBox(height: 6),
+          Semantics(
+            label: 'ลูกค้าจ่าย',
+            child: Segmented<_PayMode>(
+              values: _PayMode.values,
+              selected: _mode,
+              labelOf: (m) => m == _PayMode.full ? 'จ่ายครบ' : 'จ่ายบางส่วน',
+              trailingOf: (m) => m == _PayMode.full ? formatMoney(balance) : 'ระบุยอดเอง',
+              onChanged: (m) => setState(() => _mode = m),
+            ),
+          ),
+          if (_mode == _PayMode.partial) ...[
+            const SizedBox(height: 12),
+            FieldLabel(
+              'ยอดที่ได้รับ (บาท)',
+              child: TextField(
+                controller: _amount,
+                autofocus: true,
+                textAlign: TextAlign.right,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(fontSize: 18, fontFeatures: tabular),
+                decoration: InputDecoration(
+                  hintText: '0.00',
+                  errorText: _amount.text.isNotEmpty && problem.isNotEmpty ? problem : null,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
           PayMethodPicker(value: _method, onChanged: (m) => setState(() => _method = m), hints: _clearHints),
           const SizedBox(height: 12),
-          const Text(
-            'ทุกออเดอร์ในใบวางบิลนี้จะเปลี่ยนเป็น "จ่ายแล้ว" และออกเลขใบเสร็จให้อัตโนมัติ',
-            style: TextStyle(fontSize: 14, color: AppColors.muted),
+          FieldLabel(
+            'หมายเหตุ (ถ้ามี)',
+            child: TextField(
+              controller: _note,
+              decoration: const InputDecoration(hintText: 'เช่น โอนงวดแรก'),
+            ),
           ),
+          const SizedBox(height: 12),
+          if (_mode == _PayMode.partial && partialAmount > 0 && problem.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.warningSoft,
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _AmountLine(label: 'รับครั้งนี้', value: formatMoney(partialAmount)),
+                  _AmountLine(
+                    label: 'ค้างชำระหลังรับ',
+                    value: formatMoney(remaining),
+                    color: AppColors.warning,
+                    bold: true,
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'ใบวางบิลยังเปิดไว้เก็บส่วนที่เหลือ ออเดอร์ยังเป็นค้างจ่ายจนกว่าจะรับครบ',
+                    style: TextStyle(fontSize: 12, color: AppColors.muted),
+                  ),
+                ],
+              ),
+            )
+          else if (_mode == _PayMode.full)
+            const Text('ทุกออเดอร์ในใบวางบิลนี้จะเปลี่ยนเป็น "จ่ายแล้ว" และออกเลขใบเสร็จให้อัตโนมัติ', style: muted),
           if (_error.isNotEmpty) ...[const SizedBox(height: 12), ErrorBox(_error)],
           const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: _busy ? null : () => Navigator.of(context).pop(false),
+                  onPressed: _busy ? null : () => Navigator.of(context).pop(),
                   child: const Text('ยกเลิก'),
                 ),
               ),
@@ -437,9 +874,15 @@ class _ClearSheetState extends State<_ClearSheet> {
               Expanded(
                 child: FilledButton.icon(
                   style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-                  onPressed: _busy || _method == null ? null : _confirm,
+                  onPressed: _busy || !ready ? null : () => _submit(amount),
                   icon: const Icon(Icons.check, size: 18),
-                  label: Text(_busy ? 'กำลังบันทึก…' : 'ยืนยันเคลียร์บิล'),
+                  label: Text(
+                    _busy
+                        ? 'กำลังบันทึก…'
+                        : _mode == _PayMode.full
+                        ? 'ยืนยันเคลียร์บิล'
+                        : 'บันทึกรับ ${formatMoney(partialAmount)}',
+                  ),
                 ),
               ),
             ],

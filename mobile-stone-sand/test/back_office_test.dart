@@ -7,6 +7,7 @@ import 'package:mobile_stone_sand/screens/customers_screen.dart';
 import 'package:mobile_stone_sand/screens/driver_pay_screen.dart';
 import 'package:mobile_stone_sand/screens/drivers_screen.dart';
 import 'package:mobile_stone_sand/screens/settings_screen.dart';
+import 'package:mobile_stone_sand/screens/statements_screen.dart';
 import 'package:mobile_stone_sand/widgets/ui.dart';
 
 const _snap = CustomerSnapshot(name: 'ร้านทดสอบ');
@@ -95,6 +96,48 @@ void main() {
     expect(find.text('จ่ายค่ารถด้วย'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'ยืนยันจ่ายค่ารถ 600.00'), findsOneWidget);
     expect(find.text('เลือกทั้งหมด (1/2)'), findsOneWidget);
+  });
+
+  testWidgets('statement payment sheet takes a partial amount below the balance', (tester) async {
+    _tallView(tester);
+    final s = Statement.fromRow({
+      'id': 's1',
+      'statement_no': 'BL6810-0001',
+      'customer_snapshot': {'name': 'ร้านทดสอบ'},
+      'status': 'open',
+      'total': 5000,
+      'payments': [
+        {'id': 'p1', 'amount': 2000, 'method': 'cash', 'paid_at': '2026-10-05T03:00:00Z', 'note': 'งวดแรก'},
+      ],
+    });
+    await tester.pumpWidget(_host(Builder(
+      builder: (context) => Scaffold(
+        body: TextButton(onPressed: () => showReceivePaymentSheet(context, s), child: const Text('open')),
+      ),
+    )));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('รับชำระแล้ว 1 ครั้ง'), findsOneWidget);
+    expect(find.text('3,000.00'), findsWidgets);
+    expect(find.text('ประวัติรับชำระ'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'ยืนยันเคลียร์บิล'), findsOneWidget);
+
+    await tester.tap(find.textContaining('จ่ายบางส่วน', findRichText: true));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField).first, '3000');
+    await tester.pump();
+    expect(find.text('ยอดเท่ากับหรือเกินยอดค้าง เลือก "จ่ายครบ" แทน'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, '1200');
+    await tester.pump();
+    expect(find.text('ค้างชำระหลังรับ'), findsOneWidget);
+    expect(find.text('1,800.00'), findsOneWidget);
+    final save = find.widgetWithText(FilledButton, 'บันทึกรับ 1,200.00');
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    await tester.tap(find.text('เงินสด'));
+    await tester.pump();
+    expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
   });
 
   testWidgets('driver form requires a name', (tester) async {
