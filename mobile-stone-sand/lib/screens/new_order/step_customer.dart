@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../data/customers_repo.dart';
 import '../../data/db.dart';
@@ -335,9 +336,10 @@ class _StepCustomerState extends State<StepCustomer> {
             'เบอร์โทร',
             child: TextField(
               controller: _phone,
-              keyboardType: TextInputType.phone,
+              keyboardType: TextInputType.number,
               textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(hintText: '0xx-xxx-xxxx'),
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+              decoration: const InputDecoration(hintText: '0xxxxxxxxx'),
             ),
           ),
           const SizedBox(height: 16),
@@ -347,13 +349,20 @@ class _StepCustomerState extends State<StepCustomer> {
               controller: _address,
               minLines: 2,
               maxLines: 4,
+              keyboardType: TextInputType.text,
+              textInputAction: TextInputAction.done,
               decoration: const InputDecoration(hintText: 'บ้านเลขที่ หมู่ ตำบล'),
             ),
           ),
           const SizedBox(height: 16),
           FieldLabel(
             'เลขผู้เสียภาษี (ถ้ามี)',
-            child: TextField(controller: _taxId, keyboardType: TextInputType.number),
+            child: TextField(
+              controller: _taxId,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(13)],
+            ),
           ),
           const SizedBox(height: 8),
           CheckRow(

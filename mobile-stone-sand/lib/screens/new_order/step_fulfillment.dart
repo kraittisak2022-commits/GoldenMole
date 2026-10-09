@@ -528,6 +528,8 @@ class _StepFulfillmentState extends State<StepFulfillment> {
               controller: _address,
               minLines: 2,
               maxLines: 4,
+              keyboardType: TextInputType.text,
+              textInputAction: TextInputAction.done,
               decoration: const InputDecoration(hintText: 'บ้านเลขที่ หมู่บ้าน จุดสังเกต'),
               onChanged: (v) => widget.patch((st) => st.copyWith(deliveryAddress: v)),
             ),
@@ -618,6 +620,7 @@ class _StepFulfillmentState extends State<StepFulfillment> {
                   'ค่าส่ง / คิว',
                   hint: s.feeTouched && zone != null ? null : 'ตามตำบล',
                   child: NumberField(
+                    decimal: false,
                     value: s.feePerCubic,
                     onChanged: (v) => widget.patch((st) => st.copyWith(feePerCubic: v < 0 ? 0 : v, feeTouched: true)),
                   ),
@@ -629,6 +632,7 @@ class _StepFulfillmentState extends State<StepFulfillment> {
                   'เพิ่มตามระยะ / เที่ยว',
                   hint: s.feeTouched && zone != null ? null : 'จากระยะถึงถนนใหญ่',
                   child: NumberField(
+                    decimal: false,
                     value: s.feePerTrip,
                     onChanged: (v) => widget.patch((st) => st.copyWith(feePerTrip: v < 0 ? 0 : v, feeTouched: true)),
                   ),
@@ -644,6 +648,7 @@ class _StepFulfillmentState extends State<StepFulfillment> {
                 child: FieldLabel(
                   'ที่กันดาร (บวกเพิ่ม)',
                   child: NumberField(
+                    decimal: false,
                     value: s.remoteSurcharge,
                     onChanged: (v) => widget.patch((st) => st.copyWith(remoteSurcharge: v < 0 ? 0 : v)),
                   ),

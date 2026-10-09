@@ -169,6 +169,7 @@ class _NumberFieldState extends State<NumberField> {
       enabled: widget.enabled,
       textAlign: widget.textAlign,
       keyboardType: TextInputType.numberWithOptions(decimal: widget.decimal),
+      textInputAction: TextInputAction.done,
       inputFormatters: [
         FilteringTextInputFormatter.allow(widget.decimal ? RegExp(r'[0-9.]') : RegExp(r'[0-9]')),
       ],

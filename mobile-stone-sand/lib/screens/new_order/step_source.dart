@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../logic/format.dart';
 import '../../models/models.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/calendar_picker.dart';
 import '../../widgets/ui.dart';
 import 'wizard_widgets.dart';
 
@@ -26,16 +27,10 @@ class StepSource extends StatelessWidget {
   final ValueChanged<String> onDateChange;
 
   Future<void> _pick(BuildContext context, String date) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: toDate(date) ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(DateTime.now().year + 2, 12, 31),
-      helpText: 'เลือกวันที่ออเดอร์',
-    );
+    final today = toIsoDate();
+    final picked = await showCalendarPicker(context, value: date, today: today);
     if (picked == null) return;
-    final iso = toIsoDate(picked);
-    onDateChange(iso == toIsoDate() ? '' : iso);
+    onDateChange(picked == today ? '' : picked);
   }
 
   @override

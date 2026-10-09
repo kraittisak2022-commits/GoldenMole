@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../data/db.dart' show Prefs;
 import '../logic/geo.dart';
 import '../logic/latlng.dart';
 import '../logic/road_route.dart' show pathMidpoint;
@@ -11,6 +12,9 @@ import '../theme/app_theme.dart';
 const _districtCenter = LatLng(districtCenterLat, districtCenterLng);
 const _pinW = 32.0;
 const _pinH = 42.0;
+const _esri = 'https://server.arcgisonline.com/ArcGIS/rest/services';
+const _ua = 'com.goldenmole.stonesand';
+const _mapTypeKey = 'ss_map_type';
 const _routeColor = Color(0xFF2563EB);
 const _roadStartColor = Color(0xFFD97706);
 
@@ -58,6 +62,22 @@ class _DeliveryMapState extends State<DeliveryMap> {
   LatLng? _dragging;
   Offset _tipOffset = Offset.zero;
   bool _ready = false;
+  bool _satellite = _readSatellite();
+
+  static bool _readSatellite() {
+    try {
+      return Prefs.instance.getString(_mapTypeKey) == 'satellite';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _setSatellite(bool sat) {
+    setState(() => _satellite = sat);
+    try {
+      Prefs.instance.setString(_mapTypeKey, sat ? 'satellite' : 'map');
+    } catch (_) {}
+  }
 
   @override
   void initState() {
@@ -117,10 +137,18 @@ class _DeliveryMapState extends State<DeliveryMap> {
         ),
       ),
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.goldenmole.stonesand',
-        ),
+        if (_satellite) ...[
+          TileLayer(urlTemplate: '$_esri/World_Imagery/MapServer/tile/{z}/{y}/{x}', userAgentPackageName: _ua),
+          TileLayer(
+            urlTemplate: '$_esri/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+            userAgentPackageName: _ua,
+          ),
+          TileLayer(
+            urlTemplate: '$_esri/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+            userAgentPackageName: _ua,
+          ),
+        ] else
+          TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: _ua),
         if (geo != null && geo.districtOutline.isNotEmpty)
           PolygonLayer(
             polygons: [
@@ -231,11 +259,21 @@ class _DeliveryMapState extends State<DeliveryMap> {
         RichAttributionWidget(
           showFlutterMapAttribution: false,
           attributions: [
-            TextSourceAttribution(
-              'OpenStreetMap contributors',
-              onTap: () => launchUrl(Uri.parse('https://www.openstreetmap.org/copyright')),
-            ),
+            if (_satellite)
+              const TextSourceAttribution('Imagery © Esri, Maxar, Earthstar Geographics')
+            else
+              TextSourceAttribution(
+                'OpenStreetMap contributors',
+                onTap: () => launchUrl(Uri.parse('https://www.openstreetmap.org/copyright')),
+              ),
           ],
+        ),
+        Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: _MapTypeToggle(satellite: _satellite, onChanged: _setSatellite),
+          ),
         ),
         if (widget.onExpand != null)
           Align(
@@ -271,6 +309,59 @@ class _DeliveryMapState extends State<DeliveryMap> {
     if (widget.height == null) return framed;
     final maxH = MediaQuery.sizeOf(context).height * 0.6;
     return SizedBox(height: widget.height! < maxH ? widget.height : maxH, child: framed);
+  }
+}
+
+class _MapTypeToggle extends StatelessWidget {
+  const _MapTypeToggle({required this.satellite, required this.onChanged});
+  final bool satellite;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget option(String label, bool sat) {
+      final active = satellite == sat;
+      return Semantics(
+        inMutuallyExclusiveGroup: true,
+        selected: active,
+        button: true,
+        child: Material(
+          color: active ? AppColors.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => onChanged(sat),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 36),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Center(
+                  widthFactor: 1,
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: active ? Colors.white : AppColors.ink,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Material(
+      color: AppColors.surface,
+      elevation: 2,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [option('แผนที่', false), option('ดาวเทียม', true)]),
+      ),
+    );
   }
 }
 

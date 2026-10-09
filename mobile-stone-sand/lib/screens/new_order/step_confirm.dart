@@ -42,16 +42,14 @@ class StepConfirm extends StatelessWidget {
 
     final blocks = <Widget>[
       _Block(
-        title: 'ประเภทและวันที่',
+        title: 'วันที่ออเดอร์',
         onEdit: () => onEdit(stepIndex(StepKey.source)),
         children: [
-          Text(s.source == null ? '—' : 'ออเดอร์${s.source!.label}', style: strong),
-          Text('เลขที่ใบส่งของขึ้นต้นด้วย ${s.source == OrderSource.pit ? 'TS' : 'DO'}', style: muted),
           Text(
-            'วันที่ออเดอร์ ${formatDateLongTh(s.orderDate.isEmpty ? toIsoDate() : s.orderDate)}'
+            '${formatDateLongTh(s.orderDate.isEmpty ? toIsoDate() : s.orderDate)}'
             '${s.orderDate.isEmpty ? ' (วันนี้)' : ''}',
             style: s.orderDate.isEmpty
-                ? muted
+                ? strong
                 : const TextStyle(fontSize: 14, color: AppColors.warning, fontWeight: FontWeight.w500),
           ),
         ],

@@ -79,6 +79,7 @@ class _StepSummaryState extends State<StepSummary> {
         SizedBox(
           width: 112,
           child: NumberField(
+            decimal: false,
             value: value,
             dense: true,
             textAlign: TextAlign.right,
@@ -253,6 +254,7 @@ class _StepSummaryState extends State<StepSummary> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: NumberField(
+                              decimal: false,
                               value: s.discountValue,
                               semanticLabel: 'ส่วนลด',
                               onChanged: (v) => patch((st) {
@@ -342,6 +344,8 @@ class _StepSummaryState extends State<StepSummary> {
             controller: _note,
             minLines: 2,
             maxLines: 4,
+            keyboardType: TextInputType.text,
+            textInputAction: TextInputAction.done,
             decoration: const InputDecoration(hintText: 'เช่น ส่งช่วงเช้า เทกองหน้าบ้าน'),
             onChanged: (v) => patch((st) => st.copyWith(note: v)),
           ),
