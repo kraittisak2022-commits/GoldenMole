@@ -9,11 +9,11 @@ describe('suggestDeliveryFee', () => {
     expect(suggestDeliveryFee(wangTai, 0.5, 3, delivery)).toBe(240);
   });
 
-  it('adds the truck size baht per km beyond the free distance, to the nearest baht', () => {
-    expect(suggestDeliveryFee(wangTai, 1, 5, delivery)).toBe(260); // 0.5 km × 40
-    expect(suggestDeliveryFee(wangTai, 3, 5, delivery)).toBe(340); // 2.5 km × 40
-    expect(suggestDeliveryFee(wangTai, 3, 3, delivery)).toBe(315); // 2.5 km × 30
-    expect(suggestDeliveryFee(wangTai, 3.12, 3, delivery)).toBe(319); // 2.62 km × 30 = 78.6
+  it('adds the truck size baht per km beyond the free distance, rounded up to 10', () => {
+    expect(suggestDeliveryFee(wangTai, 1, 5, delivery)).toBe(260); // 0.5 km × 40 = 20
+    expect(suggestDeliveryFee(wangTai, 3, 5, delivery)).toBe(340); // 2.5 km × 40 = 100
+    expect(suggestDeliveryFee(wangTai, 3, 3, delivery)).toBe(320); // 2.5 km × 30 = 75 → 80
+    expect(suggestDeliveryFee(wangTai, 3.12, 3, delivery)).toBe(320); // 2.62 km × 30 = 78.6 → 80
   });
 
   it('uses the 5-คิว rate when the truck size is unknown', () => {
@@ -32,9 +32,15 @@ describe('suggestDeliveryFee', () => {
 });
 
 describe('distanceSurcharge', () => {
-  it('rounds to the nearest baht', () => {
-    expect(distanceSurcharge(1.8, { nearKm: 0.5, perKm: 35 })).toBe(46); // 45.5
-    expect(distanceSurcharge(1.81, { nearKm: 0.5, perKm: 35 })).toBe(46); // 45.85
+  it('rounds up to the next 10 baht', () => {
+    expect(distanceSurcharge(2.3, { nearKm: 1, perKm: 40 })).toBe(60); // 52
+    expect(distanceSurcharge(2.3, { nearKm: 1, perKm: 50 })).toBe(70); // 65
+    expect(distanceSurcharge(1.01, { nearKm: 1, perKm: 50 })).toBe(10); // 0.5
+  });
+
+  it('keeps exact tens despite floating-point error', () => {
+    expect(distanceSurcharge(1.3, { nearKm: 0.1, perKm: 50 })).toBe(60); // 1.2 × 50 = 60.000000000000014
+    expect(distanceSurcharge(2.1, { nearKm: 0.5, perKm: 50 })).toBe(80); // 1.6 × 50
   });
 });
 

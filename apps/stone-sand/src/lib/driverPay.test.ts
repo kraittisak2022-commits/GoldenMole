@@ -24,7 +24,7 @@ const make = (patch: Partial<Order>): Order =>
     ...patch,
   }) as Order;
 
-/** Beyond 0.5 km: 5-คิว 60, 3-คิว 30 baht per km. */
+/** Beyond 0.5 km: 5-คิว 60, 3-คิว 30 baht per km, rounded up to 10. */
 const delivery = { nearKm: 0.5, driverPerKm5: 60, driverPerKm3: 30 };
 const zone = { driverFee: 350, driverFee3: 250 };
 
@@ -32,7 +32,7 @@ describe('driverTripRate', () => {
   it('adds the distance surcharge at the per-km rate for the truck size', () => {
     expect(driverTripRate(zone, 5, 1, delivery)).toEqual({ base: 350, extra: 30, perTrip: 380 }); // 0.5 × 60
     expect(driverTripRate(zone, 5, 2, delivery)).toEqual({ base: 350, extra: 90, perTrip: 440 }); // 1.5 × 60
-    expect(driverTripRate(zone, 3, 2, delivery)).toEqual({ base: 250, extra: 45, perTrip: 295 }); // 1.5 × 30
+    expect(driverTripRate(zone, 3, 2, delivery)).toEqual({ base: 250, extra: 50, perTrip: 300 }); // 1.5 × 30 = 45 → 50
   });
 
   it('has no surcharge while the rate for the truck size is 0', () => {

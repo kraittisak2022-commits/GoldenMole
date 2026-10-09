@@ -20,9 +20,12 @@ export function suggestDeliveryFee(
   return zone.feeMin + distanceSurcharge(distanceKm, { nearKm: delivery.nearKm, perKm: perKmFor(truckSize, delivery) });
 }
 
-/** Per-trip surcharge for the distance beyond nearKm, to the nearest baht; 0 without a distance. */
+const ROUND_UP_TO = 10;
+
+/** Per-trip surcharge for the distance beyond nearKm, rounded up to the next 10 baht; 0 without a distance. */
 export function distanceSurcharge(distanceKm: number | null | undefined, rate: { nearKm: number; perKm: number }): number {
   const { nearKm, perKm } = rate;
   if (distanceKm == null || !Number.isFinite(distanceKm) || distanceKm <= nearKm || perKm <= 0) return 0;
-  return Math.round((distanceKm - nearKm) * perKm);
+  const satang = Math.round((distanceKm - nearKm) * perKm * 100);
+  return Math.ceil(satang / (ROUND_UP_TO * 100)) * ROUND_UP_TO;
 }
