@@ -1,8 +1,8 @@
-import type { ReactNode } from 'react';
-import { CalendarDays, Mountain, Store } from 'lucide-react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { CalendarDays, ChevronDown, Mountain, Store } from 'lucide-react';
+import CalendarPicker from '../../components/ui/CalendarPicker';
 import Chip from '../../components/ui/Chip';
-import Input from '../../components/ui/Input';
-import { formatDateLongTh, toIsoDate } from '../../lib/format';
+import { formatDateLongTh, formatDateShort, toIsoDate } from '../../lib/format';
 import { ORDER_SOURCE_LABEL, type OrderSource } from '../../types';
 import StepTitle from './StepTitle';
 
@@ -25,6 +25,16 @@ export default function StepSource({ sources, source, onSelect, orderDate, onDat
   const today = toIsoDate();
   const date = orderDate || today;
   const fixed = sources.length === 1 ? sources[0] : null;
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => {
+    setOpen(false);
+    trigger.current?.focus();
+  }, []);
+  const pick = (iso: string) => {
+    onDateChange(iso === today ? '' : iso);
+    close();
+  };
 
   return (
     <div className="step-enter flex flex-col gap-5">
@@ -49,13 +59,25 @@ export default function StepSource({ sources, source, onSelect, orderDate, onDat
           <Chip active={date === today} onClick={() => onDateChange('')}>
             วันนี้
           </Chip>
-          <Input
-            type="date"
-            aria-label="เลือกวันที่ออเดอร์"
-            value={date}
-            onChange={(e) => onDateChange(e.target.value === today ? '' : e.target.value)}
-            className="w-auto min-w-44 flex-1 sm:flex-none"
-          />
+          <div className="relative min-w-0 flex-1 sm:flex-none">
+            <button
+              ref={trigger}
+              type="button"
+              onClick={() => setOpen((o) => !o)}
+              aria-label={`${formatDateLongTh(date)} · เลือกวันที่ออเดอร์`}
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              className={[
+                'flex min-h-12 w-full items-center gap-2 rounded border px-4 text-base font-medium transition-colors cursor-pointer sm:min-w-56',
+                open ? 'border-primary bg-primary-soft text-primary' : 'border-border bg-surface hover:bg-subtle',
+              ].join(' ')}
+            >
+              <CalendarDays size={18} className={open ? '' : 'text-muted'} aria-hidden />
+              <span className="truncate tabular-nums">{formatDateShort(date)}</span>
+              <ChevronDown size={16} className="ml-auto shrink-0 text-muted" aria-hidden />
+            </button>
+            {open ? <CalendarPicker value={date} today={today} onSelect={pick} onClose={close} /> : null}
+          </div>
         </div>
         <p className={['text-sm', date === today ? 'text-muted' : 'font-medium text-warning'].join(' ')}>
           {date === today ? 'ลงวันที่วันนี้' : date < today ? 'ลงวันที่ย้อนหลัง' : 'ลงวันที่ล่วงหน้า'} ·{' '}

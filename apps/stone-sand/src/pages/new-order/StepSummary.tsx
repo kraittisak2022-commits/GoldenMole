@@ -1,7 +1,7 @@
 import { Banknote, CalendarClock, Wallet, Landmark } from 'lucide-react';
 import type { ReactNode } from 'react';
 import Field from '../../components/ui/Field';
-import Input from '../../components/ui/Input';
+import NumberInput from '../../components/ui/NumberInput';
 import Textarea from '../../components/ui/Textarea';
 import { lineDiscount } from '../../calc/pricing';
 import { draftTotals } from '../../data/orders';
@@ -61,19 +61,14 @@ export default function StepSummary({ state: s, patch, items }: Props) {
                   <label className="flex items-center gap-2">
                     <span className="shrink-0 text-muted">ลดคิวละ</span>
                     <span className="w-28">
-                      <Input
+                      <NumberInput
                         aria-label={`ส่วนลดต่อ${it.unit} ${it.name}`}
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        max={it.unitPrice}
-                        value={s.unitDiscounts[it.productId] || ''}
+                        value={s.unitDiscounts[it.productId] || 0}
                         placeholder="0"
                         className="min-h-10 px-3 text-right tabular-nums"
-                        onChange={(e) => {
-                          const v = Math.min(it.unitPrice, Math.max(0, Number(e.target.value) || 0));
-                          patch({ unitDiscounts: { ...s.unitDiscounts, [it.productId as string]: v } });
-                        }}
+                        onValueChange={(v) =>
+                          patch({ unitDiscounts: { ...s.unitDiscounts, [it.productId as string]: Math.min(it.unitPrice, v) } })
+                        }
                       />
                     </span>
                     <span className="text-muted">บาท</span>
@@ -109,18 +104,12 @@ export default function StepSummary({ state: s, patch, items }: Props) {
               <label className="flex items-center gap-2">
                 <span className="shrink-0 text-muted">ลดค่าส่ง</span>
                 <span className="w-28">
-                  <Input
+                  <NumberInput
                     aria-label="ส่วนลดค่าส่ง (บาท)"
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    max={totals.deliveryTotal}
-                    value={s.deliveryDiscount || ''}
+                    value={s.deliveryDiscount}
                     placeholder="0"
                     className="min-h-10 px-3 text-right tabular-nums"
-                    onChange={(e) =>
-                      patch({ deliveryDiscount: Math.min(totals.deliveryTotal, Math.max(0, Number(e.target.value) || 0)) })
-                    }
+                    onValueChange={(v) => patch({ deliveryDiscount: Math.min(totals.deliveryTotal, v) })}
                   />
                 </span>
                 <span className="text-muted">บาท</span>
@@ -154,18 +143,11 @@ export default function StepSummary({ state: s, patch, items }: Props) {
                 </button>
               ))}
             </div>
-            <Input
+            <NumberInput
               aria-label="ส่วนลด"
-              type="number"
-              inputMode="decimal"
-              min={0}
-              max={s.discountType === 'percent' ? 100 : undefined}
-              value={s.discountValue || ''}
+              value={s.discountValue}
               placeholder="0"
-              onChange={(e) => {
-                const v = Math.max(0, Number(e.target.value) || 0);
-                patch({ discountValue: s.discountType === 'percent' ? Math.min(100, v) : v });
-              }}
+              onValueChange={(v) => patch({ discountValue: s.discountType === 'percent' ? Math.min(100, v) : v })}
             />
           </div>
           {s.discountType === 'percent' ? <p className="mt-1 text-xs text-muted">% คิดจากค่าสินค้าเท่านั้น ไม่รวมค่าส่ง</p> : null}
@@ -239,6 +221,7 @@ export default function StepSummary({ state: s, patch, items }: Props) {
         <Textarea
           id="o-note"
           rows={2}
+          doneOnEnter
           value={s.note}
           onChange={(e) => patch({ note: e.target.value })}
           placeholder="เช่น ส่งช่วงเช้า เทกองหน้าบ้าน"

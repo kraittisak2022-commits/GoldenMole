@@ -9,6 +9,7 @@ import Button from '../../components/ui/Button';
 import Chip from '../../components/ui/Chip';
 import Field from '../../components/ui/Field';
 import Input from '../../components/ui/Input';
+import NumberInput from '../../components/ui/NumberInput';
 import Select from '../../components/ui/Select';
 import Textarea from '../../components/ui/Textarea';
 import { driverTripRate } from '../../lib/driverPay';
@@ -334,6 +335,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
               <Textarea
                 id="f-address"
                 rows={2}
+                doneOnEnter
                 value={s.deliveryAddress}
                 onChange={(e) => patch({ deliveryAddress: e.target.value })}
                 placeholder="บ้านเลขที่ หมู่บ้าน จุดสังเกต"
@@ -392,39 +394,27 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <Field id="f-fee-cubic" label="ค่าส่ง / คิว" hint={s.feeTouched && zone ? undefined : 'ตามตำบล'}>
-                <Input
+                <NumberInput
                   id="f-fee-cubic"
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  step={10}
-                  value={s.feePerCubic || ''}
+                  value={s.feePerCubic}
                   placeholder="0"
-                  onChange={(e) => patch({ feePerCubic: Math.max(0, Number(e.target.value) || 0), feeTouched: true })}
+                  onValueChange={(v) => patch({ feePerCubic: v, feeTouched: true })}
                 />
               </Field>
               <Field id="f-fee" label="เพิ่มตามระยะ / เที่ยว" hint={s.feeTouched && zone ? undefined : 'จากระยะถึงถนนใหญ่'}>
-                <Input
+                <NumberInput
                   id="f-fee"
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  step={10}
-                  value={s.feePerTrip || ''}
+                  value={s.feePerTrip}
                   placeholder="0"
-                  onChange={(e) => patch({ feePerTrip: Math.max(0, Number(e.target.value) || 0), feeTouched: true })}
+                  onValueChange={(v) => patch({ feePerTrip: v, feeTouched: true })}
                 />
               </Field>
               <Field id="f-remote" label="ที่กันดาร (บวกเพิ่ม)">
-                <Input
+                <NumberInput
                   id="f-remote"
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  step={50}
-                  value={s.remoteSurcharge || ''}
+                  value={s.remoteSurcharge}
                   placeholder="0"
-                  onChange={(e) => patch({ remoteSurcharge: Math.max(0, Number(e.target.value) || 0) })}
+                  onValueChange={(v) => patch({ remoteSurcharge: v })}
                 />
               </Field>
             </div>

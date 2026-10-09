@@ -179,23 +179,36 @@ export default function StepCustomer({ customer, onSelect }: Props) {
           <Field id="c-phone" label="เบอร์โทร">
             <Input
               id="c-phone"
-              inputMode="tel"
+              type="tel"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={10}
+              autoComplete="tel-national"
               value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              placeholder="0xx-xxx-xxxx"
+              onChange={(e) => setForm({ ...form, phone: digitsOnly(e.target.value) })}
+              placeholder="0xxxxxxxxx"
             />
           </Field>
           <Field id="c-address" label="ที่อยู่ (สำหรับออกบิล)">
             <Textarea
               id="c-address"
               rows={2}
+              doneOnEnter
               value={form.address}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
               placeholder="บ้านเลขที่ หมู่ ตำบล"
             />
           </Field>
           <Field id="c-tax" label="เลขผู้เสียภาษี (ถ้ามี)">
-            <Input id="c-tax" inputMode="numeric" value={form.taxId} onChange={(e) => setForm({ ...form, taxId: e.target.value })} />
+            <Input
+              id="c-tax"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={13}
+              autoComplete="off"
+              value={form.taxId}
+              onChange={(e) => setForm({ ...form, taxId: digitsOnly(e.target.value) })}
+            />
           </Field>
           <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
             <input
