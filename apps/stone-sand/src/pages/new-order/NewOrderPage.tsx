@@ -227,7 +227,7 @@ export default function NewOrderPage() {
                       current ? 'font-semibold text-ink' : 'text-muted',
                     ].join(' ')}
                   >
-                    {s.label}
+                    {s.key === 'source' && sources.length === 1 ? 'วันที่' : s.label}
                   </span>
                 </button>
               </li>

@@ -24,15 +24,20 @@ const OPTIONS: { value: OrderSource; icon: ReactNode; hint: string; docNo: strin
 export default function StepSource({ sources, source, onSelect, orderDate, onDateChange }: Props) {
   const today = toIsoDate();
   const date = orderDate || today;
+  const fixed = sources.length === 1 ? sources[0] : null;
 
   return (
     <div className="step-enter flex flex-col gap-5">
-      <StepTitle title="ประเภทออเดอร์" subtitle="เลือกวันที่ แล้วเลือกว่ามาจากร้านวัสดุก่อสร้าง หรือสั่งที่ท่าทรายโดยตรง" />
+      {fixed ? (
+        <StepTitle title="วันที่ออเดอร์" subtitle={`ออเดอร์${ORDER_SOURCE_LABEL[fixed]} · เลือกวันที่ แล้วกด "ถัดไป"`} />
+      ) : (
+        <StepTitle title="ประเภทออเดอร์" subtitle="เลือกวันที่ แล้วเลือกว่ามาจากร้านวัสดุก่อสร้าง หรือสั่งที่ท่าทรายโดยตรง" />
+      )}
 
       <section
         className="flex flex-col gap-3 rounded border border-border bg-surface p-4"
         aria-labelledby="order-date-label"
-        data-tour="wiz-date"
+        data-tour={fixed ? 'wiz-source' : 'wiz-date'}
       >
         <div className="flex items-center gap-2">
           <CalendarDays size={18} className="text-primary" aria-hidden />
@@ -58,41 +63,40 @@ export default function StepSource({ sources, source, onSelect, orderDate, onDat
         </p>
       </section>
 
-      {sources.length === 1 ? (
-        <p className="-mb-2 text-sm text-muted">บัญชีนี้สร้างได้เฉพาะออเดอร์{ORDER_SOURCE_LABEL[sources[0]]}</p>
-      ) : null}
-      <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="ประเภทออเดอร์" data-tour="wiz-source">
-        {OPTIONS.filter((o) => sources.includes(o.value)).map((o) => {
-          const active = source === o.value;
-          return (
-            <button
-              key={o.value}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => onSelect(o.value)}
-              className={[
-                'flex min-h-32 items-center gap-4 rounded border-2 p-5 text-left transition-colors cursor-pointer sm:flex-col sm:justify-center sm:text-center',
-                active ? 'border-primary bg-primary-soft/50' : 'border-border bg-surface hover:bg-subtle',
-              ].join(' ')}
-            >
-              <span
+      {fixed ? null : (
+        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="ประเภทออเดอร์" data-tour="wiz-source">
+          {OPTIONS.filter((o) => sources.includes(o.value)).map((o) => {
+            const active = source === o.value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => onSelect(o.value)}
                 className={[
-                  'flex h-14 w-14 shrink-0 items-center justify-center rounded-full',
-                  active ? 'bg-primary text-primary-foreground' : 'bg-subtle text-primary',
+                  'flex min-h-32 items-center gap-4 rounded border-2 p-5 text-left transition-colors cursor-pointer sm:flex-col sm:justify-center sm:text-center',
+                  active ? 'border-primary bg-primary-soft/50' : 'border-border bg-surface hover:bg-subtle',
                 ].join(' ')}
               >
-                {o.icon}
-              </span>
-              <span className="flex min-w-0 flex-col gap-1">
-                <span className="text-lg font-semibold text-ink">ออเดอร์{ORDER_SOURCE_LABEL[o.value]}</span>
-                <span className="text-sm text-muted">{o.hint}</span>
-                <span className="text-xs tabular-nums text-muted">{o.docNo}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
+                <span
+                  className={[
+                    'flex h-14 w-14 shrink-0 items-center justify-center rounded-full',
+                    active ? 'bg-primary text-primary-foreground' : 'bg-subtle text-primary',
+                  ].join(' ')}
+                >
+                  {o.icon}
+                </span>
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="text-lg font-semibold text-ink">ออเดอร์{ORDER_SOURCE_LABEL[o.value]}</span>
+                  <span className="text-sm text-muted">{o.hint}</span>
+                  <span className="text-xs tabular-nums text-muted">{o.docNo}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
