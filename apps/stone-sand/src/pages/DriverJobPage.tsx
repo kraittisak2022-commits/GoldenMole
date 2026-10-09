@@ -253,7 +253,7 @@ function ConfirmForm({
 
       <Button variant="success" size="lg" onClick={submit} disabled={!ready || busy}>
         <CheckCircle2 size={20} aria-hidden />
-        {busy ? 'กำลังบันทึก…' : job.deliveryStatus === 'delivered' && !onCancel ? 'ยืนยันยอดเงิน' : 'ยืนยันส่งสำเร็จ'}
+        {busy ? 'กำลังบันทึก…' : collect && job.deliveryStatus === 'delivered' && !onCancel ? 'ยืนยันยอดเงิน' : 'ยืนยันส่งสำเร็จ'}
       </Button>
       {onCancel ? (
         <Button variant="ghost" onClick={onCancel} disabled={busy}>
