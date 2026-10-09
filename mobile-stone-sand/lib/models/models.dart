@@ -435,6 +435,9 @@ class Order {
     this.note = '',
     this.cancelled = false,
     this.verifyToken = '',
+    this.driverToken = '',
+    this.driverCashReported,
+    this.driverReportedAt,
     this.statusLog = const [],
     this.createdBy,
     this.createdAt = '',
@@ -485,6 +488,13 @@ class Order {
   final String note;
   final bool cancelled;
   final String verifyToken;
+
+  /// Secret for the driver's /d/:token confirm page.
+  final String driverToken;
+
+  /// Cash the driver said they collected (COD), via the confirm link.
+  final double? driverCashReported;
+  final String? driverReportedAt;
   final List<StatusLogEntry> statusLog;
   final String? createdBy;
   final String createdAt;
@@ -541,6 +551,9 @@ class Order {
       note: _str(r['note']),
       cancelled: r['cancelled'] == true,
       verifyToken: _str(r['verify_token']),
+      driverToken: _str(r['driver_token']),
+      driverCashReported: _numOrNull(r['driver_cash_reported']),
+      driverReportedAt: r['driver_reported_at'] as String?,
       statusLog: log is List
           ? log.whereType<Map>().map((m) => StatusLogEntry.fromJson(Map<String, dynamic>.from(m))).toList()
           : const [],
@@ -586,6 +599,7 @@ class Order {
     bool? cancelled,
     List<OrderItem>? items,
     Object? statementId = _unset,
+    String? driverToken,
     bool? demo,
   }) =>
       Order(
@@ -626,6 +640,9 @@ class Order {
         note: note ?? this.note,
         cancelled: cancelled ?? this.cancelled,
         verifyToken: verifyToken,
+        driverToken: driverToken ?? this.driverToken,
+        driverCashReported: driverCashReported,
+        driverReportedAt: driverReportedAt,
         statusLog: statusLog,
         createdBy: createdBy,
         createdAt: createdAt,

@@ -151,6 +151,11 @@ export interface Order {
   note: string;
   cancelled: boolean;
   verifyToken: string;
+  /** Secret for the driver's /d/:token confirm page. */
+  driverToken?: string;
+  /** Cash the driver said they collected (COD), via the confirm link. */
+  driverCashReported?: number | null;
+  driverReportedAt?: string | null;
   statusLog: StatusLogEntry[];
   createdBy: string | null;
   createdAt: string;

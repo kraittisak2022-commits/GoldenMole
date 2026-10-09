@@ -1,4 +1,5 @@
 import '../models/models.dart';
+import 'driver_pay.dart' show codToCollect;
 import 'format.dart';
 
 enum OrderFilter {
@@ -81,10 +82,17 @@ String driverMessage(Order o, Zone? zone, Driver? driver) {
   if (zone != null) lines.add('ตำบล: ${zone.name}');
   if (o.deliveryAddress.isNotEmpty) lines.add('ที่อยู่: ${o.deliveryAddress}');
   if (o.pinLat != null && o.pinLng != null) lines.add('แผนที่: ${googleMapsUrl(o.pinLat!, o.pinLng!)}');
-  if (o.paymentMethod == PaymentMethod.cod && o.paymentStatus != PaymentStatus.paid) {
-    lines.add('เก็บเงินปลายทาง: ${formatMoney(o.total)} บาท');
-  }
+  final cod = codToCollect(o);
+  if (cod != 0) lines.add('เก็บเงินปลายทาง: ${formatMoney(cod)} บาท');
   if (o.note.isNotEmpty) lines.add('หมายเหตุ: ${o.note}');
+  if (o.driverToken.isNotEmpty && o.fulfillment == Fulfillment.delivery && !o.cancelled) {
+    lines
+      ..add('')
+      ..add(cod != 0
+          ? 'หากส่งแล้ว กดลิงก์นี้เพื่อยืนยันส่งสำเร็จและแจ้งยอดเงินที่เก็บ:'
+          : 'หากส่งแล้ว กดลิงก์นี้เพื่อยืนยันส่งสำเร็จ:')
+      ..add(driverJobUrl(o.driverToken));
+  }
   return lines.join('\n');
 }
 
@@ -122,6 +130,8 @@ String orderLogLabel(StatusLogEntry e, String? Function(String id) driverName) {
       return 'จ่ายค่ารถให้คนขับแล้ว ($arg)';
     case 'wage_unpaid':
       return 'ลบรายการจ่ายค่ารถ $arg (กลับเป็นค่ารถยังไม่จ่าย)';
+    case 'driver_cash':
+      return 'คนขับแจ้งเก็บเงินปลายทาง ${formatMoney(num.tryParse(arg) ?? 0)} บาท';
     default:
       return driverName(arg) ?? e.event;
   }

@@ -159,6 +159,30 @@ void main() {
       expect(msg, contains('เก็บเงินปลายทาง'));
       expect(msg, contains('ตำบล: ทุ่งฮั้ว'));
       expect(msg, contains('093-123-4567'));
+      expect(msg, isNot(contains('/d/')));
+    });
+
+    test('ends with the driver confirm link', () {
+      final lines = driverMessage(base.copyWith(driverToken: 'abc123'), null, null).split('\n');
+      expect(lines.last, 'https://order.goldenmole.pro/d/abc123');
+      expect(lines[lines.length - 2], contains('แจ้งยอดเงินที่เก็บ'));
+      expect(lines[lines.length - 3], '');
+    });
+
+    test('skips cash to collect when the order is billed on a statement', () {
+      final msg = driverMessage(base.copyWith(driverToken: 'abc123', statementId: 's1'), null, null);
+      expect(msg, isNot(contains('เก็บเงินปลายทาง')));
+      expect(msg, isNot(contains('แจ้งยอดเงิน')));
+      expect(msg, contains('/d/abc123'));
+    });
+
+    test('has no confirm link for cancelled orders', () {
+      expect(driverMessage(base.copyWith(driverToken: 'abc123', cancelled: true), null, null), isNot(contains('/d/')));
+    });
+
+    test('labels the driver cash report in the history', () {
+      const e = StatusLogEntry(at: '2026-10-09T08:00:00Z', by: 'คนขับ อ้ายโก (ลิงก์)', event: 'driver_cash:2130.00');
+      expect(orderLogLabel(e, (_) => null), 'คนขับแจ้งเก็บเงินปลายทาง 2,130.00 บาท');
     });
   });
 

@@ -123,5 +123,25 @@ describe('driverMessage', () => {
     expect(msg).toContain('เก็บเงินปลายทาง');
     expect(msg).toContain('ตำบล: ทุ่งฮั้ว');
     expect(msg).toContain('093-123-4567');
+    expect(msg).not.toContain('/d/');
+  });
+
+  it('ends with the driver confirm link', () => {
+    const msg = driverMessage({ ...base, driverToken: 'abc123' }, undefined, undefined);
+    const lines = msg.split('\n');
+    expect(lines.at(-1)).toBe('https://order.goldenmole.pro/d/abc123');
+    expect(lines.at(-2)).toContain('แจ้งยอดเงินที่เก็บ');
+    expect(lines.at(-3)).toBe('');
+  });
+
+  it('skips cash to collect when the order is billed on a statement', () => {
+    const msg = driverMessage({ ...base, driverToken: 'abc123', statementId: 's1' }, undefined, undefined);
+    expect(msg).not.toContain('เก็บเงินปลายทาง');
+    expect(msg).not.toContain('แจ้งยอดเงิน');
+    expect(msg).toContain('/d/abc123');
+  });
+
+  it('has no confirm link for cancelled orders', () => {
+    expect(driverMessage({ ...base, driverToken: 'abc123', cancelled: true }, undefined, undefined)).not.toContain('/d/');
   });
 });

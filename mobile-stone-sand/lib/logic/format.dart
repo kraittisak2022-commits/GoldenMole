@@ -118,3 +118,8 @@ final _docNoRe = RegExp(r'^(DO|TS|RE|BL)(\d{2})(\d{2})-(\d{4,})$');
 
 String googleMapsUrl(double lat, double lng) =>
     'https://www.google.com/maps?q=${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
+
+const publicAppUrl = 'https://order.goldenmole.pro';
+
+/// Page the driver opens from LINE to confirm delivery and report the cash collected.
+String driverJobUrl(String token) => '$publicAppUrl/d/$token';

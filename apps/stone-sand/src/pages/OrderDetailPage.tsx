@@ -226,6 +226,15 @@ export default function OrderDetailPage() {
                 {PAYMENT_METHOD_LABEL[o.paymentMethod]}
                 {o.paidAt ? ` · รับเงิน ${formatDateTime(o.paidAt)}` : ''}
               </p>
+              {o.driverCashReported != null && o.paymentStatus !== 'paid' && !o.cancelled ? (
+                <p
+                  className={`text-sm font-medium ${o.driverCashReported < o.total ? 'text-amber-700' : 'text-emerald-700'}`}
+                >
+                  คนขับแจ้งเก็บเงินสด {formatMoney(o.driverCashReported)} บาท
+                  {o.driverCashReported < o.total ? ` (ขาด ${formatMoney(o.total - o.driverCashReported)} บาท)` : ''}
+                  {o.driverReportedAt ? ` · ${formatDateTime(o.driverReportedAt)}` : ''} — รับเงินจากคนขับตอนเคลียร์ค่ารถ
+                </p>
+              ) : null}
               {!o.cancelled && o.paymentStatus !== 'paid' ? (
                 inOpenStatement ? (
                   <p className="text-sm text-muted">
@@ -585,6 +594,8 @@ function logLabel(e: StatusLogEntry, driverById: (id: string) => { name: string 
       return `จ่ายค่ารถให้คนขับแล้ว (${arg})`;
     case 'wage_unpaid':
       return `ลบรายการจ่ายค่ารถ ${arg} (กลับเป็นค่ารถยังไม่จ่าย)`;
+    case 'driver_cash':
+      return `คนขับแจ้งเก็บเงินปลายทาง ${formatMoney(Number(arg))} บาท`;
     default:
       return driverById(arg)?.name ?? e.event;
   }

@@ -105,3 +105,10 @@ export function parseDocNo(docNo: string): { kind: DocKind; year: number; month:
 export function googleMapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps?q=${lat.toFixed(6)},${lng.toFixed(6)}`;
 }
+
+/** Links sent outside the app must point at production, wherever the message was copied from. */
+export const PUBLIC_APP_URL = 'https://order.goldenmole.pro';
+
+export function driverJobUrl(token: string): string {
+  return `${PUBLIC_APP_URL}/d/${token}`;
+}

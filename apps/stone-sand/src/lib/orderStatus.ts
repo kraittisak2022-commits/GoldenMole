@@ -1,6 +1,7 @@
 import type { BadgeTone } from '../components/ui/Badge';
 import { DELIVERY_STATUS_LABEL, type Driver, type Order, type OrderSource, type Statement, type Zone } from '../types';
-import { formatMoney, formatNumber, formatPhone, googleMapsUrl } from './format';
+import { codToCollect } from './driverPay';
+import { driverJobUrl, formatMoney, formatNumber, formatPhone, googleMapsUrl } from './format';
 
 export type OrderFilter = 'all' | 'unpaid' | 'credit' | 'waiting' | 'delivered' | 'uncleared' | 'cancelled';
 
@@ -69,8 +70,18 @@ export function driverMessage(o: Order, zone: Zone | undefined, driver: Driver |
   if (zone) lines.push(`ตำบล: ${zone.name}`);
   if (o.deliveryAddress) lines.push(`ที่อยู่: ${o.deliveryAddress}`);
   if (o.pinLat != null && o.pinLng != null) lines.push(`แผนที่: ${googleMapsUrl(o.pinLat, o.pinLng)}`);
-  if (o.paymentMethod === 'cod' && o.paymentStatus !== 'paid') lines.push(`เก็บเงินปลายทาง: ${formatMoney(o.total)} บาท`);
+  const cod = codToCollect(o);
+  if (cod) lines.push(`เก็บเงินปลายทาง: ${formatMoney(cod)} บาท`);
   if (o.note) lines.push(`หมายเหตุ: ${o.note}`);
+  if (o.driverToken && o.fulfillment === 'delivery' && !o.cancelled) {
+    lines.push(
+      '',
+      cod
+        ? 'หากส่งแล้ว กดลิงก์นี้เพื่อยืนยันส่งสำเร็จและแจ้งยอดเงินที่เก็บ:'
+        : 'หากส่งแล้ว กดลิงก์นี้เพื่อยืนยันส่งสำเร็จ:',
+      driverJobUrl(o.driverToken),
+    );
+  }
   return lines.join('\n');
 }
 

@@ -356,6 +356,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               badge: AppBadge(pay.label, tone: pay.tone),
               children: [
                 _muted('${o.paymentMethod.label}${o.paidAt != null ? ' · รับเงิน ${formatDateTime(o.paidAt)}' : ''}'),
+                if (o.driverCashReported != null && o.paymentStatus != PaymentStatus.paid && !o.cancelled)
+                  Text(
+                    'คนขับแจ้งเก็บเงินสด ${formatMoney(o.driverCashReported)} บาท'
+                    '${o.driverCashReported! < o.total ? ' (ขาด ${formatMoney(o.total - o.driverCashReported!)} บาท)' : ''}'
+                    '${o.driverReportedAt != null ? ' · ${formatDateTime(o.driverReportedAt)}' : ''}'
+                    ' — รับเงินจากคนขับตอนเคลียร์ค่ารถ',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: o.driverCashReported! < o.total ? AppColors.warning : AppColors.success,
+                    ),
+                  ),
                 if (!o.cancelled && o.paymentStatus != PaymentStatus.paid)
                   if (inOpen)
                     _LinkText(

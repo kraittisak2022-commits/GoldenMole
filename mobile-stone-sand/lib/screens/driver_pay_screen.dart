@@ -700,8 +700,15 @@ class _PayoutOrderInfo extends StatelessWidget {
         ),
         if (cod != 0)
           Text(
-            'เก็บเงินปลายทาง ${formatNumber(cod)}',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.primary),
+            'เก็บเงินปลายทาง ${formatNumber(cod)}'
+            '${o.driverCashReported != null ? ' · คนขับแจ้งได้ ${formatNumber(o.driverCashReported)}' : ''}',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: o.driverCashReported != null && o.driverCashReported! < cod
+                  ? AppColors.destructive
+                  : AppColors.primary,
+            ),
           )
         else if (o.statementId != null && o.paymentStatus != PaymentStatus.paid)
           const Text(
