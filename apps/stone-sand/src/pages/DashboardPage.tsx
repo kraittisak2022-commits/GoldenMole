@@ -1,9 +1,10 @@
-import { useMemo, useRef, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import OrderRow from '../components/OrderRow';
 import SourceBadge from '../components/SourceBadge';
+import CalendarPicker from '../components/ui/CalendarPicker';
 import Card from '../components/ui/Card';
 import Skeleton from '../components/ui/Skeleton';
 import { Empty, ErrorBox, Loading } from '../components/ui/States';
@@ -36,6 +37,11 @@ export default function DashboardPage() {
 
   const monthOrders = useMemo(() => month.data ?? [], [month.data]);
   const dayOrders = useMemo(() => monthOrders.filter((o) => o.orderDate === date), [monthOrders, date]);
+  const dayCounts = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const o of monthOrders) if (!o.cancelled) out[o.orderDate] = (out[o.orderDate] ?? 0) + 1;
+    return out;
+  }, [monthOrders]);
   const day = useMemo(() => periodStats(dayOrders), [dayOrders]);
   const monthStats = useMemo(() => periodStats(monthOrders), [monthOrders]);
 
@@ -62,7 +68,7 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      <DateBar date={date} isToday={isToday} onChange={setDate} />
+      <DateBar date={date} today={today} counts={dayCounts} onChange={setDate} />
 
       {error ? <ErrorBox message={error} /> : null}
 
@@ -147,16 +153,24 @@ export default function DashboardPage() {
   );
 }
 
-function DateBar({ date, isToday, onChange }: { date: string; isToday: boolean; onChange: (d: string) => void }) {
-  const input = useRef<HTMLInputElement>(null);
-  const openPicker = () => {
-    const el = input.current;
-    if (!el) return;
-    try {
-      el.showPicker();
-    } catch {
-      el.focus();
-    }
+interface DateBarProps {
+  date: string;
+  today: string;
+  counts: Record<string, number>;
+  onChange: (d: string) => void;
+}
+
+function DateBar({ date, today, counts, onChange }: DateBarProps) {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const isToday = date === today;
+  const close = useCallback(() => {
+    setOpen(false);
+    trigger.current?.focus();
+  }, []);
+  const pick = (iso: string) => {
+    onChange(iso === today ? '' : iso);
+    close();
   };
   const [weekday, ...rest] = formatDateLongTh(date).split(' ');
   const dayMonthYear = rest.join(' ');
@@ -169,26 +183,24 @@ function DateBar({ date, isToday, onChange }: { date: string; isToday: boolean; 
       </button>
       <div className="relative min-w-0 flex-1">
         <button
+          ref={trigger}
           type="button"
-          onClick={openPicker}
-          aria-label={formatDateLongTh(date)}
-          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-border px-3 text-base font-medium cursor-pointer hover:bg-subtle sm:px-4"
+          onClick={() => setOpen((o) => !o)}
+          aria-label={`${formatDateLongTh(date)} · เลือกวันที่`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          className={[
+            'flex min-h-12 w-full items-center justify-center gap-2 rounded-full border px-3 text-base font-medium transition-colors cursor-pointer sm:px-4',
+            open ? 'border-primary bg-primary-soft text-primary' : 'border-border hover:bg-subtle',
+          ].join(' ')}
         >
-          <CalendarDays size={18} className="hidden shrink-0 text-muted min-[400px]:block" aria-hidden />
+          <CalendarDays size={18} className={['hidden shrink-0 min-[400px]:block', open ? '' : 'text-muted'].join(' ')} aria-hidden />
           <span className="truncate">
             <span className="hidden sm:inline">{weekday} </span>
             {dayMonthYear}
           </span>
         </button>
-        <input
-          ref={input}
-          type="date"
-          aria-label="เลือกวันที่"
-          value={date}
-          onChange={(e) => onChange(e.target.value)}
-          className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
-          tabIndex={-1}
-        />
+        {open ? <CalendarPicker value={date} today={today} counts={counts} onSelect={pick} onClose={close} /> : null}
       </div>
       <button type="button" aria-label="วันถัดไป" onClick={() => onChange(shiftIsoDate(date, 1))} className={step}>
         <ChevronRight size={22} aria-hidden />
