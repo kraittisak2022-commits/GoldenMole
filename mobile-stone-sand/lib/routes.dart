@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'screens/bill_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/menu_screen.dart';
 import 'screens/new_order/new_order_screen.dart';
 import 'screens/order_detail_screen.dart';
 import 'screens/orders_screen.dart';
-import 'screens/placeholder_screen.dart';
 import 'widgets/ui.dart';
 
 /// Top-level sections, in the web's NAV_ITEMS order plus the phone menu.
@@ -132,10 +132,10 @@ Future<void> openNewOrder(BuildContext context, {String? customerId}) => Navigat
 
 /// Bill for an order; [created] shows the "order saved" banner, [replace] swaps out the current page.
 Future<void> openOrderBill(BuildContext context, String orderId, {bool created = false, bool replace = false}) {
-  final route = MaterialPageRoute<void>(builder: (_) => const PlaceholderScreen('บิล'));
+  final route = MaterialPageRoute<void>(builder: (_) => BillScreen.order(orderId: orderId, created: created));
   final nav = Navigator.of(context, rootNavigator: true);
   return replace ? nav.pushReplacement(route) : nav.push(route);
 }
 
 Future<void> openStatementBill(BuildContext context, String statementId) => Navigator.of(context, rootNavigator: true)
-    .push(MaterialPageRoute<void>(builder: (_) => const PlaceholderScreen('ใบวางบิล')));
+    .push(MaterialPageRoute<void>(builder: (_) => BillScreen.statement(statementId: statementId)));
