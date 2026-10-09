@@ -69,9 +69,11 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
   const L = LAYOUT[size];
   const title = DOC_TITLE[b.kind];
   const statement = b.kind === 'statement';
+  const partlyPaid = !b.paid && (b.paidAmount ?? 0) > 0;
+  const due = partlyPaid ? Math.max(0, b.total - (b.paidAmount ?? 0)) : b.total;
   const showPromptPay =
-    !b.paid && !b.cancelled && b.total > 0 && (statement || b.paymentMethod !== 'credit') && !!payment.promptPayId;
-  const ppPayload = showPromptPay ? promptPayPayload(payment.promptPayId, b.total) : null;
+    !b.paid && !b.cancelled && due > 0 && (statement || b.paymentMethod !== 'credit') && !!payment.promptPayId;
+  const ppPayload = showPromptPay ? promptPayPayload(payment.promptPayId, due) : null;
   const showPayChannel = !b.paid && !b.cancelled && !!(payment.qrPayload || payment.bankAccountNo);
   const [customerSigner, companySigner] = SIGNERS[b.kind];
   const copyLabel = copy === 'original' ? 'ต้นฉบับ / ORIGINAL' : 'สำเนา / COPY';
@@ -238,6 +240,12 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
                     ชำระแล้ว{b.paymentMethod ? ` (${PAYMENT_METHOD_LABEL[b.paymentMethod]})` : ''}
                     {b.paidAt ? ` เมื่อ ${formatDateTh(b.paidAt)}` : ''}
                   </p>
+                ) : partlyPaid ? (
+                  <p>
+                    รับชำระแล้ว {formatMoney(b.paidAmount ?? 0)} บาท · กรุณาชำระส่วนที่เหลือ{' '}
+                    <b className="text-amber-700">{formatMoney(due)} บาท</b>
+                    {payment.bankText ? ` · ${payment.bankText}` : ''}
+                  </p>
                 ) : (
                   <p>กรุณาชำระตามยอดข้างต้น{payment.bankText ? ` · ${payment.bankText}` : ''}</p>
                 )}
@@ -276,7 +284,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
                 <QrImage value={ppPayload} size={76} label="QR พร้อมเพย์" />
                 <div className="text-[11px] text-slate-700">
                   <p className="font-semibold text-slate-900">สแกนจ่ายด้วยพร้อมเพย์</p>
-                  <p>ยอด {formatMoney(b.total)} บาท</p>
+                  <p>ยอด {formatMoney(due)} บาท</p>
                   <p>พร้อมเพย์ {payment.promptPayId}</p>
                 </div>
               </div>
@@ -298,6 +306,15 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
               <dt className="font-semibold">ยอดสุทธิ</dt>
               <dd className="text-[16px] font-bold tabular-nums">{formatMoney(b.total)}</dd>
             </div>
+            {partlyPaid ? (
+              <>
+                <TotalRow label="หัก รับชำระแล้ว" value={`-${formatMoney(b.paidAmount ?? 0)}`} />
+                <div className="flex items-center justify-between rounded-md border-2 border-amber-600 px-3 py-1.5">
+                  <dt className="font-semibold text-amber-800">คงค้างชำระ</dt>
+                  <dd className="text-[15px] font-bold tabular-nums text-amber-800">{formatMoney(due)}</dd>
+                </div>
+              </>
+            ) : null}
             <p className="mt-1 text-right text-[10.5px] text-slate-500">ราคานี้ไม่มีภาษีมูลค่าเพิ่ม</p>
           </dl>
         </section>

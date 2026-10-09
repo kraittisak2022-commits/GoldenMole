@@ -37,6 +37,8 @@ export interface BillData {
   paymentMethod?: PaymentMethod;
   paid: boolean;
   paidAt?: string | null;
+  /** Received so far on a document that is not fully paid yet. */
+  paidAmount?: number;
   note?: string;
   cancelled: boolean;
   verifyToken: string;
@@ -138,6 +140,7 @@ export function billFromStatement(s: Statement, orders: Order[]): BillData {
     paymentMethod: s.paymentMethod ?? undefined,
     paid: s.status === 'cleared',
     paidAt: s.clearedAt,
+    paidAmount: s.status === 'cleared' ? 0 : s.paidAmount,
     note: s.note,
     cancelled: false,
     verifyToken: s.verifyToken,

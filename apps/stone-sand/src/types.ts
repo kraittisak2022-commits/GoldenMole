@@ -203,7 +203,21 @@ export interface Statement {
   createdBy: string | null;
   createdAt: string;
   orderIds: string[];
+  /** Oldest first. */
+  payments: StatementPayment[];
+  paidAmount: number;
+  /** total − paidAmount; 0 once cleared. */
+  balance: number;
   demo?: boolean;
+}
+
+export interface StatementPayment {
+  id: string;
+  amount: number;
+  method: 'cash' | 'transfer';
+  paidAt: string;
+  note: string;
+  createdBy: string | null;
 }
 
 export interface CompanySettings {

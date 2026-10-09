@@ -1,5 +1,5 @@
 import type { Order } from '../types';
-import { driverMessage, matchesFilter, matchesSearch, outstanding, summarizeOutstanding } from './orderStatus';
+import { driverMessage, matchesFilter, matchesSearch, outstanding, statementPaidMap, summarizeOutstanding } from './orderStatus';
 
 const base: Order = {
   id: 'o1',
@@ -96,6 +96,23 @@ describe('summarizeOutstanding', () => {
       ['c1', 'shop', 2600],
       ['c1', 'pit', 800],
     ]);
+  });
+
+  it('deducts partial payments once per statement', () => {
+    const paid = statementPaidMap([
+      { id: 'stm-1', status: 'open', paidAmount: 700 },
+      { id: 'stm-2', status: 'cleared', paidAmount: 999 },
+    ]);
+    expect(paid).toEqual({ 'stm-1': 700 });
+    const rows = summarizeOutstanding(
+      [
+        { ...base, id: 'o1', total: 1000, statementId: 'stm-1' },
+        { ...base, id: 'o2', total: 500, statementId: 'stm-1' },
+        { ...base, id: 'o3', total: 200 },
+      ],
+      paid,
+    );
+    expect(rows[0]).toMatchObject({ total: 1000, unbilledTotal: 200, count: 3 });
   });
 });
 

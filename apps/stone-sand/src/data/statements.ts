@@ -1,10 +1,26 @@
 import { supabase } from '../lib/supabase';
 import { scoped } from './sourceScope';
-import type { OrderSource, Statement } from '../types';
+import type { OrderSource, Statement, StatementPayment } from '../types';
 
-const STATEMENT_SELECT = '*, links:ss_statement_orders(order_id)';
+const STATEMENT_SELECT =
+  '*, links:ss_statement_orders(order_id),' +
+  ' payments:ss_payments!ss_payments_statement_id_fkey(id, amount, method, paid_at, note, created_by)';
+
+function mapPayment(p: any): StatementPayment {
+  return {
+    id: p.id,
+    amount: Number(p.amount || 0),
+    method: p.method === 'transfer' ? 'transfer' : 'cash',
+    paidAt: p.paid_at,
+    note: p.note || '',
+    createdBy: p.created_by,
+  };
+}
 
 export function mapStatement(row: any): Statement {
+  const total = Number(row.total || 0);
+  const payments = (row.payments || []).map(mapPayment).sort((a: StatementPayment, b: StatementPayment) => a.paidAt.localeCompare(b.paidAt));
+  const paidAmount = payments.reduce((s: number, p: StatementPayment) => s + p.amount, 0);
   return {
     id: row.id,
     statementNo: row.statement_no,
@@ -18,7 +34,7 @@ export function mapStatement(row: any): Statement {
     },
     periodFrom: row.period_from,
     periodTo: row.period_to,
-    total: Number(row.total || 0),
+    total,
     status: row.status,
     paymentMethod: row.payment_method,
     clearedAt: row.cleared_at,
@@ -27,6 +43,9 @@ export function mapStatement(row: any): Statement {
     createdBy: row.created_by,
     createdAt: row.created_at,
     orderIds: (row.links || []).map((l: any) => l.order_id),
+    payments,
+    paidAmount,
+    balance: row.status === 'cleared' ? 0 : Math.max(0, total - paidAmount),
     demo: !!row.demo_session,
   };
 }
@@ -69,12 +88,30 @@ export async function createStatement(input: {
   return s;
 }
 
-export async function clearStatement(id: string, method: 'cash' | 'transfer', by: string): Promise<Statement> {
-  const { error } = await supabase.rpc('ss_clear_statement', { p_statement_id: id, p_method: method, p_by: by });
+/** Records part (or the rest) of a statement; it clears once payments reach its total. */
+export async function payStatement(input: {
+  id: string;
+  amount: number;
+  method: 'cash' | 'transfer';
+  note: string;
+  by: string;
+}): Promise<Statement> {
+  const { error } = await supabase.rpc('ss_pay_statement', {
+    p_statement_id: input.id,
+    p_amount: input.amount,
+    p_method: input.method,
+    p_note: input.note,
+    p_by: input.by,
+  });
   if (error) throw new Error(error.message);
-  const s = await getStatement(id);
+  const s = await getStatement(input.id);
   if (!s) throw new Error('ไม่พบใบวางบิล');
   return s;
+}
+
+export async function deleteStatementPayment(paymentId: string, by: string): Promise<void> {
+  const { error } = await supabase.rpc('ss_delete_statement_payment', { p_payment_id: paymentId, p_by: by });
+  if (error) throw new Error(error.message);
 }
 
 /** Works on cleared statements too: their orders go back to outstanding. */

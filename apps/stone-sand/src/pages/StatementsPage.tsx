@@ -17,10 +17,16 @@ import PageHeader from '../components/ui/PageHeader';
 import { Empty, ErrorBox, Loading } from '../components/ui/States';
 import Textarea from '../components/ui/Textarea';
 import { listUnclearedOrders } from '../data/orders';
-import { clearStatement, createStatement, deleteStatement, listStatements } from '../data/statements';
+import {
+  createStatement,
+  deleteStatement,
+  deleteStatementPayment,
+  listStatements,
+  payStatement,
+} from '../data/statements';
 import { useAsync } from '../hooks/useAsync';
-import { formatDateShort, formatMoney, formatNumber, formatPhone, toIsoDate } from '../lib/format';
-import { summarizeOutstanding } from '../lib/orderStatus';
+import { formatDateShort, formatDateTime, formatMoney, formatNumber, formatPhone, toIsoDate } from '../lib/format';
+import { statementPaidMap, summarizeOutstanding } from '../lib/orderStatus';
 import {
   ORDER_SOURCES,
   ORDER_SOURCE_LABEL,
@@ -29,6 +35,7 @@ import {
   type Order,
   type OrderSource,
   type Statement,
+  type StatementPayment,
 } from '../types';
 
 type StatusFilter = 'open' | 'cleared' | 'all';
@@ -48,12 +55,14 @@ export default function StatementsPage() {
   const uncleared = useAsync(() => listUnclearedOrders(), [], 'orders-uncleared');
   const statements = useAsync(() => listStatements(), [], 'statements');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
-  const [clearing, setClearing] = useState<Statement | null>(null);
-  const [clearMethod, setClearMethod] = useState<PayMethod | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [clearingId, setClearingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
 
-  const summary = useMemo(() => summarizeOutstanding(uncleared.data ?? []), [uncleared.data]);
+  const clearing = (statements.data ?? []).find((s) => s.id === clearingId && s.status === 'open') ?? null;
+  const summary = useMemo(
+    () => summarizeOutstanding(uncleared.data ?? [], statementPaidMap(statements.data ?? [])),
+    [uncleared.data, statements.data],
+  );
   const selectedSource: OrderSource =
     lockedSource ??
     ORDER_SOURCES.find((s) => s === sourceParam) ??
@@ -64,7 +73,7 @@ export default function StatementsPage() {
     [uncleared.data, selectedCustomer],
   );
   const visibleStatements = (statements.data ?? []).filter((s) => statusFilter === 'all' || s.status === statusFilter);
-  const openTotal = (statements.data ?? []).filter((s) => s.status === 'open').reduce((sum, s) => sum + s.total, 0);
+  const openTotal = (statements.data ?? []).filter((s) => s.status === 'open').reduce((sum, s) => sum + s.balance, 0);
 
   const selectCustomer = (id: string | null, source?: OrderSource) => {
     const next = new URLSearchParams(params);
@@ -77,26 +86,6 @@ export default function StatementsPage() {
 
   const reloadAll = async () => {
     await Promise.all([uncleared.reload(), statements.reload()]);
-  };
-
-  const openClear = (s: Statement) => {
-    setClearMethod(null);
-    setClearing(s);
-  };
-
-  const confirmClear = async () => {
-    if (!clearing || !clearMethod) return;
-    setBusy(true);
-    setActionError('');
-    try {
-      await clearStatement(clearing.id, clearMethod, by);
-      setClearing(null);
-      await reloadAll();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'เคลียร์บิลไม่สำเร็จ');
-    } finally {
-      setBusy(false);
-    }
   };
 
   const remove = async (s: Statement) => {
@@ -231,6 +220,8 @@ export default function StatementsPage() {
                           <Badge tone="success">
                             เคลียร์แล้ว{s.paymentMethod ? ` · ${PAYMENT_METHOD_LABEL[s.paymentMethod]}` : ''}
                           </Badge>
+                        ) : s.paidAmount > 0 ? (
+                          <Badge tone="info">จ่ายบางส่วน · {s.payments.length} ครั้ง</Badge>
                         ) : (
                           <Badge tone="warning">รอเคลียร์</Badge>
                         )}
@@ -240,7 +231,16 @@ export default function StatementsPage() {
                         {formatDateShort(s.periodFrom)} – {formatDateShort(s.periodTo)} · {s.orderIds.length} ออเดอร์
                       </p>
                     </div>
-                    <p className="font-semibold tabular-nums">{formatMoney(s.total)}</p>
+                    {s.status === 'open' && s.paidAmount > 0 ? (
+                      <div className="text-right">
+                        <p className="font-semibold tabular-nums text-warning">ค้าง {formatMoney(s.balance)}</p>
+                        <p className="text-xs tabular-nums text-muted">
+                          จ่ายแล้ว {formatMoney(s.paidAmount)} / {formatMoney(s.total)}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="font-semibold tabular-nums">{formatMoney(s.total)}</p>
+                    )}
                     <div className="flex w-full gap-2 sm:w-auto">
                       <Link
                         to={`/bill/statement/${s.id}`}
@@ -252,7 +252,7 @@ export default function StatementsPage() {
                         <Button
                           variant="success"
                           className="flex-1 sm:flex-none"
-                          onClick={() => openClear(s)}
+                          onClick={() => setClearingId(s.id)}
                           data-tour={s.demo ? 'st-clear' : undefined}
                         >
                           <Check size={16} aria-hidden /> เคลียร์บิล
@@ -274,26 +274,205 @@ export default function StatementsPage() {
         )}
       </section>
 
-      <Modal open={!!clearing} title="ยืนยันเคลียร์บิล" onClose={() => setClearing(null)}>
+      <Modal open={!!clearing} title="รับชำระ / เคลียร์บิล" onClose={() => setClearingId(null)}>
         {clearing ? (
-          <div className="flex flex-col gap-4" data-tour={clearing.demo ? 'st-clear-modal' : undefined}>
-            <p className="text-sm">
-              {clearing.statementNo} · {clearing.customer.name}
-              <span className="mt-1 block text-2xl font-bold tabular-nums text-primary">{formatMoney(clearing.total)} บาท</span>
-            </p>
-            <PayMethodPicker value={clearMethod} onChange={setClearMethod} hints={CLEAR_HINTS} />
-            <p className="text-sm text-muted">ทุกออเดอร์ในใบวางบิลนี้จะเปลี่ยนเป็น "จ่ายแล้ว" และออกเลขใบเสร็จให้อัตโนมัติ</p>
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="secondary" size="lg" disabled={busy} onClick={() => setClearing(null)}>
-                ยกเลิก
-              </Button>
-              <Button variant="success" size="lg" disabled={busy || !clearMethod} onClick={confirmClear}>
-                <Check size={18} aria-hidden /> {busy ? 'กำลังบันทึก…' : 'ยืนยันเคลียร์บิล'}
-              </Button>
-            </div>
-          </div>
+          <ReceivePaymentForm
+            key={clearing.id}
+            statement={clearing}
+            by={by}
+            onCancel={() => setClearingId(null)}
+            onSaved={async (close) => {
+              if (close) setClearingId(null);
+              await reloadAll();
+            }}
+          />
         ) : null}
       </Modal>
+    </div>
+  );
+}
+
+type PayMode = 'full' | 'partial';
+
+function ReceivePaymentForm({
+  statement: s,
+  by,
+  onCancel,
+  onSaved,
+}: {
+  statement: Statement;
+  by: string;
+  onCancel: () => void;
+  onSaved: (close: boolean) => Promise<void>;
+}) {
+  const [mode, setMode] = useState<PayMode>('full');
+  const [amountText, setAmountText] = useState('');
+  const [method, setMethod] = useState<PayMethod | null>(null);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const balance = s.balance;
+  const partialAmount = Math.round((Number(amountText.replace(/,/g, '')) || 0) * 100) / 100;
+  const amount = mode === 'full' ? balance : partialAmount;
+  const remaining = Math.max(0, Math.round((balance - amount) * 100) / 100);
+  const partialProblem =
+    mode !== 'partial'
+      ? ''
+      : !partialAmount
+        ? 'ใส่ยอดที่ลูกค้าจ่ายมา'
+        : partialAmount >= balance
+          ? 'ยอดเท่ากับหรือเกินยอดค้าง เลือก "จ่ายครบ" แทน'
+          : '';
+  const ready = !!method && amount > 0 && !partialProblem;
+
+  const submit = async () => {
+    if (!ready || !method) return;
+    setBusy(true);
+    setError('');
+    try {
+      await payStatement({ id: s.id, amount, method, note: note.trim(), by });
+      await onSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'บันทึกรับชำระไม่สำเร็จ');
+      setBusy(false);
+    }
+  };
+
+  const removePayment = async (p: StatementPayment) => {
+    if (!window.confirm(`ลบการรับชำระ ${formatMoney(p.amount)} บาท (${formatDateTime(p.paidAt)})?`)) return;
+    setBusy(true);
+    setError('');
+    try {
+      await deleteStatementPayment(p.id, by);
+      await onSaved(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ลบไม่สำเร็จ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4" data-tour={s.demo ? 'st-clear-modal' : undefined}>
+      <div>
+        <p className="text-sm text-muted">
+          {s.statementNo} · {s.customer.name}
+        </p>
+        <dl className="mt-2 flex flex-col gap-1 rounded border border-border px-4 py-3 text-sm">
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">ยอดใบวางบิล</dt>
+            <dd className="tabular-nums">{formatMoney(s.total)}</dd>
+          </div>
+          {s.paidAmount > 0 ? (
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">รับชำระแล้ว {s.payments.length} ครั้ง</dt>
+              <dd className="tabular-nums text-success">-{formatMoney(s.paidAmount)}</dd>
+            </div>
+          ) : null}
+          <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-border pt-2">
+            <dt className="font-medium">ยอดค้างชำระ</dt>
+            <dd className="text-2xl font-bold tabular-nums text-primary">{formatMoney(balance)}</dd>
+          </div>
+        </dl>
+      </div>
+
+      {s.payments.length ? (
+        <div>
+          <p className="mb-1.5 text-sm font-medium">ประวัติรับชำระ</p>
+          <ul className="divide-y divide-border rounded border border-border">
+            {s.payments.map((p) => (
+              <li key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="tabular-nums">
+                    {formatDateTime(p.paidAt)} · {PAYMENT_METHOD_LABEL[p.method]}
+                  </p>
+                  {p.note || p.createdBy ? (
+                    <p className="truncate text-xs text-muted">{[p.note, p.createdBy ? `โดย ${p.createdBy}` : ''].filter(Boolean).join(' · ')}</p>
+                  ) : null}
+                </div>
+                <span className="font-semibold tabular-nums">{formatMoney(p.amount)}</span>
+                <Button variant="ghost" aria-label={`ลบการรับชำระ ${formatMoney(p.amount)}`} disabled={busy} onClick={() => removePayment(p)}>
+                  <Trash2 size={16} aria-hidden />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div>
+        <p className="mb-2 text-sm font-medium">ลูกค้าจ่าย</p>
+        <div className="grid grid-cols-2 gap-1 rounded border border-border p-1" role="radiogroup" aria-label="ลูกค้าจ่าย">
+          {(['full', 'partial'] as PayMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={mode === m}
+              onClick={() => setMode(m)}
+              className={[
+                'flex min-h-11 flex-col items-center justify-center rounded-[9px] px-2 py-1 text-sm font-medium transition-colors cursor-pointer',
+                mode === m ? 'bg-primary text-primary-foreground' : 'text-muted hover:bg-subtle hover:text-ink',
+              ].join(' ')}
+            >
+              {m === 'full' ? 'จ่ายครบ' : 'จ่ายบางส่วน'}
+              <span className="text-xs tabular-nums opacity-80">{m === 'full' ? formatMoney(balance) : 'ระบุยอดเอง'}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {mode === 'partial' ? (
+        <Field id="st-pay-amount" label="ยอดที่ได้รับ (บาท)" error={amountText ? partialProblem : undefined}>
+          <Input
+            id="st-pay-amount"
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.01"
+            className="text-right text-lg tabular-nums"
+            value={amountText}
+            placeholder="0.00"
+            autoFocus
+            onChange={(e) => setAmountText(e.target.value)}
+          />
+        </Field>
+      ) : null}
+
+      <PayMethodPicker value={method} onChange={setMethod} hints={CLEAR_HINTS} />
+
+      <Field id="st-pay-note" label="หมายเหตุ (ถ้ามี)">
+        <Input id="st-pay-note" value={note} placeholder="เช่น โอนงวดแรก" onChange={(e) => setNote(e.target.value)} />
+      </Field>
+
+      {mode === 'partial' && partialAmount > 0 && !partialProblem ? (
+        <div className="rounded border border-amber-200 bg-warning-soft px-4 py-3 text-sm">
+          <div className="flex justify-between gap-3">
+            <span>รับครั้งนี้</span>
+            <span className="tabular-nums">{formatMoney(partialAmount)}</span>
+          </div>
+          <div className="mt-1 flex justify-between gap-3 font-semibold">
+            <span>ค้างชำระหลังรับ</span>
+            <span className="tabular-nums text-warning">{formatMoney(remaining)}</span>
+          </div>
+          <p className="mt-2 text-xs text-muted">ใบวางบิลยังเปิดไว้เก็บส่วนที่เหลือ ออเดอร์ยังเป็นค้างจ่ายจนกว่าจะรับครบ</p>
+        </div>
+      ) : mode === 'full' ? (
+        <p className="text-sm text-muted">ทุกออเดอร์ในใบวางบิลนี้จะเปลี่ยนเป็น "จ่ายแล้ว" และออกเลขใบเสร็จให้อัตโนมัติ</p>
+      ) : null}
+
+      {error ? <ErrorBox message={error} /> : null}
+
+      <div className="grid grid-cols-2 gap-3">
+        <Button variant="secondary" size="lg" disabled={busy} onClick={onCancel}>
+          ยกเลิก
+        </Button>
+        <Button variant="success" size="lg" disabled={busy || !ready} onClick={submit}>
+          <Check size={18} aria-hidden />{' '}
+          {busy ? 'กำลังบันทึก…' : mode === 'full' ? 'ยืนยันเคลียร์บิล' : `บันทึกรับ ${formatMoney(partialAmount)}`}
+        </Button>
+      </div>
     </div>
   );
 }

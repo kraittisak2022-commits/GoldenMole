@@ -1,5 +1,5 @@
 import type { BadgeTone } from '../components/ui/Badge';
-import { DELIVERY_STATUS_LABEL, type Driver, type Order, type OrderSource, type Zone } from '../types';
+import { DELIVERY_STATUS_LABEL, type Driver, type Order, type OrderSource, type Statement, type Zone } from '../types';
 import { formatMoney, formatNumber, formatPhone, googleMapsUrl } from './format';
 
 export type OrderFilter = 'all' | 'unpaid' | 'credit' | 'waiting' | 'delivered' | 'uncleared' | 'cancelled';
@@ -92,8 +92,16 @@ export interface CustomerOutstanding {
   oldestDate: string;
 }
 
-export function summarizeOutstanding(orders: Order[]): CustomerOutstanding[] {
+/** Partial payments already received on open statements, by statement id. */
+export function statementPaidMap(statements: Pick<Statement, 'id' | 'status' | 'paidAmount'>[]): Record<string, number> {
+  const paid: Record<string, number> = {};
+  for (const s of statements) if (s.status === 'open' && s.paidAmount > 0) paid[s.id] = s.paidAmount;
+  return paid;
+}
+
+export function summarizeOutstanding(orders: Order[], paidByStatement: Record<string, number> = {}): CustomerOutstanding[] {
   const map = new Map<string, CustomerOutstanding>();
+  const deducted = new Set<string>();
   for (const o of orders) {
     const amount = outstanding(o);
     if (!amount) continue;
@@ -111,6 +119,10 @@ export function summarizeOutstanding(orders: Order[]): CustomerOutstanding[] {
     };
     row.total += amount;
     row.count += 1;
+    if (o.statementId && !deducted.has(o.statementId)) {
+      deducted.add(o.statementId);
+      row.total -= paidByStatement[o.statementId] ?? 0;
+    }
     if (!o.statementId) {
       row.unbilledTotal += amount;
       row.unbilledCount += 1;

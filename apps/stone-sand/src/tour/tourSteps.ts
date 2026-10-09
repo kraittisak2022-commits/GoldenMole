@@ -435,7 +435,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     chapter: 7,
     title: 'เคลียร์บิล',
-    body: 'เมื่อลูกค้าจ่ายครบ กด "เคลียร์บิล"',
+    body: 'เมื่อลูกค้าจ่ายเงิน กด "เคลียร์บิล" (ถ้าลูกค้าจ่ายไม่ครบ ก็บันทึกเป็นจ่ายบางส่วนได้)',
     target: dt('st-clear'),
     on: STATEMENTS,
     route: () => '/statements',
@@ -444,7 +444,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     chapter: 7,
     title: 'ยืนยันการรับเงิน',
-    body: 'เลือกว่ารับเป็นเงินสดหรือโอน แล้วกด "ยืนยันเคลียร์บิล"',
+    body: 'เลือก "จ่ายครบ" (หรือ "จ่ายบางส่วน" แล้วใส่ยอด) เลือกเงินสดหรือโอน แล้วกด "ยืนยันเคลียร์บิล"',
     target: dt('st-clear-modal'),
     on: STATEMENTS,
     route: () => '/statements',

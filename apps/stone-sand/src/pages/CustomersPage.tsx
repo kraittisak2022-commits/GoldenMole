@@ -14,10 +14,11 @@ import { Empty, ErrorBox, Loading } from '../components/ui/States';
 import Textarea from '../components/ui/Textarea';
 import { deleteCustomer, listCustomers, saveCustomer, type CustomerInput } from '../data/customers';
 import { listOrders, listUnclearedOrders } from '../data/orders';
+import { listStatements } from '../data/statements';
 import { useAsync } from '../hooks/useAsync';
 import { digitsOnly, formatMoney, formatPhone } from '../lib/format';
 import { formatAliases, matchesCustomer, parseAliases } from '../lib/customerSearch';
-import { summarizeOutstanding } from '../lib/orderStatus';
+import { statementPaidMap, summarizeOutstanding } from '../lib/orderStatus';
 import type { Customer } from '../types';
 
 const emptyInput: CustomerInput = {
@@ -38,15 +39,17 @@ export default function CustomersPage() {
   const openId = params.get('open');
   const customers = useAsync(() => listCustomers(), [], 'customers');
   const uncleared = useAsync(() => listUnclearedOrders(), [], 'orders-uncleared');
+  const statements = useAsync(() => listStatements(), [], 'statements');
   const [query, setQuery] = useState('');
   const [onlyOutstanding, setOnlyOutstanding] = useState(false);
   const [editing, setEditing] = useState<CustomerInput | null>(null);
 
   const balances = useMemo(() => {
     const map = new Map<string, number>();
-    for (const row of summarizeOutstanding(uncleared.data ?? [])) map.set(row.customerId, (map.get(row.customerId) ?? 0) + row.total);
+    const paid = statementPaidMap(statements.data ?? []);
+    for (const row of summarizeOutstanding(uncleared.data ?? [], paid)) map.set(row.customerId, (map.get(row.customerId) ?? 0) + row.total);
     return map;
-  }, [uncleared.data]);
+  }, [uncleared.data, statements.data]);
 
   const visible = useMemo(() => {
     return (customers.data ?? []).filter((c) => {

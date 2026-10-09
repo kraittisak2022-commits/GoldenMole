@@ -96,12 +96,28 @@ describe('billFromStatement', () => {
       createdBy: null,
       createdAt: '2026-10-31T10:00:00Z',
       orderIds: ['o1', 'o2'],
+      payments: [],
+      paidAmount: 0,
+      balance: 5200,
     };
     const bill = billFromStatement(s, [order, { ...order, id: 'o2', orderNo: 'DO6910-0002' }]);
     expect(bill.lines).toHaveLength(2);
     expect(bill.lines[0].date).toBe('2026-10-08');
     expect(bill.total).toBe(5200);
     expect(bill.paid).toBe(false);
+    expect(bill.paidAmount).toBe(0);
     expect(bill.period).toEqual({ from: '2026-10-01', to: '2026-10-31' });
+
+    const partial = billFromStatement(
+      {
+        ...s,
+        paidAmount: 2000,
+        balance: 3200,
+        payments: [{ id: 'p1', amount: 2000, method: 'transfer', paidAt: '2026-11-02T09:00:00Z', note: '', createdBy: null }],
+      },
+      [order],
+    );
+    expect(partial.paidAmount).toBe(2000);
+    expect(partial.total).toBe(5200);
   });
 });
