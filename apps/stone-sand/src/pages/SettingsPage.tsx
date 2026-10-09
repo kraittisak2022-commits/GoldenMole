@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, Plus, Trash2 } from 'lucide-react';
+import { Check, Plus, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { suggestDeliveryFee } from '../calc/deliveryFee';
 import Button from '../components/ui/Button';
@@ -13,7 +13,9 @@ import Textarea from '../components/ui/Textarea';
 import { useCatalog } from '../context/CatalogProvider';
 import { createProduct, createZone, deleteProduct, deleteZone, saveProduct, saveSetting, saveZone } from '../data/catalog';
 import { formatNumber } from '../lib/format';
-import { promptPayTarget } from '../lib/promptpay';
+import { decodeQrImage } from '../lib/decodeQrImage';
+import { isThaiQrPayload, promptPayTarget } from '../lib/promptpay';
+import QrImage from '../components/bill/QrImage';
 import { PRODUCT_CATEGORY_LABEL, type AppSettings, type Product, type ProductCategory, type Zone } from '../types';
 
 export default function SettingsPage() {
@@ -411,20 +413,91 @@ function PaymentSection({ settings, onSaved }: { settings: AppSettings; onSaved:
   useEffect(() => setForm(settings.payment), [settings.payment]);
   const saver = useSaver(onSaved);
   const ppValid = !form.promptPayId || !!promptPayTarget(form.promptPayId);
+  const [qrError, setQrError] = useState('');
+  const [readingQr, setReadingQr] = useState(false);
+
+  const uploadQr = async (file: File | undefined) => {
+    if (!file) return;
+    setQrError('');
+    setReadingQr(true);
+    try {
+      const text = await decodeQrImage(file);
+      if (!text) setQrError('อ่าน QR จากรูปไม่ได้ ลองใช้รูปที่ชัดขึ้น หรือครอปให้เห็น QR เต็มๆ');
+      else if (!isThaiQrPayload(text)) setQrError('QR นี้ไม่ใช่ QR รับเงิน (Thai QR / พร้อมเพย์)');
+      else setForm((f) => ({ ...f, qrPayload: text }));
+    } catch {
+      setQrError('เปิดรูปไม่ได้');
+    } finally {
+      setReadingQr(false);
+    }
+  };
 
   return (
     <Section
       title="ช่องทางรับเงิน"
-      subtitle="ถ้าใส่พร้อมเพย์ บิลที่ยังไม่จ่ายจะมี QR ให้ลูกค้าสแกนจ่ายพร้อมยอดเงิน"
+      subtitle="บัญชีธนาคารและ QR รับเงินจะแสดงที่หัวบิลด้านขวาของบิลที่ยังไม่ชำระ · ถ้าใส่พร้อมเพย์ บิลจะมี QR พร้อมยอดเงินเพิ่มอีกอัน"
       saver={saver}
       onSave={() =>
         saver.run(async () => {
           if (!ppValid) throw new Error('หมายเลขพร้อมเพย์ต้องเป็นเบอร์มือถือ 10 หลัก หรือเลขผู้เสียภาษี 13 หลัก');
-          await saveSetting('payment', { promptPayId: form.promptPayId.trim(), bankText: form.bankText.trim() });
+          await saveSetting('payment', {
+            promptPayId: form.promptPayId.trim(),
+            bankText: form.bankText.trim(),
+            bankName: form.bankName.trim(),
+            bankAccountNo: form.bankAccountNo.trim(),
+            bankAccountName: form.bankAccountName.trim(),
+            qrPayload: form.qrPayload.trim(),
+          });
         })
       }
     >
       <div className="flex flex-col gap-3">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field id="pm-bank-name" label="ธนาคาร">
+            <Input id="pm-bank-name" value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} />
+          </Field>
+          <Field id="pm-acc-no" label="เลขบัญชี">
+            <Input
+              id="pm-acc-no"
+              inputMode="numeric"
+              value={form.bankAccountNo}
+              onChange={(e) => setForm({ ...form, bankAccountNo: e.target.value })}
+            />
+          </Field>
+          <Field id="pm-acc-name" label="ชื่อบัญชี">
+            <Input id="pm-acc-name" value={form.bankAccountName} onChange={(e) => setForm({ ...form, bankAccountName: e.target.value })} />
+          </Field>
+        </div>
+        <Field id="pm-qr" label="QR รับเงิน" hint="อัปโหลดรูป QR ของร้าน ระบบจะอ่านแล้ววาด QR ใหม่ให้คมชัดบนบิล" error={qrError || undefined}>
+          <div className="flex items-center gap-3">
+            {form.qrPayload ? (
+              <div className="rounded border border-border bg-white p-1.5">
+                <QrImage value={form.qrPayload} size={72} label="QR รับเงิน" />
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-subtle">
+                <Upload size={16} aria-hidden /> {readingQr ? 'กำลังอ่าน…' : form.qrPayload ? 'เปลี่ยนรูป QR' : 'อัปโหลดรูป QR'}
+                <input
+                  id="pm-qr"
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  disabled={readingQr}
+                  onChange={(e) => {
+                    void uploadQr(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {form.qrPayload ? (
+                <Button variant="secondary" onClick={() => setForm({ ...form, qrPayload: '' })}>
+                  ลบ QR
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        </Field>
         <Field
           id="pm-pp"
           label="หมายเลขพร้อมเพย์"
@@ -439,7 +512,7 @@ function PaymentSection({ settings, onSaved }: { settings: AppSettings; onSaved:
             onChange={(e) => setForm({ ...form, promptPayId: e.target.value })}
           />
         </Field>
-        <Field id="pm-bank" label="ข้อความบัญชีธนาคาร" hint="เช่น กสิกรไทย 123-4-56789-0 หจก. พีรสิทธิ์ วัสดุก่อสร้าง">
+        <Field id="pm-bank" label="ข้อความเพิ่มเติมท้ายบิล (ไม่บังคับ)" hint="แสดงตรงส่วนการชำระเงินด้านล่างของบิล">
           <Input id="pm-bank" value={form.bankText} onChange={(e) => setForm({ ...form, bankText: e.target.value })} />
         </Field>
       </div>

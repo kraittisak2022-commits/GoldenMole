@@ -13,6 +13,13 @@ export function crc16(payload: string): string {
   return crc.toString(16).toUpperCase().padStart(4, '0');
 }
 
+/** True for a Thai QR / EMVCo payment payload with a valid checksum. */
+export function isThaiQrPayload(payload: string): boolean {
+  const p = payload.trim();
+  if (!p.startsWith('000201') || p.length < 12 || p.slice(-8, -4) !== '6304') return false;
+  return crc16(p.slice(0, -4)) === p.slice(-4).toUpperCase();
+}
+
 /** Normalised PromptPay target, or null when the id is not a mobile number / tax id / e-wallet id. */
 export function promptPayTarget(id: string): { tag: '01' | '02' | '03'; value: string } | null {
   const digits = id.replace(/\D/g, '');

@@ -29,6 +29,7 @@ const LAYOUT = {
     company: 'text-[17px]',
     companyEn: 'text-[9.5px] tracking-[0.1em]',
     title: 'text-[22px]',
+    payQr: 72,
     infoCols: 'grid-cols-[1fr_15.5rem]',
     totalsCols: 'grid-cols-[1fr_16rem]',
     padRows: 5,
@@ -46,6 +47,7 @@ const LAYOUT = {
     company: 'text-[15px]',
     companyEn: 'text-[8.5px] tracking-[0.03em]',
     title: 'text-[19px]',
+    payQr: 64,
     infoCols: 'grid-cols-[1fr_13rem]',
     totalsCols: 'grid-cols-[1fr_14rem]',
     padRows: 3,
@@ -70,6 +72,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
   const showPromptPay =
     !b.paid && !b.cancelled && b.total > 0 && (statement || b.paymentMethod !== 'credit') && !!payment.promptPayId;
   const ppPayload = showPromptPay ? promptPayPayload(payment.promptPayId, b.total) : null;
+  const showPayChannel = !b.paid && !b.cancelled && !!(payment.qrPayload || payment.bankAccountNo);
   const [customerSigner, companySigner] = SIGNERS[b.kind];
   const copyLabel = copy === 'original' ? 'ต้นฉบับ / ORIGINAL' : 'สำเนา / COPY';
 
@@ -105,6 +108,20 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
                 <p className={`${L.title} font-bold leading-none`}>{title.th}</p>
                 <p className="mt-1.5 text-[9.5px] font-semibold tracking-[0.25em] text-white/75">{title.en}</p>
               </div>
+              {showPayChannel ? (
+                <div className="flex items-center gap-2 rounded-md border border-slate-300 px-2 py-1.5">
+                  {payment.qrPayload ? <QrImage value={payment.qrPayload} size={L.payQr} label="QR รับเงิน" /> : null}
+                  <div className="text-[10px] leading-snug text-slate-700">
+                    <p className="font-semibold text-[#1e3a5f]">ช่องทางรับเงิน</p>
+                    {payment.bankName ? <p>{payment.bankName}</p> : null}
+                    {payment.bankAccountNo ? (
+                      <p className="text-[11px] font-semibold tabular-nums text-slate-900">{payment.bankAccountNo}</p>
+                    ) : null}
+                    {payment.bankAccountName ? <p>{payment.bankAccountName}</p> : null}
+                    {payment.qrPayload ? <p className="text-slate-500">สแกน QR เพื่อชำระ</p> : null}
+                  </div>
+                </div>
+              ) : null}
               <span
                 className={[
                   'rounded-full border px-2.5 py-0.5 text-[10px] font-semibold',

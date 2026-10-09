@@ -225,6 +225,12 @@ export interface DeliverySettings {
 export interface PaymentSettings {
   promptPayId: string;
   bankText: string;
+  /** Shown in the bill header as the payment channel. */
+  bankName: string;
+  bankAccountNo: string;
+  bankAccountName: string;
+  /** Text of the shop's payment QR (Thai QR / EMVCo), drawn in the bill header. */
+  qrPayload: string;
 }
 
 export interface AppSettings {
@@ -268,5 +274,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
     phone: '065-8124686',
   },
   delivery: { nearKm: 0.5, perKm: 0, roundTo: 50 },
-  payment: { promptPayId: '', bankText: '' },
+  payment: { promptPayId: '', bankText: '', bankName: '', bankAccountNo: '', bankAccountName: '', qrPayload: '' },
 };

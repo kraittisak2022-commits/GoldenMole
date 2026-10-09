@@ -1,4 +1,4 @@
-import { crc16, promptPayPayload, promptPayTarget } from './promptpay';
+import { crc16, isThaiQrPayload, promptPayPayload, promptPayTarget } from './promptpay';
 
 describe('crc16', () => {
   it('matches the CRC-16/CCITT-FALSE check value', () => {
@@ -32,5 +32,21 @@ describe('promptPayPayload', () => {
 
   it('rejects unknown ids', () => {
     expect(promptPayPayload('abc')).toBeNull();
+  });
+});
+
+describe('isThaiQrPayload', () => {
+  /** Shop QR, Krungthai bill payment. */
+  const shopQr =
+    '00020101021130730016A0000006770101120115010753700088205021916151060181105030020307PIRASIT53037645802TH620807040000630443A3';
+
+  it('accepts payloads with a valid checksum', () => {
+    expect(isThaiQrPayload(shopQr)).toBe(true);
+    expect(isThaiQrPayload(promptPayPayload('0801234567')!)).toBe(true);
+  });
+
+  it('rejects other text and a wrong checksum', () => {
+    expect(isThaiQrPayload('https://example.com')).toBe(false);
+    expect(isThaiQrPayload(`${shopQr.slice(0, -4)}0000`)).toBe(false);
   });
 });
