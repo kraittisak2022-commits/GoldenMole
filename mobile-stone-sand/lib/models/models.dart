@@ -125,22 +125,21 @@ class Zone {
   const Zone({
     required this.id,
     required this.name,
-    required this.feeMin,
-    required this.feeMax,
+    required this.feePerCubic,
     required this.sortOrder,
   });
 
   final String id;
   final String name;
-  final double feeMin;
-  final double feeMax;
+
+  /// Customer delivery fee in baht per คิว ordered; the per-trip distance surcharge is added on top.
+  final double feePerCubic;
   final int sortOrder;
 
   factory Zone.fromRow(Map<String, dynamic> r) => Zone(
         id: _str(r['id']),
         name: _str(r['name']),
-        feeMin: _num(r['fee_min']),
-        feeMax: _num(r['fee_max']),
+        feePerCubic: _num(r['fee_min']),
         sortOrder: _int(r['sort_order']),
       );
 }
@@ -415,6 +414,7 @@ class Order {
     this.truckSize,
     this.trips = 0,
     this.driverId,
+    this.feePerCubic = 0,
     this.feePerTrip = 0,
     this.remoteSurcharge = 0,
     this.discountType = DiscountType.baht,
@@ -466,6 +466,11 @@ class Order {
   final int? truckSize;
   final int trips;
   final String? driverId;
+
+  /// Baht per คิว ordered; 0 on orders made before the per-คิว tambon fee.
+  final double feePerCubic;
+
+  /// Baht per trip: the distance surcharge (on older orders, the whole tambon fee as well).
   final double feePerTrip;
   final double remoteSurcharge;
   final DiscountType discountType;
@@ -531,6 +536,7 @@ class Order {
       truckSize: truck == null ? null : _int(truck),
       trips: _int(r['trips']),
       driverId: r['driver_id'] as String?,
+      feePerCubic: _num(r['fee_per_cubic']),
       feePerTrip: _num(r['fee_per_trip']),
       remoteSurcharge: _num(r['remote_surcharge']),
       discountType: DiscountType.parse(r['discount_type']),
@@ -581,6 +587,7 @@ class Order {
     Object? truckSize = _unset,
     int? trips,
     Object? driverId = _unset,
+    double? feePerCubic,
     double? feePerTrip,
     double? remoteSurcharge,
     DiscountType? discountType,
@@ -620,6 +627,7 @@ class Order {
         truckSize: identical(truckSize, _unset) ? this.truckSize : truckSize as int?,
         trips: trips ?? this.trips,
         driverId: identical(driverId, _unset) ? this.driverId : driverId as String?,
+        feePerCubic: feePerCubic ?? this.feePerCubic,
         feePerTrip: feePerTrip ?? this.feePerTrip,
         remoteSurcharge: remoteSurcharge ?? this.remoteSurcharge,
         discountType: discountType ?? this.discountType,

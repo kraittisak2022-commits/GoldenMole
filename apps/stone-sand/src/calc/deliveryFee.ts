@@ -8,16 +8,15 @@ export function perKmFor(truckSize: TruckSize | null | undefined, delivery: KmRa
 }
 
 /**
- * Suggested delivery fee per trip: the tambon fee, plus the truck size's baht/km for every started km
- * beyond nearKm between the main road and the pin. The customer and the driver share that rate.
+ * Suggested customer fee per trip on top of the tambon's baht/คิว: the truck size's baht/km for every
+ * started km beyond nearKm between the main road and the pin. The driver is paid the same rate.
  */
-export function suggestDeliveryFee(
-  zone: { feeMin: number },
+export function suggestTripFee(
   distanceKm: number | null | undefined,
   truckSize: TruckSize | null | undefined,
   delivery: KmRates,
 ): number {
-  return zone.feeMin + distanceSurcharge(distanceKm, { nearKm: delivery.nearKm, perKm: perKmFor(truckSize, delivery) });
+  return distanceSurcharge(distanceKm, { nearKm: delivery.nearKm, perKm: perKmFor(truckSize, delivery) });
 }
 
 /** Whole km beyond nearKm, any part of a km counting as a full km (1.4 km past → 2 km). */

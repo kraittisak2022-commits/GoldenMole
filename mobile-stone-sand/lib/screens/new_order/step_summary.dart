@@ -14,6 +14,7 @@ import 'wizard_widgets.dart';
 Totals wizardTotals(WizardState s, List<OrderItem> items) => draftTotals(
   items: items,
   fulfillment: s.fulfillment ?? Fulfillment.pickup,
+  feePerCubic: s.feePerCubic,
   feePerTrip: s.feePerTrip,
   trips: s.trips,
   remoteSurcharge: s.remoteSurcharge,
@@ -200,7 +201,7 @@ class _StepSummaryState extends State<StepSummary> {
                                 children: [
                                   const Text('ค่าจัดส่ง', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                                   Text(
-                                    '${formatNumber(s.feePerTrip)} × ${s.trips} เที่ยว'
+                                    '${deliveryFeeFormula(feePerCubic: s.feePerCubic, cubic: totals.totalQuantity, feePerTrip: s.feePerTrip, trips: s.trips, remoteSurcharge: 0)}'
                                     '${s.remoteSurcharge != 0 ? ' + ที่กันดาร ${formatNumber(s.remoteSurcharge)}' : ''}',
                                     style: muted,
                                   ),

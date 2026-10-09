@@ -22,7 +22,11 @@ export interface WizardState {
   truckSize: TruckSize;
   truckTouched: boolean;
   trips: number;
+  /** Tambon delivery fee per คิว ordered. */
+  feePerCubic: number;
+  /** Distance surcharge per trip. */
   feePerTrip: number;
+  /** Either fee was typed in, so the suggestion no longer overwrites them. */
   feeTouched: boolean;
   remoteSurcharge: number;
   /** ส่วนลดค่าส่ง in baht. */
@@ -40,7 +44,7 @@ export interface WizardState {
 }
 
 /** sessionStorage key of the in-progress wizard. */
-export const DRAFT_KEY = 'stone_sand_new_order_v5';
+export const DRAFT_KEY = 'stone_sand_new_order_v6';
 
 export const STEPS = [
   { key: 'source', label: 'ประเภท' },
@@ -72,6 +76,7 @@ export const initialWizardState: WizardState = {
   truckSize: 5,
   truckTouched: false,
   trips: 0,
+  feePerCubic: 0,
   feePerTrip: 0,
   feeTouched: false,
   remoteSurcharge: 0,
@@ -181,6 +186,7 @@ export function toDraft(s: WizardState, products: Product[], driverFeePerTrip: n
     truckSize: delivery ? s.truckSize : null,
     trips: delivery ? s.trips : 0,
     driverId: delivery ? s.driverId : null,
+    feePerCubic: s.feePerCubic,
     feePerTrip: s.feePerTrip,
     remoteSurcharge: s.remoteSurcharge,
     deliveryDiscount: delivery ? s.deliveryDiscount : 0,

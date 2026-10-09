@@ -1,4 +1,4 @@
-import { lineDiscount } from '../../calc/pricing';
+import { lineDiscount, round2, totalCubic } from '../../calc/pricing';
 import type { DocKind } from '../../lib/format';
 import { formatNumber } from '../../lib/format';
 import {
@@ -63,14 +63,22 @@ export function billFromOrder(o: Order, kind: 'delivery' | 'receipt', zone?: Zon
   const itemDiscount = o.items.reduce((s, it) => s + lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit), 0);
   const billDiscountPart = o.discountAmount - itemDiscount - o.deliveryDiscount > 0.004;
   if (o.fulfillment === 'delivery' && o.trips > 0) {
-    lines.push({
-      description: `ค่าขนส่ง${zone ? ` ต.${zone.name}` : ''}`,
-      detail: o.truckSize ? `รถ ${o.truckSize} คิว` : undefined,
-      quantity: o.trips,
-      unit: 'เที่ยว',
-      unitPrice: o.feePerTrip,
-      amount: o.feePerTrip * o.trips,
-    });
+    const zoneFee = `ค่าขนส่ง${zone ? ` ต.${zone.name}` : ''}`;
+    const truck = o.truckSize ? `รถ ${o.truckSize} คิว` : undefined;
+    if (o.feePerCubic > 0) {
+      const cubic = totalCubic(o.items);
+      lines.push({ description: zoneFee, quantity: cubic, unit: 'คิว', unitPrice: o.feePerCubic, amount: round2(o.feePerCubic * cubic) });
+    }
+    if (o.feePerTrip > 0 || !(o.feePerCubic > 0)) {
+      lines.push({
+        description: o.feePerCubic > 0 ? 'ค่าขนส่งเพิ่มตามระยะทาง' : zoneFee,
+        detail: truck,
+        quantity: o.trips,
+        unit: 'เที่ยว',
+        unitPrice: o.feePerTrip,
+        amount: o.feePerTrip * o.trips,
+      });
+    }
     if (o.remoteSurcharge > 0) lines.push({ description: 'ค่าขนส่งเพิ่ม (พื้นที่ห่างไกล)', amount: o.remoteSurcharge });
   }
 

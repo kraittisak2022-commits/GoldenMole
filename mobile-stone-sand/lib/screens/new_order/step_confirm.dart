@@ -124,7 +124,8 @@ class StepConfirm extends StatelessWidget {
                 Text('จัดส่ง · ต.${zone?.name ?? '—'} · รถ ${s.truckSize} คิว × ${s.trips} เที่ยว', style: strong),
                 if (s.deliveryAddress.isNotEmpty) Text(s.deliveryAddress, style: muted),
                 Text(
-                  'ค่าส่ง ${formatNumber(s.feePerTrip)}/เที่ยว'
+                  'ค่าส่ง ${deliveryFeeFormula(feePerCubic: s.feePerCubic, cubic: totals.totalQuantity, feePerTrip: s.feePerTrip, trips: s.trips, remoteSurcharge: s.remoteSurcharge)}'
+                  ' = ${formatMoney(totals.deliveryTotal)}'
                   '${s.roadDistanceKm != null ? ' · ห่างถนนใหญ่ ${formatNumber(s.roadDistanceKm)} กม.' : ''}',
                   style: muted,
                 ),

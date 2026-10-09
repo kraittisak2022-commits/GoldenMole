@@ -101,6 +101,7 @@ OrderDraft demoCreditDraft(Customer customer, Product product, OrderSource sourc
     truckSize: null,
     trips: 0,
     driverId: null,
+    feePerCubic: 0,
     feePerTrip: 0,
     remoteSurcharge: 0,
     deliveryDiscount: 0,

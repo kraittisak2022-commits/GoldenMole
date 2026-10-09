@@ -41,8 +41,8 @@ export interface Product {
 export interface Zone {
   id: string;
   name: string;
-  /** Customer delivery fee per trip near the main road; the distance surcharge is added on top. */
-  feeMin: number;
+  /** Customer delivery fee in baht per คิว ordered; the per-trip distance surcharge is added on top. */
+  feePerCubic: number;
   /** Paid to the driver per trip with a 5-คิว truck. */
   driverFee: number;
   /** Paid to the driver per trip with a 3-คิว truck. */
@@ -130,6 +130,9 @@ export interface Order {
   truckSize: TruckSize | null;
   trips: number;
   driverId: string | null;
+  /** Baht per คิว ordered; 0 on orders made before the per-คิว tambon fee. */
+  feePerCubic: number;
+  /** Baht per trip: the distance surcharge (on older orders, the whole tambon fee as well). */
   feePerTrip: number;
   remoteSurcharge: number;
   discountType: DiscountType;

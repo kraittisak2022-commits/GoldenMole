@@ -5,7 +5,7 @@ import Input from '../../components/ui/Input';
 import Textarea from '../../components/ui/Textarea';
 import { lineDiscount } from '../../calc/pricing';
 import { draftTotals } from '../../data/orders';
-import { formatMoney, formatNumber } from '../../lib/format';
+import { deliveryFeeFormula, formatMoney, formatNumber } from '../../lib/format';
 import { ORDER_SOURCE_LABEL, PAYMENT_METHOD_LABEL, type OrderItem, type PaymentMethod } from '../../types';
 import StepTitle from './StepTitle';
 import { defaultPaidNow, type WizardState } from './wizardState';
@@ -93,7 +93,7 @@ export default function StepSummary({ state: s, patch, items }: Props) {
                 <div>
                   <p className="font-medium">ค่าจัดส่ง</p>
                   <p className="text-muted">
-                    {formatNumber(s.feePerTrip)} × {s.trips} เที่ยว
+                    {deliveryFeeFormula({ ...s, cubic: totals.totalQuantity, remoteSurcharge: 0 })}
                     {s.remoteSurcharge ? ` + ที่กันดาร ${formatNumber(s.remoteSurcharge)}` : ''}
                   </p>
                 </div>

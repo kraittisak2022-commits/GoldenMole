@@ -102,6 +102,21 @@ export function parseDocNo(docNo: string): { kind: DocKind; year: number; month:
   return { kind, year: 2000 + Number(m[2]), month, seq: Number(m[4]) };
 }
 
+/** How the delivery fee adds up, e.g. "40 × 10 คิว + 100 × 2 เที่ยว + 50". */
+export function deliveryFeeFormula(f: {
+  feePerCubic: number;
+  cubic: number;
+  feePerTrip: number;
+  trips: number;
+  remoteSurcharge: number;
+}): string {
+  const parts: string[] = [];
+  if (f.feePerCubic > 0) parts.push(`${formatNumber(f.feePerCubic)} × ${formatNumber(f.cubic)} คิว`);
+  if (f.feePerTrip > 0 || !(f.feePerCubic > 0)) parts.push(`${formatNumber(f.feePerTrip)} × ${f.trips} เที่ยว`);
+  if (f.remoteSurcharge > 0) parts.push(formatNumber(f.remoteSurcharge));
+  return parts.join(' + ');
+}
+
 export function googleMapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps?q=${lat.toFixed(6)},${lng.toFixed(6)}`;
 }

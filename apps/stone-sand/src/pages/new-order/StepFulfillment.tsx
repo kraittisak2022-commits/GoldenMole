@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertTriangle, Crosshair, Link2, MapPin, Pencil, Phone, Store, Truck } from 'lucide-react';
-import { perKmFor, suggestDeliveryFee } from '../../calc/deliveryFee';
+import { perKmFor, suggestTripFee } from '../../calc/deliveryFee';
+import { round2 } from '../../calc/pricing';
 import { truckFits, type Load } from '../../calc/trips';
 import DeliveryMap, { type LatLng, type MapRoute } from '../../components/map/DeliveryMap';
 import Badge from '../../components/ui/Badge';
@@ -12,7 +13,7 @@ import Select from '../../components/ui/Select';
 import Textarea from '../../components/ui/Textarea';
 import { driverTripRate } from '../../lib/driverPay';
 import { distanceToMainRoad, findTambon } from '../../lib/geo';
-import { formatMoney, formatNumber, formatPhone } from '../../lib/format';
+import { deliveryFeeFormula, formatMoney, formatNumber, formatPhone } from '../../lib/format';
 import { parseLatLng } from '../../lib/latlng';
 import { describePin, pinPlaceText } from '../../lib/places';
 import { fetchRoadRoute } from '../../lib/roadRoute';
@@ -26,7 +27,7 @@ import {
   type Zone,
 } from '../../types';
 import StepTitle from './StepTitle';
-import type { WizardState } from './wizardState';
+import { quantitiesOf, totalQuantity, type WizardState } from './wizardState';
 
 interface Props {
   state: WizardState;
@@ -63,11 +64,15 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
   const roadFailed = !!pinKey && roadFailedKey === pinKey;
   const measuringRoad = !!pinKey && !s.roadDistanceByRoad && !roadFailed;
   const [roadPath, setRoadPath] = useState<{ key: string; path: LatLng[] } | null>(null);
-  const suggestedFee = zone ? suggestDeliveryFee(zone, s.roadDistanceKm, s.truckSize, settings.delivery) : null;
+  const suggestedPerCubic = zone ? zone.feePerCubic : null;
+  const suggestedPerTrip = zone ? suggestTripFee(s.roadDistanceKm, s.truckSize, settings.delivery) : null;
 
   useEffect(() => {
-    if (!s.feeTouched && suggestedFee != null && suggestedFee !== s.feePerTrip) patch({ feePerTrip: suggestedFee });
-  }, [s.feeTouched, s.feePerTrip, suggestedFee, patch]);
+    if (s.feeTouched || suggestedPerCubic == null || suggestedPerTrip == null) return;
+    if (suggestedPerCubic !== s.feePerCubic || suggestedPerTrip !== s.feePerTrip) {
+      patch({ feePerCubic: suggestedPerCubic, feePerTrip: suggestedPerTrip });
+    }
+  }, [s.feeTouched, s.feePerCubic, s.feePerTrip, suggestedPerCubic, suggestedPerTrip, patch]);
 
   useEffect(() => {
     if (pinLat == null || pinLng == null || s.roadDistanceByRoad || roadFailedKey === `${pinLat},${pinLng}`) return;
@@ -198,7 +203,8 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
     return counts;
   }, [drivers]);
 
-  const deliveryTotal = s.feePerTrip * s.trips + s.remoteSurcharge;
+  const cubic = totalQuantity(quantitiesOf(s.loads));
+  const deliveryTotal = round2(s.feePerCubic * cubic + s.feePerTrip * s.trips + s.remoteSurcharge);
   const selectedDriver = drivers.find((d) => d.id === s.driverId);
 
   return (
@@ -307,9 +313,9 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
           <section className="flex flex-col gap-4 rounded border border-border bg-surface p-4">
             <Field id="f-zone" label="ตำบลที่จัดส่ง *" hint={
                 zone
-                  ? `ค่าส่ง ${formatNumber(zone.feeMin)} บาท/เที่ยว` +
+                  ? `ค่าส่ง ${formatNumber(zone.feePerCubic)} บาท/คิว` +
                     (perKmFor(s.truckSize, settings.delivery) > 0
-                      ? ` + ${formatNumber(perKmFor(s.truckSize, settings.delivery))} บาท/กม. (รถ ${s.truckSize === 3 ? 3 : 5} คิว) เมื่อห่างถนนใหญ่เกิน ${formatNumber(settings.delivery.nearKm)} กม.`
+                      ? ` + ${formatNumber(perKmFor(s.truckSize, settings.delivery))} บาท/กม./เที่ยว (รถ ${s.truckSize === 3 ? 3 : 5} คิว) เมื่อห่างถนนใหญ่เกิน ${formatNumber(settings.delivery.nearKm)} กม.`
                       : '')
                   : undefined
               }
@@ -318,7 +324,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                 <option value="">— เลือกตำบล —</option>
                 {zones.map((z) => (
                   <option key={z.id} value={z.id}>
-                    {z.name} ({formatNumber(z.feeMin)})
+                    {z.name} ({formatNumber(z.feePerCubic)}/คิว)
                   </option>
                 ))}
               </Select>
@@ -384,18 +390,26 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
               </ul>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Field
-                id="f-fee"
-                label="ค่าส่ง / เที่ยว"
-                hint={s.feeTouched && zone ? undefined : 'คำนวณจากระยะถึงถนนใหญ่'}
-              >
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Field id="f-fee-cubic" label="ค่าส่ง / คิว" hint={s.feeTouched && zone ? undefined : 'ตามตำบล'}>
+                <Input
+                  id="f-fee-cubic"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={10}
+                  value={s.feePerCubic || ''}
+                  placeholder="0"
+                  onChange={(e) => patch({ feePerCubic: Math.max(0, Number(e.target.value) || 0), feeTouched: true })}
+                />
+              </Field>
+              <Field id="f-fee" label="เพิ่มตามระยะ / เที่ยว" hint={s.feeTouched && zone ? undefined : 'จากระยะถึงถนนใหญ่'}>
                 <Input
                   id="f-fee"
                   type="number"
                   inputMode="numeric"
                   min={0}
-                  step={50}
+                  step={10}
                   value={s.feePerTrip || ''}
                   placeholder="0"
                   onChange={(e) => patch({ feePerTrip: Math.max(0, Number(e.target.value) || 0), feeTouched: true })}
@@ -414,15 +428,16 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                 />
               </Field>
             </div>
-            {s.feeTouched && suggestedFee != null ? (
+            {s.feeTouched && suggestedPerCubic != null && suggestedPerTrip != null ? (
               <button type="button" onClick={resetFee} className="-mt-2 self-start text-sm text-primary underline cursor-pointer">
-                ใช้ค่าส่งที่ระบบแนะนำ ({formatNumber(suggestedFee)})
+                ใช้ค่าส่งที่ระบบแนะนำ ({formatNumber(suggestedPerCubic)}/คิว
+                {suggestedPerTrip ? ` + ${formatNumber(suggestedPerTrip)}/เที่ยว` : ''})
               </button>
             ) : null}
 
-            <div className="flex items-center justify-between rounded bg-subtle px-3 py-2.5 text-sm">
+            <div className="flex items-center justify-between gap-3 rounded bg-subtle px-3 py-2.5 text-sm">
               <span className="text-muted">
-                {formatNumber(s.feePerTrip)} × {s.trips} เที่ยว{s.remoteSurcharge ? ` + ${formatNumber(s.remoteSurcharge)}` : ''}
+                {deliveryFeeFormula({ feePerCubic: s.feePerCubic, cubic, feePerTrip: s.feePerTrip, trips: s.trips, remoteSurcharge: s.remoteSurcharge })}
               </span>
               <span className="font-semibold tabular-nums">ค่าส่ง {formatMoney(deliveryTotal)}</span>
             </div>

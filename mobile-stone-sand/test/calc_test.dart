@@ -6,6 +6,7 @@ import 'package:mobile_stone_sand/calc/trips.dart';
 
 TotalsInput input({
   List<PriceLine>? items,
+  num feePerCubic = 0,
   num feePerTrip = 350,
   num trips = 2,
   num remoteSurcharge = 0,
@@ -19,6 +20,7 @@ TotalsInput input({
             PriceLine(unitPrice: 400, quantity: 5),
             PriceLine(unitPrice: 220, quantity: 5),
           ],
+      feePerCubic: feePerCubic,
       feePerTrip: feePerTrip,
       trips: trips,
       remoteSurcharge: remoteSurcharge,
@@ -56,6 +58,13 @@ void main() {
       expect(t.discountAmount, 0);
       expect(t.total, 3800);
       expect(t.totalQuantity, 10);
+    });
+
+    test('charges the per-คิว fee on every คิว ordered, on top of the per-trip fee', () {
+      // 10 คิว × 40 + 2 เที่ยว × 100 (distance) + 50 remote
+      expect(computeTotals(input(feePerCubic: 40, feePerTrip: 100, remoteSurcharge: 50)).deliveryTotal, 650);
+      expect(computeTotals(input(feePerCubic: 40, feePerTrip: 0)).deliveryTotal, 400);
+      expect(computeTotals(input(feePerCubic: -5, feePerTrip: 0)).deliveryTotal, 0);
     });
 
     test('adds the remote surcharge once', () {
@@ -163,29 +172,29 @@ void main() {
     });
   });
 
-  group('suggestDeliveryFee', () {
+  group('suggestTripFee', () {
     const delivery = DeliverySettings(nearKm: 1, driverPerKm5: 50, driverPerKm3: 30);
 
-    test('is the tambon fee within the free first km', () {
-      expect(suggestDeliveryFee(240, 0, 5, delivery), 240);
-      expect(suggestDeliveryFee(240, 1, 3, delivery), 240);
+    test('is free within the first km', () {
+      expect(suggestTripFee(0, 5, delivery), 0);
+      expect(suggestTripFee(1, 3, delivery), 0);
     });
 
-    test('adds the truck size baht/km for every started km beyond the first', () {
-      expect(suggestDeliveryFee(240, 1.4, 5, delivery), 290); // 0.4 km → 1 km × 50
-      expect(suggestDeliveryFee(240, 1.7, 3, delivery), 270); // 0.7 km → 1 km × 30
-      expect(suggestDeliveryFee(240, 2.4, 5, delivery), 340); // 1.4 km → 2 km × 50
-      expect(suggestDeliveryFee(240, 2, 5, delivery), 290);
+    test('charges the truck size baht/km for every started km beyond the first', () {
+      expect(suggestTripFee(1.4, 5, delivery), 50); // 0.4 km → 1 km × 50
+      expect(suggestTripFee(1.7, 3, delivery), 30); // 0.7 km → 1 km × 30
+      expect(suggestTripFee(2.4, 5, delivery), 100); // 1.4 km → 2 km × 50
+      expect(suggestTripFee(2, 5, delivery), 50);
     });
 
     test('uses the 5-คิว rate when the truck size is unknown', () {
-      expect(suggestDeliveryFee(240, 2.4, null, delivery), 340);
+      expect(suggestTripFee(2.4, null, delivery), 100);
     });
 
-    test('falls back to the tambon fee without a distance or a rate', () {
-      expect(suggestDeliveryFee(240, null, 5, delivery), 240);
-      expect(suggestDeliveryFee(240, double.nan, 5, delivery), 240);
-      expect(suggestDeliveryFee(240, 5, 3, delivery.copyWith(driverPerKm3: 0)), 240);
+    test('is 0 without a distance or a rate', () {
+      expect(suggestTripFee(null, 5, delivery), 0);
+      expect(suggestTripFee(double.nan, 5, delivery), 0);
+      expect(suggestTripFee(5, 3, delivery.copyWith(driverPerKm3: 0)), 0);
     });
 
     test('counts whole km despite floating-point error', () {

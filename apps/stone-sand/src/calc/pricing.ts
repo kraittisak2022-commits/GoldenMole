@@ -13,8 +13,15 @@ export function lineDiscount(unitPrice: number, quantity: number, discountPerUni
   return round2(Math.min(discountPerUnit, Math.max(0, unitPrice)) * quantity);
 }
 
+/** Total คิว ordered; the per-คิว delivery fee is charged on this. */
+export function totalCubic(items: { quantity: number }[]): number {
+  return round2(items.reduce((sum, it) => sum + (it.quantity > 0 ? it.quantity : 0), 0));
+}
+
 export interface TotalsInput {
   items: { unitPrice: number; quantity: number; discountPerUnit?: number }[];
+  /** Delivery fee per คิว ordered (the tambon rate). */
+  feePerCubic?: number;
   feePerTrip: number;
   trips: number;
   remoteSurcharge: number;
@@ -46,9 +53,13 @@ export interface Totals {
  */
 export function computeTotals(input: TotalsInput): Totals {
   const subtotal = round2(input.items.reduce((sum, it) => sum + lineAmount(it.unitPrice, it.quantity), 0));
-  const totalQuantity = round2(input.items.reduce((sum, it) => sum + (it.quantity > 0 ? it.quantity : 0), 0));
+  const totalQuantity = totalCubic(input.items);
   const trips = Math.max(0, Math.floor(input.trips || 0));
-  const deliveryTotal = round2(Math.max(0, input.feePerTrip || 0) * trips + Math.max(0, input.remoteSurcharge || 0));
+  const deliveryTotal = round2(
+    Math.max(0, input.feePerCubic || 0) * totalQuantity +
+      Math.max(0, input.feePerTrip || 0) * trips +
+      Math.max(0, input.remoteSurcharge || 0),
+  );
   const gross = subtotal + deliveryTotal;
   const itemDiscount = round2(
     input.items.reduce((sum, it) => sum + lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit), 0),

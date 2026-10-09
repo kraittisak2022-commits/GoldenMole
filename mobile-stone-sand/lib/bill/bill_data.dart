@@ -101,14 +101,28 @@ BillData billFromOrder(Order o, DocKind kind, {Zone? zone, Driver? driver}) {
       o.items.fold<double>(0, (s, it) => s + lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit));
   final billDiscountPart = o.discountAmount - itemDiscount - o.deliveryDiscount > 0.004;
   if (o.fulfillment == Fulfillment.delivery && o.trips > 0) {
-    lines.add(BillLine(
-      description: 'ค่าขนส่ง${zone != null ? ' ต.${zone.name}' : ''}',
-      detail: o.truckSize != null ? 'รถ ${o.truckSize} คิว' : null,
-      quantity: o.trips.toDouble(),
-      unit: 'เที่ยว',
-      unitPrice: o.feePerTrip,
-      amount: o.feePerTrip * o.trips,
-    ));
+    final zoneFee = 'ค่าขนส่ง${zone != null ? ' ต.${zone.name}' : ''}';
+    final perCubic = o.feePerCubic > 0;
+    if (perCubic) {
+      final cubic = totalCubic(o.items.map((it) => it.quantity));
+      lines.add(BillLine(
+        description: zoneFee,
+        quantity: cubic,
+        unit: 'คิว',
+        unitPrice: o.feePerCubic,
+        amount: round2(o.feePerCubic * cubic),
+      ));
+    }
+    if (o.feePerTrip > 0 || !perCubic) {
+      lines.add(BillLine(
+        description: perCubic ? 'ค่าขนส่งเพิ่มตามระยะทาง' : zoneFee,
+        detail: o.truckSize != null ? 'รถ ${o.truckSize} คิว' : null,
+        quantity: o.trips.toDouble(),
+        unit: 'เที่ยว',
+        unitPrice: o.feePerTrip,
+        amount: o.feePerTrip * o.trips,
+      ));
+    }
     if (o.remoteSurcharge > 0) {
       lines.add(BillLine(description: 'ค่าขนส่งเพิ่ม (พื้นที่ห่างไกล)', amount: o.remoteSurcharge));
     }

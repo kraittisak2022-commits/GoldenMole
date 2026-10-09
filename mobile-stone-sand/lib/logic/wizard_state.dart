@@ -6,7 +6,7 @@ import '../models/models.dart';
 import 'order_draft.dart';
 
 /// SharedPreferences key of the in-progress wizard.
-const draftKey = 'stone_sand_new_order_v5';
+const draftKey = 'stone_sand_new_order_v6';
 
 enum StepKey {
   source('ประเภท'),
@@ -44,6 +44,7 @@ class WizardState {
     this.truckSize = 5,
     this.truckTouched = false,
     this.trips = 0,
+    this.feePerCubic = 0,
     this.feePerTrip = 0,
     this.feeTouched = false,
     this.remoteSurcharge = 0,
@@ -79,7 +80,14 @@ class WizardState {
   final int truckSize;
   final bool truckTouched;
   final int trips;
+
+  /// Tambon delivery fee per คิว ordered.
+  final double feePerCubic;
+
+  /// Distance surcharge per trip.
   final double feePerTrip;
+
+  /// Either fee was typed in, so the suggestion no longer overwrites them.
   final bool feeTouched;
   final double remoteSurcharge;
 
@@ -116,6 +124,7 @@ class WizardState {
     int? truckSize,
     bool? truckTouched,
     int? trips,
+    double? feePerCubic,
     double? feePerTrip,
     bool? feeTouched,
     double? remoteSurcharge,
@@ -147,6 +156,7 @@ class WizardState {
         truckSize: truckSize ?? this.truckSize,
         truckTouched: truckTouched ?? this.truckTouched,
         trips: trips ?? this.trips,
+        feePerCubic: feePerCubic ?? this.feePerCubic,
         feePerTrip: feePerTrip ?? this.feePerTrip,
         feeTouched: feeTouched ?? this.feeTouched,
         remoteSurcharge: remoteSurcharge ?? this.remoteSurcharge,
@@ -179,6 +189,7 @@ class WizardState {
         'truckSize': truckSize,
         'truckTouched': truckTouched,
         'trips': trips,
+        'feePerCubic': feePerCubic,
         'feePerTrip': feePerTrip,
         'feeTouched': feeTouched,
         'remoteSurcharge': remoteSurcharge,
@@ -223,6 +234,7 @@ class WizardState {
       truckSize: (j['truckSize'] as num?)?.toInt() == 3 ? 3 : 5,
       truckTouched: j['truckTouched'] == true,
       trips: (j['trips'] as num?)?.toInt() ?? 0,
+      feePerCubic: d(j['feePerCubic']) ?? 0,
       feePerTrip: d(j['feePerTrip']) ?? 0,
       feeTouched: j['feeTouched'] == true,
       remoteSurcharge: d(j['remoteSurcharge']) ?? 0,
@@ -326,6 +338,7 @@ OrderDraft toDraft(WizardState s, List<Product> products, double driverWagePerTr
     truckSize: delivery ? s.truckSize : null,
     trips: delivery ? s.trips : 0,
     driverId: delivery ? s.driverId : null,
+    feePerCubic: s.feePerCubic,
     feePerTrip: s.feePerTrip,
     remoteSurcharge: s.remoteSurcharge,
     deliveryDiscount: delivery ? s.deliveryDiscount : 0,

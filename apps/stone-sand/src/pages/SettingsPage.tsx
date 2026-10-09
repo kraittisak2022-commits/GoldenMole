@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Check, Plus, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
-import { suggestDeliveryFee } from '../calc/deliveryFee';
+import { suggestTripFee } from '../calc/deliveryFee';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Field from '../components/ui/Field';
@@ -33,7 +33,7 @@ export default function SettingsPage() {
       <div className="flex flex-col gap-5">
         <ProductsSection products={products} onSaved={reload} />
         <ZonesSection zones={zones} delivery={settings.delivery} onSaved={reload} />
-        <DeliverySection settings={settings} zones={zones} onSaved={reload} />
+        <DeliverySection settings={settings} onSaved={reload} />
         <CompanySection settings={settings} onSaved={reload} />
         <PaymentSection settings={settings} onSaved={reload} />
       </div>
@@ -233,9 +233,9 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
 }
 
 const ZONE_FEE_COLUMNS = [
-  { key: 'feeMin', label: 'ค่าส่งลูกค้า' },
-  { key: 'driverFee', label: 'ค่ารถ 5 คิว' },
-  { key: 'driverFee3', label: 'ค่ารถ 3 คิว' },
+  { key: 'feePerCubic', label: 'ค่าส่งลูกค้า/คิว', step: 10 },
+  { key: 'driverFee', label: 'ค่ารถ 5 คิว/เที่ยว', step: 50 },
+  { key: 'driverFee3', label: 'ค่ารถ 3 คิว/เที่ยว', step: 50 },
 ] as const;
 
 function ZonesSection({
@@ -253,7 +253,7 @@ function ZonesSection({
   const saver = useSaver(onSaved);
   const update = (id: string, patch: Partial<Zone>) => setRows(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const add = () =>
-    setRows([...rows, { id: `${NEW_PREFIX}${Date.now()}`, name: '', feeMin: 0, driverFee: 0, driverFee3: 0, sortOrder: nextSort(rows) }]);
+    setRows([...rows, { id: `${NEW_PREFIX}${Date.now()}`, name: '', feePerCubic: 0, driverFee: 0, driverFee3: 0, sortOrder: nextSort(rows) }]);
   const remove = (z: Zone) => {
     if (isNew(z.id) || window.confirm(`ลบ ต.${z.name}? กดบันทึกเพื่อยืนยัน`)) setRows(rows.filter((r) => r.id !== z.id));
   };
@@ -263,8 +263,8 @@ function ZonesSection({
 
   return (
     <Section
-      title="ค่าส่งตามตำบล (บาท/เที่ยว)"
-      subtitle={`ค่าส่งลูกค้า: ราคาต่อเที่ยวเมื่อหน้างานห่างถนนใหญ่ไม่เกิน ${formatNumber(delivery.nearKm)} กม. ไกลกว่านั้นบวกเพิ่มตามเรท บาท/กม. ของขนาดรถ (รถ 5 คิว ${formatNumber(delivery.driverPerKm5)} · รถ 3 คิว ${formatNumber(delivery.driverPerKm3)}) · ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว บวกค่าส่งเพิ่มตามระยะด้วยเรทเดียวกับลูกค้า ใช้ตั้งต้นตอนเคลียร์ค่ารถ`}
+      title="ค่าส่งตามตำบล"
+      subtitle={`ค่าส่งลูกค้า: บาทต่อคิว คูณจำนวนคิวที่สั่ง ถ้าหน้างานห่างถนนใหญ่เกิน ${formatNumber(delivery.nearKm)} กม. บวกเพิ่มต่อเที่ยวตามเรท บาท/กม. ของขนาดรถ (รถ 5 คิว ${formatNumber(delivery.driverPerKm5)} · รถ 3 คิว ${formatNumber(delivery.driverPerKm3)}) · ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว บวกค่าส่งเพิ่มตามระยะด้วยเรทเดียวกับลูกค้า ใช้ตั้งต้นตอนเคลียร์ค่ารถ`}
       saver={saver}
       onSave={() =>
         saver.run(async () => {
@@ -317,7 +317,7 @@ function ZonesSection({
                     type="number"
                     inputMode="numeric"
                     min={0}
-                    step={50}
+                    step={c.step}
                     value={z[c.key]}
                     onChange={(e) => update(z.id, { [c.key]: num(e.target.value) })}
                   />
@@ -340,11 +340,10 @@ function ZonesSection({
   );
 }
 
-function DeliverySection({ settings, zones, onSaved }: { settings: AppSettings; zones: Zone[]; onSaved: () => Promise<void> }) {
+function DeliverySection({ settings, onSaved }: { settings: AppSettings; onSaved: () => Promise<void> }) {
   const [form, setForm] = useState(settings.delivery);
   useEffect(() => setForm(settings.delivery), [settings.delivery]);
   const saver = useSaver(onSaved);
-  const sample = zones[0];
 
   return (
     <Section
@@ -386,16 +385,14 @@ function DeliverySection({ settings, zones, onSaved }: { settings: AppSettings; 
           <Input id="ds-near" type="number" min={0} step={0.5} value={form.nearKm} onChange={(e) => setForm({ ...form, nearKm: num(e.target.value) })} />
         </Field>
       </div>
-      {sample ? (
-        <p className="mt-3 rounded bg-subtle px-3 py-2 text-sm text-muted">
-          ตัวอย่างค่าส่งลูกค้า ต.{sample.name} (บาท/เที่ยว)
-          {([5, 3] as TruckSize[]).map((size) => (
-            <span key={size} className="block">
-              รถ {size} คิว: {[1, 1.4, 2.4, 5].map((km) => `${km} กม. = ${formatNumber(suggestDeliveryFee(sample, km, size, form))}`).join(' · ')}
-            </span>
-          ))}
-        </p>
-      ) : null}
+      <p className="mt-3 rounded bg-subtle px-3 py-2 text-sm text-muted">
+        ตัวอย่างค่าส่งเพิ่มตามระยะ (บาท/เที่ยว บวกจากค่าส่งต่อคิวของตำบล)
+        {([5, 3] as TruckSize[]).map((size) => (
+          <span key={size} className="block">
+            รถ {size} คิว: {[1, 1.4, 2.4, 5].map((km) => `${km} กม. = +${formatNumber(suggestTripFee(km, size, form))}`).join(' · ')}
+          </span>
+        ))}
+      </p>
     </Section>
   );
 }

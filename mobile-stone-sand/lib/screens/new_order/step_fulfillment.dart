@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../calc/delivery_fee.dart';
+import '../../calc/pricing.dart';
 import '../../calc/trips.dart';
 import '../../logic/format.dart';
 import '../../logic/geo.dart';
@@ -23,8 +24,11 @@ class LoadLine {
   final Load load;
 }
 
-double _fee(Zone z, WizardState st, DeliverySettings settings) =>
-    suggestDeliveryFee(z.feeMin, st.roadDistanceKm, st.truckSize, settings).toDouble();
+/// The suggested fees: the tambon's baht/คิว, plus the per-trip distance surcharge.
+WizardState _withFee(Zone z, WizardState st, DeliverySettings settings) => st.copyWith(
+      feePerCubic: z.feePerCubic,
+      feePerTrip: suggestTripFee(st.roadDistanceKm, st.truckSize, settings).toDouble(),
+    );
 
 /// Current device position, or an error message.
 Future<(LatLngValue?, String)> currentPosition() async {
@@ -121,7 +125,7 @@ class _StepFulfillmentState extends State<StepFulfillment> {
         next = next.copyWith(zoneId: matched.id, tambonMethod: tambon!.method);
         feeZone = matched;
       }
-      if (!st.feeTouched && feeZone != null) next = next.copyWith(feePerTrip: _fee(feeZone, next, delivery));
+      if (!st.feeTouched && feeZone != null) next = _withFee(feeZone, next, delivery);
       return next;
     };
   }
@@ -186,9 +190,7 @@ class _StepFulfillmentState extends State<StepFulfillment> {
     final z = _zoneById(id);
     widget.patch((st) {
       var next = st.copyWith(zoneId: id, tambonMethod: id == null ? null : 'manual');
-      if (z != null && !st.feeTouched) {
-        next = next.copyWith(feePerTrip: _fee(z, st, widget.settings.delivery));
-      }
+      if (z != null && !st.feeTouched) next = _withFee(z, next, widget.settings.delivery);
       return next;
     });
   }
@@ -196,7 +198,7 @@ class _StepFulfillmentState extends State<StepFulfillment> {
   /// The per-km rate depends on the truck size, so an untouched fee follows it.
   WizardState _refee(WizardState st) {
     final z = _zoneById(st.zoneId);
-    return z == null || st.feeTouched ? st : st.copyWith(feePerTrip: _fee(z, st, widget.settings.delivery));
+    return z == null || st.feeTouched ? st : _withFee(z, st, widget.settings.delivery);
   }
 
   void _setTruck(int size) {
@@ -383,7 +385,9 @@ class _StepFulfillmentState extends State<StepFulfillment> {
     final zone = _zoneById(s.zoneId);
     final delivery = widget.settings.delivery;
     final largestPerTrip = widget.loadLines.fold<num>(0, (m, l) => l.load.perTrip > m ? l.load.perTrip : m);
-    final deliveryTotal = s.feePerTrip * s.trips + s.remoteSurcharge;
+    final cubic = totalQuantity(quantitiesOf(s.loads));
+    final deliveryTotal = round2(s.feePerCubic * cubic + s.feePerTrip * s.trips + s.remoteSurcharge);
+    final suggested = zone == null ? null : _withFee(zone, s, delivery);
     return AppCard(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -393,8 +397,8 @@ class _StepFulfillmentState extends State<StepFulfillment> {
             'ตำบลที่จัดส่ง *',
             hint: zone == null
                 ? null
-                : 'ค่าส่ง ${formatNumber(zone.feeMin)} บาท/เที่ยว'
-                    '${perKmFor(s.truckSize, delivery) > 0 ? ' + ${formatNumber(perKmFor(s.truckSize, delivery))} บาท/กม. '
+                : 'ค่าส่ง ${formatNumber(zone.feePerCubic)} บาท/คิว'
+                    '${perKmFor(s.truckSize, delivery) > 0 ? ' + ${formatNumber(perKmFor(s.truckSize, delivery))} บาท/กม./เที่ยว '
                         '(รถ ${s.truckSize == 3 ? 3 : 5} คิว) เมื่อห่างถนนใหญ่เกิน ${formatNumber(delivery.nearKm)} กม.' : ''}',
             child: DropdownButtonFormField<String?>(
               key: ValueKey('zone:${s.zoneId}'),
@@ -405,7 +409,7 @@ class _StepFulfillmentState extends State<StepFulfillment> {
                 for (final z in widget.zones)
                   DropdownMenuItem<String?>(
                     value: z.id,
-                    child: Text('${z.name} (${formatNumber(z.feeMin)})'),
+                    child: Text('${z.name} (${formatNumber(z.feePerCubic)}/คิว)'),
                   ),
               ],
               onChanged: _chooseZone,
@@ -505,15 +509,31 @@ class _StepFulfillmentState extends State<StepFulfillment> {
             children: [
               Expanded(
                 child: FieldLabel(
-                  'ค่าส่ง / เที่ยว',
-                  hint: s.feeTouched && zone != null ? null : 'คำนวณจากระยะถึงถนนใหญ่',
+                  'ค่าส่ง / คิว',
+                  hint: s.feeTouched && zone != null ? null : 'ตามตำบล',
+                  child: NumberField(
+                    value: s.feePerCubic,
+                    onChanged: (v) => widget.patch((st) => st.copyWith(feePerCubic: v < 0 ? 0 : v, feeTouched: true)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FieldLabel(
+                  'เพิ่มตามระยะ / เที่ยว',
+                  hint: s.feeTouched && zone != null ? null : 'จากระยะถึงถนนใหญ่',
                   child: NumberField(
                     value: s.feePerTrip,
                     onChanged: (v) => widget.patch((st) => st.copyWith(feePerTrip: v < 0 ? 0 : v, feeTouched: true)),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Expanded(
                 child: FieldLabel(
                   'ที่กันดาร (บวกเพิ่ม)',
@@ -525,15 +545,14 @@ class _StepFulfillmentState extends State<StepFulfillment> {
               ),
             ],
           ),
-          if (s.feeTouched && zone != null)
+          if (s.feeTouched && zone != null && suggested != null)
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
-                onPressed: () => widget.patch(
-                  (st) => st.copyWith(feePerTrip: _fee(zone, st, delivery), feeTouched: false),
-                ),
+                onPressed: () => widget.patch((st) => _withFee(zone, st, delivery).copyWith(feeTouched: false)),
                 child: Text(
-                  'ใช้ค่าส่งที่ระบบแนะนำ (${formatNumber(_fee(zone, s, delivery))})',
+                  'ใช้ค่าส่งที่ระบบแนะนำ (${formatNumber(suggested.feePerCubic)}/คิว'
+                  '${suggested.feePerTrip != 0 ? ' + ${formatNumber(suggested.feePerTrip)}/เที่ยว' : ''})',
                   style: const TextStyle(decoration: TextDecoration.underline),
                 ),
               ),
@@ -546,8 +565,13 @@ class _StepFulfillmentState extends State<StepFulfillment> {
               children: [
                 Expanded(
                   child: Text(
-                    '${formatNumber(s.feePerTrip)} × ${s.trips} เที่ยว'
-                    '${s.remoteSurcharge != 0 ? ' + ${formatNumber(s.remoteSurcharge)}' : ''}',
+                    deliveryFeeFormula(
+                      feePerCubic: s.feePerCubic,
+                      cubic: cubic,
+                      feePerTrip: s.feePerTrip,
+                      trips: s.trips,
+                      remoteSurcharge: s.remoteSurcharge,
+                    ),
                     style: const TextStyle(fontSize: 14, color: AppColors.muted),
                   ),
                 ),

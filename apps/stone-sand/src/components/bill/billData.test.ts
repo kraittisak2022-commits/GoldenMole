@@ -18,6 +18,7 @@ const order: Order = {
   truckSize: 5,
   trips: 2,
   driverId: null,
+  feePerCubic: 0,
   feePerTrip: 350,
   remoteSurcharge: 100,
   discountType: 'percent',
@@ -44,15 +45,32 @@ const order: Order = {
   items: [{ productId: 'small-stone', name: 'หินเล็กคละ', unit: 'คิว', unitPrice: 400, quantity: 5, amount: 2000 }],
 };
 
+const thungHua = { id: 'thung-hua', name: 'ทุ่งฮั้ว', feePerCubic: 40, driverFee: 0, driverFee3: 0, sortOrder: 1 };
+
 describe('billFromOrder', () => {
   it('adds delivery and surcharge lines that sum to the gross amount', () => {
-    const bill = billFromOrder(order, 'delivery', { id: 'thung-hua', name: 'ทุ่งฮั้ว', feeMin: 300, driverFee: 0, driverFee3: 0, sortOrder: 1 });
+    const bill = billFromOrder(order, 'delivery', thungHua);
     expect(bill.lines.map((l) => l.amount)).toEqual([2000, 700, 100]);
     expect(bill.lines.reduce((s, l) => s + l.amount, 0)).toBe(bill.gross);
     expect(bill.gross - bill.discountAmount).toBe(bill.total);
     expect(bill.lines[1].description).toBe('ค่าขนส่ง ต.ทุ่งฮั้ว');
     expect(bill.docNo).toBe('DO6910-0001');
     expect(bill.discountLabel).toContain('10%');
+  });
+
+  it('charges the tambon fee per คิว and the distance surcharge per trip', () => {
+    // 5 คิว × 40 + 2 เที่ยว × 50 + 100 remote
+    const perCubic = { ...order, feePerCubic: 40, feePerTrip: 50, deliveryTotal: 400, discountAmount: 0, total: 2400 };
+    const bill = billFromOrder(perCubic, 'delivery', thungHua);
+    expect(bill.lines.slice(1)).toMatchObject([
+      { description: 'ค่าขนส่ง ต.ทุ่งฮั้ว', quantity: 5, unit: 'คิว', unitPrice: 40, amount: 200 },
+      { description: 'ค่าขนส่งเพิ่มตามระยะทาง', quantity: 2, unit: 'เที่ยว', unitPrice: 50, amount: 100 },
+      { amount: 100 },
+    ]);
+    expect(bill.lines.reduce((s, l) => s + l.amount, 0)).toBe(bill.gross);
+
+    const near = billFromOrder({ ...perCubic, feePerTrip: 0, deliveryTotal: 300, total: 2300 }, 'delivery', thungHua);
+    expect(near.lines.map((l) => l.description)).toEqual(['หินเล็กคละ', 'ค่าขนส่ง ต.ทุ่งฮั้ว', 'ค่าขนส่งเพิ่ม (พื้นที่ห่างไกล)']);
   });
 
   it('names ส่วนลดค่าส่ง alongside the bill discount', () => {

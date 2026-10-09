@@ -94,6 +94,7 @@ Future<Order> createOrder(OrderDraft d, String by) async {
   final totals = draftTotals(
     items: d.items,
     fulfillment: d.fulfillment,
+    feePerCubic: d.feePerCubic,
     feePerTrip: d.feePerTrip,
     trips: d.trips,
     remoteSurcharge: d.remoteSurcharge,
@@ -121,6 +122,7 @@ Future<Order> createOrder(OrderDraft d, String by) async {
     'truck_size': delivery ? d.truckSize : null,
     'trips': delivery ? d.trips : 0,
     'driver_id': delivery ? d.driverId : null,
+    'fee_per_cubic': delivery ? d.feePerCubic : 0,
     'fee_per_trip': delivery ? d.feePerTrip : 0,
     'remote_surcharge': delivery ? d.remoteSurcharge : 0,
     'delivery_discount': totals.deliveryDiscount,
@@ -168,6 +170,7 @@ class OrderEdit {
     required this.items,
     required this.truckSize,
     required this.trips,
+    required this.feePerCubic,
     required this.feePerTrip,
     required this.remoteSurcharge,
     required this.deliveryDiscount,
@@ -181,6 +184,7 @@ class OrderEdit {
   final List<OrderItem> items;
   final int? truckSize;
   final int trips;
+  final double feePerCubic;
   final double feePerTrip;
   final double remoteSurcharge;
   final double deliveryDiscount;
@@ -194,6 +198,7 @@ class OrderEdit {
 Totals editTotals(OrderEdit e, Fulfillment fulfillment) => draftTotals(
       items: e.items.where((it) => it.quantity > 0).toList(),
       fulfillment: fulfillment,
+      feePerCubic: e.feePerCubic,
       feePerTrip: e.feePerTrip,
       trips: e.trips,
       remoteSurcharge: e.remoteSurcharge,
@@ -210,6 +215,7 @@ Future<Order> updateOrder(Order current, OrderEdit e, String by) {
     'delivery_address': e.deliveryAddress.trim(),
     'truck_size': e.truckSize,
     'trips': e.trips,
+    'fee_per_cubic': e.feePerCubic,
     'fee_per_trip': e.feePerTrip,
     'remote_surcharge': e.remoteSurcharge,
     'delivery_discount': totals.deliveryDiscount,

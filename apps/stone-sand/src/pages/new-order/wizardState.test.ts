@@ -75,6 +75,7 @@ describe('toDraft', () => {
       zoneId: 'thung-hua',
       trips: 2,
       truckSize: 5,
+      feePerCubic: 40,
       feePerTrip: 350,
       driverId: 'drv-ko',
       driverConfirmed: true,
@@ -87,6 +88,7 @@ describe('toDraft', () => {
     expect(d.items.map((i) => i.amount)).toEqual([2000, 1100]);
     expect(d.driverWage).toBe(1000);
     expect(d.deliveryDiscount).toBe(100);
+    expect(d.feePerCubic).toBe(40);
     expect(d.paidNow).toBe(true);
   });
 

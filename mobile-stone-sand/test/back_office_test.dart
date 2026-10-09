@@ -129,15 +129,16 @@ void main() {
           active: true,
         ),
       ]
-      ..zones = const [Zone(id: 'z1', name: 'วังแก้ว', feeMin: 500, feeMax: 1000, sortOrder: 10)]
+      ..zones = const [Zone(id: 'z1', name: 'วังแก้ว', feePerCubic: 40, sortOrder: 10)]
       ..settings = const AppSettings(delivery: DeliverySettings(nearKm: 1, driverPerKm5: 50, driverPerKm3: 30));
     await tester.pumpWidget(_host(const Scaffold(body: SettingsScreen()), catalog: catalog));
 
     expect(find.text('ราคาสินค้า (ต่อคิว)'), findsOneWidget);
+    expect(find.text('ค่าส่งลูกค้า/คิว'), findsOneWidget);
     expect(
-      find.text('ตัวอย่างค่าส่งลูกค้า ต.วังแก้ว (บาท/เที่ยว)\n'
-          'รถ 5 คิว: 1 กม. = 500 · 1.4 กม. = 550 · 2.4 กม. = 600 · 5 กม. = 700\n'
-          'รถ 3 คิว: 1 กม. = 500 · 1.4 กม. = 530 · 2.4 กม. = 560 · 5 กม. = 620'),
+      find.text('ตัวอย่างค่าส่งเพิ่มตามระยะ (บาท/เที่ยว บวกจากค่าส่งต่อคิวของตำบล)\n'
+          'รถ 5 คิว: 1 กม. = +0 · 1.4 กม. = +50 · 2.4 กม. = +100 · 5 กม. = +200\n'
+          'รถ 3 คิว: 1 กม. = +0 · 1.4 กม. = +30 · 2.4 กม. = +60 · 5 กม. = +120'),
       findsOneWidget,
     );
 

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { lineDiscount } from '../../calc/pricing';
 import { draftTotals } from '../../data/orders';
-import { formatDateLongTh, formatMoney, formatNumber, formatPhone, toIsoDate } from '../../lib/format';
+import { deliveryFeeFormula, formatDateLongTh, formatMoney, formatNumber, formatPhone, toIsoDate } from '../../lib/format';
 import { ORDER_SOURCE_LABEL, PAYMENT_METHOD_LABEL, type Driver, type OrderItem, type Zone } from '../../types';
 import StepTitle from './StepTitle';
 import { stepIndex, type StepKey, type WizardState } from './wizardState';
@@ -70,7 +70,7 @@ export default function StepConfirm({ state: s, items, zone, driver, onEdit }: P
               </p>
               {s.deliveryAddress ? <p className="text-muted">{s.deliveryAddress}</p> : null}
               <p className="text-muted">
-                ค่าส่ง {formatNumber(s.feePerTrip)}/เที่ยว
+                ค่าส่ง {deliveryFeeFormula({ ...s, cubic: totals.totalQuantity })} = {formatMoney(totals.deliveryTotal)}
                 {s.roadDistanceKm != null ? ` · ${s.roadDistanceByRoad ? 'ระยะตามถนนจากถนนใหญ่' : 'ห่างถนนใหญ่ (เส้นตรง)'} ${formatNumber(s.roadDistanceKm)} กม.` : ''}
               </p>
               <p className="text-muted">คนขับ: {driver ? driver.name : 'ยังไม่ระบุ'}</p>

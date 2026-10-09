@@ -536,8 +536,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 InfoRow('ค่าสินค้า', formatMoney(o.subtotal)),
                 if (delivery)
                   InfoRow(
-                    'ค่าจัดส่ง (${formatNumber(o.feePerTrip)} × ${o.trips}'
-                    '${o.remoteSurcharge != 0 ? ' + ${formatNumber(o.remoteSurcharge)}' : ''})',
+                    'ค่าจัดส่ง (${deliveryFeeFormula(feePerCubic: o.feePerCubic, cubic: totalCubic(o.items.map((it) => it.quantity)), feePerTrip: o.feePerTrip, trips: o.trips, remoteSurcharge: o.remoteSurcharge)})',
                     formatMoney(o.deliveryTotal),
                   ),
                 if (o.deliveryDiscount != 0) InfoRow('ส่วนลดค่าส่ง', '-${formatMoney(o.deliveryDiscount)}'),
@@ -589,7 +588,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       _InfoTile('ตำบล', zone?.name ?? '—'),
       _InfoTile('รถ', o.truckSize != null ? '${o.truckSize} คิว × ${o.trips}' : '—'),
       _InfoTile('ห่างถนนใหญ่', o.roadDistanceKm != null ? '${formatNumber(o.roadDistanceKm)} กม.' : '—'),
-      _InfoTile('ค่าส่ง/เที่ยว', formatNumber(o.feePerTrip)),
+      if (o.feePerCubic > 0)
+        _InfoTile(
+          'ค่าส่ง',
+          '${formatNumber(o.feePerCubic)}/คิว${o.feePerTrip != 0 ? ' + ${formatNumber(o.feePerTrip)}/เที่ยว' : ''}',
+        )
+      else
+        _InfoTile('ค่าส่ง/เที่ยว', formatNumber(o.feePerTrip)),
     ];
 
     final driverField = DropdownButtonFormField<String>(

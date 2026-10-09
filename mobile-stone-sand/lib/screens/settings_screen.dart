@@ -37,7 +37,7 @@ class SettingsScreen extends StatelessWidget {
         const SizedBox(height: 20),
         ZonesSection(zones: catalog.zones, delivery: catalog.settings.delivery),
         const SizedBox(height: 20),
-        DeliverySection(settings: catalog.settings.delivery, zones: catalog.zones),
+        DeliverySection(settings: catalog.settings.delivery),
         const SizedBox(height: 20),
         CompanySection(company: catalog.settings.company),
         const SizedBox(height: 20),
@@ -333,18 +333,15 @@ class _ZoneRow {
   _ZoneRow(Zone z)
       : id = z.id,
         name = TextEditingController(text: z.name),
-        feeMin = z.feeMin,
-        feeMax = z.feeMax,
+        feePerCubic = z.feePerCubic,
         sortOrder = z.sortOrder;
   _ZoneRow.blank(this.sortOrder)
       : id = '$_newPrefix${DateTime.now().microsecondsSinceEpoch}',
         name = TextEditingController(),
-        feeMin = 0,
-        feeMax = 0;
+        feePerCubic = 0;
   final String id;
   final TextEditingController name;
-  double feeMin;
-  double feeMax;
+  double feePerCubic;
   final int sortOrder;
 }
 
@@ -408,20 +405,18 @@ class _ZonesSectionState extends State<ZonesSection> with _Saver {
 
   Future<void> _save() => runSave(() async {
         if (_rows.any((r) => r.name.text.trim().isEmpty)) throw const AppException('กรุณาใส่ชื่อตำบลให้ครบ');
-        final invalid = _rows.where((r) => r.feeMax < r.feeMin).firstOrNull;
-        if (invalid != null) throw AppException('ต.${invalid.name.text}: ราคาสูงสุดต้องไม่น้อยกว่าราคาต่ำสุด');
         final before = {for (final z in widget.zones) z.id: z};
         for (final z in widget.zones) {
           if (!_rows.any((r) => r.id == z.id)) await deleteZone(z.id);
         }
         for (final r in _rows) {
           if (_isNew(r.id)) {
-            await createZone(name: r.name.text, feeMin: r.feeMin, feeMax: r.feeMax, sortOrder: r.sortOrder);
+            await createZone(name: r.name.text, feePerCubic: r.feePerCubic, sortOrder: r.sortOrder);
             continue;
           }
           final b = before[r.id];
-          if (b != null && (b.feeMin != r.feeMin || b.feeMax != r.feeMax || b.name != r.name.text)) {
-            await saveZone(id: r.id, name: r.name.text, feeMin: r.feeMin, feeMax: r.feeMax);
+          if (b != null && (b.feePerCubic != r.feePerCubic || b.name != r.name.text)) {
+            await saveZone(id: r.id, name: r.name.text, feePerCubic: r.feePerCubic);
           }
         }
       });
@@ -431,9 +426,10 @@ class _ZonesSectionState extends State<ZonesSection> with _Saver {
     final superAdmin = AuthScope.of(context).isSuperAdmin;
     const head = TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.muted);
     return _SettingsCard(
-      title: 'ค่าส่งตามตำบล (บาท/เที่ยว)',
-      subtitle: 'ใกล้ถนนใหญ่ไม่เกิน ${formatNumber(widget.delivery.nearKm)} กม. คิดราคาต่ำสุด '
-          'ไกลขึ้นคิดเพิ่มตามระยะจนถึงราคาสูงสุด',
+      title: 'ค่าส่งตามตำบล',
+      subtitle: 'ค่าส่งลูกค้า: บาทต่อคิว คูณจำนวนคิวที่สั่ง ถ้าหน้างานห่างถนนใหญ่เกิน '
+          '${formatNumber(widget.delivery.nearKm)} กม. บวกเพิ่มต่อเที่ยวตามเรท บาท/กม. ของขนาดรถ '
+          '(รถ 5 คิว ${formatNumber(widget.delivery.driverPerKm5)} · รถ 3 คิว ${formatNumber(widget.delivery.driverPerKm3)})',
       saving: saving,
       error: saveError,
       saved: saved,
@@ -455,9 +451,7 @@ class _ZonesSectionState extends State<ZonesSection> with _Saver {
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     child: Row(children: [
                       const Expanded(child: Text('ตำบล', style: head)),
-                      const SizedBox(width: 92, child: Text('ต่ำสุด', style: head)),
-                      const SizedBox(width: 8),
-                      const SizedBox(width: 92, child: Text('สูงสุด', style: head)),
+                      const SizedBox(width: 120, child: Text('ค่าส่งลูกค้า/คิว', style: head)),
                       if (superAdmin) const SizedBox(width: 48),
                     ]),
                   ),
@@ -484,25 +478,12 @@ class _ZonesSectionState extends State<ZonesSection> with _Saver {
                         ),
                         const SizedBox(width: 8),
                         SizedBox(
-                          width: 92,
+                          width: 120,
                           child: NumberField(
-                            value: r.feeMin,
-                            decimal: false,
+                            value: r.feePerCubic,
                             dense: true,
-                            semanticLabel: 'ค่าส่งต่ำสุด ${r.name.text}',
-                            onChanged: (v) => setState(() => r.feeMin = math.max(0, v)),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 92,
-                          child: NumberField(
-                            value: r.feeMax,
-                            decimal: false,
-                            dense: true,
-                            semanticLabel: 'ค่าส่งสูงสุด ${r.name.text}',
-                            style: r.feeMax < r.feeMin ? const TextStyle(color: AppColors.destructive) : null,
-                            onChanged: (v) => setState(() => r.feeMax = math.max(0, v)),
+                            semanticLabel: 'ค่าส่งลูกค้าต่อคิว ${r.name.text}',
+                            onChanged: (v) => setState(() => r.feePerCubic = math.max(0, v)),
                           ),
                         ),
                         if (superAdmin)
@@ -543,9 +524,8 @@ class _ZonesSectionState extends State<ZonesSection> with _Saver {
 }
 
 class DeliverySection extends StatefulWidget {
-  const DeliverySection({super.key, required this.settings, required this.zones});
+  const DeliverySection({super.key, required this.settings});
   final DeliverySettings settings;
-  final List<Zone> zones;
 
   @override
   State<DeliverySection> createState() => _DeliverySectionState();
@@ -570,7 +550,6 @@ class _DeliverySectionState extends State<DeliverySection> with _Saver {
 
   @override
   Widget build(BuildContext context) {
-    final sample = widget.zones.firstOrNull;
     return _SettingsCard(
       title: 'การคำนวณค่าส่งจากระยะ',
       subtitle: 'ระยะวัดจากหมุดหน้างานถึงถนนสายหลักที่ใกล้ที่สุด · '
@@ -610,19 +589,17 @@ class _DeliverySectionState extends State<DeliverySection> with _Saver {
               ),
             ],
           ),
-          if (sample != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(color: AppColors.subtle, borderRadius: BorderRadius.circular(kRadius)),
-              child: Text(
-                'ตัวอย่างค่าส่งลูกค้า ต.${sample.name} (บาท/เที่ยว)\n'
-                '${[5, 3].map((size) => 'รถ $size คิว: ${[1, 1.4, 2.4, 5].map((km) => '$km กม. = '
-                    '${formatNumber(suggestDeliveryFee(sample.feeMin, km, size, _form))}').join(' · ')}').join('\n')}',
-                style: const TextStyle(fontSize: 14, color: AppColors.muted),
-              ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(color: AppColors.subtle, borderRadius: BorderRadius.circular(kRadius)),
+            child: Text(
+              'ตัวอย่างค่าส่งเพิ่มตามระยะ (บาท/เที่ยว บวกจากค่าส่งต่อคิวของตำบล)\n'
+              '${[5, 3].map((size) => 'รถ $size คิว: ${[1, 1.4, 2.4, 5].map((km) => '$km กม. = '
+                  '+${formatNumber(suggestTripFee(km, size, _form))}').join(' · ')}').join('\n')}',
+              style: const TextStyle(fontSize: 14, color: AppColors.muted),
             ),
-          ],
+          ),
         ],
       ),
     );

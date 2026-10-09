@@ -152,7 +152,7 @@ void main() {
     test('includes the map link and cash to collect', () {
       final msg = driverMessage(
         base,
-        const Zone(id: 'thung-hua', name: 'ทุ่งฮั้ว', feeMin: 300, feeMax: 400, sortOrder: 1),
+        const Zone(id: 'thung-hua', name: 'ทุ่งฮั้ว', feePerCubic: 40, sortOrder: 1),
         null,
       );
       expect(msg, contains('https://www.google.com/maps?q=19.200000,99.600000'));

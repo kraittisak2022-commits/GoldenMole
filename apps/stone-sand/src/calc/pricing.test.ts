@@ -43,6 +43,13 @@ describe('computeTotals', () => {
     });
   });
 
+  it('charges the per-คิว fee on every คิว ordered, on top of the per-trip fee', () => {
+    // 10 คิว × 40 + 2 เที่ยว × 100 (distance) + 50 remote
+    expect(computeTotals({ ...base, feePerCubic: 40, feePerTrip: 100, remoteSurcharge: 50 }).deliveryTotal).toBe(650);
+    expect(computeTotals({ ...base, feePerCubic: 40, feePerTrip: 0 }).deliveryTotal).toBe(400);
+    expect(computeTotals({ ...base, feePerCubic: -5, feePerTrip: 0 }).deliveryTotal).toBe(0);
+  });
+
   it('adds the remote surcharge once', () => {
     expect(computeTotals({ ...base, remoteSurcharge: 200 }).deliveryTotal).toBe(900);
   });

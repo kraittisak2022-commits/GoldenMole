@@ -61,6 +61,7 @@ export function mapOrder(row: any): Order {
     truckSize: row.truck_size,
     trips: row.trips,
     driverId: row.driver_id,
+    feePerCubic: num(row.fee_per_cubic),
     feePerTrip: num(row.fee_per_trip),
     remoteSurcharge: num(row.remote_surcharge),
     discountType: row.discount_type,
@@ -178,6 +179,7 @@ export interface OrderDraft {
   truckSize: TruckSize | null;
   trips: number;
   driverId: string | null;
+  feePerCubic: number;
   feePerTrip: number;
   remoteSurcharge: number;
   deliveryDiscount: number;
@@ -190,11 +192,15 @@ export interface OrderDraft {
 }
 
 export function draftTotals(
-  d: Pick<OrderDraft, 'items' | 'fulfillment' | 'feePerTrip' | 'trips' | 'remoteSurcharge' | 'deliveryDiscount' | 'discountType' | 'discountValue'>,
+  d: Pick<
+    OrderDraft,
+    'items' | 'fulfillment' | 'feePerCubic' | 'feePerTrip' | 'trips' | 'remoteSurcharge' | 'deliveryDiscount' | 'discountType' | 'discountValue'
+  >,
 ) {
   const delivery = d.fulfillment === 'delivery';
   return computeTotals({
     items: d.items,
+    feePerCubic: delivery ? d.feePerCubic : 0,
     feePerTrip: delivery ? d.feePerTrip : 0,
     trips: delivery ? d.trips : 0,
     remoteSurcharge: delivery ? d.remoteSurcharge : 0,
@@ -222,6 +228,7 @@ export async function createOrder(d: OrderDraft, by: string): Promise<Order> {
     truck_size: delivery ? d.truckSize : null,
     trips: delivery ? d.trips : 0,
     driver_id: delivery ? d.driverId : null,
+    fee_per_cubic: delivery ? d.feePerCubic : 0,
     fee_per_trip: delivery ? d.feePerTrip : 0,
     remote_surcharge: delivery ? d.remoteSurcharge : 0,
     delivery_discount: totals.deliveryDiscount,
@@ -280,6 +287,7 @@ export type OrderEdit = Pick<
   | 'items'
   | 'truckSize'
   | 'trips'
+  | 'feePerCubic'
   | 'feePerTrip'
   | 'remoteSurcharge'
   | 'deliveryDiscount'
@@ -298,6 +306,7 @@ export async function updateOrder(current: Order, e: OrderEdit, by: string): Pro
     delivery_address: e.deliveryAddress.trim(),
     truck_size: e.truckSize,
     trips: e.trips,
+    fee_per_cubic: e.feePerCubic,
     fee_per_trip: e.feePerTrip,
     remote_surcharge: e.remoteSurcharge,
     delivery_discount: totals.deliveryDiscount,

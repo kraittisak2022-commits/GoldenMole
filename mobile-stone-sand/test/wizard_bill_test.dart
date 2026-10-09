@@ -259,18 +259,35 @@ void main() {
       ],
     );
 
+    const thungHua = Zone(id: 'thung-hua', name: 'ทุ่งฮั้ว', feePerCubic: 40, sortOrder: 1);
+
     test('adds delivery and surcharge lines that sum to the gross amount', () {
-      final bill = billFromOrder(
-        order,
-        DocKind.delivery,
-        zone: const Zone(id: 'thung-hua', name: 'ทุ่งฮั้ว', feeMin: 300, feeMax: 400, sortOrder: 1),
-      );
+      final bill = billFromOrder(order, DocKind.delivery, zone: thungHua);
       expect(bill.lines.map((l) => l.amount).toList(), [2000, 700, 100]);
       expect(bill.lines.fold<double>(0, (s, l) => s + l.amount), bill.gross);
       expect(bill.gross - bill.discountAmount, bill.total);
       expect(bill.lines[1].description, 'ค่าขนส่ง ต.ทุ่งฮั้ว');
       expect(bill.docNo, 'DO6910-0001');
       expect(bill.discountLabel, contains('10%'));
+    });
+
+    test('charges the tambon fee per คิว and the distance surcharge per trip', () {
+      // 5 คิว × 40 + 2 เที่ยว × 50 + 100 remote
+      final perCubic =
+          order.copyWith(feePerCubic: 40, feePerTrip: 50, deliveryTotal: 400, discountAmount: 0, total: 2400);
+      final bill = billFromOrder(perCubic, DocKind.delivery, zone: thungHua);
+      final delivery = bill.lines.skip(1).toList();
+      expect(delivery.map((l) => l.description).toList(),
+          ['ค่าขนส่ง ต.ทุ่งฮั้ว', 'ค่าขนส่งเพิ่มตามระยะทาง', 'ค่าขนส่งเพิ่ม (พื้นที่ห่างไกล)']);
+      expect(delivery.map((l) => l.amount).toList(), [200, 100, 100]);
+      expect((delivery[0].quantity, delivery[0].unit, delivery[0].unitPrice), (5, 'คิว', 40));
+      expect((delivery[1].quantity, delivery[1].unit, delivery[1].unitPrice), (2, 'เที่ยว', 50));
+      expect(bill.lines.fold<double>(0, (s, l) => s + l.amount), bill.gross);
+
+      final near = billFromOrder(perCubic.copyWith(feePerTrip: 0, deliveryTotal: 300, total: 2300), DocKind.delivery,
+          zone: thungHua);
+      expect(near.lines.map((l) => l.description).toList(),
+          ['หินเล็กคละ', 'ค่าขนส่ง ต.ทุ่งฮั้ว', 'ค่าขนส่งเพิ่ม (พื้นที่ห่างไกล)']);
     });
 
     test('names ส่วนลดค่าส่ง alongside the bill discount', () {

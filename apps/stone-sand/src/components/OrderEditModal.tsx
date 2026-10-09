@@ -3,7 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { lineAmount, lineDiscount } from '../calc/pricing';
 import { useCatalog } from '../context/CatalogProvider';
 import { draftTotals, updateOrder, type OrderEdit } from '../data/orders';
-import { formatMoney } from '../lib/format';
+import { deliveryFeeFormula, formatMoney } from '../lib/format';
 import { PAYMENT_METHOD_LABEL, type Order, type PaymentMethod, type TruckSize } from '../types';
 import Button from './ui/Button';
 import Field from './ui/Field';
@@ -34,6 +34,7 @@ export default function OrderEditModal({
     items: o.items.map((it) => ({ ...it })),
     truckSize: o.truckSize,
     trips: o.trips,
+    feePerCubic: o.feePerCubic,
     feePerTrip: o.feePerTrip,
     remoteSurcharge: o.remoteSurcharge,
     deliveryDiscount: o.deliveryDiscount,
@@ -175,7 +176,7 @@ export default function OrderEditModal({
         {delivery ? (
           <section className="flex flex-col gap-3">
             <p className="text-sm font-medium">การจัดส่ง</p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <Field id="oe-truck" label="ขนาดรถ">
                 <Select
                   id="oe-truck"
@@ -195,6 +196,16 @@ export default function OrderEditModal({
                   min={0}
                   value={form.trips}
                   onChange={(e) => set({ trips: Math.floor(num(e.target.value)) })}
+                />
+              </Field>
+              <Field id="oe-fee-cubic" label="ค่าส่ง/คิว">
+                <Input
+                  id="oe-fee-cubic"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={form.feePerCubic}
+                  onChange={(e) => set({ feePerCubic: num(e.target.value) })}
                 />
               </Field>
               <Field id="oe-fee" label="ค่าส่ง/เที่ยว">
@@ -266,7 +277,12 @@ export default function OrderEditModal({
 
         <dl className="flex flex-col gap-1 rounded bg-subtle px-4 py-3 text-sm">
           <Row label="ค่าสินค้า" value={formatMoney(totals.subtotal)} />
-          {delivery ? <Row label="ค่าจัดส่ง" value={formatMoney(totals.deliveryTotal)} /> : null}
+          {delivery ? (
+            <Row
+              label={`ค่าจัดส่ง (${deliveryFeeFormula({ ...form, cubic: totals.totalQuantity })})`}
+              value={formatMoney(totals.deliveryTotal)}
+            />
+          ) : null}
           {totals.deliveryDiscount ? <Row label="ส่วนลดค่าส่ง" value={`-${formatMoney(totals.deliveryDiscount)}`} /> : null}
           {totals.discountAmount - totals.deliveryDiscount > 0 ? (
             <Row label="ส่วนลด" value={`-${formatMoney(totals.discountAmount - totals.deliveryDiscount)}`} />

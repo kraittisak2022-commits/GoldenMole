@@ -64,6 +64,7 @@ class _OrderEditScreenState extends State<OrderEditScreen> {
   late final List<_Item> _items = o.items.map(_Item.new).toList();
   late int? _truck = o.truckSize;
   late int _trips = o.trips;
+  late double _feeCubic = o.feePerCubic;
   late double _fee = o.feePerTrip;
   late double _extra = o.remoteSurcharge;
   late double _deliveryDiscount = o.deliveryDiscount;
@@ -92,6 +93,7 @@ class _OrderEditScreenState extends State<OrderEditScreen> {
     items: _items.map((it) => it.toItem()).toList(),
     truckSize: _truck,
     trips: _trips,
+    feePerCubic: _feeCubic,
     feePerTrip: _fee,
     remoteSurcharge: _extra,
     deliveryDiscount: _deliveryDiscount,
@@ -254,7 +256,7 @@ class _OrderEditScreenState extends State<OrderEditScreen> {
               const SizedBox(height: 8),
               LayoutBuilder(
                 builder: (context, c) {
-                  final cols = c.maxWidth >= 560 ? 5 : 2;
+                  final cols = c.maxWidth >= 560 ? 3 : 2;
                   final w = (c.maxWidth - 12 * (cols - 1)) / cols;
                   Widget cell(Widget child) => SizedBox(width: w, child: child);
                   return Wrap(
@@ -283,6 +285,15 @@ class _OrderEditScreenState extends State<OrderEditScreen> {
                             value: _trips,
                             decimal: false,
                             onChanged: (v) => setState(() => _trips = math.max(0, v).floor()),
+                          ),
+                        ),
+                      ),
+                      cell(
+                        FieldLabel(
+                          'ค่าส่ง/คิว',
+                          child: NumberField(
+                            value: _feeCubic,
+                            onChanged: (v) => setState(() => _feeCubic = math.max(0, v)),
                           ),
                         ),
                       ),
@@ -360,7 +371,11 @@ class _OrderEditScreenState extends State<OrderEditScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   InfoRow('ค่าสินค้า', formatMoney(totals.subtotal)),
-                  if (_delivery) InfoRow('ค่าจัดส่ง', formatMoney(totals.deliveryTotal)),
+                  if (_delivery)
+                    InfoRow(
+                      'ค่าจัดส่ง (${deliveryFeeFormula(feePerCubic: _feeCubic, cubic: totals.totalQuantity, feePerTrip: _fee, trips: _trips, remoteSurcharge: _extra)})',
+                      formatMoney(totals.deliveryTotal),
+                    ),
                   if (totals.deliveryDiscount != 0) InfoRow('ส่วนลดค่าส่ง', '-${formatMoney(totals.deliveryDiscount)}'),
                   if (totals.discountAmount - totals.deliveryDiscount > 0)
                     InfoRow('ส่วนลด', '-${formatMoney(totals.discountAmount - totals.deliveryDiscount)}'),

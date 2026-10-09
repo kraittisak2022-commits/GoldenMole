@@ -32,9 +32,14 @@ enum DiscountType {
   static DiscountType parse(Object? v) => v == 'percent' ? percent : baht;
 }
 
+/// Total คิว ordered; the per-คิว delivery fee is charged on this.
+double totalCubic(Iterable<num> quantities) =>
+    round2(quantities.fold<double>(0, (s, q) => s + (q > 0 ? q : 0)));
+
 class TotalsInput {
   const TotalsInput({
     required this.items,
+    this.feePerCubic = 0,
     required this.feePerTrip,
     required this.trips,
     required this.remoteSurcharge,
@@ -43,6 +48,9 @@ class TotalsInput {
     required this.discountValue,
   });
   final List<PriceLine> items;
+
+  /// Delivery fee per คิว ordered (the tambon rate).
+  final num feePerCubic;
   final num feePerTrip;
   final num trips;
   final num remoteSurcharge;
@@ -80,11 +88,11 @@ double _nz(num? v) => (v == null || v.isNaN) ? 0 : v.toDouble();
 /// product subtotal only; baht discounts can also cover delivery. The total never goes below zero.
 Totals computeTotals(TotalsInput input) {
   final subtotal = round2(input.items.fold<double>(0, (s, it) => s + lineAmount(it.unitPrice, it.quantity)));
-  final totalQuantity =
-      round2(input.items.fold<double>(0, (s, it) => s + (it.quantity > 0 ? it.quantity : 0)));
+  final totalQuantity = totalCubic(input.items.map((it) => it.quantity));
   final trips = math.max(0, _nz(input.trips).floor());
-  final deliveryTotal =
-      round2(math.max(0, _nz(input.feePerTrip)) * trips + math.max(0, _nz(input.remoteSurcharge)));
+  final deliveryTotal = round2(math.max(0, _nz(input.feePerCubic)) * totalQuantity +
+      math.max(0, _nz(input.feePerTrip)) * trips +
+      math.max(0, _nz(input.remoteSurcharge)));
   final gross = subtotal + deliveryTotal;
   final itemDiscount = round2(input.items
       .fold<double>(0, (s, it) => s + lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit)));

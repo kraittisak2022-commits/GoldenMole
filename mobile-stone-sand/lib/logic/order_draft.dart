@@ -16,6 +16,7 @@ class OrderDraft {
     required this.truckSize,
     required this.trips,
     required this.driverId,
+    required this.feePerCubic,
     required this.feePerTrip,
     required this.remoteSurcharge,
     required this.deliveryDiscount,
@@ -42,6 +43,7 @@ class OrderDraft {
   final int? truckSize;
   final int trips;
   final String? driverId;
+  final double feePerCubic;
   final double feePerTrip;
   final double remoteSurcharge;
   final double deliveryDiscount;
@@ -57,6 +59,7 @@ class OrderDraft {
 Totals draftTotals({
   required List<OrderItem> items,
   required Fulfillment fulfillment,
+  required num feePerCubic,
   required num feePerTrip,
   required num trips,
   required num remoteSurcharge,
@@ -67,6 +70,7 @@ Totals draftTotals({
   final delivery = fulfillment == Fulfillment.delivery;
   return computeTotals(TotalsInput(
     items: items.map((it) => it.priceLine).toList(),
+    feePerCubic: delivery ? feePerCubic : 0,
     feePerTrip: delivery ? feePerTrip : 0,
     trips: delivery ? trips : 0,
     remoteSurcharge: delivery ? remoteSurcharge : 0,

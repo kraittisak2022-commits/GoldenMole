@@ -46,27 +46,27 @@ Future<List<Zone>> listZones() => guard(() async {
       return (data as List).map((r) => Zone.fromRow(Map<String, dynamic>.from(r as Map))).toList();
     });
 
+/// fee_min holds the customer's baht/คิว. fee_max is no longer used for pricing; it is kept equal to
+/// fee_min to satisfy CHECK (fee_max >= fee_min).
 Future<void> saveZone({
   required String id,
   required String name,
-  required double feeMin,
-  required double feeMax,
+  required double feePerCubic,
 }) =>
     guard(() => db
         .from('ss_zones')
-        .update({'name': name.trim(), 'fee_min': feeMin, 'fee_max': feeMax}).eq('id', id));
+        .update({'name': name.trim(), 'fee_min': feePerCubic, 'fee_max': feePerCubic}).eq('id', id));
 
 Future<void> createZone({
   required String name,
-  required double feeMin,
-  required double feeMax,
+  required double feePerCubic,
   required int sortOrder,
 }) =>
     guard(() => db.from('ss_zones').insert({
           'id': newId('zone'),
           'name': name.trim(),
-          'fee_min': feeMin,
-          'fee_max': feeMax,
+          'fee_min': feePerCubic,
+          'fee_max': feePerCubic,
           'sort_order': sortOrder,
         }));
 

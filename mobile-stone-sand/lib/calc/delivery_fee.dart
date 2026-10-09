@@ -54,12 +54,11 @@ int chargedKm(num? distanceKm, num nearKm) {
 num distanceSurcharge(num? distanceKm, {required num nearKm, required num perKm}) =>
     perKm <= 0 ? 0 : chargedKm(distanceKm, nearKm) * perKm;
 
-/// Suggested delivery fee per trip: the tambon fee, plus the truck size's baht/km for every started km
-/// beyond nearKm between the main road and the pin.
-num suggestDeliveryFee(
-  num feeMin,
+/// Suggested customer fee per trip on top of the tambon's baht/คิว: the truck size's baht/km for every
+/// started km beyond nearKm between the main road and the pin. The driver is paid the same rate.
+num suggestTripFee(
   num? distanceKm,
   int? truckSize, [
   DeliverySettings settings = DeliverySettings.defaults,
 ]) =>
-    feeMin + distanceSurcharge(distanceKm, nearKm: settings.nearKm, perKm: perKmFor(truckSize, settings));
+    distanceSurcharge(distanceKm, nearKm: settings.nearKm, perKm: perKmFor(truckSize, settings));

@@ -116,6 +116,20 @@ final _docNoRe = RegExp(r'^(DO|TS|RE|BL)(\d{2})(\d{2})-(\d{4,})$');
   return (kind: kind, year: 2000 + int.parse(m[2]!), month: month, seq: int.parse(m[4]!));
 }
 
+/// How the delivery fee adds up, e.g. "40 × 10 คิว + 100 × 2 เที่ยว + 50".
+String deliveryFeeFormula({
+  required num feePerCubic,
+  required num cubic,
+  required num feePerTrip,
+  required int trips,
+  required num remoteSurcharge,
+}) =>
+    [
+      if (feePerCubic > 0) '${formatNumber(feePerCubic)} × ${formatNumber(cubic)} คิว',
+      if (feePerTrip > 0 || !(feePerCubic > 0)) '${formatNumber(feePerTrip)} × $trips เที่ยว',
+      if (remoteSurcharge > 0) formatNumber(remoteSurcharge),
+    ].join(' + ');
+
 String googleMapsUrl(double lat, double lng) =>
     'https://www.google.com/maps?q=${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
 

@@ -17,7 +17,7 @@ import {
   Truck,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
-import { lineDiscount } from '../calc/pricing';
+import { lineDiscount, totalCubic } from '../calc/pricing';
 import DeliveryMap from '../components/map/DeliveryMap';
 import OrderEditModal from '../components/OrderEditModal';
 import DemoBadge from '../components/DemoBadge';
@@ -35,7 +35,15 @@ import { deleteOrder, getOrder, markOrderPaid, markOrderUnpaid, setDeliveryStatu
 import { getStatement } from '../data/statements';
 import { useAsync } from '../hooks/useAsync';
 import { driverTripRate } from '../lib/driverPay';
-import { formatDateShort, formatDateTime, formatMoney, formatNumber, formatPhone, googleMapsUrl } from '../lib/format';
+import {
+  deliveryFeeFormula,
+  formatDateShort,
+  formatDateTime,
+  formatMoney,
+  formatNumber,
+  formatPhone,
+  googleMapsUrl,
+} from '../lib/format';
 import { deliveryBadge, driverMessage, paymentBadge } from '../lib/orderStatus';
 import {
   DELIVERY_STATUS_LABEL,
@@ -371,7 +379,7 @@ export default function OrderDetailPage() {
             <TotalRow label="ค่าสินค้า" value={formatMoney(o.subtotal)} />
             {delivery ? (
               <TotalRow
-                label={`ค่าจัดส่ง (${formatNumber(o.feePerTrip)} × ${o.trips}${o.remoteSurcharge ? ` + ${formatNumber(o.remoteSurcharge)}` : ''})`}
+                label={`ค่าจัดส่ง (${deliveryFeeFormula({ ...o, cubic: totalCubic(o.items) })})`}
                 value={formatMoney(o.deliveryTotal)}
               />
             ) : null}
@@ -402,7 +410,14 @@ export default function OrderDetailPage() {
               <Info label="ตำบล" value={zone?.name ?? '—'} />
               <Info label="รถ" value={o.truckSize ? `${o.truckSize} คิว × ${o.trips}` : '—'} />
               <Info label="ระยะจากถนนใหญ่" value={o.roadDistanceKm != null ? `${formatNumber(o.roadDistanceKm)} กม.` : '—'} />
-              <Info label="ค่าส่ง/เที่ยว" value={formatNumber(o.feePerTrip)} />
+              {o.feePerCubic > 0 ? (
+                <Info
+                  label="ค่าส่ง"
+                  value={`${formatNumber(o.feePerCubic)}/คิว${o.feePerTrip ? ` + ${formatNumber(o.feePerTrip)}/เที่ยว` : ''}`}
+                />
+              ) : (
+                <Info label="ค่าส่ง/เที่ยว" value={formatNumber(o.feePerTrip)} />
+              )}
             </div>
             {o.deliveryAddress ? (
               <p className="mb-3 flex items-start gap-1.5 text-sm">

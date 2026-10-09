@@ -32,6 +32,7 @@ export function demoCreditDraft(customer: Customer, product: Product, source: Or
     truckSize: null,
     trips: 0,
     driverId: null,
+    feePerCubic: 0,
     feePerTrip: 0,
     remoteSurcharge: 0,
     deliveryDiscount: 0,
