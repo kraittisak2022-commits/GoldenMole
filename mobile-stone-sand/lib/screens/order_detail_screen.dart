@@ -262,7 +262,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (o == null) return const Center(child: EmptyState('ไม่พบออเดอร์'));
 
     final catalog = CatalogScope.of(context);
-    final auth = AuthScope.of(context);
     final st = _statement;
     final inOpen = st != null && !st.isCleared;
     final inCleared = st != null && st.isCleared;
@@ -311,13 +310,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (auth.isSuperAdmin || o.demo)
-                TextButton.icon(
-                  style: TextButton.styleFrom(foregroundColor: AppColors.destructive),
-                  onPressed: busy ? null : () => _remove(o),
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text('ลบออเดอร์'),
-                ),
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: AppColors.destructive),
+                onPressed: busy ? null : () => _remove(o),
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: const Text('ลบออเดอร์'),
+              ),
               if (!inOpen && !inCleared)
                 TourTarget(
                   'cancel-order',

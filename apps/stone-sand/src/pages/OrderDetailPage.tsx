@@ -551,11 +551,9 @@ export default function OrderDetailPage() {
         </Card>
 
         <div className="flex flex-wrap justify-end gap-2">
-          {isSuperAdmin || o.demo ? (
-            <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={removeOrder} disabled={!!busy}>
-              <Trash2 size={16} aria-hidden /> ลบออเดอร์
-            </Button>
-          ) : null}
+          <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={removeOrder} disabled={!!busy}>
+            <Trash2 size={16} aria-hidden /> ลบออเดอร์
+          </Button>
           {!inClearedStatement && !inOpenStatement ? (
             <Button variant={o.cancelled ? 'secondary' : 'ghost'} onClick={toggleCancel} disabled={!!busy} data-tour="cancel-order">
               {o.cancelled ? <RotateCcw size={16} aria-hidden /> : <Ban size={16} aria-hidden />}
