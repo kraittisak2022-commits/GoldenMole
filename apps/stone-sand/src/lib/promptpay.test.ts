@@ -1,4 +1,4 @@
-import { crc16, isThaiQrPayload, promptPayPayload, promptPayTarget } from './promptpay';
+import { crc16, isThaiQrPayload, promptPayPayload, promptPayTarget, qrReference, withReference3 } from './promptpay';
 
 describe('crc16', () => {
   it('matches the CRC-16/CCITT-FALSE check value', () => {
@@ -48,5 +48,41 @@ describe('isThaiQrPayload', () => {
   it('rejects other text and a wrong checksum', () => {
     expect(isThaiQrPayload('https://example.com')).toBe(false);
     expect(isThaiQrPayload(`${shopQr.slice(0, -4)}0000`)).toBe(false);
+  });
+});
+
+describe('withReference3', () => {
+  const shopQr =
+    '00020101021130730016A0000006770101120115010753700088205021916151060181105030020307PIRASIT53037645802TH620807040000630443A3';
+  const head = '00020101021130730016A0000006770101120115010753700088205021916151060181105030020307PIRASIT53037645802TH';
+
+  it("replaces the shop QR's reference 3 with the bill number and re-signs it", () => {
+    const p = withReference3(shopQr, 'DO2610-0005');
+    expect(p.slice(0, -4)).toBe(`${head}6214` + '0710DO26100005' + '6304');
+    expect(isThaiQrPayload(p)).toBe(true);
+  });
+
+  it('adds reference 3 to a QR without additional data and keeps the field order', () => {
+    const p = withReference3(promptPayPayload('0801234567')!, 'BL2610-0004');
+    expect(p).toContain('5802TH' + '6214' + '0710BL26100004' + '6304');
+    expect(isThaiQrPayload(p)).toBe(true);
+  });
+
+  it('keeps other additional data fields', () => {
+    const base = `${head}62140503ABC07030006304`;
+    const p = withReference3(base + crc16(base), 'RC1');
+    expect(p).toContain('6214' + '0503ABC' + '0703RC1' + '6304');
+  });
+
+  it('leaves the payload alone when it is not a Thai QR or the reference is empty', () => {
+    expect(withReference3('https://example.com', 'DO1')).toBe('https://example.com');
+    expect(withReference3(shopQr, '--')).toBe(shopQr);
+  });
+});
+
+describe('qrReference', () => {
+  it('keeps A-Z and 0-9 only, up to 25 characters', () => {
+    expect(qrReference('do2610-0005')).toBe('DO26100005');
+    expect(qrReference('X'.repeat(30))).toHaveLength(25);
   });
 });

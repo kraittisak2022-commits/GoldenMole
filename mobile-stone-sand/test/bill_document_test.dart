@@ -34,7 +34,8 @@ const _payment = PaymentSettings(
   bankName: 'กสิกรไทย',
   bankAccountNo: '123-4-56789-0',
   bankAccountName: 'หจก. ทดสอบ',
-  qrPayload: '00020101021129370016A000000677010111011300668123456785802TH530376463042A2B',
+  qrPayload: '00020101021130730016A0000006770101120115010753700088205021916151060181105030020307PIRASIT'
+      '53037645802TH620807040000630443A3',
 );
 
 Future<void> _pump(WidgetTester tester, Widget sheet, GlobalKey key) async {
@@ -74,6 +75,7 @@ void main() {
     expect(find.text('123-4-56789-0'), findsNWidgets(2));
     expect(find.text('หจก. ทดสอบ'), findsNWidgets(2));
     expect(find.text('สแกน QR เพื่อชำระ'), findsNWidgets(2));
+    expect(find.text('อ้างอิง DO69100001'), findsNWidgets(2));
 
     await tester.runAsync(() async {
       final png = await captureBoundary(key, pixelRatio: 0.5);

@@ -1,10 +1,9 @@
 import { forwardRef, type ReactNode } from 'react';
 import { bahtText } from '../../calc/bahtText';
 import { DOC_TITLE, formatDateShort, formatDateTh, formatDateTime, formatMoney, formatNumber, formatPhone } from '../../lib/format';
-import { promptPayPayload } from '../../lib/promptpay';
+import { promptPayPayload, qrReference, withReference3 } from '../../lib/promptpay';
 import { PAYMENT_METHOD_LABEL, type CompanySettings, type PaymentSettings } from '../../types';
 import logoUrl from '../../assets/pirasit-logo.png';
-import BillSecurity from './BillSecurity';
 import BillStamp from './BillStamp';
 import QrImage from './QrImage';
 import { PAYMENT_CHOICES, type BillData } from './billData';
@@ -75,25 +74,22 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
     !b.paid && !b.cancelled && due > 0 && (statement || b.paymentMethod !== 'credit') && !!payment.promptPayId;
   const ppPayload = showPromptPay ? promptPayPayload(payment.promptPayId, due) : null;
   const showPayChannel = !b.paid && !b.cancelled && !!(payment.qrPayload || payment.bankAccountNo);
+  const billQr = payment.qrPayload ? withReference3(payment.qrPayload, b.docNo) : '';
+  const billRef = billQr && billQr !== payment.qrPayload.trim() ? qrReference(b.docNo) : '';
   const [customerSigner, companySigner] = SIGNERS[b.kind];
   const copyLabel = copy === 'original' ? 'ต้นฉบับ / ORIGINAL' : 'สำเนา / COPY';
 
   return (
     <div
       ref={ref}
-      className={`bill-sheet bill-protect relative flex flex-col overflow-hidden bg-white text-[12.5px] leading-snug text-slate-900 ${L.sheet}`}
+      className={`bill-sheet relative flex flex-col overflow-hidden bg-white text-[12.5px] leading-snug text-slate-900 ${L.sheet}`}
       style={L.style}
-      onContextMenu={(e) => e.preventDefault()}
-      onCopy={(e) => e.preventDefault()}
-      onDragStart={(e) => e.preventDefault()}
     >
-      <BillSecurity docNo={b.docNo} label={copy === 'original' ? 'ORIGINAL' : 'COPY'} />
-
       <div className="relative flex flex-1 flex-col">
         <header>
           <div className={`flex items-stretch justify-between ${L.headerGap}`}>
             <div className="flex min-w-0 items-center gap-3">
-              <img src={logoUrl} alt="" draggable={false} className={`${L.logo} w-auto shrink-0`} />
+              <img src={logoUrl} alt="" className={`${L.logo} w-auto shrink-0`} />
               <div className="min-w-0 border-l-2 border-[#1e3a5f]/20 pl-3">
                 <p className={`${L.company} font-bold leading-tight text-[#1e3a5f]`}>{company.nameTh}</p>
                 <p className={`mt-0.5 font-semibold uppercase text-slate-500 ${L.companyEn}`}>{company.nameEn}</p>
@@ -112,7 +108,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
               </div>
               {showPayChannel ? (
                 <div className="flex items-center gap-2 rounded-md border border-slate-300 px-2 py-1.5">
-                  {payment.qrPayload ? <QrImage value={payment.qrPayload} size={L.payQr} label="QR รับเงิน" /> : null}
+                  {billQr ? <QrImage value={billQr} size={L.payQr} label="QR รับเงิน" /> : null}
                   <div className="text-[10px] leading-snug text-slate-700">
                     <p className="font-semibold text-[#1e3a5f]">ช่องทางรับเงิน</p>
                     {payment.bankName ? <p>{payment.bankName}</p> : null}
@@ -120,7 +116,8 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
                       <p className="text-[11px] font-semibold tabular-nums text-slate-900">{payment.bankAccountNo}</p>
                     ) : null}
                     {payment.bankAccountName ? <p>{payment.bankAccountName}</p> : null}
-                    {payment.qrPayload ? <p className="text-slate-500">สแกน QR เพื่อชำระ</p> : null}
+                    {billQr ? <p className="text-slate-500">สแกน QR เพื่อชำระ</p> : null}
+                    {billRef ? <p className="text-slate-500">อ้างอิง {billRef}</p> : null}
                   </div>
                 </div>
               ) : null}

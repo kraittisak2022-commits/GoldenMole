@@ -350,6 +350,29 @@ void main() {
     });
 
     test('rejects unknown ids', () => expect(promptPayPayload('abc'), isNull));
+
+    const shopQr = '00020101021130730016A0000006770101120115010753700088205021916151060181105030020307PIRASIT'
+        '53037645802TH620807040000630443A3';
+    const head = '00020101021130730016A0000006770101120115010753700088205021916151060181105030020307PIRASIT'
+        '53037645802TH';
+
+    test("replaces the shop QR's reference 3 with the bill number and re-signs it", () {
+      final p = withReference3(shopQr, 'DO2610-0005');
+      expect(p.substring(0, p.length - 4), '${head}6214' '0710DO26100005' '6304');
+      expect(isThaiQrPayload(p), isTrue);
+    });
+
+    test('adds reference 3 to a QR without additional data', () {
+      final p = withReference3(promptPayPayload('0801234567')!, 'BL2610-0004');
+      expect(p, contains('5802TH' '6214' '0710BL26100004' '6304'));
+      expect(isThaiQrPayload(p), isTrue);
+    });
+
+    test('leaves the payload alone when it is not a Thai QR or the reference is empty', () {
+      expect(withReference3('https://example.com', 'DO1'), 'https://example.com');
+      expect(withReference3(shopQr, '--'), shopQr);
+      expect(qrReference('do2610-0005'), 'DO26100005');
+    });
   });
 
   group('parseLatLng', () {

@@ -244,13 +244,6 @@
   }
 }
 
-/* Bill document */
-.bill-protect {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
-
 /* Orientation is set by BillPage: landscape for original + copy, portrait for original only. */
 @page {
   margin: 0;

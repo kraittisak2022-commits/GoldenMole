@@ -20,6 +20,52 @@ export function isThaiQrPayload(payload: string): boolean {
   return crc16(p.slice(0, -4)) === p.slice(-4).toUpperCase();
 }
 
+interface Tlv {
+  id: string;
+  value: string;
+}
+
+function parseTlv(payload: string): Tlv[] | null {
+  const out: Tlv[] = [];
+  for (let i = 0; i < payload.length; ) {
+    const id = payload.slice(i, i + 2);
+    const len = Number(payload.slice(i + 2, i + 4));
+    if (!/^\d{2}$/.test(id) || !Number.isInteger(len) || i + 4 + len > payload.length) return null;
+    out.push({ id, value: payload.slice(i + 4, i + 4 + len) });
+    i += 4 + len;
+  }
+  return out;
+}
+
+const joinTlv = (fields: Tlv[]) => fields.map((f) => field(f.id, f.value)).join('');
+
+/** Bank apps only accept A-Z and 0-9 in references; Thai QR allows at most 25 characters there. */
+export function qrReference(text: string): string {
+  return text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 25);
+}
+
+/**
+ * The shop's Thai QR with reference 3 (additional data 62, terminal label 07) set to `ref`,
+ * so each bill gets its own QR. Returns the payload unchanged when it is not a valid Thai QR
+ * or `ref` has no usable characters.
+ */
+export function withReference3(payload: string, ref: string): string {
+  const p = payload.trim();
+  const value = qrReference(ref);
+  if (!value || !isThaiQrPayload(p)) return payload;
+  const top = parseTlv(p.slice(0, -8));
+  if (!top) return payload;
+  const extra = top.find((f) => f.id === '62');
+  const sub = extra ? parseTlv(extra.value) : [];
+  if (!sub) return payload;
+  const nextSub = [...sub.filter((f) => f.id !== '07'), { id: '07', value }].sort((a, b) => a.id.localeCompare(b.id));
+  const nextTop = [...top.filter((f) => f.id !== '62'), { id: '62', value: joinTlv(nextSub) }].sort((a, b) =>
+    a.id.localeCompare(b.id),
+  );
+  const body = `${joinTlv(nextTop)}6304`;
+  return body + crc16(body);
+}
+
 /** Normalised PromptPay target, or null when the id is not a mobile number / tax id / e-wallet id. */
 export function promptPayTarget(id: string): { tag: '01' | '02' | '03'; value: string } | null {
   const digits = id.replace(/\D/g, '');

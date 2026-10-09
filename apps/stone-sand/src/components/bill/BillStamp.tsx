@@ -15,7 +15,7 @@ export default function BillStamp({ paidDate, size = 140, rotate = -8 }: Props) 
       className="flex flex-col items-center"
       style={{ transform: `rotate(${rotate}deg)`, opacity: 0.9, color: 'var(--color-stamp)' }}
     >
-      <img src={stampUrl} width={size} alt="ตราประทับบริษัท" draggable={false} style={{ height: 'auto' }} />
+      <img src={stampUrl} width={size} alt="ตราประทับบริษัท" style={{ height: 'auto' }} />
       {paidDate ? (
         <div className="-mt-1 rounded border-2 border-current px-2.5 py-0.5 text-center font-bold leading-tight">
           <p className="text-[13px]">ชำระเงินแล้ว</p>

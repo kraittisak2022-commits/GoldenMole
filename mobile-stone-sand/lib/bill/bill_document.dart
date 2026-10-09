@@ -291,11 +291,6 @@ class BillDocument extends StatelessWidget {
         color: Colors.white,
         child: Stack(
           children: [
-            Positioned.fill(
-              child: CustomPaint(
-                painter: BillSecurityPainter(docNo: b.docNo, label: copy == BillCopy.original ? 'ORIGINAL' : 'COPY'),
-              ),
-            ),
             Padding(
               padding: l.padding,
               child: ConstrainedBox(
@@ -449,17 +444,20 @@ class BillDocument extends StatelessWidget {
   /// Shop bank account and receiving QR, top right of an unpaid bill.
   Widget _payChannel(_Layout l) {
     const small = TextStyle(fontSize: 10, height: 1.3, color: _s700);
+    const hint = TextStyle(fontSize: 10, height: 1.3, color: _s500);
+    final qr = payment.qrPayload.isEmpty ? '' : withReference3(payment.qrPayload, bill.docNo);
+    final ref = qr.isNotEmpty && qr != payment.qrPayload.trim() ? qrReference(bill.docNo) : '';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(border: Border.all(color: _s300), borderRadius: BorderRadius.circular(6)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (payment.qrPayload.isNotEmpty) ...[
+          if (qr.isNotEmpty) ...[
             SizedBox.square(
               dimension: l.payQr,
               child: QrImageView(
-                data: payment.qrPayload,
+                data: qr,
                 padding: EdgeInsets.zero,
                 size: l.payQr,
                 semanticsLabel: 'QR รับเงิน',
@@ -485,8 +483,8 @@ class BillDocument extends StatelessWidget {
                   ),
                 ),
               if (payment.bankAccountName.isNotEmpty) Text(payment.bankAccountName, style: small),
-              if (payment.qrPayload.isNotEmpty)
-                const Text('สแกน QR เพื่อชำระ', style: TextStyle(fontSize: 10, height: 1.3, color: _s500)),
+              if (qr.isNotEmpty) const Text('สแกน QR เพื่อชำระ', style: hint),
+              if (ref.isNotEmpty) Text('อ้างอิง $ref', style: hint),
             ],
           ),
         ],
@@ -943,86 +941,6 @@ class _Overlay extends StatelessWidget {
       ),
     );
   }
-}
-
-const _micro = 'PIRASIT CONSTRUCTION MATERIALS • พีรสิทธิ์ วัสดุก่อสร้าง • ';
-
-/// Anti-copy layers: a tiled diagonal watermark with the document number, a faint ORIGINAL/COPY
-/// label and a microtext frame that turns into a plain line when photocopied.
-class BillSecurityPainter extends CustomPainter {
-  BillSecurityPainter({required this.docNo, required this.label});
-  final String docNo;
-  final String label;
-
-  static const _ink = _navy;
-
-  TextPainter _text(String s, double size, {FontWeight weight = FontWeight.w400, double alpha = 0.07}) {
-    return TextPainter(
-      text: TextSpan(
-        text: s,
-        style: TextStyle(
-          fontSize: size,
-          fontWeight: weight,
-          color: _ink.withValues(alpha: alpha),
-          fontFamily: 'NotoSansThai',
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // The web draws in a 210×297 viewBox stretched over the sheet.
-    final sx = size.width / 210;
-    final sy = size.height / 297;
-    canvas.save();
-    canvas.clipRect(Offset.zero & size);
-
-    final brand = _text('พีรสิทธิ์ วัสดุก่อสร้าง', 4.2 * sx, weight: FontWeight.w700);
-    final doc = _text(docNo, 3.2 * sx);
-    final tileW = 70 * sx;
-    final tileH = 38 * sx;
-    canvas.save();
-    canvas.rotate(-32 * math.pi / 180);
-    final reach = size.width + size.height;
-    for (double y = -reach; y < reach; y += tileH) {
-      for (double x = -reach; x < reach; x += tileW) {
-        brand.paint(canvas, Offset(x, y + 12 * sx - brand.height * 0.8));
-        doc.paint(canvas, Offset(x + 35 * sx, y + 31 * sx - doc.height * 0.8));
-      }
-    }
-    canvas.restore();
-
-    final big = _text(label, 30 * sx, weight: FontWeight.w800, alpha: 0.035);
-    canvas.save();
-    canvas.translate(105 * sx, 160 * sy);
-    canvas.rotate(-32 * math.pi / 180);
-    big.paint(canvas, Offset(-big.width / 2, -big.height * 0.8));
-    canvas.restore();
-
-    final micro = _text(_micro * 8, 1.35 * sx, alpha: 0.55);
-    final inset = 5 * sx;
-    final h = micro.height;
-    void edge(Offset origin, double angle, double length) {
-      canvas.save();
-      canvas.translate(origin.dx, origin.dy);
-      canvas.rotate(angle);
-      canvas.clipRect(Rect.fromLTWH(0, -h, length, h));
-      micro.paint(canvas, Offset(0, -h * 0.85));
-      canvas.restore();
-    }
-
-    final r = Rect.fromLTRB(inset, 5 * sy, size.width - inset, size.height - 5 * sy);
-    edge(r.topLeft, 0, r.width);
-    edge(r.topRight, math.pi / 2, r.height);
-    edge(r.bottomRight, math.pi, r.width);
-    edge(r.bottomLeft, -math.pi / 2, r.height);
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant BillSecurityPainter old) => old.docNo != docNo || old.label != label;
 }
 
 const _halfW = 148.5 * pxPerMm;
