@@ -40,6 +40,7 @@ class WizardState {
     this.tambonMethod,
     this.outsideDistrict = false,
     this.roadDistanceKm,
+    this.roadDistanceByRoad = false,
     this.roadLabel = '',
     this.truckSize = 5,
     this.truckTouched = false,
@@ -76,6 +77,9 @@ class WizardState {
   final String? tambonMethod;
   final bool outsideDistrict;
   final double? roadDistanceKm;
+
+  /// [roadDistanceKm] was measured along the roads; false while it is the straight-line distance.
+  final bool roadDistanceByRoad;
   final String roadLabel;
   final int truckSize;
   final bool truckTouched;
@@ -120,6 +124,7 @@ class WizardState {
     Object? tambonMethod = _unset,
     bool? outsideDistrict,
     Object? roadDistanceKm = _unset,
+    bool? roadDistanceByRoad,
     String? roadLabel,
     int? truckSize,
     bool? truckTouched,
@@ -152,6 +157,7 @@ class WizardState {
         tambonMethod: identical(tambonMethod, _unset) ? this.tambonMethod : tambonMethod as String?,
         outsideDistrict: outsideDistrict ?? this.outsideDistrict,
         roadDistanceKm: identical(roadDistanceKm, _unset) ? this.roadDistanceKm : roadDistanceKm as double?,
+        roadDistanceByRoad: roadDistanceByRoad ?? this.roadDistanceByRoad,
         roadLabel: roadLabel ?? this.roadLabel,
         truckSize: truckSize ?? this.truckSize,
         truckTouched: truckTouched ?? this.truckTouched,
@@ -185,6 +191,7 @@ class WizardState {
         'tambonMethod': tambonMethod,
         'outsideDistrict': outsideDistrict,
         'roadDistanceKm': roadDistanceKm,
+        'roadDistanceByRoad': roadDistanceByRoad,
         'roadLabel': roadLabel,
         'truckSize': truckSize,
         'truckTouched': truckTouched,
@@ -230,6 +237,7 @@ class WizardState {
       tambonMethod: j['tambonMethod'] as String?,
       outsideDistrict: j['outsideDistrict'] == true,
       roadDistanceKm: d(j['roadDistanceKm']),
+      roadDistanceByRoad: j['roadDistanceByRoad'] == true,
       roadLabel: (j['roadLabel'] as String?) ?? '',
       truckSize: (j['truckSize'] as num?)?.toInt() == 3 ? 3 : 5,
       truckTouched: j['truckTouched'] == true,

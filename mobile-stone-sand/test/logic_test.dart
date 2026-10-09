@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_stone_sand/logic/customer_search.dart';
@@ -8,9 +9,18 @@ import 'package:mobile_stone_sand/logic/geo.dart';
 import 'package:mobile_stone_sand/logic/latlng.dart';
 import 'package:mobile_stone_sand/logic/menu_hints.dart';
 import 'package:mobile_stone_sand/logic/order_status.dart';
+import 'package:mobile_stone_sand/logic/places.dart';
 import 'package:mobile_stone_sand/logic/promptpay.dart';
+import 'package:mobile_stone_sand/logic/road_route.dart';
 import 'package:mobile_stone_sand/logic/stats.dart';
 import 'package:mobile_stone_sand/models/models.dart';
+
+double haversineKm(double lat1, double lng1, double lat2, double lng2) {
+  double rad(double d) => d * math.pi / 180;
+  final a = math.pow(math.sin(rad(lat2 - lat1) / 2), 2) +
+      math.cos(rad(lat1)) * math.cos(rad(lat2)) * math.pow(math.sin(rad(lng2 - lng1) / 2), 2);
+  return 6371 * 2 * math.asin(math.sqrt(a));
+}
 
 const base = Order(
   id: 'o1',
@@ -538,6 +548,67 @@ void main() {
         expect(d, isNotNull, reason: c.$1);
         expect(d!.km, lessThan(10), reason: c.$1);
       }
+    });
+
+    test('returns the nearest point on the main road', () {
+      final d = geo.distanceToMainRoad(19.2373, 99.6087)!;
+      final pt = d.point!;
+      expect(haversineKm(19.2373, 99.6087, pt[1], pt[0]), closeTo(d.km, 0.05));
+    });
+  });
+
+  group('places near a pin', () {
+    late Places places;
+    setUpAll(() => places = Places.parse(File('assets/geo/places.json').readAsStringSync()));
+
+    test('names the village at its centre', () {
+      final p = places.describe(19.26998, 99.51045);
+      expect(p.village?.name, 'บ้านหม้อ');
+      expect(p.village?.km, 0);
+    });
+
+    test('names a soi the pin sits on', () {
+      final p = places.describe(19.20684, 99.51763);
+      expect(p.road?.name, matches(RegExp(r'ซอย\s*14')));
+      expect(p.road!.m, lessThanOrEqualTo(10));
+    });
+
+    test('finds nothing far outside the district', () {
+      final p = places.describe(18.2888, 99.4908);
+      expect(p.village, isNull);
+      expect(p.road, isNull);
+      expect(p.text, '');
+    });
+
+    test('formats the address text', () {
+      const p = PinPlace(village: (name: 'บ้านหม้อ', km: 0.3), road: (name: 'ซอย 4', m: 40));
+      expect(p.text, 'ใกล้บ้านหม้อ · ซอย 4');
+    });
+  });
+
+  group('road route', () {
+    test('decodes a Google encoded polyline', () {
+      final pts = decodePolyline(r'_p~iF~ps|U_ulLnnqC_mqNvxq`@');
+      expect(pts, hasLength(3));
+      expect(pts[0].lat, closeTo(38.5, 1e-9));
+      expect(pts[0].lng, closeTo(-120.2, 1e-9));
+      expect(pts[1].lat, closeTo(40.7, 1e-9));
+      expect(pts[1].lng, closeTo(-120.95, 1e-9));
+      expect(pts[2].lat, closeTo(43.252, 1e-9));
+      expect(pts[2].lng, closeTo(-126.453, 1e-9));
+    });
+
+    test('rejects a truncated polyline', () {
+      expect(() => decodePolyline('_p~iF~ps|U_'), throwsFormatException);
+    });
+
+    test('midpoint is halfway along the path', () {
+      final mid = pathMidpoint(const [LatLngValue(19, 99.5), LatLngValue(19, 99.6), LatLngValue(19.1, 99.6)])!;
+      final first = haversineKm(19, 99.5, 19, 99.6);
+      final total = first + haversineKm(19, 99.6, 19.1, 99.6);
+      expect(mid.lng, closeTo(99.6, 1e-9));
+      expect(first + haversineKm(19, 99.6, mid.lat, mid.lng), closeTo(total / 2, 0.05));
+      expect(pathMidpoint(const []), isNull);
     });
   });
 }

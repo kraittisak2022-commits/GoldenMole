@@ -424,7 +424,7 @@ class _Progress extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      steps[i].label,
+                      steps[i] == StepKey.source && AuthScope.of(context).lockedSource != null ? 'วันที่' : steps[i].label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

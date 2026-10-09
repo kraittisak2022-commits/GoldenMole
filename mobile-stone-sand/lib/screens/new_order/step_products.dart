@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../calc/pricing.dart';
 import '../../calc/trips.dart';
@@ -9,7 +10,11 @@ import '../../theme/app_theme.dart';
 import '../../widgets/ui.dart';
 import 'wizard_widgets.dart';
 
-const _perTripOptions = [1, 2, 3, 4, 5];
+const _perTripOptions = [3, 5];
+
+/// The biggest truck carries 5 คิว, so a larger custom load could never be delivered.
+const _maxPerTrip = 5;
+const _categories = [ProductCategory.sand, ProductCategory.stone];
 
 class StepProducts extends StatefulWidget {
   const StepProducts({super.key, required this.products, required this.loads, required this.onChange});
@@ -37,9 +42,9 @@ class _StepProductsState extends State<StepProducts> {
     widget.onChange(next);
   }
 
-  void _pickPerTrip(String id, int perTrip) {
+  void _setPerTrip(String id, num? perTrip) {
     final cur = widget.loads[id];
-    if (cur?.perTrip == perTrip) return _setLoad(id, null);
+    if (perTrip == null) return _setLoad(id, null);
     final trips = cur?.trips ?? 0;
     _setLoad(id, Load(perTrip: perTrip, trips: trips < 1 ? 1 : trips));
   }
@@ -61,10 +66,10 @@ class _StepProductsState extends State<StepProducts> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const StepTitle('เลือกสินค้า', subtitle: 'เลือกหมวด หิน หรือ ทราย แล้วเลือกคิวต่อเที่ยวและจำนวนเที่ยว'),
+        const StepTitle('เลือกสินค้า', subtitle: 'เลือกหมวด ทราย หรือ หิน แล้วเลือกคิวต่อเที่ยวและจำนวนเที่ยว'),
         const SizedBox(height: 24),
         if (active.isEmpty) const AppCard(child: EmptyState('ยังไม่มีสินค้า เพิ่มได้ที่หน้าตั้งค่า')),
-        for (final c in ProductCategory.values)
+        for (final c in _categories)
           if (active.any((p) => p.category == c)) ...[
             _category(c, active.where((p) => p.category == c).toList(), quantities),
             const SizedBox(height: 12),
@@ -149,7 +154,7 @@ class _StepProductsState extends State<StepProducts> {
                 product: p,
                 load: widget.loads[p.id],
                 qty: quantities[p.id] ?? 0,
-                onPerTrip: (n) => _pickPerTrip(p.id, n),
+                onPerTrip: (n) => _setPerTrip(p.id, n),
                 onTrips: (n) => _setTrips(p.id, n),
               ),
             ],
@@ -159,7 +164,7 @@ class _StepProductsState extends State<StepProducts> {
   }
 }
 
-class _ProductCard extends StatelessWidget {
+class _ProductCard extends StatefulWidget {
   const _ProductCard({
     required this.product,
     required this.load,
@@ -170,13 +175,102 @@ class _ProductCard extends StatelessWidget {
   final Product product;
   final Load? load;
   final double qty;
-  final ValueChanged<int> onPerTrip;
+
+  /// null clears the product.
+  final ValueChanged<num?> onPerTrip;
   final ValueChanged<num> onTrips;
 
   @override
+  State<_ProductCard> createState() => _ProductCardState();
+}
+
+class _ProductCardState extends State<_ProductCard> {
+  late bool _custom;
+  late final TextEditingController _customText;
+
+  @override
+  void initState() {
+    super.initState();
+    final l = widget.load;
+    _custom = l != null && !_perTripOptions.contains(l.perTrip);
+    _customText = TextEditingController(text: _custom ? formatNumber(l!.perTrip) : '');
+  }
+
+  @override
+  void dispose() {
+    _customText.dispose();
+    super.dispose();
+  }
+
+  bool get _customInvalid {
+    final t = _customText.text.trim();
+    final n = double.tryParse(t) ?? 0;
+    return t.isNotEmpty && !(n > 0 && n <= _maxPerTrip);
+  }
+
+  void _pickQuick(int n) {
+    final picked = !_custom && widget.load?.perTrip == n;
+    setState(() {
+      _custom = false;
+      _customText.clear();
+    });
+    widget.onPerTrip(picked ? null : n);
+  }
+
+  void _toggleCustom() {
+    final l = widget.load;
+    if (_custom) {
+      setState(() {
+        _custom = false;
+        _customText.clear();
+      });
+      if (l != null && !_perTripOptions.contains(l.perTrip)) widget.onPerTrip(null);
+      return;
+    }
+    setState(() => _custom = true);
+    if (l != null) widget.onPerTrip(null);
+  }
+
+  void _typeCustom(String text) {
+    setState(() {});
+    final n = double.tryParse(text.trim()) ?? 0;
+    widget.onPerTrip(n > 0 && n <= _maxPerTrip ? n : null);
+  }
+
+  Widget _chip(String label, bool active, VoidCallback onTap) => Expanded(
+        child: Semantics(
+          inMutuallyExclusiveGroup: true,
+          checked: active,
+          child: Material(
+            color: active ? AppColors.ink : AppColors.subtle,
+            shape: const StadiumBorder(),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: onTap,
+              child: SizedBox(
+                height: 44,
+                child: Center(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: active ? Colors.white : AppColors.ink,
+                      fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  @override
   Widget build(BuildContext context) {
-    final p = product;
-    final l = load;
+    final p = widget.product;
+    final l = widget.load;
+    final qty = widget.qty;
+    final onTrips = widget.onTrips;
     Widget round(IconData icon, String tip, VoidCallback? onTap, {bool dark = false}) => Tooltip(
           message: tip,
           child: Material(
@@ -284,33 +378,36 @@ class _ProductCard extends StatelessWidget {
           Row(
             children: [
               for (final n in _perTripOptions) ...[
-                if (n != _perTripOptions.first) const SizedBox(width: 8),
-                Expanded(
-                  child: Material(
-                    color: l?.perTrip == n ? AppColors.ink : AppColors.subtle,
-                    shape: const StadiumBorder(),
-                    child: InkWell(
-                      customBorder: const StadiumBorder(),
-                      onTap: () => onPerTrip(n),
-                      child: SizedBox(
-                        height: 44,
-                        child: Center(
-                          child: Text(
-                            '$n คิว',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: l?.perTrip == n ? Colors.white : AppColors.ink,
-                              fontWeight: l?.perTrip == n ? FontWeight.w600 : FontWeight.w400,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                _chip('$n คิว', !_custom && l?.perTrip == n, () => _pickQuick(n)),
+                const SizedBox(width: 8),
               ],
+              _chip('อื่นๆ', _custom, _toggleCustom),
             ],
           ),
+          if (_custom) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _customText,
+                    autofocus: true,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                    style: const TextStyle(fontFeatures: tabular),
+                    decoration: InputDecoration(
+                      hintText: 'เช่น 2 หรือ 2.5',
+                      isDense: true,
+                      errorText: _customInvalid ? 'ใส่ได้ไม่เกิน $_maxPerTrip คิวต่อเที่ยว (รถใหญ่สุด 5 คิว)' : null,
+                    ),
+                    onChanged: _typeCustom,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text('คิว / เที่ยว', style: TextStyle(fontSize: 14, color: AppColors.muted)),
+              ],
+            ),
+          ],
         ],
       ),
     );

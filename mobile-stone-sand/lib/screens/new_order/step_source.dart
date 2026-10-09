@@ -48,6 +48,7 @@ class StepSource extends StatelessWidget {
       (OrderSource.pit, Icons.landscape_outlined, 'ลูกค้าสั่งกับท่าทรายโดยตรง', 'เลขที่ TS…'),
     ].where((o) => sources.contains(o.$1)).toList();
     final wide = MediaQuery.sizeOf(context).width >= 600;
+    final fixed = sources.length == 1 ? sources.first : null;
 
     final cards = [
       for (final o in options)
@@ -66,10 +67,13 @@ class StepSource extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const StepTitle(
-          'ประเภทออเดอร์',
-          subtitle: 'เลือกวันที่ แล้วเลือกว่ามาจากร้านวัสดุก่อสร้าง หรือสั่งที่ท่าทรายโดยตรง',
-        ),
+        if (fixed != null)
+          StepTitle('วันที่ออเดอร์', subtitle: 'ออเดอร์${fixed.label} · เลือกวันที่ แล้วกด "ถัดไป"')
+        else
+          const StepTitle(
+            'ประเภทออเดอร์',
+            subtitle: 'เลือกวันที่ แล้วเลือกว่ามาจากร้านวัสดุก่อสร้าง หรือสั่งที่ท่าทรายโดยตรง',
+          ),
         const SizedBox(height: 20),
         AppCard(
           padding: const EdgeInsets.all(16),
@@ -110,16 +114,10 @@ class StepSource extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        if (sources.length == 1)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              'บัญชีนี้สร้างได้เฉพาะออเดอร์${sources.first.label}',
-              style: const TextStyle(fontSize: 14, color: AppColors.muted),
-            ),
-          ),
-        if (wide)
+        if (fixed != null)
+          const SizedBox.shrink()
+        else if (wide) ...[
+          const SizedBox(height: 20),
           Row(
             children: [
               for (var i = 0; i < cards.length; i++) ...[
@@ -127,12 +125,14 @@ class StepSource extends StatelessWidget {
                 Expanded(child: cards[i]),
               ],
             ],
-          )
-        else
+          ),
+        ] else ...[
+          const SizedBox(height: 20),
           for (var i = 0; i < cards.length; i++) ...[
             if (i > 0) const SizedBox(height: 12),
             cards[i],
           ],
+        ],
       ],
     );
   }

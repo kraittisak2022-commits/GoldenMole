@@ -5,11 +5,24 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../logic/geo.dart';
 import '../logic/latlng.dart';
+import '../logic/road_route.dart' show pathMidpoint;
 import '../theme/app_theme.dart';
 
 const _districtCenter = LatLng(districtCenterLat, districtCenterLng);
 const _pinW = 32.0;
 const _pinH = 42.0;
+const _routeColor = Color(0xFF2563EB);
+const _roadStartColor = Color(0xFFD97706);
+
+/// Line from the main road to the pin, with its distance.
+class MapRoute {
+  const MapRoute({required this.path, required this.label, required this.byRoad});
+  final List<LatLngValue> path;
+  final String label;
+
+  /// false = straight line (drawn dashed).
+  final bool byRoad;
+}
 
 /// OpenStreetMap with the district outline, main roads and a draggable delivery pin.
 class DeliveryMap extends StatefulWidget {
@@ -21,9 +34,11 @@ class DeliveryMap extends StatefulWidget {
     this.height = 300,
     this.readOnly = false,
     this.onExpand,
+    this.route,
   });
 
   final LatLngValue? value;
+  final MapRoute? route;
   final ValueChanged<LatLngValue>? onChange;
 
   /// Each new instance recentres the map on it.
@@ -84,6 +99,8 @@ class _DeliveryMapState extends State<DeliveryMap> {
     final pin = _dragging ?? (v == null ? null : LatLng(v.lat, v.lng));
     final interactive = !widget.readOnly && widget.onChange != null;
     final geo = _geo;
+    final route = _dragging == null && (widget.route?.path.length ?? 0) > 1 ? widget.route : null;
+    final routeMid = route == null ? null : pathMidpoint(route.path);
 
     final map = FlutterMap(
       key: _mapKey,
@@ -127,6 +144,59 @@ class _DeliveryMapState extends State<DeliveryMap> {
                 ),
             ],
           ),
+        if (route != null) ...[
+          PolylineLayer(
+            polylines: [
+              Polyline(
+                points: [for (final p in route.path) LatLng(p.lat, p.lng)],
+                color: _routeColor.withValues(alpha: 0.85),
+                strokeWidth: 5,
+                pattern: route.byRoad ? const StrokePattern.solid() : StrokePattern.dashed(segments: const [8, 8]),
+              ),
+            ],
+          ),
+          CircleLayer(
+            circles: [
+              CircleMarker(
+                point: LatLng(route.path.first.lat, route.path.first.lng),
+                radius: 6,
+                color: _roadStartColor,
+                borderColor: Colors.white,
+                borderStrokeWidth: 2,
+              ),
+            ],
+          ),
+          if (routeMid != null)
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: LatLng(routeMid.lat, routeMid.lng),
+                  width: route.label.length * 7.4 + 24,
+                  height: 24,
+                  child: IgnorePointer(
+                    child: Container(
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _routeColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: Text(
+                        route.label,
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          height: 1.1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+        ],
         if (pin != null)
           MarkerLayer(
             markers: [

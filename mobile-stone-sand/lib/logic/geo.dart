@@ -20,9 +20,12 @@ class TambonMatch {
 }
 
 class RoadDistance {
-  const RoadDistance(this.km, this.roadLabel);
+  const RoadDistance(this.km, this.roadLabel, [this.point]);
   final double km;
   final String roadLabel;
+
+  /// Closest point on that main road as [lng, lat]: where the drive to the pin starts.
+  final Pt? point;
 }
 
 class Road {
@@ -108,16 +111,29 @@ double _rhumbKm(Pt from, Pt to) {
   return math.sqrt(dPhi * dPhi + q * q * dLambda * dLambda) * _earthRadiusKm;
 }
 
-/// turf `pointToLineDistance(..., { method: 'planar' })` for one segment.
-double _segmentKm(Pt p, Pt a, Pt b) {
+/// Closest point to [p] on segment a–b, projecting in plain lng/lat.
+Pt _segmentNearest(Pt p, Pt a, Pt b) {
   final v = [b[0] - a[0], b[1] - a[1]];
   final w = [p[0] - a[0], p[1] - a[1]];
   final c1 = w[0] * v[0] + w[1] * v[1];
-  if (c1 <= 0) return _rhumbKm(p, a);
+  if (c1 <= 0) return a;
   final c2 = v[0] * v[0] + v[1] * v[1];
-  if (c2 <= c1) return _rhumbKm(p, b);
+  if (c2 <= c1) return b;
   final t = c1 / c2;
-  return _rhumbKm(p, [a[0] + t * v[0], a[1] + t * v[1]]);
+  return [a[0] + t * v[0], a[1] + t * v[1]];
+}
+
+/// turf `pointToLineDistance(..., { method: 'planar' })` for one segment.
+double _segmentKm(Pt p, Pt a, Pt b) => _rhumbKm(p, _segmentNearest(p, a, b));
+
+/// Planar distance from [p] to a polyline of [lng, lat] points, in km.
+double lineDistanceKm(Pt p, List<Pt> line) {
+  if (line.length == 1) return _rhumbKm(p, line.first);
+  var km = double.infinity;
+  for (var i = 0; i < line.length - 1; i++) {
+    km = math.min(km, _segmentKm(p, line[i], line[i + 1]));
+  }
+  return km;
 }
 
 class GeoData {
@@ -209,18 +225,19 @@ class GeoData {
     final p = <double>[lng, lat];
     RoadDistance? best;
     for (final road in roads) {
-      var km = double.infinity;
       for (var i = 0; i < road.points.length - 1; i++) {
-        km = math.min(km, _segmentKm(p, road.points[i], road.points[i + 1]));
-      }
-      if (best == null || km < best.km) {
-        best = RoadDistance(
-          km,
-          road.ref.isNotEmpty ? 'ถนน ${road.ref}' : (road.name.isNotEmpty ? road.name : 'ถนนสายหลัก'),
-        );
+        final near = _segmentNearest(p, road.points[i], road.points[i + 1]);
+        final km = _rhumbKm(p, near);
+        if (best == null || km < best.km) {
+          best = RoadDistance(
+            km,
+            road.ref.isNotEmpty ? 'ถนน ${road.ref}' : (road.name.isNotEmpty ? road.name : 'ถนนสายหลัก'),
+            near,
+          );
+        }
       }
     }
     if (best == null) return null;
-    return RoadDistance(((best.km * 100) + 0.5).floorToDouble() / 100, best.roadLabel);
+    return RoadDistance(((best.km * 100) + 0.5).floorToDouble() / 100, best.roadLabel, best.point);
   }
 }

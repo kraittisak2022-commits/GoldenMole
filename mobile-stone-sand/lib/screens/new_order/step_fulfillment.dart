@@ -9,6 +9,8 @@ import '../../logic/driver_pay.dart';
 import '../../logic/format.dart';
 import '../../logic/geo.dart';
 import '../../logic/latlng.dart';
+import '../../logic/places.dart';
+import '../../logic/road_route.dart';
 import '../../logic/wizard_state.dart';
 import '../../models/models.dart';
 import '../../theme/app_theme.dart';
@@ -79,8 +81,13 @@ class _StepFulfillmentState extends State<StepFulfillment> {
   final _coordText = TextEditingController();
   late final _address = TextEditingController(text: widget.state.deliveryAddress);
   RouteGroup? _group;
+  Places? _places = Places.cached;
+  String _measuringKey = '';
+  String _roadFailedKey = '';
+  ({String key, List<LatLngValue> path})? _roadPath;
 
   WizardState get s => widget.state;
+  String get _pinKey => s.hasPin ? '${s.pinLat},${s.pinLng}' : '';
   List<Load> get _loads => [for (final l in widget.loadLines) l.load];
   Zone? _zoneById(String? id) {
     for (final z in widget.zones) {
@@ -90,9 +97,41 @@ class _StepFulfillmentState extends State<StepFulfillment> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    if (_places == null) {
+      Places.load().then((p) {
+        if (mounted) setState(() => _places = p);
+      });
+    }
+    _maybeMeasureRoad();
+  }
+
+  @override
   void didUpdateWidget(covariant StepFulfillment old) {
     super.didUpdateWidget(old);
     if (s.deliveryAddress != _address.text) _address.text = s.deliveryAddress;
+    _maybeMeasureRoad();
+  }
+
+  /// Replaces the straight-line distance with the driving distance from the main road, once per pin.
+  void _maybeMeasureRoad() {
+    final key = _pinKey;
+    if (key.isEmpty || s.roadDistanceByRoad || key == _roadFailedKey || key == _measuringKey) return;
+    _measuringKey = key;
+    _measureRoad(key, s.pinLat!, s.pinLng!);
+  }
+
+  Future<void> _measureRoad(String key, double lat, double lng) async {
+    final start = (await GeoData.load()).distanceToMainRoad(lat, lng)?.point;
+    final route = start == null ? null : await fetchRoadRoute(LatLngValue(start[1], start[0]), LatLngValue(lat, lng));
+    if (!mounted || _pinKey != key) return;
+    _measuringKey = '';
+    if (route == null) return setState(() => _roadFailedKey = key);
+    setState(() => _roadPath = (key: key, path: route.path));
+    widget.patch((st) => '${st.pinLat},${st.pinLng}' != key
+        ? st
+        : _refee(st.copyWith(roadDistanceKm: route.km, roadDistanceByRoad: true)));
   }
 
   @override
@@ -102,19 +141,29 @@ class _StepFulfillmentState extends State<StepFulfillment> {
     super.dispose();
   }
 
-  Future<WizardState Function(WizardState)> _pinUpdate(LatLngValue p) async {
+  /// [fillAddress]: put the village/soi near the pin in the address while it is empty or still the
+  /// text filled in for the previous pin.
+  Future<WizardState Function(WizardState)> _pinUpdate(LatLngValue p, {bool fillAddress = false}) async {
     final geo = await GeoData.load();
+    final places = await Places.load();
     final tambon = geo.findTambon(p.lat, p.lng);
     final road = geo.distanceToMainRoad(p.lat, p.lng);
     final delivery = widget.settings.delivery;
+    final auto = places.describe(p.lat, p.lng).text;
     return (WizardState st) {
       var next = st.copyWith(
         pinLat: double.parse(p.lat.toStringAsFixed(6)),
         pinLng: double.parse(p.lng.toStringAsFixed(6)),
         outsideDistrict: tambon == null,
         roadDistanceKm: road?.km,
+        roadDistanceByRoad: false,
         roadLabel: road?.roadLabel ?? '',
       );
+      if (fillAddress && auto.isNotEmpty) {
+        final address = st.deliveryAddress.trim();
+        final prevAuto = st.hasPin ? places.describe(st.pinLat!, st.pinLng!).text : '';
+        if (address.isEmpty || address == prevAuto) next = next.copyWith(deliveryAddress: auto);
+      }
       Zone? matched;
       if (tambon != null) {
         for (final z in widget.zones) {
@@ -133,7 +182,7 @@ class _StepFulfillmentState extends State<StepFulfillment> {
 
   Future<void> _onPin(LatLngValue p) async {
     setState(() => _geoError = '');
-    final update = await _pinUpdate(p);
+    final update = await _pinUpdate(p, fillAddress: true);
     widget.patch(update);
   }
 
@@ -284,8 +333,31 @@ class _StepFulfillmentState extends State<StepFulfillment> {
     );
   }
 
+  /// The driving route for this pin, or a straight line from the nearest main-road point.
+  MapRoute? _mapRoute(bool measuring) {
+    if (!s.hasPin) return null;
+    final pin = LatLngValue(s.pinLat!, s.pinLng!);
+    final label = measuring ? 'กำลังวัด…' : '${formatNumber(s.roadDistanceKm ?? 0)} กม.';
+    final path = _roadPath;
+    if (s.roadDistanceByRoad && path != null && path.key == _pinKey) {
+      return MapRoute(path: path.path, label: label, byRoad: true);
+    }
+    final start = GeoData.cached?.distanceToMainRoad(pin.lat, pin.lng)?.point;
+    if (start == null) return null;
+    return MapRoute(path: [LatLngValue(start[1], start[0]), pin], label: label, byRoad: false);
+  }
+
   List<Widget> _pinSection() {
     final zone = _zoneById(s.zoneId);
+    final place = s.hasPin ? _places?.describe(s.pinLat!, s.pinLng!) : null;
+    final village = place?.village;
+    final soi = place?.road;
+    final measuring = s.hasPin && !s.roadDistanceByRoad && _pinKey != _roadFailedKey;
+    final km = s.roadDistanceKm;
+    final roadHint = [
+      if (s.roadLabel.isNotEmpty) s.roadLabel,
+      if (s.hasPin && _pinKey == _roadFailedKey) 'วัดตามถนนไม่ได้ ใช้ระยะเส้นตรง',
+    ].join(' · ');
     return [
       Row(
         children: [
@@ -298,13 +370,17 @@ class _StepFulfillmentState extends State<StepFulfillment> {
         ],
       ),
       const SizedBox(height: 4),
-      const Text('แตะบนแผนที่หรือลากหมุด เส้นสีส้มคือถนนสายหลัก', style: TextStyle(fontSize: 14, color: AppColors.muted)),
+      const Text(
+        'แตะบนแผนที่หรือลากหมุด เส้นสีส้มคือถนนสายหลัก เส้นสีน้ำเงินคือเส้นทางจากถนนใหญ่ถึงหมุด (เส้นประ = ระยะเส้นตรง)',
+        style: TextStyle(fontSize: 14, color: AppColors.muted),
+      ),
       const SizedBox(height: 12),
       DeliveryMap(
         value: s.hasPin ? LatLngValue(s.pinLat!, s.pinLng!) : null,
         onChange: _onPin,
         flyTarget: _flyTarget,
         onExpand: _expandMap,
+        route: _mapRoute(measuring),
       ),
       const SizedBox(height: 12),
       Row(
@@ -351,9 +427,38 @@ class _StepFulfillmentState extends State<StepFulfillment> {
             const SizedBox(width: 8),
             Expanded(
               child: _InfoTile(
-                label: 'ห่างถนนใหญ่',
-                value: s.roadDistanceKm != null ? '${formatNumber(s.roadDistanceKm)} กม.' : '—',
-                hint: s.roadLabel.isEmpty ? null : s.roadLabel,
+                label: s.roadDistanceByRoad ? 'ระยะตามถนนจากถนนใหญ่' : 'ห่างถนนใหญ่ (เส้นตรง)',
+                value: measuring ? 'กำลังวัดตามถนน…' : (km != null ? '${formatNumber(km)} กม.' : '—'),
+                hint: roadHint.isEmpty ? null : roadHint,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _InfoTile(
+                label: 'หมู่บ้าน (ใกล้หมุดที่สุด)',
+                value: village?.name ?? '—',
+                hint: village == null
+                    ? 'ไม่พบหมู่บ้านในระยะ 4 กม.'
+                    : village.km < 0.2
+                        ? 'หมุดอยู่กลางหมู่บ้าน'
+                        : 'ห่างกลางหมู่บ้าน ~${formatNumber(village.km)} กม.',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _InfoTile(
+                label: 'ซอย / ถนน',
+                value: soi?.name ?? '—',
+                hint: soi == null
+                    ? 'ไม่มีชื่อซอยในแผนที่ใกล้หมุด'
+                    : soi.m <= 20
+                        ? 'หมุดอยู่บนเส้นนี้'
+                        : 'ห่างจากหมุด ~${formatNumber(soi.m)} ม.',
               ),
             ),
           ],
