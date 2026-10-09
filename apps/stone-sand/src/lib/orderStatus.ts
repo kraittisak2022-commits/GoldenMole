@@ -60,7 +60,8 @@ export function deliveryBadge(o: Order): { tone: BadgeTone; label: string } {
 }
 
 /** Text the sales desk pastes into LINE for the driver. */
-export function driverMessage(o: Order, zone: Zone | undefined, driver: Driver | undefined): string {
+/** Job text for the driver's LINE; driverPay is the driver's own pay and never goes on the customer's bill. */
+export function driverMessage(o: Order, zone: Zone | undefined, driver: Driver | undefined, driverPay = o.driverWage): string {
   const lines = [
     `ออเดอร์ ${o.orderNo}${driver ? ` · ${driver.name}` : ''}`,
     `ลูกค้า: ${o.customer.name}${o.customer.phone ? ` ${formatPhone(o.customer.phone)}` : ''}`,
@@ -72,6 +73,11 @@ export function driverMessage(o: Order, zone: Zone | undefined, driver: Driver |
   if (o.pinLat != null && o.pinLng != null) lines.push(`แผนที่: ${googleMapsUrl(o.pinLat, o.pinLng)}`);
   const cod = codToCollect(o);
   if (cod) lines.push(`เก็บเงินปลายทาง: ${formatMoney(cod)} บาท`);
+  if (driverPay > 0) {
+    const perTrip = driverPay / o.trips;
+    const split = o.trips > 1 && Number.isInteger(perTrip) ? ` (เที่ยวละ ${formatNumber(perTrip)} × ${o.trips} เที่ยว)` : '';
+    lines.push(`ค่ารถรอบนี้: ${formatNumber(driverPay)} บาท${split}`);
+  }
   if (o.note) lines.push(`หมายเหตุ: ${o.note}`);
   if (o.driverToken && o.fulfillment === 'delivery' && !o.cancelled) {
     lines.push(

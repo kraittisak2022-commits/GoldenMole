@@ -159,7 +159,7 @@ export default function OrderDetailPage() {
     );
   const saveNote = () => run('note', () => updateOrderFields(o.id, { note }, by, o));
 
-  const message = driverMessage(o, zone, driverById(driverId) ?? driver);
+  const message = driverMessage(o, zone, driverById(driverId) ?? driver, wage);
   const copyMessage = async () => {
     try {
       await navigator.clipboard.writeText(message);

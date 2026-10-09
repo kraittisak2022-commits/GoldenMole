@@ -3,14 +3,17 @@ import { Check, CheckCircle2, Copy, FileText } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import { useCatalog } from '../../context/CatalogProvider';
+import { driverTripRate } from '../../lib/driverPay';
 import { driverMessage } from '../../lib/orderStatus';
 import type { Order } from '../../types';
 
 /** Shown after a delivery order is saved: send the job to the driver, then open the bill. */
 export default function OrderCreatedModal({ order, onBill }: { order: Order; onBill: () => void }) {
-  const { zoneById, driverById } = useCatalog();
+  const { zoneById, driverById, settings } = useCatalog();
   const [copied, setCopied] = useState(false);
-  const message = driverMessage(order, zoneById(order.zoneId), driverById(order.driverId));
+  const zone = zoneById(order.zoneId);
+  const pay = order.driverWage || driverTripRate(zone, order.truckSize, order.roadDistanceKm, settings.delivery).perTrip * order.trips;
+  const message = driverMessage(order, zone, driverById(order.driverId), pay);
 
   const copy = async () => {
     try {

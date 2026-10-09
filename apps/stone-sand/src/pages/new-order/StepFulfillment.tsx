@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, Crosshair, Link2, MapPin, Pencil, Phone, Store, Truck } from 'lucide-react';
-import { suggestTripFee } from '../../calc/deliveryFee';
+import { AlertTriangle, Crosshair, Link2, MapPin, Pencil, Phone, Store, Truck, Wallet } from 'lucide-react';
+import { chargedKm, perKmFor, suggestTripFee } from '../../calc/deliveryFee';
 import { round2 } from '../../calc/pricing';
 import { truckFits, type Load } from '../../calc/trips';
 import DeliveryMap, { type LatLng, type MapRoute } from '../../components/map/DeliveryMap';
@@ -22,6 +22,7 @@ import {
   ROUTE_GROUP_LABEL,
   type AppSettings,
   type Customer,
+  type DeliverySettings,
   type Driver,
   type RouteGroup,
   type TruckSize,
@@ -56,7 +57,6 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
   const [group, setGroup] = useState<GroupFilter>('all');
 
   const zone = zones.find((z) => z.id === s.zoneId);
-  const driverRate = driverTripRate(zone, s.truckSize, s.roadDistanceKm, settings.delivery);
 
   const pinLat = s.pin?.lat;
   const pinLng = s.pin?.lng;
@@ -438,6 +438,14 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
               <h3 className="font-medium">คนขับ</h3>
               <p className="text-sm text-muted">โทรเช็คคิวก่อน แล้วเลือกคนขับ</p>
             </div>
+            <DriverPayCard
+              zone={zone}
+              truckSize={s.truckSize}
+              trips={s.trips}
+              roadDistanceKm={s.roadDistanceKm}
+              delivery={settings.delivery}
+              otherSizeFits={truckFits(s.truckSize === 3 ? 5 : 3, loadLines)}
+            />
             <div className="flex flex-wrap gap-2">
               <Chip active={group === 'all'} onClick={() => setGroup('all')} count={groupCounts.all}>
                 ทั้งหมด
@@ -512,13 +520,6 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                 />
                 <span>
                   ยืนยันว่ารถ <b>{selectedDriver.name}</b> เข้าหน้างานได้และมีคิวว่าง
-                  {zone && driverRate.perTrip ? (
-                    <span className="block text-muted">
-                      ค่ารถคนขับ ต.{zone.name} (รถ {s.truckSize} คิว) {formatNumber(driverRate.base)}
-                      {driverRate.extra ? ` + ตามระยะ ${formatNumber(driverRate.extra)}` : ''} บาท/เที่ยว × {s.trips} เที่ยว ={' '}
-                      {formatMoney(driverRate.perTrip * s.trips)} บาท
-                    </span>
-                  ) : null}
                 </span>
               </label>
             ) : null}
@@ -532,6 +533,85 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
           ลูกค้ามารับที่ท่าทราย ไม่มีค่าส่ง ระบบจะบันทึกสถานะการส่งเป็น "มารับเอง"
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** What the driver earns for this job, for the admin to tell him on the phone. Never shown on the customer's bill. */
+function DriverPayCard({
+  zone,
+  truckSize,
+  trips,
+  roadDistanceKm,
+  delivery,
+  otherSizeFits,
+}: {
+  zone: Zone | undefined;
+  truckSize: TruckSize;
+  trips: number;
+  roadDistanceKm: number | null;
+  delivery: DeliverySettings;
+  otherSizeFits: boolean;
+}) {
+  if (!zone) {
+    return (
+      <div className="flex items-center gap-2 rounded border border-dashed border-border px-3 py-2.5 text-sm text-muted">
+        <Wallet size={16} className="shrink-0" aria-hidden /> เลือกตำบลก่อน ระบบจะคำนวณค่ารถคนขับให้
+      </div>
+    );
+  }
+  const rate = driverTripRate(zone, truckSize, roadDistanceKm, delivery);
+  if (!rate.perTrip) {
+    return (
+      <div className="flex items-start gap-2 rounded bg-warning-soft px-3 py-2.5 text-sm text-warning">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
+        ยังไม่ได้ตั้งค่ารถคนขับ ต.{zone.name} สำหรับรถ {truckSize} คิว ตั้งได้ที่ ตั้งค่า › ค่าส่งตามตำบล
+      </div>
+    );
+  }
+  const km = chargedKm(roadDistanceKm, delivery.nearKm);
+  const otherSize: TruckSize = truckSize === 3 ? 5 : 3;
+  const other = otherSizeFits ? driverTripRate(zone, otherSize, roadDistanceKm, delivery).perTrip : 0;
+  return (
+    <div className="overflow-hidden rounded border border-primary/30 bg-primary-soft/40" data-testid="driver-pay">
+      <div className="flex items-center gap-3 px-3 py-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <Wallet size={20} aria-hidden />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium text-primary">ค่ารถคนขับเที่ยวนี้ · บอกคนขับตอนโทร</p>
+          <p className="text-2xl font-semibold tabular-nums leading-tight">
+            {formatNumber(rate.perTrip)} <span className="text-sm font-medium text-muted">บาท/เที่ยว</span>
+          </p>
+        </div>
+        {trips > 1 ? (
+          <div className="shrink-0 text-right">
+            <p className="text-xs text-muted">รวม {trips} เที่ยว</p>
+            <p className="text-lg font-semibold tabular-nums">{formatNumber(rate.perTrip * trips)}</p>
+          </div>
+        ) : null}
+      </div>
+      <dl className="flex flex-col gap-1 border-t border-primary/20 bg-surface/70 px-3 py-2 text-sm">
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">
+            ค่ารถ ต.{zone.name} (รถ {truckSize} คิว)
+          </dt>
+          <dd className="tabular-nums">{formatNumber(rate.base)}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">
+            {rate.extra
+              ? `ตามระยะ เกิน ${formatNumber(delivery.nearKm)} กม. คิด ${km} กม. × ${formatNumber(perKmFor(truckSize, delivery))}`
+              : `ตามระยะ (ไม่เกิน ${formatNumber(delivery.nearKm)} กม. ไม่คิดเพิ่ม)`}
+          </dt>
+          <dd className="tabular-nums">{rate.extra ? `+${formatNumber(rate.extra)}` : '0'}</dd>
+        </div>
+        {other ? (
+          <p className="text-xs text-muted">
+            ถ้าใช้รถ {otherSize} คิว: {formatNumber(other)} บาท/เที่ยว
+          </p>
+        ) : null}
+      </dl>
     </div>
   );
 }

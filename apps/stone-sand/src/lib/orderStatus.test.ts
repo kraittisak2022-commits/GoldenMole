@@ -157,6 +157,13 @@ describe('driverMessage', () => {
     expect(msg).toContain('/d/abc123');
   });
 
+  it('tells the driver his pay for the job', () => {
+    expect(driverMessage({ ...base, driverWage: 940 }, undefined, undefined)).toContain('ค่ารถรอบนี้: 940 บาท (เที่ยวละ 470 × 2 เที่ยว)');
+    expect(driverMessage({ ...base, trips: 1 }, undefined, undefined, 350)).toMatch(/^ค่ารถรอบนี้: 350 บาท$/m);
+    expect(driverMessage({ ...base, driverWage: 945 }, undefined, undefined)).toMatch(/^ค่ารถรอบนี้: 945 บาท$/m);
+    expect(driverMessage({ ...base, driverWage: 0 }, undefined, undefined)).not.toContain('ค่ารถรอบนี้');
+  });
+
   it('has no confirm link for cancelled orders', () => {
     expect(driverMessage({ ...base, driverToken: 'abc123', cancelled: true }, undefined, undefined)).not.toContain('/d/');
   });
