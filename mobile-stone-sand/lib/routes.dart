@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/menu_screen.dart';
+import 'screens/new_order/new_order_screen.dart';
 import 'screens/orders_screen.dart';
 import 'screens/placeholder_screen.dart';
 import 'widgets/ui.dart';
@@ -125,5 +126,12 @@ void goTo(BuildContext context, Dest d, [Map<String, String> params = const {}])
 Future<void> openOrder(BuildContext context, String id) => Navigator.of(context, rootNavigator: true)
     .push(MaterialPageRoute<void>(builder: (_) => const PlaceholderScreen('รายละเอียดออเดอร์')));
 
-Future<void> openNewOrder(BuildContext context) => Navigator.of(context, rootNavigator: true)
-    .push(MaterialPageRoute<void>(builder: (_) => const PlaceholderScreen('สร้างออเดอร์')));
+Future<void> openNewOrder(BuildContext context, {String? customerId}) => Navigator.of(context, rootNavigator: true)
+    .push(MaterialPageRoute<void>(builder: (_) => NewOrderScreen(customerId: customerId)));
+
+/// Bill for an order; [created] shows the "order saved" banner, [replace] swaps out the current page.
+Future<void> openOrderBill(BuildContext context, String orderId, {bool created = false, bool replace = false}) {
+  final route = MaterialPageRoute<void>(builder: (_) => const PlaceholderScreen('บิล'));
+  final nav = Navigator.of(context, rootNavigator: true);
+  return replace ? nav.pushReplacement(route) : nav.push(route);
+}
