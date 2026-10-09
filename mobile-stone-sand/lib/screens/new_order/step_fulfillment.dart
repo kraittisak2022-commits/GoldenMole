@@ -606,9 +606,9 @@ class _StepFulfillmentState extends State<StepFulfillment> {
     }
 
     return [
-      const Text('คนขับ (ไม่บังคับ)', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
+      const Text('คนขับ', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
       const Text(
-        'โทรเช็คคิวก่อน แล้วเลือกคนขับ ระบุภายหลังในหน้าออเดอร์ได้',
+        'โทรเช็คคิวก่อน แล้วเลือกคนขับ',
         style: TextStyle(fontSize: 14, color: AppColors.muted),
       ),
       const SizedBox(height: 12),
@@ -625,7 +625,8 @@ class _StepFulfillmentState extends State<StepFulfillment> {
       AppCard(
         child: Column(
           children: [
-            if (shown.isEmpty) const EmptyState('ไม่มีคนขับในสายนี้'),
+            if (shown.isEmpty)
+              EmptyState(active.isEmpty ? 'ยังไม่มีคนขับ เพิ่มคนขับที่เมนู "คนขับ" ก่อน' : 'ไม่มีคนขับในสายนี้'),
             for (var i = 0; i < shown.length; i++) ...[
               if (i > 0) const Divider(height: 1),
               _driverRow(shown[i], largestPerTrip),

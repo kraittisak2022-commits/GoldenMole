@@ -49,7 +49,7 @@ void main() {
       expect(validateStep(customerStep, const WizardState(customer: customer)), '');
     });
 
-    test('pickup needs nothing else; delivery needs tambon and location', () {
+    test('pickup needs nothing else; delivery needs location, tambon and driver', () {
       expect(validateStep(fulfillmentStep, const WizardState(fulfillment: Fulfillment.pickup)), '');
       expect(validateStep(fulfillmentStep, const WizardState(fulfillment: Fulfillment.delivery)), contains('ปักหมุด'));
       expect(
@@ -62,7 +62,7 @@ void main() {
           fulfillmentStep,
           const WizardState(fulfillment: Fulfillment.delivery, pinLat: 19.2, pinLng: 99.6, zoneId: 'thung-hua'),
         ),
-        '',
+        'เลือกคนขับ',
       );
     });
 

@@ -445,8 +445,8 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
 
           <section className="flex flex-col gap-3">
             <div>
-              <h3 className="font-medium">คนขับ (ไม่บังคับ)</h3>
-              <p className="text-sm text-muted">โทรเช็คคิวก่อน แล้วเลือกคนขับ ระบุภายหลังในหน้าออเดอร์ได้</p>
+              <h3 className="font-medium">คนขับ</h3>
+              <p className="text-sm text-muted">โทรเช็คคิวก่อน แล้วเลือกคนขับ</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Chip active={group === 'all'} onClick={() => setGroup('all')} count={groupCounts.all}>
@@ -507,6 +507,11 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                 );
               })}
             </ul>
+            {activeDrivers.length === 0 ? (
+              <p className="text-sm text-muted">
+                {drivers.some((d) => d.active) ? 'ไม่มีคนขับในสายนี้ เลือกสายอื่น' : 'ยังไม่มีคนขับ เพิ่มคนขับที่เมนู "คนขับ" ก่อน'}
+              </p>
+            ) : null}
             {selectedDriver ? (
               <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded border border-border bg-surface p-3 text-sm">
                 <input

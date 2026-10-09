@@ -49,13 +49,13 @@ describe('validateStep', () => {
     expect(validateStep(CUSTOMER, state({ customer }))).toBe('');
   });
 
-  it('pickup needs nothing else; delivery needs tambon and location', () => {
+  it('pickup needs nothing else; delivery needs location, tambon and driver', () => {
     expect(validateStep(FULFILLMENT, state({ fulfillment: 'pickup' }))).toBe('');
     expect(validateStep(FULFILLMENT, state({ fulfillment: 'delivery' }))).toMatch(/ปักหมุด/);
     expect(validateStep(FULFILLMENT, state({ fulfillment: 'delivery', pin: { lat: 19.2, lng: 99.6 } }))).toMatch(/ตำบล/);
     expect(
       validateStep(FULFILLMENT, state({ fulfillment: 'delivery', pin: { lat: 19.2, lng: 99.6 }, zoneId: 'thung-hua' })),
-    ).toBe('');
+    ).toBe('เลือกคนขับ');
   });
 
   it('asks to confirm the driver is available', () => {

@@ -155,7 +155,8 @@ export function validateStep(step: number, s: WizardState): string {
       if (s.fulfillment === 'delivery') {
         if (!s.pin && !s.deliveryAddress.trim()) return 'ปักหมุดหรือใส่ที่อยู่จัดส่ง';
         if (!s.zoneId) return 'เลือกตำบลที่จัดส่ง';
-        if (s.driverId && !s.driverConfirmed) return 'ยืนยันว่ารถเข้าหน้างานได้และมีคิวว่าง';
+        if (!s.driverId) return 'เลือกคนขับ';
+        if (!s.driverConfirmed) return 'ยืนยันว่ารถเข้าหน้างานได้และมีคิวว่าง';
       }
       return '';
     case 'summary':

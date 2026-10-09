@@ -307,7 +307,8 @@ String validateStep(int step, WizardState s) {
       if (s.fulfillment == Fulfillment.delivery) {
         if (!s.hasPin && s.deliveryAddress.trim().isEmpty) return 'ปักหมุดหรือใส่ที่อยู่จัดส่ง';
         if (s.zoneId == null) return 'เลือกตำบลที่จัดส่ง';
-        if (s.driverId != null && !s.driverConfirmed) return 'ยืนยันว่ารถเข้าหน้างานได้และมีคิวว่าง';
+        if (s.driverId == null) return 'เลือกคนขับ';
+        if (!s.driverConfirmed) return 'ยืนยันว่ารถเข้าหน้างานได้และมีคิวว่าง';
       }
       return '';
     case StepKey.summary:
