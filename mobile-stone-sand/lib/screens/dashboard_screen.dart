@@ -7,6 +7,8 @@ import '../logic/stats.dart';
 import '../models/models.dart';
 import '../routes.dart';
 import '../theme/app_theme.dart';
+import '../tour/tour_controller.dart';
+import '../tour/tour_steps.dart';
 import '../widgets/loader.dart';
 import '../widgets/order_row.dart';
 import '../widgets/page.dart';
@@ -90,7 +92,9 @@ class _DashboardScreenState extends State<DashboardScreen> with ReloadOnDataChan
         final daySection = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SectionTitle('ออเดอร์${isToday ? 'วันนี้' : 'วันที่เลือก'} ${dayOrders.isNotEmpty ? '(${dayOrders.length})' : ''}'),
+            SectionTitle(
+              'ออเดอร์${isToday ? 'วันนี้' : 'วันที่เลือก'} ${dayOrders.isNotEmpty ? '(${dayOrders.length})' : ''}',
+            ),
             if (monthPending)
               const LoadingList()
             else if (dayOrders.isEmpty)
@@ -107,110 +111,122 @@ class _DashboardScreenState extends State<DashboardScreen> with ReloadOnDataChan
           ],
         );
 
-        return PageScroll(
-          onRefresh: reloadAll,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'สวัสดี ${user?.displayName ?? ''}',
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
-                  ),
-                ),
-                if (isWide(context))
-                  FilledButton.icon(
-                    onPressed: () => openNewOrder(context),
-                    icon: const Icon(Icons.add, size: 20),
-                    label: const Text('สร้างออเดอร์'),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _DateBar(date: _date, isToday: isToday, onChange: _setDate),
-            if (error != null) ...[const SizedBox(height: 16), ErrorBox(error, onRetry: reloadAll)],
-            const SizedBox(height: 16),
-            GridRows(
-              columns: width >= 1024 ? 4 : 2,
-              children: [
-                KpiCard(
-                  label: 'ออเดอร์',
-                  value: formatNumber(day.orderCount),
-                  hint: '${formatMoney(day.net)} บาท',
-                  pending: monthPending,
-                ),
-                KpiCard(
-                  label: 'สินค้า',
-                  value: '${formatNumber(day.quantity)} คิว',
-                  hint: '${formatNumber(day.trips)} เที่ยว',
-                  pending: monthPending,
-                ),
-                KpiCard(label: 'รับเงินแล้ว', value: formatMoney(day.paid), hint: 'บาท', pending: monthPending),
-                KpiCard(
-                  label: 'ค้างรับ',
-                  value: formatMoney(day.outstanding),
-                  hint: 'ยังไม่จ่าย + เครดิต',
-                  warn: day.outstanding > 0,
-                  pending: monthPending,
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            if (twoCol)
+        return TourMarker(
+          page: TourPage.home,
+          child: PageScroll(
+            onRefresh: reloadAll,
+            children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: daySection),
-                  const SizedBox(width: 24),
-                  SizedBox(width: 352, child: summarySection),
+                  Expanded(
+                    child: Text(
+                      'สวัสดี ${user?.displayName ?? ''}',
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  if (isWide(context))
+                    TourTarget(
+                      'new-order',
+                      child: FilledButton.icon(
+                        onPressed: () => openNewOrder(context),
+                        icon: const Icon(Icons.add, size: 20),
+                        label: const Text('สร้างออเดอร์'),
+                      ),
+                    ),
                 ],
-              )
-            else ...[
-              daySection,
-              const SizedBox(height: 24),
-              summarySection,
-            ],
-            const SizedBox(height: 24),
-            SectionTitle(
-              'งานค้าง (ทุกวัน)',
-              action: TextButton(
-                onPressed: () => goTo(context, Dest.orders, {'f': 'waiting', 'r': 'all'}),
-                child: const Text('ดูทั้งหมด'),
               ),
-            ),
-            GridRows(
-              columns: width >= 600 ? 3 : 1,
-              children: [
-                KpiCard(
-                  label: 'รอจัดส่ง',
-                  value: '${formatNumber(waitingAll.length)} ออเดอร์',
-                  warn: waitingAll.isNotEmpty,
-                  pending: _waiting.pending,
-                  onTap: () => goTo(context, Dest.orders, {'f': 'waiting', 'r': 'all'}),
+              const SizedBox(height: 16),
+              _DateBar(date: _date, isToday: isToday, onChange: _setDate),
+              if (error != null) ...[const SizedBox(height: 16), ErrorBox(error, onRetry: reloadAll)],
+              const SizedBox(height: 16),
+              TourTarget(
+                'dash-kpis',
+                child: GridRows(
+                  columns: width >= 1024 ? 4 : 2,
+                  children: [
+                    KpiCard(
+                      label: 'ออเดอร์',
+                      value: formatNumber(day.orderCount),
+                      hint: '${formatMoney(day.net)} บาท',
+                      pending: monthPending,
+                    ),
+                    KpiCard(
+                      label: 'สินค้า',
+                      value: '${formatNumber(day.quantity)} คิว',
+                      hint: '${formatNumber(day.trips)} เที่ยว',
+                      pending: monthPending,
+                    ),
+                    KpiCard(label: 'รับเงินแล้ว', value: formatMoney(day.paid), hint: 'บาท', pending: monthPending),
+                    KpiCard(
+                      label: 'ค้างรับ',
+                      value: formatMoney(day.outstanding),
+                      hint: 'ยังไม่จ่าย + เครดิต',
+                      warn: day.outstanding > 0,
+                      pending: monthPending,
+                    ),
+                  ],
                 ),
-                KpiCard(
-                  label: 'ยังไม่จ่าย',
-                  value: formatMoney(unpaidTotal),
-                  warn: unpaidTotal > 0,
-                  pending: _open.pending,
-                  onTap: () => goTo(context, Dest.orders, {'f': 'unpaid', 'r': 'all'}),
-                ),
-                KpiCard(
-                  label: 'ค้างเครดิต',
-                  value: formatMoney(creditTotal),
-                  pending: _open.pending,
-                  onTap: () => goTo(context, Dest.statements),
-                ),
+              ),
+              const SizedBox(height: 24),
+              if (twoCol)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: daySection),
+                    const SizedBox(width: 24),
+                    SizedBox(width: 352, child: summarySection),
+                  ],
+                )
+              else ...[
+                daySection,
+                const SizedBox(height: 24),
+                summarySection,
               ],
-            ),
-            if (waitingAll.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              OrderList(orders: waitingAll.take(6).toList()),
+              const SizedBox(height: 24),
+              SectionTitle(
+                'งานค้าง (ทุกวัน)',
+                action: TextButton(
+                  onPressed: () => goTo(context, Dest.orders, {'f': 'waiting', 'r': 'all'}),
+                  child: const Text('ดูทั้งหมด'),
+                ),
+              ),
+              TourTarget(
+                'dash-pending',
+                child: GridRows(
+                  columns: width >= 600 ? 3 : 1,
+                  children: [
+                    KpiCard(
+                      label: 'รอจัดส่ง',
+                      value: '${formatNumber(waitingAll.length)} ออเดอร์',
+                      warn: waitingAll.isNotEmpty,
+                      pending: _waiting.pending,
+                      onTap: () => goTo(context, Dest.orders, {'f': 'waiting', 'r': 'all'}),
+                    ),
+                    KpiCard(
+                      label: 'ยังไม่จ่าย',
+                      value: formatMoney(unpaidTotal),
+                      warn: unpaidTotal > 0,
+                      pending: _open.pending,
+                      onTap: () => goTo(context, Dest.orders, {'f': 'unpaid', 'r': 'all'}),
+                    ),
+                    KpiCard(
+                      label: 'ค้างเครดิต',
+                      value: formatMoney(creditTotal),
+                      pending: _open.pending,
+                      onTap: () => goTo(context, Dest.statements),
+                    ),
+                  ],
+                ),
+              ),
+              if (waitingAll.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                OrderList(orders: waitingAll.take(6).toList()),
+              ],
+              const SizedBox(height: 24),
+              SectionTitle('สรุปเดือน${thMonths[ymd[1] - 1]} ${ymd[0] + 543}'),
+              if (monthPending) const LoadingList(rows: 2) else SummaryCard(stats: monthStats),
             ],
-            const SizedBox(height: 24),
-            SectionTitle('สรุปเดือน${thMonths[ymd[1] - 1]} ${ymd[0] + 543}'),
-            if (monthPending) const LoadingList(rows: 2) else SummaryCard(stats: monthStats),
-          ],
+          ),
         );
       },
     );
@@ -242,17 +258,17 @@ class _DateBar extends StatelessWidget {
     final showWeekday = MediaQuery.sizeOf(context).width >= 400;
     final label = showWeekday ? long : parts.skip(1).join(' ');
     Widget step(IconData icon, String tip, int delta) => Tooltip(
-          message: tip,
-          child: Material(
-            color: AppColors.subtle,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: () => onChange(shiftIsoDate(date, delta)),
-              child: SizedBox(width: 48, height: 48, child: Icon(icon, size: 24)),
-            ),
-          ),
-        );
+      message: tip,
+      child: Material(
+        color: AppColors.subtle,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => onChange(shiftIsoDate(date, delta)),
+          child: SizedBox(width: 48, height: 48, child: Icon(icon, size: 24)),
+        ),
+      ),
+    );
     return Row(
       children: [
         step(Icons.chevron_left, 'วันก่อนหน้า', -1),
@@ -381,7 +397,12 @@ class SummaryCard extends StatelessWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                      child: Text(
+                        p.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14),
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Text(

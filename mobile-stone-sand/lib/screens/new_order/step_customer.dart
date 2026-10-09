@@ -8,6 +8,7 @@ import '../../logic/customer_search.dart';
 import '../../logic/format.dart';
 import '../../models/models.dart';
 import '../../theme/app_theme.dart';
+import '../../tour/tour_controller.dart';
 import '../../widgets/ui.dart';
 import 'wizard_widgets.dart';
 
@@ -209,15 +210,18 @@ class _StepCustomerState extends State<StepCustomer> {
   List<Widget> _search() {
     final q = _query.text.trim();
     return [
-      TextField(
-        controller: _query,
-        autofocus: true,
-        textInputAction: TextInputAction.search,
-        onChanged: _onQuery,
-        style: const TextStyle(fontSize: 16),
-        decoration: const InputDecoration(
-          hintText: 'ชื่อ ชื่อเรียก หรือ เบอร์โทร',
-          prefixIcon: Icon(Icons.search, size: 20),
+      TourTarget(
+        'wiz-customer-search',
+        child: TextField(
+          controller: _query,
+          autofocus: true,
+          textInputAction: TextInputAction.search,
+          onChanged: _onQuery,
+          style: const TextStyle(fontSize: 16),
+          decoration: const InputDecoration(
+            hintText: 'ชื่อ ชื่อเรียก หรือ เบอร์โทร',
+            prefixIcon: Icon(Icons.search, size: 20),
+          ),
         ),
       ),
       if (_error.isNotEmpty) ...[const SizedBox(height: 12), ErrorBox(_error)],
@@ -305,7 +309,9 @@ class _StepCustomerState extends State<StepCustomer> {
         children: [
           Row(
             children: [
-              const Expanded(child: Text('ลูกค้าใหม่', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16))),
+              const Expanded(
+                child: Text('ลูกค้าใหม่', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
+              ),
               IconButton(
                 tooltip: 'ยกเลิก',
                 icon: const Icon(Icons.close, size: 20),

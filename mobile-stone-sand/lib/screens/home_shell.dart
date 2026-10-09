@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../auth/auth_scope.dart';
 import '../routes.dart';
 import '../theme/app_theme.dart';
+import '../tour/tour_controller.dart';
 import '../widgets/ui.dart';
 
 class HomeShell extends StatelessWidget {
@@ -119,8 +120,7 @@ class _BrandBar extends StatelessWidget implements PreferredSizeWidget {
       titleSpacing: 16,
       title: const _BrandTitle(),
       actions: [
-        if (locked != null)
-          Padding(padding: const EdgeInsets.only(right: 16), child: SourceBadge(locked, long: true)),
+        if (locked != null) Padding(padding: const EdgeInsets.only(right: 16), child: SourceBadge(locked, long: true)),
       ],
       shape: const Border(bottom: BorderSide(color: AppColors.border)),
     );
@@ -150,11 +150,7 @@ class _BottomTabs extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   d.label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: color,
-                    fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                  ),
+                  style: TextStyle(fontSize: 12, color: color, fontWeight: active ? FontWeight.w600 : FontWeight.w400),
                 ),
               ],
             ),
@@ -163,41 +159,47 @@ class _BottomTabs extends StatelessWidget {
       );
     }
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      padding: EdgeInsets.only(bottom: bottom),
-      child: Row(
-        children: [
-          tab(phoneTabs[0]),
-          tab(phoneTabs[1]),
-          Expanded(
-            child: Center(
-              child: Tooltip(
-                message: 'สร้างออเดอร์',
-                child: Material(
-                  color: AppColors.primary,
-                  shape: const CircleBorder(side: BorderSide(color: AppColors.surface, width: 4)),
-                  elevation: 6,
-                  shadowColor: AppColors.primary.withValues(alpha: 0.4),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: () => openNewOrder(context),
-                    child: const SizedBox(
-                      width: 56,
-                      height: 56,
-                      child: Icon(Icons.add, size: 28, color: Colors.white),
+    return TourTarget(
+      'main-nav',
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.border)),
+        ),
+        padding: EdgeInsets.only(bottom: bottom),
+        child: Row(
+          children: [
+            tab(phoneTabs[0]),
+            tab(phoneTabs[1]),
+            Expanded(
+              child: Center(
+                child: TourTarget(
+                  'new-order',
+                  child: Tooltip(
+                    message: 'สร้างออเดอร์',
+                    child: Material(
+                      color: AppColors.primary,
+                      shape: const CircleBorder(side: BorderSide(color: AppColors.surface, width: 4)),
+                      elevation: 6,
+                      shadowColor: AppColors.primary.withValues(alpha: 0.4),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => openNewOrder(context),
+                        child: const SizedBox(
+                          width: 56,
+                          height: 56,
+                          child: Icon(Icons.add, size: 28, color: Colors.white),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-          tab(phoneTabs[2]),
-          tab(phoneTabs[3]),
-        ],
+            tab(phoneTabs[2]),
+            tab(phoneTabs[3]),
+          ],
+        ),
       ),
     );
   }
@@ -228,8 +230,11 @@ class _Sidebar extends StatelessWidget {
               child: Row(
                 children: [
                   const SizedBox(width: 12),
-                  Icon(icon ?? (active ? d.activeIcon : d.icon),
-                      size: 20, color: color ?? (active ? AppColors.primary : AppColors.muted)),
+                  Icon(
+                    icon ?? (active ? d.activeIcon : d.icon),
+                    size: 20,
+                    color: color ?? (active ? AppColors.primary : AppColors.muted),
+                  ),
                   const SizedBox(width: 12),
                   Text(
                     label ?? d.label,
@@ -274,19 +279,29 @@ class _Sidebar extends StatelessWidget {
             const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.all(12),
-              child: SizedBox(
-                height: 48,
-                child: FilledButton.icon(
-                  onPressed: () => openNewOrder(context),
-                  icon: const Icon(Icons.add, size: 20),
-                  label: const Text('สร้างออเดอร์'),
+              child: TourTarget(
+                'new-order',
+                child: SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: () => openNewOrder(context),
+                    icon: const Icon(Icons.add, size: 20),
+                    label: const Text('สร้างออเดอร์'),
+                  ),
                 ),
               ),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: [for (final d in navItems) item(d)],
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: TourTarget(
+                  'main-nav',
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    children: [for (final d in navItems) item(d)],
+                  ),
+                ),
               ),
             ),
             const Divider(height: 1),
@@ -307,17 +322,15 @@ class _Sidebar extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(user?.displayName ?? '', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                        Text(
+                          user?.displayName ?? '',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
                         Text(user?.role ?? '', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
                       ],
                     ),
                   ),
-                  item(
-                    Dest.menu,
-                    icon: Icons.logout,
-                    label: 'ออกจากระบบ',
-                    onTap: () => signOutWithConfirm(context),
-                  ),
+                  item(Dest.menu, icon: Icons.logout, label: 'ออกจากระบบ', onTap: () => signOutWithConfirm(context)),
                 ],
               ),
             ),

@@ -9,18 +9,20 @@ import '../data/orders_repo.dart';
 import '../logic/format.dart';
 import '../models/models.dart';
 import '../theme/app_theme.dart';
+import '../tour/tour_controller.dart';
+import '../tour/tour_steps.dart';
 import '../widgets/ui.dart';
 import 'new_order/wizard_widgets.dart';
 
 class _Item {
   _Item(OrderItem it)
-      : id = it.id,
-        productId = it.productId,
-        unit = it.unit,
-        unitPrice = it.unitPrice,
-        quantity = it.quantity,
-        discountPerUnit = it.discountPerUnit,
-        name = TextEditingController(text: it.name);
+    : id = it.id,
+      productId = it.productId,
+      unit = it.unit,
+      unitPrice = it.unitPrice,
+      quantity = it.quantity,
+      discountPerUnit = it.discountPerUnit,
+      name = TextEditingController(text: it.name);
 
   final String? id;
   final String? productId;
@@ -34,15 +36,15 @@ class _Item {
   final Key key = UniqueKey();
 
   OrderItem toItem() => OrderItem(
-        id: id,
-        productId: productId,
-        name: name.text,
-        unit: unit,
-        unitPrice: unitPrice,
-        quantity: quantity,
-        amount: lineAmount(unitPrice, quantity),
-        discountPerUnit: discountPerUnit,
-      );
+    id: id,
+    productId: productId,
+    name: name.text,
+    unit: unit,
+    unitPrice: unitPrice,
+    quantity: quantity,
+    amount: lineAmount(unitPrice, quantity),
+    discountPerUnit: discountPerUnit,
+  );
 }
 
 /// Full-screen editor for a saved order (SuperAdmin or tour orders). Pops the updated [Order].
@@ -86,32 +88,29 @@ class _OrderEditScreenState extends State<OrderEditScreen> {
   }
 
   OrderEdit get _edit => OrderEdit(
-        orderDate: _date,
-        items: _items.map((it) => it.toItem()).toList(),
-        truckSize: _truck,
-        trips: _trips,
-        feePerTrip: _fee,
-        remoteSurcharge: _extra,
-        deliveryDiscount: _deliveryDiscount,
-        discountType: _discountType,
-        discountValue: _discountValue,
-        paymentMethod: _payment,
-        deliveryAddress: _address.text,
-        note: _note.text,
-      );
+    orderDate: _date,
+    items: _items.map((it) => it.toItem()).toList(),
+    truckSize: _truck,
+    trips: _trips,
+    feePerTrip: _fee,
+    remoteSurcharge: _extra,
+    deliveryDiscount: _deliveryDiscount,
+    discountType: _discountType,
+    discountValue: _discountValue,
+    paymentMethod: _payment,
+    deliveryAddress: _address.text,
+    note: _note.text,
+  );
 
   void _addProduct(String id) {
     final p = CatalogScope.read(context).products.where((x) => x.id == id).firstOrNull;
     if (p == null) return;
     setState(() {
-      _items.add(_Item(OrderItem(
-        productId: p.id,
-        name: p.name,
-        unit: p.unit,
-        unitPrice: p.pricePerUnit,
-        quantity: 1,
-        amount: 0,
-      )));
+      _items.add(
+        _Item(
+          OrderItem(productId: p.id, name: p.name, unit: p.unit, unitPrice: p.pricePerUnit, quantity: 1, amount: 0),
+        ),
+      );
       _addKey++;
     });
   }
@@ -159,227 +158,255 @@ class _OrderEditScreenState extends State<OrderEditScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final side = math.max(16.0, (width - 768) / 2);
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: 'ยกเลิก',
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.of(context).pop(),
+    return TourMarker(
+      page: TourPage.orderEdit,
+      id: o.id,
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: 'ยกเลิก',
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: Text('แก้ไขออเดอร์ ${o.orderNo}'),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: TourTarget(
+                'order-edit',
+                child: FilledButton(
+                  style: FilledButton.styleFrom(minimumSize: const Size(64, 40)),
+                  onPressed: _saving ? null : _submit,
+                  child: Text(_saving ? 'กำลังบันทึก…' : 'บันทึก'),
+                ),
+              ),
+            ),
+          ],
         ),
-        title: Text('แก้ไขออเดอร์ ${o.orderNo}'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilledButton(
-              style: FilledButton.styleFrom(minimumSize: const Size(64, 40)),
-              onPressed: _saving ? null : _submit,
-              child: Text(_saving ? 'กำลังบันทึก…' : 'บันทึก'),
-            ),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(side, 16, side, 32),
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: FieldLabel(
-                  'วันที่ออเดอร์',
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, backgroundColor: AppColors.surface),
-                    onPressed: _pickDate,
-                    icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                    label: Text(formatDateTh(_date), style: const TextStyle(fontWeight: FontWeight.w400)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FieldLabel(
-                  'วิธีชำระเงิน',
-                  child: DropdownButtonFormField<PaymentMethod>(
-                    initialValue: _payment,
-                    isExpanded: true,
-                    items: [
-                      for (final m in PaymentMethod.values) DropdownMenuItem(value: m, child: Text(m.label)),
-                    ],
-                    onChanged: (m) => setState(() => _payment = m ?? _payment),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Text('รายการสินค้า', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 8),
-          for (final (i, it) in _items.indexed) ...[
-            _ItemEditor(
-              key: it.key,
-              index: i,
-              item: it,
-              onChanged: () => setState(() {}),
-              onRemove: () => _removeItem(it),
-            ),
-            const SizedBox(height: 8),
-          ],
-          DropdownButtonFormField<String>(
-            key: ValueKey('add-$_addKey'),
-            isExpanded: true,
-            hint: const Text('+ เพิ่มสินค้า'),
-            items: [
-              for (final p in products)
-                DropdownMenuItem(
-                  value: p.id,
-                  child: Text('${p.name} (${formatMoney(p.pricePerUnit)}/${p.unit})', overflow: TextOverflow.ellipsis),
-                ),
-            ],
-            onChanged: (id) {
-              if (id != null) _addProduct(id);
-            },
-          ),
-          if (_delivery) ...[
-            const SizedBox(height: 20),
-            const Text('การจัดส่ง', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 8),
-            LayoutBuilder(builder: (context, c) {
-              final cols = c.maxWidth >= 560 ? 5 : 2;
-              final w = (c.maxWidth - 12 * (cols - 1)) / cols;
-              Widget cell(Widget child) => SizedBox(width: w, child: child);
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  cell(FieldLabel(
-                    'ขนาดรถ',
-                    child: DropdownButtonFormField<int>(
-                      initialValue: _truck ?? 0,
-                      isExpanded: true,
-                      items: const [
-                        DropdownMenuItem(value: 0, child: Text('—')),
-                        DropdownMenuItem(value: 3, child: Text('3 คิว')),
-                        DropdownMenuItem(value: 5, child: Text('5 คิว')),
-                      ],
-                      onChanged: (v) => setState(() => _truck = (v == null || v == 0) ? null : v),
-                    ),
-                  )),
-                  cell(FieldLabel(
-                    'จำนวนเที่ยว',
-                    child: NumberField(
-                      value: _trips,
-                      decimal: false,
-                      onChanged: (v) => setState(() => _trips = math.max(0, v).floor()),
-                    ),
-                  )),
-                  cell(FieldLabel(
-                    'ค่าส่ง/เที่ยว',
-                    child: NumberField(value: _fee, onChanged: (v) => setState(() => _fee = math.max(0, v))),
-                  )),
-                  cell(FieldLabel(
-                    'ค่าส่งเพิ่ม',
-                    child: NumberField(value: _extra, onChanged: (v) => setState(() => _extra = math.max(0, v))),
-                  )),
-                  cell(FieldLabel(
-                    'ลดค่าส่ง (บาท)',
-                    child: NumberField(
-                      value: _deliveryDiscount,
-                      onChanged: (v) => setState(() => _deliveryDiscount = math.max(0, v)),
-                    ),
-                  )),
-                ],
-              );
-            }),
-            const SizedBox(height: 12),
-            FieldLabel(
-              'ที่อยู่จัดส่ง',
-              child: TextField(controller: _address, minLines: 2, maxLines: 4, onChanged: (_) => setState(() {})),
-            ),
-          ],
-          const SizedBox(height: 20),
-          const Text('ส่วนลด', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              SizedBox(
-                width: 140,
-                child: Segmented<DiscountType>(
-                  values: DiscountType.values,
-                  selected: _discountType,
-                  labelOf: (t) => t == DiscountType.baht ? 'บาท' : '%',
-                  onChanged: (t) {
-                    if (t == _discountType) return;
-                    setState(() {
-                      _discountType = t;
-                      _discountValue = 0;
-                    });
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: NumberField(
-                  value: _discountValue,
-                  semanticLabel: 'ส่วนลด',
-                  onChanged: (v) => setState(() {
-                    final clamped = math.max(0.0, v);
-                    _discountValue = _discountType == DiscountType.percent ? math.min(100.0, clamped) : clamped;
-                  }),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          FieldLabel(
-            'หมายเหตุ',
-            child: TextField(controller: _note, minLines: 2, maxLines: 4),
-          ),
-          const SizedBox(height: 16),
-          AppCard(
-            color: AppColors.subtle,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+        body: ListView(
+          padding: EdgeInsets.fromLTRB(side, 16, side, 32),
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                InfoRow('ค่าสินค้า', formatMoney(totals.subtotal)),
-                if (_delivery) InfoRow('ค่าจัดส่ง', formatMoney(totals.deliveryTotal)),
-                if (totals.deliveryDiscount != 0) InfoRow('ส่วนลดค่าส่ง', '-${formatMoney(totals.deliveryDiscount)}'),
-                if (totals.discountAmount - totals.deliveryDiscount > 0)
-                  InfoRow('ส่วนลด', '-${formatMoney(totals.discountAmount - totals.deliveryDiscount)}'),
-                const Divider(height: 16),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    const Expanded(child: Text('ยอดสุทธิใหม่', style: TextStyle(fontWeight: FontWeight.w600))),
-                    Text(
-                      formatMoney(totals.total),
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                        fontFeatures: tabular,
+                Expanded(
+                  child: FieldLabel(
+                    'วันที่ออเดอร์',
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        alignment: Alignment.centerLeft,
+                        backgroundColor: AppColors.surface,
                       ),
+                      onPressed: _pickDate,
+                      icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                      label: Text(formatDateTh(_date), style: const TextStyle(fontWeight: FontWeight.w400)),
                     ),
-                  ],
-                ),
-                if (totals.total != o.total)
-                  Text(
-                    'เดิม ${formatMoney(o.total)} บาท${o.statementId != null ? ' · ยอดในใบวางบิลจะปรับตามให้อัตโนมัติ' : ''}',
-                    style: const TextStyle(fontSize: 12, color: AppColors.muted),
                   ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FieldLabel(
+                    'วิธีชำระเงิน',
+                    child: DropdownButtonFormField<PaymentMethod>(
+                      initialValue: _payment,
+                      isExpanded: true,
+                      items: [for (final m in PaymentMethod.values) DropdownMenuItem(value: m, child: Text(m.label))],
+                      onChanged: (m) => setState(() => _payment = m ?? _payment),
+                    ),
+                  ),
+                ),
               ],
             ),
-          ),
-          if (_error.isNotEmpty) ...[const SizedBox(height: 12), ErrorBox(_error)],
-        ],
+            const SizedBox(height: 20),
+            const Text('รายการสินค้า', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 8),
+            for (final (i, it) in _items.indexed) ...[
+              _ItemEditor(
+                key: it.key,
+                index: i,
+                item: it,
+                onChanged: () => setState(() {}),
+                onRemove: () => _removeItem(it),
+              ),
+              const SizedBox(height: 8),
+            ],
+            DropdownButtonFormField<String>(
+              key: ValueKey('add-$_addKey'),
+              isExpanded: true,
+              hint: const Text('+ เพิ่มสินค้า'),
+              items: [
+                for (final p in products)
+                  DropdownMenuItem(
+                    value: p.id,
+                    child: Text(
+                      '${p.name} (${formatMoney(p.pricePerUnit)}/${p.unit})',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              onChanged: (id) {
+                if (id != null) _addProduct(id);
+              },
+            ),
+            if (_delivery) ...[
+              const SizedBox(height: 20),
+              const Text('การจัดส่ง', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 8),
+              LayoutBuilder(
+                builder: (context, c) {
+                  final cols = c.maxWidth >= 560 ? 5 : 2;
+                  final w = (c.maxWidth - 12 * (cols - 1)) / cols;
+                  Widget cell(Widget child) => SizedBox(width: w, child: child);
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      cell(
+                        FieldLabel(
+                          'ขนาดรถ',
+                          child: DropdownButtonFormField<int>(
+                            initialValue: _truck ?? 0,
+                            isExpanded: true,
+                            items: const [
+                              DropdownMenuItem(value: 0, child: Text('—')),
+                              DropdownMenuItem(value: 3, child: Text('3 คิว')),
+                              DropdownMenuItem(value: 5, child: Text('5 คิว')),
+                            ],
+                            onChanged: (v) => setState(() => _truck = (v == null || v == 0) ? null : v),
+                          ),
+                        ),
+                      ),
+                      cell(
+                        FieldLabel(
+                          'จำนวนเที่ยว',
+                          child: NumberField(
+                            value: _trips,
+                            decimal: false,
+                            onChanged: (v) => setState(() => _trips = math.max(0, v).floor()),
+                          ),
+                        ),
+                      ),
+                      cell(
+                        FieldLabel(
+                          'ค่าส่ง/เที่ยว',
+                          child: NumberField(value: _fee, onChanged: (v) => setState(() => _fee = math.max(0, v))),
+                        ),
+                      ),
+                      cell(
+                        FieldLabel(
+                          'ค่าส่งเพิ่ม',
+                          child: NumberField(value: _extra, onChanged: (v) => setState(() => _extra = math.max(0, v))),
+                        ),
+                      ),
+                      cell(
+                        FieldLabel(
+                          'ลดค่าส่ง (บาท)',
+                          child: NumberField(
+                            value: _deliveryDiscount,
+                            onChanged: (v) => setState(() => _deliveryDiscount = math.max(0, v)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              FieldLabel(
+                'ที่อยู่จัดส่ง',
+                child: TextField(controller: _address, minLines: 2, maxLines: 4, onChanged: (_) => setState(() {})),
+              ),
+            ],
+            const SizedBox(height: 20),
+            const Text('ส่วนลด', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                SizedBox(
+                  width: 140,
+                  child: Segmented<DiscountType>(
+                    values: DiscountType.values,
+                    selected: _discountType,
+                    labelOf: (t) => t == DiscountType.baht ? 'บาท' : '%',
+                    onChanged: (t) {
+                      if (t == _discountType) return;
+                      setState(() {
+                        _discountType = t;
+                        _discountValue = 0;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: NumberField(
+                    value: _discountValue,
+                    semanticLabel: 'ส่วนลด',
+                    onChanged: (v) => setState(() {
+                      final clamped = math.max(0.0, v);
+                      _discountValue = _discountType == DiscountType.percent ? math.min(100.0, clamped) : clamped;
+                    }),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            FieldLabel('หมายเหตุ', child: TextField(controller: _note, minLines: 2, maxLines: 4)),
+            const SizedBox(height: 16),
+            AppCard(
+              color: AppColors.subtle,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  InfoRow('ค่าสินค้า', formatMoney(totals.subtotal)),
+                  if (_delivery) InfoRow('ค่าจัดส่ง', formatMoney(totals.deliveryTotal)),
+                  if (totals.deliveryDiscount != 0) InfoRow('ส่วนลดค่าส่ง', '-${formatMoney(totals.deliveryDiscount)}'),
+                  if (totals.discountAmount - totals.deliveryDiscount > 0)
+                    InfoRow('ส่วนลด', '-${formatMoney(totals.discountAmount - totals.deliveryDiscount)}'),
+                  const Divider(height: 16),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      const Expanded(
+                        child: Text('ยอดสุทธิใหม่', style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                      Text(
+                        formatMoney(totals.total),
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                          fontFeatures: tabular,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (totals.total != o.total)
+                    Text(
+                      'เดิม ${formatMoney(o.total)} บาท${o.statementId != null ? ' · ยอดในใบวางบิลจะปรับตามให้อัตโนมัติ' : ''}',
+                      style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                    ),
+                ],
+              ),
+            ),
+            if (_error.isNotEmpty) ...[const SizedBox(height: 12), ErrorBox(_error)],
+          ],
+        ),
       ),
     );
   }
 }
 
 class _ItemEditor extends StatelessWidget {
-  const _ItemEditor({super.key, required this.index, required this.item, required this.onChanged, required this.onRemove});
+  const _ItemEditor({
+    super.key,
+    required this.index,
+    required this.item,
+    required this.onChanged,
+    required this.onRemove,
+  });
   final int index;
   final _Item item;
   final VoidCallback onChanged;

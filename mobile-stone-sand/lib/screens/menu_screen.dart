@@ -10,6 +10,9 @@ import '../logic/menu_hints.dart';
 import '../models/models.dart';
 import '../routes.dart';
 import '../theme/app_theme.dart';
+import '../tour/tour_controller.dart';
+import '../tour/tour_menu_card.dart';
+import '../tour/tour_steps.dart';
 import '../widgets/loader.dart';
 import '../widgets/page.dart';
 import '../widgets/ui.dart';
@@ -78,89 +81,91 @@ class _MenuScreenState extends State<MenuScreen> with ReloadOnDataChange {
       listenable: _counts,
       builder: (context, _) {
         final c = _counts.data ?? const MenuCounts();
-        final hints = menuHints(MenuCounts(
-          ordersToday: c.ordersToday,
-          waitingDelivery: c.waitingDelivery,
-          customers: c.customers,
-          openStatements: c.openStatements,
-          driverUnpaid: c.driverUnpaid,
-          drivers: catalog.loading ? null : catalog.drivers.length,
-          products: catalog.loading ? null : catalog.products.length,
-        ));
-        return PageScroll(
-          onRefresh: () async {
-            await Future.wait([_counts.load(), catalog.reload()]);
-          },
-          children: [
-            const PageHeader(title: 'เมนู', subtitle: 'เลือกส่วนที่ต้องการใช้งาน'),
-            GridRows(
-              columns: columns,
-              children: [
-                for (final d in navItems)
-                  _MenuCard(
-                    icon: d.icon,
-                    label: d.label,
-                    hint: hints[d.route] ?? '',
-                    onTap: () => goTo(context, d),
-                  ),
-                _MenuCard(
-                  icon: Icons.add,
-                  label: 'สร้างออเดอร์',
-                  hint: hints['/new'] ?? '',
-                  onTap: () => openNewOrder(context),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            AppCard(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+        final hints = menuHints(
+          MenuCounts(
+            ordersToday: c.ordersToday,
+            waitingDelivery: c.waitingDelivery,
+            customers: c.customers,
+            openStatements: c.openStatements,
+            driverUnpaid: c.driverUnpaid,
+            drivers: catalog.loading ? null : catalog.drivers.length,
+            products: catalog.loading ? null : catalog.products.length,
+          ),
+        );
+        return TourMarker(
+          page: TourPage.menu,
+          child: PageScroll(
+            onRefresh: () async {
+              await Future.wait([_counts.load(), catalog.reload()]);
+            },
+            children: [
+              const PageHeader(title: 'เมนู', subtitle: 'เลือกส่วนที่ต้องการใช้งาน'),
+              const TourMenuCard(),
+              const SizedBox(height: 24),
+              GridRows(
+                columns: columns,
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                user?.displayName ?? '',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
-                              ),
-                              Text(user?.role ?? '', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-                            ],
-                          ),
-                        ),
-                        if (auth.lockedSource != null) SourceBadge(auth.lockedSource!, long: true),
-                      ],
-                    ),
-                  ),
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(kRadius),
-                      onTap: () => signOutWithConfirm(context),
-                      child: const SizedBox(
-                        height: 48,
-                        child: Row(
-                          children: [
-                            SizedBox(width: 12),
-                            Icon(Icons.logout, size: 20, color: AppColors.destructive),
-                            SizedBox(width: 12),
-                            Text('ออกจากระบบ', style: TextStyle(fontSize: 14, color: AppColors.destructive)),
-                          ],
-                        ),
-                      ),
-                    ),
+                  for (final d in navItems)
+                    _MenuCard(icon: d.icon, label: d.label, hint: hints[d.route] ?? '', onTap: () => goTo(context, d)),
+                  _MenuCard(
+                    icon: Icons.add,
+                    label: 'สร้างออเดอร์',
+                    hint: hints['/new'] ?? '',
+                    onTap: () => openNewOrder(context),
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+              AppCard(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  user?.displayName ?? '',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+                                ),
+                                Text(user?.role ?? '', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                              ],
+                            ),
+                          ),
+                          if (auth.lockedSource != null) SourceBadge(auth.lockedSource!, long: true),
+                        ],
+                      ),
+                    ),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(kRadius),
+                        onTap: () => signOutWithConfirm(context),
+                        child: const SizedBox(
+                          height: 48,
+                          child: Row(
+                            children: [
+                              SizedBox(width: 12),
+                              Icon(Icons.logout, size: 20, color: AppColors.destructive),
+                              SizedBox(width: 12),
+                              Text('ออกจากระบบ', style: TextStyle(fontSize: 14, color: AppColors.destructive)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -188,7 +193,11 @@ class _MenuCard extends StatelessWidget {
               children: [
                 Icon(icon, size: 40, color: AppColors.primary),
                 const SizedBox(height: 12),
-                Text(label, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                ),
                 const SizedBox(height: 2),
                 Text(
                   hint,
