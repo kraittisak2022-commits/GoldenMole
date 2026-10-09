@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, FileText, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, FileText, Trash2, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { useVisibleSources } from '../auth/useVisibleSources';
 import PayMethodPicker, { type PayMethod } from '../components/PayMethodPicker';
@@ -16,7 +16,7 @@ import Modal from '../components/ui/Modal';
 import PageHeader from '../components/ui/PageHeader';
 import { Empty, ErrorBox, Loading } from '../components/ui/States';
 import Textarea from '../components/ui/Textarea';
-import { listUnclearedOrders } from '../data/orders';
+import { getOrdersByIds, listUnclearedOrders } from '../data/orders';
 import {
   createStatement,
   deleteStatement,
@@ -56,6 +56,7 @@ export default function StatementsPage() {
   const statements = useAsync(() => listStatements(), [], 'statements');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
   const [clearingId, setClearingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(highlight);
   const [actionError, setActionError] = useState('');
 
   const clearing = (statements.data ?? []).find((s) => s.id === clearingId && s.status === 'open') ?? null;
@@ -211,36 +212,49 @@ export default function StatementsPage() {
                     className={['flex flex-wrap items-center gap-3 px-4 py-3', highlight === s.id ? 'bg-warning-soft' : ''].join(' ')}
                     data-tour={s.demo ? 'st-demo-row' : undefined}
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium tabular-nums">{s.statementNo}</p>
-                        <SourceBadge source={s.source} />
-                        {s.demo ? <DemoBadge /> : null}
-                        {s.status === 'cleared' ? (
-                          <Badge tone="success">
-                            เคลียร์แล้ว{s.paymentMethod ? ` · ${PAYMENT_METHOD_LABEL[s.paymentMethod]}` : ''}
-                          </Badge>
-                        ) : s.paidAmount > 0 ? (
-                          <Badge tone="info">จ่ายบางส่วน · {s.payments.length} ครั้ง</Badge>
-                        ) : (
-                          <Badge tone="warning">รอเคลียร์</Badge>
-                        )}
-                      </div>
-                      <p className="truncate text-sm">{s.customer.name}</p>
-                      <p className="text-xs text-muted">
-                        {formatDateShort(s.periodFrom)} – {formatDateShort(s.periodTo)} · {s.orderIds.length} ออเดอร์
-                      </p>
-                    </div>
-                    {s.status === 'open' && s.paidAmount > 0 ? (
-                      <div className="text-right">
-                        <p className="font-semibold tabular-nums text-warning">ค้าง {formatMoney(s.balance)}</p>
-                        <p className="text-xs tabular-nums text-muted">
-                          จ่ายแล้ว {formatMoney(s.paidAmount)} / {formatMoney(s.total)}
+                    <button
+                      type="button"
+                      aria-expanded={expandedId === s.id}
+                      aria-controls={`st-detail-${s.id}`}
+                      onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}
+                      className="-my-1 flex min-w-0 flex-1 items-center gap-3 rounded py-1 text-left cursor-pointer hover:bg-subtle/60"
+                    >
+                      <ChevronDown
+                        size={18}
+                        aria-hidden
+                        className={['shrink-0 text-muted transition-transform', expandedId === s.id ? 'rotate-180' : ''].join(' ')}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium tabular-nums">{s.statementNo}</p>
+                          <SourceBadge source={s.source} />
+                          {s.demo ? <DemoBadge /> : null}
+                          {s.status === 'cleared' ? (
+                            <Badge tone="success">
+                              เคลียร์แล้ว{s.paymentMethod ? ` · ${PAYMENT_METHOD_LABEL[s.paymentMethod]}` : ''}
+                            </Badge>
+                          ) : s.paidAmount > 0 ? (
+                            <Badge tone="info">จ่ายบางส่วน · {s.payments.length} ครั้ง</Badge>
+                          ) : (
+                            <Badge tone="warning">รอเคลียร์</Badge>
+                          )}
+                        </div>
+                        <p className="truncate text-sm">{s.customer.name}</p>
+                        <p className="text-xs text-muted">
+                          {formatDateShort(s.periodFrom)} – {formatDateShort(s.periodTo)} · {s.orderIds.length} ออเดอร์
                         </p>
                       </div>
-                    ) : (
-                      <p className="font-semibold tabular-nums">{formatMoney(s.total)}</p>
-                    )}
+                      {s.status === 'open' && s.paidAmount > 0 ? (
+                        <div className="text-right">
+                          <p className="font-semibold tabular-nums text-warning">ค้าง {formatMoney(s.balance)}</p>
+                          <p className="text-xs tabular-nums text-muted">
+                            จ่ายแล้ว {formatMoney(s.paidAmount)} / {formatMoney(s.total)}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="font-semibold tabular-nums">{formatMoney(s.total)}</p>
+                      )}
+                    </button>
                     <div className="flex w-full gap-2 sm:w-auto">
                       <Link
                         to={`/bill/statement/${s.id}`}
@@ -264,6 +278,7 @@ export default function StatementsPage() {
                         </Button>
                       ) : null}
                     </div>
+                    {expandedId === s.id ? <StatementDetails statement={s} /> : null}
                   </li>
                 ))}
               </ul>
@@ -288,6 +303,75 @@ export default function StatementsPage() {
           />
         ) : null}
       </Modal>
+    </div>
+  );
+}
+
+function StatementDetails({ statement: s }: { statement: Statement }) {
+  const orders = useAsync(() => getOrdersByIds(s.orderIds), [s.id, s.orderIds.join(',')], 'statement-orders');
+  const rows = [...(orders.data ?? [])].sort((a, b) => a.orderDate.localeCompare(b.orderDate) || a.orderNo.localeCompare(b.orderNo));
+
+  return (
+    <div id={`st-detail-${s.id}`} className="basis-full rounded border border-border bg-subtle/40 p-3 text-sm">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <p className="font-medium">รายการในใบวางบิล</p>
+        <p className="text-xs text-muted">
+          รอบบิล {formatDateShort(s.periodFrom)} – {formatDateShort(s.periodTo)} · ออกเมื่อ {formatDateTime(s.createdAt)}
+          {s.createdBy ? ` · โดย ${s.createdBy}` : ''}
+        </p>
+      </div>
+
+      {orders.error ? <ErrorBox message={orders.error} /> : null}
+      {orders.loading && !orders.data ? (
+        <Loading />
+      ) : (
+        <ul className="divide-y divide-border rounded border border-border bg-surface">
+          {rows.map((o) => (
+            <li key={o.id}>
+              <Link to={`/orders/${o.id}`} className="flex min-h-12 items-start gap-3 px-3 py-2 hover:bg-subtle">
+                <span className="w-20 shrink-0 tabular-nums text-muted">{formatDateShort(o.orderDate)}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-x-2">
+                    <span className="font-medium tabular-nums text-primary">{o.orderNo}</span>
+                    {o.receiptNo ? <span className="text-xs tabular-nums text-muted">ใบเสร็จ {o.receiptNo}</span> : null}
+                    {o.cancelled ? <Badge tone="danger">ยกเลิก</Badge> : null}
+                  </span>
+                  <span className="block truncate text-xs text-muted">
+                    {o.items.map((it) => `${it.name} ${formatNumber(it.quantity)} ${it.unit}`).join(', ')}
+                    {o.fulfillment === 'delivery' ? ` · ส่ง ${o.trips} เที่ยว` : ' · มารับเอง'}
+                  </span>
+                </span>
+                <span className="shrink-0 font-medium tabular-nums">{formatMoney(o.total)}</span>
+              </Link>
+            </li>
+          ))}
+          {!rows.length ? <li className="px-3 py-3 text-muted">ไม่พบออเดอร์ในใบวางบิลนี้</li> : null}
+        </ul>
+      )}
+
+      <dl className="mt-3 flex flex-col gap-1 rounded border border-border bg-surface px-3 py-2">
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">รวม {s.orderIds.length} ออเดอร์</dt>
+          <dd className="font-semibold tabular-nums">{formatMoney(s.total)}</dd>
+        </div>
+        {s.payments.map((p) => (
+          <div key={p.id} className="flex justify-between gap-3 text-xs">
+            <dt className="min-w-0 text-muted">
+              รับชำระ {formatDateTime(p.paidAt)} · {PAYMENT_METHOD_LABEL[p.method]}
+              {p.note ? ` · ${p.note}` : ''}
+            </dt>
+            <dd className="shrink-0 tabular-nums text-success">-{formatMoney(p.amount)}</dd>
+          </div>
+        ))}
+        <div className="mt-1 flex justify-between gap-3 border-t border-border pt-1.5">
+          <dt className="font-medium">{s.status === 'cleared' ? 'เคลียร์แล้ว' : 'ค้างชำระ'}</dt>
+          <dd className={['font-bold tabular-nums', s.status === 'cleared' ? 'text-success' : 'text-warning'].join(' ')}>
+            {s.status === 'cleared' ? (s.clearedAt ? formatDateTime(s.clearedAt) : '') : formatMoney(s.balance)}
+          </dd>
+        </div>
+      </dl>
+
+      {s.note ? <p className="mt-2 text-xs text-muted">หมายเหตุ: {s.note}</p> : null}
     </div>
   );
 }
