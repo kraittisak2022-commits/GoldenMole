@@ -73,10 +73,18 @@ void main() {
 
     FilledButton submit() => tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'ยืนยันเคลียร์ค่ารถ'));
     expect(submit().onPressed, isNull);
-    await tester.tap(find.text('ได้รับเงินสด 3,000.00 บาท จากคนขับแล้ว'));
+    await tester.tap(find.text('หักค่ารถให้คนขับแล้ว · รับเงิน 1,900.00 บาท'));
     await tester.tap(find.text('คนขับส่งเงินสด'));
     await tester.pump();
     expect(submit().onPressed, isNotNull);
+
+    await tester.tap(find.text('ได้รับเงินสด 3,000.00 บาท จากคนขับแล้ว'));
+    await tester.pump();
+    expect(find.text('คนขับส่งเงินส่วนต่างด้วย'), findsNothing);
+    expect(find.text('-3,000.00'), findsNothing);
+    expect(find.text('ค่ารถ 1,100.00 ยังไม่จ่าย รอเคลียร์ค่ารถทีเดียวในรอบเดือน'), findsOneWidget);
+    final later = find.widgetWithText(FilledButton, 'ยืนยันรับเงิน 3,000.00 (ค่ารถรอเคลียร์รอบเดือน)');
+    expect(tester.widget<FilledButton>(later).onPressed, isNotNull);
 
     await tester.tap(find.text('DO6801-0002'));
     await tester.pump();

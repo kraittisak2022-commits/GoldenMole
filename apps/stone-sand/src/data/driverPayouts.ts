@@ -72,6 +72,28 @@ export async function createDriverPayout(input: {
   return (data as any).payout_no as string;
 }
 
+/**
+ * The driver hands over all the COD money now; his fee for these orders stays unpaid until the
+ * monthly driver clearing. Returns the amount received.
+ */
+export async function receiveDriverCod(input: {
+  driverId: string;
+  orderIds: string[];
+  note: string;
+  by: string;
+  cashExpected: number;
+}): Promise<number> {
+  const { data, error } = await supabase.rpc('ss_receive_driver_cod', {
+    p_driver_id: input.driverId,
+    p_order_ids: input.orderIds,
+    p_note: input.note.trim(),
+    p_by: input.by,
+    p_cash_expected: input.cashExpected,
+  });
+  if (error) throw new Error(error.message);
+  return Number(data || 0);
+}
+
 /** Its orders go back to "ค่ารถยังไม่จ่าย"; COD money taken through it goes back to unpaid. */
 export async function deleteDriverPayout(id: string, by: string): Promise<void> {
   const { error } = await supabase.rpc('ss_delete_driver_payout', { p_payout_id: id, p_by: by });

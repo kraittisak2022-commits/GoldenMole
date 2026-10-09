@@ -80,6 +80,26 @@ Future<String> createDriverPayout({
   return data is Map ? '${data['payout_no']}' : '';
 }
 
+/// The driver hands over all the COD money now; his fee for these orders stays unpaid until the
+/// monthly driver clearing. Returns the amount received.
+Future<double> receiveDriverCod({
+  required String driverId,
+  required List<String> orderIds,
+  required String note,
+  required String by,
+  required double cashExpected,
+}) async {
+  final data = await guard(() => db.rpc('ss_receive_driver_cod', params: {
+        'p_driver_id': driverId,
+        'p_order_ids': orderIds,
+        'p_note': note.trim(),
+        'p_by': by,
+        'p_cash_expected': cashExpected,
+      }));
+  notifyDataChanged();
+  return _n(data);
+}
+
 /// Its orders go back to "ค่ารถยังไม่จ่าย"; COD money taken through it goes back to unpaid.
 Future<void> deleteDriverPayout(String id, String by) async {
   await guard(() => db.rpc('ss_delete_driver_payout', params: {'p_payout_id': id, 'p_by': by}));

@@ -113,7 +113,7 @@ class _DriverPayScreenState extends State<DriverPayScreen> with ReloadOnDataChan
             const PageHeader(title: 'เคลียร์ค่ารถ', subtitle: 'จ่ายค่ารถให้คนขับตามออเดอร์ที่วิ่งส่ง แล้วบันทึกว่าจ่ายแล้ว'),
             if (_error.isNotEmpty) ...[ErrorBox(_error), const SizedBox(height: 12)],
             if (_paidNo.isNotEmpty) ...[
-              Notice(icon: Icons.check_circle_outline, tone: BadgeTone.success, text: 'บันทึกจ่ายค่ารถ $_paidNo แล้ว'),
+              Notice(icon: Icons.check_circle_outline, tone: BadgeTone.success, text: _paidNo),
               const SizedBox(height: 12),
             ],
             SectionTitle('คนขับที่ยังไม่ได้รับค่ารถ${dueTotal != 0 ? ' · รวม ${formatMoney(dueTotal)} บาท' : ''}'),
@@ -311,7 +311,7 @@ class _PayoutRow extends StatelessWidget {
   }
 }
 
-/// Pays one driver for the chosen orders; pops with the new payout number.
+/// Pays one driver for the chosen orders; pops with a message describing what was saved.
 class PayoutScreen extends StatefulWidget {
   const PayoutScreen({super.key, required this.driverId, required this.driverName, required this.orders});
   final String driverId;
@@ -330,8 +330,9 @@ class _PayoutScreenState extends State<PayoutScreen> {
   String _rangeKey = '';
   String? _method;
   final _note = TextEditingController();
-  bool _cashConfirmed = false;
-  double _confirmedCash = 0;
+  /// net = fee deducted from the COD cash now; later = driver hands over all the cash, fee waits for the monthly clearing
+  _CashMode? _cashMode;
+  (double, double) _modeKey = (0, 0);
   bool _saving = false;
   String _error = '';
 
@@ -362,13 +363,28 @@ class _PayoutScreenState extends State<PayoutScreen> {
 
   Future<void> _submit({required List<Order> chosen, required double cash, required bool needsMethod}) async {
     if (chosen.isEmpty) return setState(() => _error = 'เลือกออเดอร์อย่างน้อย 1 รายการ');
+    if (cash > 0 && _cashMode == null) {
+      return setState(() => _error = 'เลือกว่าหักค่ารถให้คนขับแล้ว หรือรับเงินเต็มจำนวน');
+    }
     if (needsMethod && _method == null) return setState(() => _error = 'เลือกช่องทางการจ่ายเงิน');
-    if (cash > 0 && !_cashConfirmed) return setState(() => _error = 'ยืนยันการรับเงินสดจากคนขับก่อน');
     setState(() {
       _saving = true;
       _error = '';
     });
     try {
+      if (cash > 0 && _cashMode == _CashMode.later) {
+        final received = await receiveDriverCod(
+          driverId: widget.driverId,
+          orderIds: [for (final o in chosen) o.id],
+          note: _note.text,
+          by: AuthScope.read(context).by,
+          cashExpected: cash,
+        );
+        if (mounted) {
+          Navigator.of(context).pop('รับเงินปลายทาง ${formatMoney(received)} บาท จากคนขับแล้ว · ค่ารถรอเคลียร์รอบเดือน');
+        }
+        return;
+      }
       final no = await createDriverPayout(
         driverId: widget.driverId,
         lines: [for (final o in chosen) (orderId: o.id, amount: _amounts[o.id] ?? 0)],
@@ -377,7 +393,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
         by: AuthScope.read(context).by,
         cashExpected: cash,
       );
-      if (mounted) Navigator.of(context).pop(no);
+      if (mounted) Navigator.of(context).pop('บันทึกเคลียร์ค่ารถ $no แล้ว');
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -398,12 +414,13 @@ class _PayoutScreenState extends State<PayoutScreen> {
     final trips = chosen.fold<int>(0, (s, o) => s + o.trips);
     final cash = chosen.fold<double>(0, (s, o) => s + codToCollect(o));
     final codCount = chosen.where((o) => codToCollect(o) > 0).length;
-    final net = total - cash;
-    final needsMethod = net != 0;
-    if (cash != _confirmedCash) {
-      _confirmedCash = cash;
-      _cashConfirmed = false;
+    if (_modeKey != (cash, total)) {
+      _modeKey = (cash, total);
+      _cashMode = null;
     }
+    final later = cash > 0 && _cashMode == _CashMode.later;
+    final net = later ? -cash : total - cash;
+    final needsMethod = !later && net != 0;
     const big = TextStyle(fontSize: 22, fontWeight: FontWeight.w700, fontFeatures: tabular);
 
     return Scaffold(
@@ -490,16 +507,25 @@ class _PayoutScreenState extends State<PayoutScreen> {
               child: cash != 0
                   ? Column(
                       children: [
-                        _SumLine(
-                          label: 'ค่ารถ · ${chosen.length} ออเดอร์ · ${formatNumber(trips)} เที่ยว',
-                          value: formatMoney(total),
-                        ),
-                        const SizedBox(height: 6),
-                        _SumLine(
-                          label: 'หัก เงินเก็บปลายทาง ($codCount ออเดอร์)',
-                          value: '-${formatMoney(cash)}',
-                          valueColor: AppColors.destructive,
-                        ),
+                        if (later) ...[
+                          _SumLine(label: 'เงินเก็บปลายทาง ($codCount ออเดอร์)', value: formatMoney(cash)),
+                          const SizedBox(height: 6),
+                          _SumLine(
+                            label: 'ค่ารถ · ${chosen.length} ออเดอร์ · ${formatNumber(trips)} เที่ยว — รอเคลียร์รอบเดือน',
+                            value: formatMoney(total),
+                          ),
+                        ] else ...[
+                          _SumLine(
+                            label: 'ค่ารถ · ${chosen.length} ออเดอร์ · ${formatNumber(trips)} เที่ยว',
+                            value: formatMoney(total),
+                          ),
+                          const SizedBox(height: 6),
+                          _SumLine(
+                            label: 'หัก เงินเก็บปลายทาง ($codCount ออเดอร์)',
+                            value: '-${formatMoney(cash)}',
+                            valueColor: AppColors.destructive,
+                          ),
+                        ],
                         const Divider(height: 20),
                         Row(children: [
                           Expanded(
@@ -527,24 +553,28 @@ class _PayoutScreenState extends State<PayoutScreen> {
             ),
             if (cash != 0) ...[
               const SizedBox(height: 12),
-              Material(
-                color: AppColors.warningSoft,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: Color(0xFFFCD34D), width: 2),
-                ),
-                child: CheckboxListTile(
-                  value: _cashConfirmed,
-                  onChanged: (v) => setState(() => _cashConfirmed = v ?? false),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: Text(
-                    'ได้รับเงินสด ${formatMoney(cash)} บาท จากคนขับแล้ว',
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                  ),
-                  subtitle: const Text(
-                    'เงินค่าสินค้าที่คนขับเก็บจากลูกค้า ออเดอร์เก็บปลายทางจะเปลี่ยนเป็น "จ่ายแล้ว" และออกใบเสร็จให้อัตโนมัติ',
-                    style: TextStyle(fontSize: 13),
-                  ),
+              _CashModeTile(
+                selected: _cashMode == _CashMode.net,
+                onTap: () => setState(() => _cashMode = _CashMode.net),
+                title: total < cash
+                    ? 'หักค่ารถให้คนขับแล้ว · รับเงิน ${formatMoney(cash - total)} บาท'
+                    : total > cash
+                        ? 'หักค่ารถให้คนขับแล้ว · ร้านจ่ายเพิ่ม ${formatMoney(total - cash)} บาท'
+                        : 'หักค่ารถให้คนขับแล้ว · หักกันพอดี',
+                detail: 'เก็บปลายทาง ${formatMoney(cash)} − ค่ารถ ${formatMoney(total)} · เคลียร์ค่ารถรอบนี้เลย',
+              ),
+              const SizedBox(height: 8),
+              _CashModeTile(
+                selected: _cashMode == _CashMode.later,
+                onTap: () => setState(() => _cashMode = _CashMode.later),
+                title: 'ได้รับเงินสด ${formatMoney(cash)} บาท จากคนขับแล้ว',
+                detail: 'ค่ารถ ${formatMoney(total)} ยังไม่จ่าย รอเคลียร์ค่ารถทีเดียวในรอบเดือน',
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(4, 6, 4, 0),
+                child: Text(
+                  'ออเดอร์เก็บปลายทางจะเปลี่ยนเป็น "จ่ายแล้ว" และออกใบเสร็จให้อัตโนมัติ',
+                  style: TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
               ),
             ],
@@ -572,15 +602,75 @@ class _PayoutScreenState extends State<PayoutScreen> {
               height: 52,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-                onPressed: _saving || chosen.isEmpty || (needsMethod && _method == null) || (cash > 0 && !_cashConfirmed)
+                onPressed: _saving || chosen.isEmpty || (cash > 0 && _cashMode == null) || (needsMethod && _method == null)
                     ? null
                     : () => _submit(chosen: chosen, cash: cash, needsMethod: needsMethod),
                 icon: const Icon(Icons.check, size: 18),
-                label: Text(_saving ? 'กำลังบันทึก…' : cash != 0 ? 'ยืนยันเคลียร์ค่ารถ' : 'ยืนยันจ่ายค่ารถ'),
+                label: Text(_saving
+                    ? 'กำลังบันทึก…'
+                    : later
+                        ? 'ยืนยันรับเงิน ${formatMoney(cash)} (ค่ารถรอเคลียร์รอบเดือน)'
+                        : cash != 0
+                            ? 'ยืนยันเคลียร์ค่ารถ'
+                            : 'ยืนยันจ่ายค่ารถ'),
               ),
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+enum _CashMode { net, later }
+
+class _CashModeTile extends StatelessWidget {
+  const _CashModeTile({required this.selected, required this.onTap, required this.title, required this.detail});
+  final bool selected;
+  final VoidCallback onTap;
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      inMutuallyExclusiveGroup: true,
+      checked: selected,
+      button: true,
+      child: Material(
+        color: selected ? AppColors.warningSoft : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: selected ? const Color(0xFFFBBF24) : AppColors.border, width: 2),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                  size: 22,
+                  color: selected ? AppColors.warning : AppColors.muted,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, fontFeatures: tabular)),
+                      const SizedBox(height: 2),
+                      Text(detail, style: const TextStyle(fontSize: 13, color: AppColors.muted, fontFeatures: tabular)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

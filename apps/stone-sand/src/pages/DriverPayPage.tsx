@@ -12,7 +12,7 @@ import Input from '../components/ui/Input';
 import PageHeader from '../components/ui/PageHeader';
 import { Empty, ErrorBox, Loading } from '../components/ui/States';
 import { useCatalog } from '../context/CatalogProvider';
-import { createDriverPayout, deleteDriverPayout, listDriverPayouts } from '../data/driverPayouts';
+import { createDriverPayout, deleteDriverPayout, listDriverPayouts, receiveDriverCod } from '../data/driverPayouts';
 import { listDriverUnpaidOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
 import {
@@ -39,7 +39,7 @@ export default function DriverPayPage() {
   const unpaid = useAsync(() => listDriverUnpaidOrders(), [], 'driver-unpaid');
   const payouts = useAsync(() => listDriverPayouts(), [], 'driver-payouts');
   const [actionError, setActionError] = useState('');
-  const [paidNo, setPaidNo] = useState('');
+  const [doneMessage, setDoneMessage] = useState('');
 
   const dues = useMemo(
     () => summarizeDriverDues(unpaid.data ?? [], zoneById, settings.delivery),
@@ -76,7 +76,7 @@ export default function DriverPayPage() {
   const remove = async (p: DriverPayout) => {
     if (!window.confirm(`ลบรายการจ่ายค่ารถ ${p.payoutNo} (${p.driverName})? ออเดอร์ในรายการนี้จะกลับเป็น "ค่ารถยังไม่จ่าย"`)) return;
     setActionError('');
-    setPaidNo('');
+    setDoneMessage('');
     try {
       await deleteDriverPayout(p.id, by);
       await reloadAll();
@@ -95,9 +95,9 @@ export default function DriverPayPage() {
           <ErrorBox message={actionError} />
         </div>
       ) : null}
-      {paidNo ? (
+      {doneMessage ? (
         <div className="mb-4 flex items-center gap-2 rounded border border-emerald-200 bg-success-soft px-4 py-3 text-sm text-emerald-800">
-          <Check size={18} aria-hidden /> บันทึกเคลียร์ค่ารถ {paidNo} แล้ว
+          <Check size={18} aria-hidden /> {doneMessage}
         </div>
       ) : null}
 
@@ -181,9 +181,9 @@ export default function DriverPayPage() {
               orders={(unpaid.data ?? []).filter((o) => o.driverId === selectedDriver)}
               by={by}
               onClose={() => selectDriver(null)}
-              onPaid={async (no) => {
+              onPaid={async (message) => {
                 setActionError('');
-                setPaidNo(no);
+                setDoneMessage(message);
                 await reloadAll();
               }}
             />
@@ -275,6 +275,35 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
   );
 }
 
+function CashModeOption({ active, onClick, title, detail }: { active: boolean; onClick: () => void; title: string; detail: string }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={[
+        'flex min-h-14 w-full items-start gap-3 rounded border-2 px-4 py-3 text-left text-sm transition-colors cursor-pointer',
+        active ? 'border-amber-400 bg-warning-soft' : 'border-border bg-surface hover:bg-subtle',
+      ].join(' ')}
+    >
+      <span
+        className={[
+          'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
+          active ? 'border-warning' : 'border-border',
+        ].join(' ')}
+        aria-hidden
+      >
+        {active ? <span className="h-2.5 w-2.5 rounded-full bg-warning" /> : null}
+      </span>
+      <span className="min-w-0">
+        <span className="block font-semibold tabular-nums">{title}</span>
+        <span className="block tabular-nums text-muted">{detail}</span>
+      </span>
+    </button>
+  );
+}
+
 function PaymentBadge({ o }: { o: Order }) {
   const cod = codToCollect(o);
   if (cod) return <Badge tone="warning">เก็บปลายทาง {formatNumber(cod)}</Badge>;
@@ -308,7 +337,7 @@ function PayoutPanel({
   orders: Order[];
   by: string;
   onClose: () => void;
-  onPaid: (payoutNo: string) => void;
+  onPaid: (message: string) => void;
 }) {
   const { zoneById, settings } = useCatalog();
   const today = toIsoDate();
@@ -336,13 +365,17 @@ function PayoutPanel({
   const trips = chosen.reduce((s, o) => s + o.trips, 0);
   const cash = chosen.reduce((s, o) => s + codToCollect(o), 0);
   const codCount = chosen.filter((o) => codToCollect(o) > 0).length;
-  const { handover, topUp } = settleWithDriver(pay, cash);
-  const needsMethod = handover > 0 || topUp > 0;
-  const [cashConfirmed, setCashConfirmed] = useState(false);
+  const net = settleWithDriver(pay, cash);
+  /** net = fee deducted from the COD cash now; later = driver hands over all the cash, fee waits for the monthly clearing */
+  const [cashMode, setCashMode] = useState<'net' | 'later' | null>(null);
+  const later = cash > 0 && cashMode === 'later';
+  const handover = later ? cash : net.handover;
+  const topUp = later ? 0 : net.topUp;
+  const needsMethod = !later && (handover > 0 || topUp > 0);
   const allChosen = inRange.length > 0 && chosen.length === inRange.length;
 
   useEffect(() => {
-    setCashConfirmed(false);
+    setCashMode(null);
   }, [cash, pay]);
 
   const toggle = (id: string) => {
@@ -354,11 +387,22 @@ function PayoutPanel({
 
   const submit = async () => {
     if (!chosen.length) return setError('เลือกออเดอร์อย่างน้อย 1 รายการ');
+    if (cash > 0 && !cashMode) return setError('เลือกว่าหักค่ารถให้คนขับแล้ว หรือรับเงินเต็มจำนวน');
     if (needsMethod && !method) return setError('เลือกช่องทางการจ่ายเงิน');
-    if (cash > 0 && !cashConfirmed) return setError('ยืนยันการรับเงินจากคนขับก่อน');
     setSaving(true);
     setError('');
     try {
+      if (later) {
+        const received = await receiveDriverCod({
+          driverId,
+          orderIds: chosen.map((o) => o.id),
+          note,
+          by,
+          cashExpected: cash,
+        });
+        onPaid(`รับเงินปลายทาง ${formatMoney(received)} บาท จากคนขับแล้ว · ค่ารถรอเคลียร์รอบเดือน`);
+        return;
+      }
       const no = await createDriverPayout({
         driverId,
         lines: chosen.map((o) => ({ orderId: o.id, amount: amounts[o.id] ?? 0 })),
@@ -367,15 +411,16 @@ function PayoutPanel({
         by,
         cashExpected: cash,
       });
-      onPaid(no);
+      onPaid(`บันทึกเคลียร์ค่ารถ ${no} แล้ว`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ');
       setSaving(false);
     }
   };
 
-  const methodWord = method === 'transfer' ? 'โอน' : method === 'cash' ? 'สด' : '';
-  const submitLabel = handover
+  const submitLabel = later
+    ? `ยืนยันรับเงิน ${formatMoney(cash)} (ค่ารถรอเคลียร์รอบเดือน)`
+    : handover
     ? `ยืนยันรับเงิน ${formatMoney(handover)} และเคลียร์ค่ารถ`
     : topUp
       ? `ยืนยันจ่ายค่ารถ ${formatMoney(topUp)}`
@@ -490,7 +535,15 @@ function PayoutPanel({
 
           <div className="rounded border border-border">
             <dl className="flex flex-col gap-1.5 px-4 py-3 text-sm">
-              {cash ? (
+              {later ? (
+                <>
+                  <StatementRow label={`เงินที่คนขับเก็บจากลูกค้า (เก็บปลายทาง ${codCount} ออเดอร์)`} value={cash} />
+                  <StatementRow
+                    label={`ค่ารถคนขับ (${chosen.length} ออเดอร์ · ${formatNumber(trips)} เที่ยว) — ยังไม่จ่าย รอเคลียร์รอบเดือน`}
+                    value={pay}
+                  />
+                </>
+              ) : cash ? (
                 <>
                   <StatementRow label={`เงินที่คนขับเก็บจากลูกค้า (เก็บปลายทาง ${codCount} ออเดอร์)`} value={cash} />
                   <StatementRow label={`หัก ค่ารถคนขับ (${chosen.length} ออเดอร์ · ${formatNumber(trips)} เที่ยว)`} value={pay} negative />
@@ -524,6 +577,30 @@ function PayoutPanel({
             </div>
           </div>
 
+          {cash ? (
+            <div className="flex flex-col gap-2" role="radiogroup" aria-label="รับเงินปลายทางจากคนขับ">
+              <CashModeOption
+                active={cashMode === 'net'}
+                onClick={() => setCashMode('net')}
+                title={
+                  net.handover
+                    ? `หักค่ารถให้คนขับแล้ว · รับเงิน ${formatMoney(net.handover)} บาท`
+                    : net.topUp
+                      ? `หักค่ารถให้คนขับแล้ว · ร้านจ่ายเพิ่ม ${formatMoney(net.topUp)} บาท`
+                      : 'หักค่ารถให้คนขับแล้ว · หักกันพอดี'
+                }
+                detail={`เก็บปลายทาง ${formatMoney(cash)} − ค่ารถ ${formatMoney(pay)} · เคลียร์ค่ารถรอบนี้เลย`}
+              />
+              <CashModeOption
+                active={cashMode === 'later'}
+                onClick={() => setCashMode('later')}
+                title={`ได้รับเงินสด ${formatMoney(cash)} บาท จากคนขับแล้ว`}
+                detail={`ค่ารถ ${formatMoney(pay)} ยังไม่จ่าย รอเคลียร์ค่ารถทีเดียวในรอบเดือน`}
+              />
+              <p className="px-1 text-xs text-muted">ออเดอร์เก็บปลายทางจะเปลี่ยนเป็น "จ่ายแล้ว" และออกใบเสร็จให้อัตโนมัติ</p>
+            </div>
+          ) : null}
+
           {needsMethod ? (
             <PayMethodPicker
               value={method}
@@ -531,29 +608,6 @@ function PayoutPanel({
               hints={handover ? DRIVER_PAYS_HINTS : PAY_HINTS}
               label={handover ? 'คนขับส่งเงินให้ร้านทาง' : 'ร้านจ่ายค่ารถทาง'}
             />
-          ) : null}
-
-          {cash ? (
-            <label className="flex cursor-pointer items-start gap-3 rounded border-2 border-amber-300 bg-warning-soft px-4 py-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-primary)]"
-                checked={cashConfirmed}
-                onChange={(e) => setCashConfirmed(e.target.checked)}
-              />
-              <span>
-                <span className="block font-semibold">
-                  {handover
-                    ? `ได้รับเงิน${methodWord} ${formatMoney(handover)} บาท จากคนขับแล้ว`
-                    : `คนขับเก็บเงินปลายทาง ${formatMoney(cash)} บาท และหักเป็นค่ารถแล้ว`}
-                </span>
-                <span className="block tabular-nums text-muted">
-                  เก็บจากลูกค้า {formatMoney(cash)} − ค่ารถ {formatMoney(pay)}
-                  {handover ? ` = ${formatMoney(handover)}` : topUp ? ` → ร้านจ่ายเพิ่ม ${formatMoney(topUp)}` : ''}
-                </span>
-                <span className="block text-muted">ออเดอร์เก็บปลายทางจะเปลี่ยนเป็น "จ่ายแล้ว" และออกใบเสร็จให้อัตโนมัติ</span>
-              </span>
-            </label>
           ) : null}
 
           <Field id="dp-note" label="หมายเหตุ">
@@ -566,7 +620,7 @@ function PayoutPanel({
             variant="success"
             size="lg"
             onClick={submit}
-            disabled={saving || !chosen.length || (needsMethod && !method) || (cash > 0 && !cashConfirmed)}
+            disabled={saving || !chosen.length || (cash > 0 && !cashMode) || (needsMethod && !method)}
           >
             <Check size={18} aria-hidden /> {saving ? 'กำลังบันทึก…' : submitLabel}
           </Button>
