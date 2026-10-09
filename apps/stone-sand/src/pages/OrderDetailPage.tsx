@@ -34,6 +34,7 @@ import { useCatalog } from '../context/CatalogProvider';
 import { deleteOrder, getOrder, markOrderPaid, markOrderUnpaid, setDeliveryStatus, updateOrderFields } from '../data/orders';
 import { getStatement } from '../data/statements';
 import { useAsync } from '../hooks/useAsync';
+import { zoneDriverFee } from '../lib/driverPay';
 import { formatDateShort, formatDateTime, formatMoney, formatNumber, formatPhone, googleMapsUrl } from '../lib/format';
 import { deliveryBadge, driverMessage, paymentBadge } from '../lib/orderStatus';
 import {
@@ -126,7 +127,8 @@ export default function OrderDetailPage() {
 
   const pickDriver = (value: string) => {
     setDriverId(value);
-    if (value && zone?.driverFee) setWage(zone.driverFee * o.trips);
+    const perTrip = zoneDriverFee(zone, o.truckSize);
+    if (value && perTrip) setWage(perTrip * o.trips);
   };
   const driverDirty = (driverId || null) !== o.driverId || wage !== o.driverWage;
   const saveDriver = () =>

@@ -17,12 +17,23 @@ const make = (patch: Partial<Order>): Order =>
   }) as Order;
 
 describe('suggestedDriverPay', () => {
-  it('is the zone driver fee times trips, ignoring the wage stored on the order', () => {
-    expect(suggestedDriverPay(make({ trips: 3, driverWage: 450, deliveryTotal: 1800 }), { driverFee: 350 })).toBe(1050);
+  const zone = { driverFee: 350, driverFee3: 250 };
+
+  it('is the zone driver fee for the truck size times trips, ignoring the wage stored on the order', () => {
+    expect(suggestedDriverPay(make({ truckSize: 5, trips: 3, driverWage: 450, deliveryTotal: 1800 }), zone)).toBe(1050);
+    expect(suggestedDriverPay(make({ truckSize: 3, trips: 2, driverWage: 450 }), zone)).toBe(500);
+  });
+
+  it('pays the normal 5-คิว rate when the truck size is unknown', () => {
+    expect(suggestedDriverPay(make({ truckSize: null, trips: 2 }), zone)).toBe(700);
+  });
+
+  it('does not use the 5-คิว rate for a 3-คิว truck without its own rate', () => {
+    expect(suggestedDriverPay(make({ truckSize: 3, trips: 2 }), { driverFee: 350, driverFee3: 0 })).toBe(0);
   });
 
   it('falls back to the wage stored on the order when the zone has no driver fee', () => {
-    expect(suggestedDriverPay(make({ driverWage: 450 }), { driverFee: 0 })).toBe(450);
+    expect(suggestedDriverPay(make({ driverWage: 450 }), { driverFee: 0, driverFee3: 0 })).toBe(450);
     expect(suggestedDriverPay(make({ driverWage: 450 }), undefined)).toBe(450);
   });
 
@@ -43,7 +54,10 @@ describe('codToCollect', () => {
 });
 
 describe('summarizeDriverDues', () => {
-  const zones: Record<string, { driverFee: number }> = { near: { driverFee: 300 }, far: { driverFee: 1000 } };
+  const zones: Record<string, { driverFee: number; driverFee3: number }> = {
+    near: { driverFee: 300, driverFee3: 200 },
+    far: { driverFee: 1000, driverFee3: 800 },
+  };
   const zoneOf = (id: string | null) => (id ? zones[id] : undefined);
 
   it('groups by driver with count, trips, zone-based pay, COD cash and oldest date', () => {

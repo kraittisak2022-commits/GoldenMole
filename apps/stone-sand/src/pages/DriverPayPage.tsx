@@ -15,7 +15,7 @@ import { useCatalog } from '../context/CatalogProvider';
 import { createDriverPayout, deleteDriverPayout, listDriverPayouts } from '../data/driverPayouts';
 import { listDriverUnpaidOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
-import { codToCollect, suggestedDriverPay, summarizeDriverDues } from '../lib/driverPay';
+import { codToCollect, suggestedDriverPay, summarizeDriverDues, zoneDriverFee } from '../lib/driverPay';
 import { formatDateShort, formatDateTime, formatMoney, formatNumber, toIsoDate } from '../lib/format';
 import { PAYMENT_METHOD_LABEL, type DriverPayout, type Order } from '../types';
 
@@ -326,6 +326,8 @@ function PayoutPanel({
             <ul className="flex max-h-96 flex-col divide-y divide-border overflow-y-auto overflow-x-hidden rounded border border-border">
               {inRange.map((o) => {
                 const zone = zoneById(o.zoneId);
+                const perTrip = zoneDriverFee(zone, o.truckSize);
+                const truckLabel = o.truckSize === 3 ? 'รถ 3 คิว' : 'รถ 5 คิว';
                 return (
                   <li key={o.id} className="flex min-h-14 items-center gap-3 px-3 py-2 text-sm">
                     <input
@@ -351,13 +353,13 @@ function PayoutPanel({
                         {o.truckSize ? `${o.truckSize} คิว × ` : ''}
                         {o.trips} เที่ยว · เก็บลูกค้า {formatNumber(o.deliveryTotal - o.deliveryDiscount)}
                       </span>
-                      {zone?.driverFee ? (
+                      {zone && perTrip ? (
                         <span className="block text-xs text-muted">
-                          ต.{zone.name} · ค่ารถ {formatNumber(zone.driverFee)} × {o.trips} เที่ยว
+                          ต.{zone.name} · ค่ารถ{truckLabel} {formatNumber(perTrip)} × {o.trips} เที่ยว
                         </span>
                       ) : (
                         <span className="block text-xs font-medium text-warning">
-                          {zone ? `ต.${zone.name} ยังไม่ได้ตั้งค่ารถคนขับ` : 'ออเดอร์นี้ไม่มีตำบล'} · ใส่ค่ารถเอง
+                          {zone ? `ต.${zone.name} ยังไม่ได้ตั้งค่ารถ${truckLabel}` : 'ออเดอร์นี้ไม่มีตำบล'} · ใส่ค่ารถเอง
                         </span>
                       )}
                     </button>
@@ -379,7 +381,7 @@ function PayoutPanel({
               {!inRange.length ? <li className="px-3 py-3 text-sm text-muted">ไม่มีออเดอร์ในช่วงวันที่นี้</li> : null}
             </ul>
             <p className="mt-1 px-1 text-xs text-muted">
-              ตั้งต้นจากค่ารถคนขับของตำบล × จำนวนเที่ยว (ตั้งได้ที่ ตั้งค่า › ค่าส่งตามตำบล) แก้ตัวเลขได้ก่อนยืนยัน
+              ตั้งต้นจากค่ารถคนขับของตำบลตามขนาดรถ × จำนวนเที่ยว (ตั้งได้ที่ ตั้งค่า › ค่าส่งตามตำบล) แก้ตัวเลขได้ก่อนยืนยัน
             </p>
           </div>
 

@@ -10,6 +10,7 @@ import Field from '../../components/ui/Field';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Textarea from '../../components/ui/Textarea';
+import { zoneDriverFee } from '../../lib/driverPay';
 import { distanceToMainRoad, findTambon } from '../../lib/geo';
 import { formatMoney, formatNumber, formatPhone } from '../../lib/format';
 import { parseLatLng } from '../../lib/latlng';
@@ -51,6 +52,7 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
   const [group, setGroup] = useState<GroupFilter>('all');
 
   const zone = zones.find((z) => z.id === s.zoneId);
+  const driverFeePerTrip = zoneDriverFee(zone, s.truckSize);
   const largestPerTrip = Math.max(0, ...loadLines.map((l) => l.perTrip));
 
   const chooseFulfillment = (f: 'pickup' | 'delivery') => {
@@ -423,10 +425,10 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
                 />
                 <span>
                   ยืนยันว่ารถ <b>{selectedDriver.name}</b> เข้าหน้างานได้และมีคิวว่าง
-                  {zone?.driverFee ? (
+                  {zone && driverFeePerTrip ? (
                     <span className="block text-muted">
-                      ค่ารถคนขับ ต.{zone.name} {formatNumber(zone.driverFee)} × {s.trips} ={' '}
-                      {formatMoney(zone.driverFee * s.trips)} บาท
+                      ค่ารถคนขับ ต.{zone.name} รถ {s.truckSize} คิว {formatNumber(driverFeePerTrip)} × {s.trips} ={' '}
+                      {formatMoney(driverFeePerTrip * s.trips)} บาท
                     </span>
                   ) : null}
                 </span>

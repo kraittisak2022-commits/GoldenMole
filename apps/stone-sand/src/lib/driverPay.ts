@@ -1,13 +1,19 @@
-import type { Order, Zone } from '../types';
+import type { Order, TruckSize, Zone } from '../types';
 
-type ZoneDriverFee = Pick<Zone, 'driverFee'> | undefined;
+type ZoneDriverFee = Pick<Zone, 'driverFee' | 'driverFee3'> | undefined;
+
+/** Driver fee per trip for the truck size; trucks of unknown size are paid the normal 5-คิว rate. */
+export function zoneDriverFee(zone: ZoneDriverFee, truckSize: TruckSize | null | undefined): number {
+  if (!zone) return 0;
+  return truckSize === 3 ? zone.driverFee3 : zone.driverFee;
+}
 
 /**
- * Default amount to pay the driver: the tambon's driver fee per trip × trips.
- * Zones without a driver fee fall back to the wage stored on the order, never to the customer's delivery fee.
+ * Default amount to pay the driver: the tambon's driver fee for the truck size × trips.
+ * Without a rate it falls back to the wage stored on the order, never to the customer's delivery fee.
  */
-export function suggestedDriverPay(o: Pick<Order, 'driverWage' | 'trips'>, zone: ZoneDriverFee): number {
-  const perTrip = zone?.driverFee ?? 0;
+export function suggestedDriverPay(o: Pick<Order, 'driverWage' | 'trips' | 'truckSize'>, zone: ZoneDriverFee): number {
+  const perTrip = zoneDriverFee(zone, o.truckSize);
   return perTrip > 0 ? perTrip * o.trips : o.driverWage;
 }
 

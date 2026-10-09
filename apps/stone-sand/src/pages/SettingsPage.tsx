@@ -233,7 +233,8 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
 const ZONE_FEE_COLUMNS = [
   { key: 'feeMin', label: 'ลูกค้า ต่ำสุด' },
   { key: 'feeMax', label: 'ลูกค้า สูงสุด' },
-  { key: 'driverFee', label: 'ค่ารถคนขับ' },
+  { key: 'driverFee', label: 'ค่ารถ 5 คิว' },
+  { key: 'driverFee3', label: 'ค่ารถ 3 คิว' },
 ] as const;
 
 function ZonesSection({
@@ -252,18 +253,18 @@ function ZonesSection({
   const update = (id: string, patch: Partial<Zone>) => setRows(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const invalid = rows.find((r) => r.feeMax < r.feeMin);
   const add = () =>
-    setRows([...rows, { id: `${NEW_PREFIX}${Date.now()}`, name: '', feeMin: 0, feeMax: 0, driverFee: 0, sortOrder: nextSort(rows) }]);
+    setRows([...rows, { id: `${NEW_PREFIX}${Date.now()}`, name: '', feeMin: 0, feeMax: 0, driverFee: 0, driverFee3: 0, sortOrder: nextSort(rows) }]);
   const remove = (z: Zone) => {
     if (isNew(z.id) || window.confirm(`ลบ ต.${z.name}? กดบันทึกเพื่อยืนยัน`)) setRows(rows.filter((r) => r.id !== z.id));
   };
   const cols = isSuperAdmin
-    ? 'grid-cols-[1fr_1fr_1fr_auto] sm:grid-cols-[1fr_6rem_6rem_6rem_auto]'
-    : 'grid-cols-3 sm:grid-cols-[1fr_6rem_6rem_6rem]';
+    ? 'grid-cols-[1fr_1fr_1fr_1fr_auto] sm:grid-cols-[1fr_5.5rem_5.5rem_5.5rem_5.5rem_auto]'
+    : 'grid-cols-4 sm:grid-cols-[1fr_5.5rem_5.5rem_5.5rem_5.5rem]';
 
   return (
     <Section
       title="ค่าส่งตามตำบล (บาท/เที่ยว)"
-      subtitle={`ค่าส่งที่ลูกค้าจ่าย: ใกล้ถนนใหญ่ไม่เกิน ${formatNumber(delivery.nearKm)} กม. คิดราคาต่ำสุด ไกลขึ้นคิดเพิ่มตามระยะจนถึงราคาสูงสุด · ค่ารถคนขับ: ใช้ตั้งต้นตอนเคลียร์ค่ารถ (× จำนวนเที่ยว)`}
+      subtitle={`ค่าส่งที่ลูกค้าจ่าย: ใกล้ถนนใหญ่ไม่เกิน ${formatNumber(delivery.nearKm)} กม. คิดราคาต่ำสุด ไกลขึ้นคิดเพิ่มตามระยะจนถึงราคาสูงสุด · ค่ารถคนขับ: แยกรถ 5 คิว (ปกติ) กับ 3 คิว ใช้ตั้งต้นตอนเคลียร์ค่ารถ (× จำนวนเที่ยว)`}
       saver={saver}
       onSave={() =>
         saver.run(async () => {
@@ -278,11 +279,10 @@ function ZonesSection({
               continue;
             }
             const before = zones.find((z) => z.id === r.id);
-            if (
+            const changed =
               before &&
-              (before.feeMin !== r.feeMin || before.feeMax !== r.feeMax || before.driverFee !== r.driverFee || before.name !== r.name)
-            )
-              await saveZone(r);
+              (before.name !== r.name || ZONE_FEE_COLUMNS.some((c) => before[c.key] !== r[c.key]));
+            if (changed) await saveZone(r);
           }
         })
       }

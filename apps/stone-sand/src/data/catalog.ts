@@ -21,6 +21,7 @@ const mapZone = (row: any): Zone => ({
   feeMin: toNum(row.fee_min),
   feeMax: toNum(row.fee_max),
   driverFee: toNum(row.driver_fee),
+  driverFee3: toNum(row.driver_fee_3),
   sortOrder: row.sort_order,
 });
 
@@ -63,21 +64,22 @@ export async function listZones(): Promise<Zone[]> {
   return (data || []).map(mapZone);
 }
 
-export async function saveZone(z: Pick<Zone, 'id' | 'name' | 'feeMin' | 'feeMax' | 'driverFee'>): Promise<void> {
+export async function saveZone(z: Pick<Zone, 'id' | 'name' | 'feeMin' | 'feeMax' | 'driverFee' | 'driverFee3'>): Promise<void> {
   const { error } = await supabase
     .from('ss_zones')
-    .update({ name: z.name.trim(), fee_min: z.feeMin, fee_max: z.feeMax, driver_fee: z.driverFee })
+    .update({ name: z.name.trim(), fee_min: z.feeMin, fee_max: z.feeMax, driver_fee: z.driverFee, driver_fee_3: z.driverFee3 })
     .eq('id', z.id);
   if (error) throw new Error(error.message);
 }
 
-export async function createZone(z: Pick<Zone, 'name' | 'feeMin' | 'feeMax' | 'driverFee' | 'sortOrder'>): Promise<void> {
+export async function createZone(z: Pick<Zone, 'name' | 'feeMin' | 'feeMax' | 'driverFee' | 'driverFee3' | 'sortOrder'>): Promise<void> {
   const { error } = await supabase.from('ss_zones').insert({
     id: newId('zone'),
     name: z.name.trim(),
     fee_min: z.feeMin,
     fee_max: z.feeMax,
     driver_fee: z.driverFee,
+    driver_fee_3: z.driverFee3,
     sort_order: z.sortOrder,
   });
   if (error) throw new Error(error.message);
