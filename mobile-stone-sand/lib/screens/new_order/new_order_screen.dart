@@ -8,6 +8,7 @@ import '../../data/customers_repo.dart';
 import '../../data/db.dart';
 import '../../data/orders_repo.dart';
 import '../../data/scope.dart';
+import '../../logic/driver_pay.dart';
 import '../../logic/format.dart';
 import '../../logic/wizard_state.dart';
 import '../../models/models.dart';
@@ -158,7 +159,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     _setStep(target);
   }
 
-  Future<void> _submit(List<Product> products, Driver? driver) async {
+  Future<void> _submit(List<Product> products, double driverFeePerTrip) async {
     for (var i = 0; i < steps.length - 1; i++) {
       final err = validateStep(i, _state);
       if (err.isNotEmpty) {
@@ -173,7 +174,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     });
     try {
       final by = AuthScope.read(context).by;
-      final order = await createOrder(toDraft(_state, products, driver?.wagePerTrip ?? 0), by);
+      final order = await createOrder(toDraft(_state, products, driverFeePerTrip), by);
       clearDraft();
       if (!mounted) return;
       // The guided tour expects to land on the bill straight away
@@ -361,7 +362,13 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
                                   'wiz-submit',
                                   child: FilledButton.icon(
                                     style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-                                    onPressed: _submitting ? null : () => _submit(products, driver),
+                                    onPressed: _submitting
+                                        ? null
+                                        : () => _submit(
+                                              products,
+                                              driverTripRate(zone, s.truckSize, s.roadDistanceKm, catalog.settings.delivery)
+                                                  .perTrip,
+                                            ),
                                     icon: const Icon(Icons.check, size: 18),
                                     label: Text(_submitting ? 'กำลังบันทึก…' : 'ยืนยันและออกบิล'),
                                   ),

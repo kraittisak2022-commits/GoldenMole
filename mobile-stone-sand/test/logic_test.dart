@@ -197,6 +197,10 @@ void main() {
       double total = 2000,
       PaymentMethod paymentMethod = PaymentMethod.cash,
       PaymentStatus paymentStatus = PaymentStatus.unpaid,
+      String? zoneId,
+      int? truckSize,
+      double? roadDistanceKm,
+      double deliveryDiscount = 0,
     }) =>
         Order(
           id: id,
@@ -208,14 +212,44 @@ void main() {
           trips: trips,
           driverWage: driverWage,
           deliveryTotal: deliveryTotal,
+          deliveryDiscount: deliveryDiscount,
           total: total,
           paymentMethod: paymentMethod,
           paymentStatus: paymentStatus,
+          zoneId: zoneId,
+          truckSize: truckSize,
+          roadDistanceKm: roadDistanceKm,
         );
 
-    test('uses the wage set on the order, else the delivery fee', () {
-      expect(suggestedDriverPay(make(driverWage: 450)), 450);
-      expect(suggestedDriverPay(make(deliveryTotal: 1200)), 1200);
+    const delivery = DeliverySettings(nearKm: 1, driverPerKm5: 50, driverPerKm3: 30);
+    const wangNuea = Zone(id: 'wang-nuea', name: 'วังเหนือ', feePerCubic: 0, driverFee: 700, driverFee3: 500, sortOrder: 1);
+    const unset = Zone(id: 'unset', name: 'ใหม่', feePerCubic: 40, sortOrder: 2);
+    Zone? zoneOf(String? id) => {'wang-nuea': wangNuea, 'unset': unset}[id];
+
+    test('trip rate = tambon rate for the truck size + distance surcharge', () {
+      final r5 = driverTripRate(wangNuea, 5, 3.2, delivery);
+      expect([r5.base, r5.extra, r5.perTrip], [700, 150, 850]);
+      final r3 = driverTripRate(wangNuea, 3, 0.8, delivery);
+      expect([r3.base, r3.extra, r3.perTrip], [500, 0, 500]);
+      // unknown truck size pays the 5-คิว rate
+      expect(driverTripRate(wangNuea, null, null, delivery).perTrip, 700);
+      // no base rate: nothing per trip, even with a surcharge
+      expect(driverTripRate(unset, 5, 5, delivery).perTrip, 0);
+      expect(driverTripRate(null, 5, 5, delivery).perTrip, 0);
+    });
+
+    test('pays the tambon rate × trips, else the stored wage, else the delivery fee after discount', () {
+      final z = driverPayBreakdown(make(zoneId: 'wang-nuea', truckSize: 5, roadDistanceKm: 2.5, trips: 2), wangNuea, delivery);
+      expect([z.amount, z.source], [1600, DriverPaySource.zone]);
+      expect(suggestedDriverPay(make(zoneId: 'unset', driverWage: 450), unset, delivery), 450);
+      final c = driverPayBreakdown(make(deliveryTotal: 1200, deliveryDiscount: 200), null, delivery);
+      expect([c.amount, c.source], [1000, DriverPaySource.customerFee]);
+    });
+
+    test('settles the driver pay against the COD cash he holds', () {
+      expect(settleWithDriver(700, 3000), (handover: 2300.0, topUp: 0.0));
+      expect(settleWithDriver(1400, 500), (handover: 0.0, topUp: 900.0));
+      expect(settleWithDriver(700, 700), (handover: 0.0, topUp: 0.0));
     });
 
     test('codToCollect', () {
@@ -231,12 +265,13 @@ void main() {
         make(id: 'o1', trips: 2, deliveryTotal: 1000, orderDate: '2026-10-07', paymentMethod: PaymentMethod.cod, total: 1800),
         make(id: 'o2', trips: 1, driverWage: 300, orderDate: '2026-10-03'),
         make(id: 'o3', driverId: 'drv-b', trips: 1, deliveryTotal: 2500),
-      ]);
+        make(id: 'o4', driverId: 'drv-b', trips: 2, zoneId: 'wang-nuea', truckSize: 3, deliveryTotal: 0),
+      ], zoneOf, delivery);
       expect(dues.map((d) => [d.driverId, d.count, d.trips, d.total, d.cash, d.oldestDate]).toList(), [
-        ['drv-b', 1, 1, 2500, 0, '2026-10-05'],
+        ['drv-b', 2, 3, 3500, 0, '2026-10-05'],
         ['drv-a', 2, 3, 1300, 1800, '2026-10-03'],
       ]);
-      expect(summarizeDriverDues([make(driverId: null)]), isEmpty);
+      expect(summarizeDriverDues([make(driverId: null)], zoneOf, delivery), isEmpty);
     });
   });
 

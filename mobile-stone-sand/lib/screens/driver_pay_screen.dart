@@ -98,25 +98,62 @@ class _DriverPayScreenState extends State<DriverPayScreen> with ReloadOnDataChan
   @override
   Widget build(BuildContext context) {
     final superAdmin = AuthScope.of(context).isSuperAdmin;
-    CatalogScope.of(context);
+    final catalog = CatalogScope.of(context);
+    final width = MediaQuery.sizeOf(context).width;
     return ListenableBuilder(
       listenable: Listenable.merge(loaders),
       builder: (context, _) {
-        final dues = summarizeDriverDues(_unpaid.data ?? const []);
-        final dueTotal = dues.fold<double>(0, (s, d) => s + d.total);
+        final dues = summarizeDriverDues(_unpaid.data ?? const [], catalog.zoneById, catalog.settings.delivery);
+        var pay = 0.0, cash = 0.0, handover = 0.0, topUp = 0.0;
+        for (final d in dues) {
+          final s = settleWithDriver(d.total, d.cash);
+          pay += d.total;
+          cash += d.cash;
+          handover += s.handover;
+          topUp += s.topUp;
+        }
         final driver = _driver;
         final payouts =
             (_payouts.data ?? const <DriverPayout>[]).where((p) => driver == null || p.driverId == driver).toList();
         return PageScroll(
           onRefresh: reloadAll,
           children: [
-            const PageHeader(title: 'เคลียร์ค่ารถ', subtitle: 'จ่ายค่ารถให้คนขับตามออเดอร์ที่วิ่งส่ง แล้วบันทึกว่าจ่ายแล้ว'),
+            const PageHeader(
+              title: 'เคลียร์ค่ารถ',
+              subtitle: 'หักค่ารถจากเงินเก็บปลายทาง รับเงินส่วนที่เหลือจากคนขับ หรือจ่ายค่ารถส่วนที่ขาด',
+            ),
             if (_error.isNotEmpty) ...[ErrorBox(_error), const SizedBox(height: 12)],
             if (_paidNo.isNotEmpty) ...[
               Notice(icon: Icons.check_circle_outline, tone: BadgeTone.success, text: _paidNo),
               const SizedBox(height: 12),
             ],
-            SectionTitle('คนขับที่ยังไม่ได้รับค่ารถ${dueTotal != 0 ? ' · รวม ${formatMoney(dueTotal)} บาท' : ''}'),
+            if (!_unpaid.pending && dues.isNotEmpty) ...[
+              GridRows(
+                columns: width >= 1024 ? 4 : 2,
+                children: [
+                  KpiCard(label: 'ค่ารถค้างจ่าย', value: formatMoney(pay), hint: '${dues.length} คนขับ'),
+                  KpiCard(
+                    label: 'เงินปลายทางที่คนขับถืออยู่',
+                    value: formatMoney(cash),
+                    hint: 'เก็บจากลูกค้าแล้ว ยังไม่ส่งร้าน',
+                  ),
+                  KpiCard(
+                    label: 'คนขับต้องส่งร้าน',
+                    value: formatMoney(handover),
+                    hint: 'หลังหักค่ารถ',
+                    warn: handover > 0,
+                  ),
+                  KpiCard(
+                    label: 'ร้านต้องจ่ายคนขับ',
+                    value: formatMoney(topUp),
+                    hint: 'ค่ารถที่เงินปลายทางไม่พอหัก',
+                    valueColor: topUp > 0 ? AppColors.primary : null,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+            ],
+            const SectionTitle('คนขับที่ยังไม่ได้เคลียร์'),
             if (_unpaid.error != null) ErrorBox(_unpaid.error!, onRetry: _unpaid.load),
             if (_unpaid.pending)
               const LoadingList()
@@ -178,6 +215,8 @@ class _DueRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = settleWithDriver(row.total, row.cash);
+    const small = TextStyle(fontSize: 12, color: AppColors.muted, fontFeatures: tabular);
     return Material(
       color: selected ? AppColors.primarySoft.withValues(alpha: 0.6) : Colors.transparent,
       child: InkWell(
@@ -195,18 +234,27 @@ class _DueRow extends StatelessWidget {
                       Text(name, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15)),
                       Text(
                         '${row.count} ออเดอร์ · ${formatNumber(row.trips)} เที่ยว · ตั้งแต่ ${formatDateShort(row.oldestDate)}',
-                        style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                        style: small,
                       ),
+                      if (row.cash != 0)
+                        Text('ค่ารถ ${formatNumber(row.total)} · เก็บปลายทาง ${formatNumber(row.cash)}', style: small),
                     ],
                   ),
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(formatMoney(row.total), style: const TextStyle(fontWeight: FontWeight.w600, fontFeatures: tabular)),
                     Text(
-                      row.cash != 0 ? 'เก็บปลายทาง ${formatMoney(row.cash)}' : 'ค่ารถ',
-                      style: TextStyle(fontSize: 12, color: row.cash != 0 ? AppColors.warning : AppColors.muted),
+                      s.handover > 0 ? 'คนขับส่งร้าน' : 'ร้านจ่ายคนขับ',
+                      style: TextStyle(fontSize: 12, color: s.handover > 0 ? AppColors.warning : AppColors.muted),
+                    ),
+                    Text(
+                      formatMoney(s.handover > 0 ? s.handover : s.topUp),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: tabular,
+                        color: s.handover > 0 ? AppColors.warning : null,
+                      ),
                     ),
                   ],
                 ),
@@ -245,7 +293,7 @@ class _PayoutRow extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(p.payoutNo, style: const TextStyle(fontWeight: FontWeight.w500, fontFeatures: tabular)),
-                    AppBadge('จ่ายแล้ว · ${PaymentMethod.parse(p.method).label}', tone: BadgeTone.success),
+                    AppBadge('เคลียร์แล้ว · ${PaymentMethod.parse(p.method).label}', tone: BadgeTone.success),
                   ],
                 ),
                 Text(p.driverName, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -325,7 +373,10 @@ class PayoutScreen extends StatefulWidget {
 class _PayoutScreenState extends State<PayoutScreen> {
   late String _from = widget.orders.isNotEmpty ? widget.orders.first.orderDate : toIsoDate();
   late String _to = toIsoDate().compareTo(_from) < 0 ? _from : toIsoDate();
-  late final Map<String, double> _amounts = {for (final o in widget.orders) o.id: suggestedDriverPay(o)};
+  late final CatalogController _catalog = CatalogScope.read(context);
+  late final Map<String, double> _amounts = {
+    for (final o in widget.orders) o.id: suggestedDriverPay(o, _catalog.zoneById(o.zoneId), _catalog.settings.delivery),
+  };
   Set<String> _selected = {};
   String _rangeKey = '';
   String? _method;
@@ -421,6 +472,8 @@ class _PayoutScreenState extends State<PayoutScreen> {
     final later = cash > 0 && _cashMode == _CashMode.later;
     final net = later ? -cash : total - cash;
     final needsMethod = !later && net != 0;
+    final settle = settleWithDriver(total, cash);
+    final allChosen = inRange.isNotEmpty && chosen.length == inRange.length;
     const big = TextStyle(fontSize: 22, fontWeight: FontWeight.w700, fontFeatures: tabular);
 
     return Scaffold(
@@ -457,13 +510,32 @@ class _PayoutScreenState extends State<PayoutScreen> {
               ),
             ]),
             const SizedBox(height: 12),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-              child: Row(children: [
-                Expanded(child: Text('ออเดอร์', style: TextStyle(fontSize: 12, color: AppColors.muted))),
-                Text('ค่ารถ (บาท)', style: TextStyle(fontSize: 12, color: AppColors.muted)),
-              ]),
-            ),
+            Row(children: [
+              Expanded(
+                child: InkWell(
+                  onTap: inRange.isEmpty
+                      ? null
+                      : () => setState(() => _selected = allChosen ? {} : inRange.map((o) => o.id).toSet()),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Row(children: [
+                    Checkbox(
+                      value: allChosen,
+                      onChanged: inRange.isEmpty
+                          ? null
+                          : (_) => setState(() => _selected = allChosen ? {} : inRange.map((o) => o.id).toSet()),
+                    ),
+                    Text(
+                      'เลือกทั้งหมด (${chosen.length}/${inRange.length})',
+                      style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                    ),
+                  ]),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(right: 4),
+                child: Text('ค่ารถ (บาท)', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+              ),
+            ]),
             AppCard(
               child: inRange.isEmpty
                   ? const EmptyState('ไม่มีออเดอร์ในช่วงวันที่นี้')
@@ -487,7 +559,11 @@ class _PayoutScreenState extends State<PayoutScreen> {
                                 onChanged: (v) => setState(() => _amounts[o.id] = math.max(0, v)),
                               ),
                             ),
-                            child: _PayoutOrderInfo(order: o),
+                            child: _PayoutOrderInfo(
+                              order: o,
+                              zone: _catalog.zoneById(o.zoneId),
+                              delivery: _catalog.settings.delivery,
+                            ),
                           ),
                         ],
                       ],
@@ -496,7 +572,8 @@ class _PayoutScreenState extends State<PayoutScreen> {
             const Padding(
               padding: EdgeInsets.fromLTRB(4, 6, 4, 0),
               child: Text(
-                'ตั้งต้นจากค่าจ้างคนขับในออเดอร์ ถ้ายังไม่ได้ใส่จะใช้ค่าส่งที่เก็บจากลูกค้า แก้ตัวเลขได้ก่อนยืนยัน',
+                'ค่ารถตั้งต้น = (ค่ารถของตำบลตามขนาดรถ + ตามระยะ) × เที่ยว · ตำบลที่ยังไม่ได้ตั้งค่ารถใช้ค่าส่งในบิลแทน · '
+                'แก้ตัวเลขได้ก่อนยืนยัน',
                 style: TextStyle(fontSize: 12, color: AppColors.muted),
               ),
             ),
@@ -610,9 +687,11 @@ class _PayoutScreenState extends State<PayoutScreen> {
                     ? 'กำลังบันทึก…'
                     : later
                         ? 'ยืนยันรับเงิน ${formatMoney(cash)} (ค่ารถรอเคลียร์รอบเดือน)'
-                        : cash != 0
-                            ? 'ยืนยันเคลียร์ค่ารถ'
-                            : 'ยืนยันจ่ายค่ารถ'),
+                        : settle.handover > 0
+                            ? 'ยืนยันรับเงิน ${formatMoney(settle.handover)} และเคลียร์ค่ารถ'
+                            : settle.topUp > 0
+                                ? 'ยืนยันจ่ายค่ารถ ${formatMoney(settle.topUp)}'
+                                : 'ยืนยันเคลียร์ค่ารถ'),
               ),
             ),
           ],
@@ -677,14 +756,25 @@ class _CashModeTile extends StatelessWidget {
 }
 
 class _PayoutOrderInfo extends StatelessWidget {
-  const _PayoutOrderInfo({required this.order});
+  const _PayoutOrderInfo({required this.order, required this.zone, required this.delivery});
   final Order order;
+  final Zone? zone;
+  final DeliverySettings delivery;
 
   @override
   Widget build(BuildContext context) {
     final o = order;
-    final cod = codToCollect(o);
+    final z = zone;
+    final b = driverPayBreakdown(o, z, delivery);
+    final truckLabel = o.truckSize == 3 ? 'รถ 3 คิว' : 'รถ 5 คิว';
     const small = TextStyle(fontSize: 12, color: AppColors.muted);
+    final source = switch (b.source) {
+      DriverPaySource.zone when z != null =>
+        'ค่ารถ ต.${z.name} $truckLabel ${formatNumber(b.rate.base)}'
+            '${b.rate.extra > 0 ? ' + ตามระยะ ${formatNumber(b.rate.extra)}' : ''} × ${o.trips} เที่ยว',
+      DriverPaySource.stored => 'ค่ารถตามที่บันทึกไว้ในออเดอร์',
+      _ => '${z != null ? 'ต.${z.name} ยังไม่ได้ตั้งค่ารถ ($truckLabel)' : 'ไม่มีตำบล'} · ใช้ค่าส่งในบิลแทน',
+    };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -698,32 +788,47 @@ class _PayoutOrderInfo extends StatelessWidget {
             if (o.deliveryStatus != DeliveryStatus.delivered) const AppBadge('ยังไม่ส่ง', tone: BadgeTone.warning),
           ],
         ),
-        if (cod != 0)
-          Text(
-            'เก็บเงินปลายทาง ${formatNumber(cod)}'
-            '${o.driverCashReported != null ? ' · คนขับแจ้งได้ ${formatNumber(o.driverCashReported)}' : ''}',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: o.driverCashReported != null && o.driverCashReported! < cod
-                  ? AppColors.destructive
-                  : AppColors.primary,
-            ),
-          )
-        else if (o.statementId != null && o.paymentStatus != PaymentStatus.paid)
-          const Text(
-            'อยู่ในใบวางบิล · ลูกค้าจ่ายที่เคลียร์บิล',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.primary),
-          ),
         Text('${formatDateShort(o.orderDate)} · ${o.customer.name}',
             maxLines: 1, overflow: TextOverflow.ellipsis, style: small),
+        const SizedBox(height: 4),
+        _PaymentBadge(o),
+        const SizedBox(height: 2),
         Text(
-          '${o.truckSize != 0 ? '${o.truckSize} คิว × ' : ''}${o.trips} เที่ยว'
-          ' · เก็บลูกค้า ${formatNumber(o.deliveryTotal - o.deliveryDiscount)}',
+          '${o.truckSize != null ? '${o.truckSize} คิว × ' : ''}${o.trips} เที่ยว'
+          ' · ค่าส่งในบิล ${formatNumber(customerDeliveryFee(o))}',
           style: small,
+        ),
+        Text(
+          source,
+          style: b.source == DriverPaySource.zone
+              ? small
+              : const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.warning),
         ),
       ],
     );
+  }
+}
+
+class _PaymentBadge extends StatelessWidget {
+  const _PaymentBadge(this.order);
+  final Order order;
+
+  @override
+  Widget build(BuildContext context) {
+    final o = order;
+    final cod = codToCollect(o);
+    if (cod > 0) {
+      final reported = o.driverCashReported;
+      if (reported == null) return AppBadge('เก็บปลายทาง ${formatNumber(cod)}', tone: BadgeTone.warning);
+      return AppBadge(
+        'เก็บปลายทาง ${formatNumber(cod)} · คนขับแจ้งได้ ${formatNumber(reported)}',
+        tone: reported < cod ? BadgeTone.danger : BadgeTone.warning,
+      );
+    }
+    if (o.paymentStatus == PaymentStatus.paid) return const AppBadge('ลูกค้าจ่ายแล้ว', tone: BadgeTone.success);
+    if (o.statementId != null) return const AppBadge('อยู่ในใบวางบิล · ลูกค้าจ่ายที่เคลียร์บิล', tone: BadgeTone.info);
+    if (o.paymentStatus == PaymentStatus.credit) return const AppBadge('เครดิต');
+    return AppBadge('ลูกค้ายังไม่จ่าย (${o.paymentMethod.label})');
   }
 }
 

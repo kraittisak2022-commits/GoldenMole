@@ -52,14 +52,22 @@ Future<void> saveZone({
   required String id,
   required String name,
   required double feePerCubic,
+  required double driverFee,
+  required double driverFee3,
 }) =>
-    guard(() => db
-        .from('ss_zones')
-        .update({'name': name.trim(), 'fee_min': feePerCubic, 'fee_max': feePerCubic}).eq('id', id));
+    guard(() => db.from('ss_zones').update({
+          'name': name.trim(),
+          'fee_min': feePerCubic,
+          'fee_max': feePerCubic,
+          'driver_fee': driverFee,
+          'driver_fee_3': driverFee3,
+        }).eq('id', id));
 
 Future<void> createZone({
   required String name,
   required double feePerCubic,
+  required double driverFee,
+  required double driverFee3,
   required int sortOrder,
 }) =>
     guard(() => db.from('ss_zones').insert({
@@ -67,6 +75,8 @@ Future<void> createZone({
           'name': name.trim(),
           'fee_min': feePerCubic,
           'fee_max': feePerCubic,
+          'driver_fee': driverFee,
+          'driver_fee_3': driverFee3,
           'sort_order': sortOrder,
         }));
 

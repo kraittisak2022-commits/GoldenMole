@@ -100,10 +100,7 @@ class _DriverRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = driver;
-    final info = [
-      d.village,
-      if (d.wagePerTrip != 0) 'ค่าจ้าง ${formatNumber(d.wagePerTrip)}/เที่ยว',
-    ].where((s) => s.isNotEmpty).join(' · ');
+    final info = d.village;
     return Container(
       color: d.active ? null : AppColors.subtle.withValues(alpha: 0.6),
       padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
@@ -220,7 +217,6 @@ class _DriverFormScreenState extends State<DriverFormScreen> {
   late RouteGroup _group = _i?.routeGroup ?? RouteGroup.north;
   late int _truckSize = _i?.truckSize ?? 5;
   late int _truckCount = _i?.truckCount ?? 1;
-  late double _wage = _i?.wagePerTrip ?? 0;
   late bool _active = _i?.active ?? true;
   late final List<_ContactInput> _contacts = [
     for (final c in _i?.contacts ?? const <DriverContact>[]) _ContactInput(c.label, c.phone),
@@ -263,7 +259,7 @@ class _DriverFormScreenState extends State<DriverFormScreen> {
           for (final c in _contacts) DriverContact(label: c.label.text.trim(), phone: digitsOnly(c.phone.text)),
         ],
         contactNote: _contactNote.text,
-        wagePerTrip: _wage,
+        wagePerTrip: _i?.wagePerTrip ?? 0,
         active: _active,
       );
       if (mounted) Navigator.of(context).pop(true);
@@ -379,12 +375,6 @@ class _DriverFormScreenState extends State<DriverFormScreen> {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 16),
-          FieldLabel(
-            'ค่าจ้างต่อเที่ยว (บาท)',
-            hint: 'ใช้คำนวณค่าจ้างอัตโนมัติเมื่อเลือกคนขับในออเดอร์',
-            child: NumberField(value: _wage, decimal: false, onChanged: (v) => setState(() => _wage = math.max(0, v))),
           ),
           const SizedBox(height: 16),
           const Text('เบอร์โทร', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),

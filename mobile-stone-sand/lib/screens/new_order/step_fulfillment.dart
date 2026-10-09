@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../calc/delivery_fee.dart';
 import '../../calc/pricing.dart';
 import '../../calc/trips.dart';
+import '../../logic/driver_pay.dart';
 import '../../logic/format.dart';
 import '../../logic/geo.dart';
 import '../../logic/latlng.dart';
@@ -604,6 +605,8 @@ class _StepFulfillmentState extends State<StepFulfillment> {
     for (final d in widget.drivers) {
       if (d.id == s.driverId) selected = d;
     }
+    final zone = _zoneById(s.zoneId);
+    final rate = driverTripRate(zone, s.truckSize, s.roadDistanceKm, widget.settings.delivery);
 
     return [
       const Text('คนขับ', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
@@ -647,10 +650,11 @@ class _StepFulfillmentState extends State<StepFulfillment> {
                 TextSpan(text: selected.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                 const TextSpan(text: ' เข้าหน้างานได้และมีคิวว่าง'),
               ])),
-              if (selected.wagePerTrip != 0)
+              if (zone != null && rate.perTrip > 0)
                 Text(
-                  'ค่าจ้างคนขับ ${formatNumber(selected.wagePerTrip)} × ${s.trips} = '
-                  '${formatMoney(selected.wagePerTrip * s.trips)} บาท',
+                  'ค่ารถคนขับ ต.${zone.name} (รถ ${s.truckSize} คิว) ${formatNumber(rate.base)}'
+                  '${rate.extra > 0 ? ' + ตามระยะ ${formatNumber(rate.extra)}' : ''} บาท/เที่ยว × ${s.trips} เที่ยว = '
+                  '${formatMoney(rate.perTrip * s.trips)} บาท',
                   style: const TextStyle(color: AppColors.muted),
                 ),
             ],

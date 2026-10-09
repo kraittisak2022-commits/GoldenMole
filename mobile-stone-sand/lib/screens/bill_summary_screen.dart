@@ -113,7 +113,12 @@ class _BillSummaryScreenState extends State<BillSummaryScreen> with ReloadOnData
       builder: (context, _) {
         final orders = _orders.data ?? const <Order>[];
         final rows = [
-          for (final o in orders) _Row(o, summarizeBill(o), catalog.driverById(o.driverId)?.name ?? ''),
+          for (final o in orders)
+            _Row(
+              o,
+              summarizeBill(o, zone: catalog.zoneById(o.zoneId), delivery: catalog.settings.delivery),
+              catalog.driverById(o.driverId)?.name ?? '',
+            ),
         ];
         final query = _query.text;
         final sourceCounts = {for (final s in OrderSource.values) s: rows.where((r) => r.order.source == s).length};

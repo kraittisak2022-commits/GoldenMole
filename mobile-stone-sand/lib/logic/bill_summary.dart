@@ -1,7 +1,5 @@
-import 'dart:math' as math;
-
 import '../models/models.dart';
-import 'driver_pay.dart' show suggestedDriverPay;
+import 'driver_pay.dart' show customerDeliveryFee, suggestedDriverPay;
 import 'order_status.dart' show BadgeTone, outstanding;
 
 /// Where an order is held up, in the order the desk works through them.
@@ -114,7 +112,8 @@ List<BillStep> _steps(Order o) {
   ];
 }
 
-BillSummary summarizeBill(Order o) {
+/// [zone] is the order's tambon: while the driver is unpaid, his cost is estimated from its rate.
+BillSummary summarizeBill(Order o, {Zone? zone, DeliverySettings delivery = DeliverySettings.defaults}) {
   final stage = billStage(o);
   final steps = _steps(o);
   if (o.cancelled) {
@@ -130,7 +129,7 @@ BillSummary summarizeBill(Order o) {
       steps: steps,
     );
   }
-  final deliveryFee = math.max<double>(0, o.deliveryTotal - o.deliveryDiscount);
+  final deliveryFee = customerDeliveryFee(o);
   final hasDriver = o.fulfillment == Fulfillment.delivery && o.driverId != null;
   final paidOut = o.driverPayoutId != null;
   final receivable = outstanding(o);
@@ -138,7 +137,7 @@ BillSummary summarizeBill(Order o) {
     revenue: o.total,
     goods: o.total - deliveryFee,
     deliveryFee: deliveryFee,
-    driverCost: !hasDriver ? 0 : (paidOut ? o.driverWage : suggestedDriverPay(o)),
+    driverCost: !hasDriver ? 0 : (paidOut ? o.driverWage : suggestedDriverPay(o, zone, delivery)),
     driverCostEstimated: hasDriver && !paidOut,
     received: o.total - receivable,
     receivable: receivable,

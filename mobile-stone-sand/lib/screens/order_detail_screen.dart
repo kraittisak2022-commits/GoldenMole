@@ -11,6 +11,7 @@ import '../data/catalog_scope.dart';
 import '../data/db.dart';
 import '../data/orders_repo.dart';
 import '../data/statements_repo.dart';
+import '../logic/driver_pay.dart';
 import '../logic/format.dart';
 import '../logic/latlng.dart';
 import '../logic/order_status.dart';
@@ -172,10 +173,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   void _pickDriver(Order o, String id) {
-    final d = CatalogScope.read(context).driverById(id);
+    final catalog = CatalogScope.read(context);
+    final perTrip = driverTripRate(catalog.zoneById(o.zoneId), o.truckSize, o.roadDistanceKm, catalog.settings.delivery).perTrip;
     setState(() {
       _driverId = id;
-      if (d != null) _wage = d.wagePerTrip * o.trips;
+      if (id.isNotEmpty && perTrip > 0) _wage = perTrip * o.trips;
     });
   }
 

@@ -334,15 +334,24 @@ class _ZoneRow {
       : id = z.id,
         name = TextEditingController(text: z.name),
         feePerCubic = z.feePerCubic,
+        driverFee = z.driverFee,
+        driverFee3 = z.driverFee3,
         sortOrder = z.sortOrder;
   _ZoneRow.blank(this.sortOrder)
       : id = '$_newPrefix${DateTime.now().microsecondsSinceEpoch}',
         name = TextEditingController(),
-        feePerCubic = 0;
+        feePerCubic = 0,
+        driverFee = 0,
+        driverFee3 = 0;
   final String id;
   final TextEditingController name;
   double feePerCubic;
+  double driverFee;
+  double driverFee3;
   final int sortOrder;
+
+  bool differsFrom(Zone z) =>
+      z.name != name.text || z.feePerCubic != feePerCubic || z.driverFee != driverFee || z.driverFee3 != driverFee3;
 }
 
 class ZonesSection extends StatefulWidget {
@@ -411,12 +420,24 @@ class _ZonesSectionState extends State<ZonesSection> with _Saver {
         }
         for (final r in _rows) {
           if (_isNew(r.id)) {
-            await createZone(name: r.name.text, feePerCubic: r.feePerCubic, sortOrder: r.sortOrder);
+            await createZone(
+              name: r.name.text,
+              feePerCubic: r.feePerCubic,
+              driverFee: r.driverFee,
+              driverFee3: r.driverFee3,
+              sortOrder: r.sortOrder,
+            );
             continue;
           }
           final b = before[r.id];
-          if (b != null && (b.feePerCubic != r.feePerCubic || b.name != r.name.text)) {
-            await saveZone(id: r.id, name: r.name.text, feePerCubic: r.feePerCubic);
+          if (b != null && r.differsFrom(b)) {
+            await saveZone(
+              id: r.id,
+              name: r.name.text,
+              feePerCubic: r.feePerCubic,
+              driverFee: r.driverFee,
+              driverFee3: r.driverFee3,
+            );
           }
         }
       });
@@ -429,7 +450,9 @@ class _ZonesSectionState extends State<ZonesSection> with _Saver {
       title: 'ค่าส่งตามตำบล',
       subtitle: 'ค่าส่งลูกค้า: บาทต่อคิว คูณจำนวนคิวที่สั่ง ถ้าหน้างานห่างถนนใหญ่เกิน '
           '${formatNumber(widget.delivery.nearKm)} กม. บวกเพิ่มต่อเที่ยวตามเรท บาท/กม. ของขนาดรถ '
-          '(รถ 5 คิว ${formatNumber(widget.delivery.driverPerKm5)} · รถ 3 คิว ${formatNumber(widget.delivery.driverPerKm3)})',
+          '(รถ 5 คิว ${formatNumber(widget.delivery.driverPerKm5)} · รถ 3 คิว ${formatNumber(widget.delivery.driverPerKm3)}) '
+          '· ค่ารถคนขับ: บาทต่อเที่ยว แยกรถ 5 คิว (ปกติ) กับ 3 คิว บวกค่าส่งเพิ่มตามระยะด้วยเรทเดียวกับลูกค้า '
+          'ใช้ตั้งต้นตอนเคลียร์ค่ารถ',
       saving: saving,
       error: saveError,
       saved: saved,
@@ -449,52 +472,77 @@ class _ZonesSectionState extends State<ZonesSection> with _Saver {
                   Container(
                     color: AppColors.subtle,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: Row(children: [
-                      const Expanded(child: Text('ตำบล', style: head)),
-                      const SizedBox(width: 120, child: Text('ค่าส่งลูกค้า/คิว', style: head)),
-                      if (superAdmin) const SizedBox(width: 48),
+                    child: const Row(children: [
+                      Expanded(child: Text('ค่าส่งลูกค้า/คิว', style: head)),
+                      SizedBox(width: 8),
+                      Expanded(child: Text('ค่ารถ 5 คิว/เที่ยว', style: head)),
+                      SizedBox(width: 8),
+                      Expanded(child: Text('ค่ารถ 3 คิว/เที่ยว', style: head)),
                     ]),
                   ),
                   for (final r in _rows) ...[
                     const Divider(height: 1),
                     Padding(
                       key: ValueKey(r.id),
-                      padding: const EdgeInsets.fromLTRB(12, 6, 0, 6),
-                      child: Row(children: [
-                        Expanded(
-                          child: superAdmin
-                              ? Semantics(
-                                  label: 'ชื่อตำบล',
-                                  child: TextField(
-                                    controller: r.name,
-                                    decoration: const InputDecoration(
-                                      hintText: 'ชื่อตำบล',
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                    ),
-                                  ),
-                                )
-                              : Text(r.name.text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 120,
-                          child: NumberField(
-                            value: r.feePerCubic,
-                            dense: true,
-                            semanticLabel: 'ค่าส่งลูกค้าต่อคิว ${r.name.text}',
-                            onChanged: (v) => setState(() => r.feePerCubic = math.max(0, v)),
-                          ),
-                        ),
-                        if (superAdmin)
-                          IconButton(
-                            tooltip: 'ลบ ต.${r.name.text}',
-                            onPressed: () => _remove(r),
-                            icon: const Icon(Icons.delete_outline, color: AppColors.muted),
-                          )
-                        else
-                          const SizedBox(width: 12),
-                      ]),
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(children: [
+                            Expanded(
+                              child: superAdmin
+                                  ? Semantics(
+                                      label: 'ชื่อตำบล',
+                                      child: TextField(
+                                        controller: r.name,
+                                        decoration: const InputDecoration(
+                                          hintText: 'ชื่อตำบล',
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                        ),
+                                      ),
+                                    )
+                                  : Text('ต.${r.name.text}',
+                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                            ),
+                            if (superAdmin)
+                              IconButton(
+                                tooltip: 'ลบ ต.${r.name.text}',
+                                onPressed: () => _remove(r),
+                                icon: const Icon(Icons.delete_outline, color: AppColors.muted),
+                              ),
+                          ]),
+                          const SizedBox(height: 6),
+                          Row(children: [
+                            Expanded(
+                              child: NumberField(
+                                value: r.feePerCubic,
+                                dense: true,
+                                semanticLabel: 'ค่าส่งลูกค้าต่อคิว ${r.name.text}',
+                                onChanged: (v) => setState(() => r.feePerCubic = math.max(0, v)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: NumberField(
+                                value: r.driverFee,
+                                dense: true,
+                                semanticLabel: 'ค่ารถคนขับ รถ 5 คิว ต่อเที่ยว ${r.name.text}',
+                                onChanged: (v) => setState(() => r.driverFee = math.max(0, v)),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: NumberField(
+                                value: r.driverFee3,
+                                dense: true,
+                                semanticLabel: 'ค่ารถคนขับ รถ 3 คิว ต่อเที่ยว ${r.name.text}',
+                                onChanged: (v) => setState(() => r.driverFee3 = math.max(0, v)),
+                              ),
+                            ),
+                          ]),
+                        ],
+                      ),
                     ),
                   ],
                 ],

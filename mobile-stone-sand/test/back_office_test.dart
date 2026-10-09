@@ -72,7 +72,8 @@ void main() {
     expect(find.text('-3,000.00'), findsOneWidget);
     expect(find.text('คนขับส่งเงินส่วนต่างด้วย'), findsOneWidget);
 
-    FilledButton submit() => tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'ยืนยันเคลียร์ค่ารถ'));
+    FilledButton submit() =>
+        tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'ยืนยันรับเงิน 1,900.00 และเคลียร์ค่ารถ'));
     expect(submit().onPressed, isNull);
     await tester.tap(find.text('หักค่ารถให้คนขับแล้ว · รับเงิน 1,900.00 บาท'));
     await tester.tap(find.text('คนขับส่งเงินสด'));
@@ -92,7 +93,8 @@ void main() {
     expect(find.text('คนขับต้องส่งเงินให้ร้าน'), findsNothing);
     expect(find.text('600.00'), findsOneWidget);
     expect(find.text('จ่ายค่ารถด้วย'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'ยืนยันจ่ายค่ารถ'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'ยืนยันจ่ายค่ารถ 600.00'), findsOneWidget);
+    expect(find.text('เลือกทั้งหมด (1/2)'), findsOneWidget);
   });
 
   testWidgets('driver form requires a name', (tester) async {

@@ -126,6 +126,8 @@ class Zone {
     required this.id,
     required this.name,
     required this.feePerCubic,
+    this.driverFee = 0,
+    this.driverFee3 = 0,
     required this.sortOrder,
   });
 
@@ -134,12 +136,20 @@ class Zone {
 
   /// Customer delivery fee in baht per คิว ordered; the per-trip distance surcharge is added on top.
   final double feePerCubic;
+
+  /// Paid to the driver per trip with a 5-คิว truck.
+  final double driverFee;
+
+  /// Paid to the driver per trip with a 3-คิว truck.
+  final double driverFee3;
   final int sortOrder;
 
   factory Zone.fromRow(Map<String, dynamic> r) => Zone(
         id: _str(r['id']),
         name: _str(r['name']),
         feePerCubic: _num(r['fee_min']),
+        driverFee: _num(r['driver_fee']),
+        driverFee3: _num(r['driver_fee_3']),
         sortOrder: _int(r['sort_order']),
       );
 }
