@@ -191,6 +191,14 @@ void main() {
       expect(suggestDeliveryFee(1200, 1500, 5, const DeliverySettings(nearKm: 2, maxKm: 8, roundTo: 100)), 1400);
       expect(suggestDeliveryFee(1200, 1500, 5, const DeliverySettings(nearKm: 2, maxKm: 8, roundTo: 0)), 1350);
     });
+
+    test('rounds only the distance surcharge, so a base fee off the 50 grid is kept', () {
+      const settings = DeliverySettings(nearKm: 0.5, maxKm: 3, roundTo: 50);
+      expect(suggestDeliveryFee(240, 340, 0.4, settings), 240);
+      expect(suggestDeliveryFee(240, 340, 1, settings), 290);
+      expect(suggestDeliveryFee(240, 340, 2, settings), 340);
+      expect(suggestDeliveryFee(150, 150, 2, settings), 150);
+    });
   });
 
   group('bahtText', () {

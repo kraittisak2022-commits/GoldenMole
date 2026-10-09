@@ -27,6 +27,15 @@ describe('suggestDeliveryFee', () => {
     expect(suggestDeliveryFee(thungHua, Number.NaN)).toBe(300);
   });
 
+  it('rounds only the distance surcharge, so a base fee off the 50 grid is kept', () => {
+    const wangTai = { feeMin: 240, feeMax: 340 };
+    const settings = { nearKm: 0.5, maxKm: 3, roundTo: 50 };
+    expect(suggestDeliveryFee(wangTai, 0.4, settings)).toBe(240);
+    expect(suggestDeliveryFee(wangTai, 1, settings)).toBe(290);
+    expect(suggestDeliveryFee(wangTai, 2, settings)).toBe(340);
+    expect(suggestDeliveryFee({ feeMin: 150, feeMax: 150 }, 2, settings)).toBe(150);
+  });
+
   it('respects custom settings', () => {
     expect(suggestDeliveryFee(wangThong, 5, { nearKm: 2, maxKm: 8, roundTo: 100 })).toBe(1400);
     expect(suggestDeliveryFee(wangThong, 5, { nearKm: 2, maxKm: 8, roundTo: 0 })).toBe(1350);

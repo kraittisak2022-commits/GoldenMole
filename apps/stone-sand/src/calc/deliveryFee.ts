@@ -16,7 +16,7 @@ export function suggestDeliveryFee(
   if (distanceKm == null || !Number.isFinite(distanceKm) || distanceKm <= nearKm) return feeMin;
   if (distanceKm >= maxKm || maxKm <= nearKm) return feeMax;
 
-  const raw = feeMin + ((feeMax - feeMin) * (distanceKm - nearKm)) / (maxKm - nearKm);
-  const rounded = roundTo > 0 ? Math.ceil(raw / roundTo) * roundTo : Math.round(raw);
-  return Math.min(feeMax, Math.max(feeMin, rounded));
+  const extra = ((feeMax - feeMin) * (distanceKm - nearKm)) / (maxKm - nearKm);
+  const rounded = roundTo > 0 ? Math.ceil(extra / roundTo) * roundTo : Math.round(extra);
+  return Math.min(feeMax, feeMin + rounded);
 }

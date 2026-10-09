@@ -32,7 +32,7 @@ num suggestDeliveryFee(
   final roundTo = settings.roundTo;
   if (distanceKm == null || !distanceKm.isFinite || distanceKm <= nearKm) return feeMin;
   if (distanceKm >= maxKm || maxKm <= nearKm) return feeMax;
-  final raw = feeMin + ((feeMax - feeMin) * (distanceKm - nearKm)) / (maxKm - nearKm);
-  final rounded = roundTo > 0 ? (raw / roundTo).ceil() * roundTo : jsRound(raw);
-  return math.min(feeMax, math.max(feeMin, rounded));
+  final extra = ((feeMax - feeMin) * (distanceKm - nearKm)) / (maxKm - nearKm);
+  final rounded = roundTo > 0 ? (extra / roundTo).ceil() * roundTo : jsRound(extra);
+  return math.min(feeMax, feeMin + rounded);
 }
