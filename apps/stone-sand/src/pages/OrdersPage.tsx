@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import OrderRow from '../components/OrderRow';
+import SourceToggle from '../components/SourceToggle';
 import Card from '../components/ui/Card';
 import Chip from '../components/ui/Chip';
 import Input from '../components/ui/Input';
@@ -11,34 +12,16 @@ import Select from '../components/ui/Select';
 import { Empty, ErrorBox, Loading } from '../components/ui/States';
 import { listOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
-import { formatMoney, toIsoDate } from '../lib/format';
+import { DATE_RANGES, DATE_RANGE_LABEL, parseDateRange, rangeFrom } from '../lib/dateRange';
+import { formatMoney } from '../lib/format';
 import { ORDER_FILTERS, matchesFilter, matchesSearch, outstanding, type OrderFilter } from '../lib/orderStatus';
-import { ORDER_SOURCES, ORDER_SOURCE_SHORT, type OrderSource } from '../types';
-
-type Range = 'today' | '7d' | 'month' | '3m' | 'all';
-
-const RANGE_LABEL: Record<Range, string> = {
-  today: 'วันนี้',
-  '7d': '7 วันล่าสุด',
-  month: 'เดือนนี้',
-  '3m': '3 เดือน',
-  all: 'ทั้งหมด',
-};
-
-function rangeFrom(r: Range): string | undefined {
-  const d = new Date();
-  if (r === 'today') return toIsoDate(d);
-  if (r === '7d') return toIsoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 6));
-  if (r === 'month') return toIsoDate(new Date(d.getFullYear(), d.getMonth(), 1));
-  if (r === '3m') return toIsoDate(new Date(d.getFullYear(), d.getMonth() - 2, 1));
-  return undefined;
-}
+import { ORDER_SOURCES, type OrderSource } from '../types';
 
 export default function OrdersPage() {
   const [params, setParams] = useSearchParams();
   const { lockedSource } = useAuth();
   const filter = (params.get('f') as OrderFilter) || 'all';
-  const range = (params.get('r') as Range) || 'month';
+  const range = parseDateRange(params.get('r'));
   const sourceParam = params.get('source');
   const source = lockedSource ? null : (ORDER_SOURCES.find((s) => s === sourceParam) ?? null);
   const [query, setQuery] = useState('');
@@ -98,42 +81,16 @@ export default function OrdersPage() {
           />
         </div>
         <Select aria-label="ช่วงวันที่" value={range} onChange={(e) => setParam('r', e.target.value)} className="sm:w-44">
-          {(Object.keys(RANGE_LABEL) as Range[]).map((r) => (
+          {DATE_RANGES.map((r) => (
             <option key={r} value={r}>
-              {RANGE_LABEL[r]}
+              {DATE_RANGE_LABEL[r]}
             </option>
           ))}
         </Select>
       </div>
 
       {lockedSource ? null : (
-        <div
-          className="mb-3 inline-flex w-full rounded border border-border bg-surface p-1 sm:w-auto"
-          role="radiogroup"
-          aria-label="ประเภทออเดอร์"
-        >
-          {([null, ...ORDER_SOURCES] as (OrderSource | null)[]).map((s) => {
-            const active = source === s;
-            return (
-              <button
-                key={s ?? 'all'}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => setParam('source', s)}
-                className={[
-                  'flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-[9px] px-3 text-sm font-medium transition-colors cursor-pointer sm:flex-none',
-                  active ? 'bg-primary text-primary-foreground' : 'text-muted hover:bg-subtle hover:text-ink',
-                ].join(' ')}
-              >
-                {s ? ORDER_SOURCE_SHORT[s] : 'ทั้งหมด'}
-                <span className={['tabular-nums text-xs', active ? 'opacity-80' : ''].join(' ')}>
-                  {sourceCounts[s ?? 'all']}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <SourceToggle className="mb-3" value={source} onChange={(s) => setParam('source', s)} counts={sourceCounts} />
       )}
 
       <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">

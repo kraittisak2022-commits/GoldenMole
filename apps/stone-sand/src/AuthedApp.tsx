@@ -21,6 +21,7 @@ const loadBill = () => import('./pages/BillPage');
 const NewOrderPage = lazy(retryImport(loadNewOrder));
 const OrderDetailPage = lazy(retryImport(loadOrderDetail));
 const BillPage = lazy(retryImport(loadBill));
+const BillSummaryPage = lazy(retryImport(() => import('./pages/BillSummaryPage')));
 
 const lazyPage = (node: ReactNode) => <Suspense fallback={<Loading page />}>{node}</Suspense>;
 
@@ -74,6 +75,7 @@ export default function AuthedApp() {
             <Route path="customers" element={<CustomersPage />} />
             <Route path="statements" element={<StatementsPage />} />
             <Route path="driver-pay" element={<DriverPayPage />} />
+            <Route path="bill-summary" element={lazyPage(<BillSummaryPage />)} />
             <Route path="drivers" element={<DriversPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="menu" element={<MenuPage />} />

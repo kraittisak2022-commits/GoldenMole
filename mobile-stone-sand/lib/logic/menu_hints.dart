@@ -29,6 +29,7 @@ Map<String, String> menuHints(MenuCounts c) {
     '/customers': n(c.customers, (v) => '$v ราย', 'ข้อมูลลูกค้า'),
     '/statements': n(c.openStatements, (v) => 'รอเก็บเงิน $v ใบ', 'ใบวางบิล'),
     '/driver-pay': n(c.driverUnpaid, (v) => 'รอจ่าย $v ออเดอร์', 'ค่าจ้างคนขับ'),
+    '/bill-summary': 'กำไรและสถานะแต่ละบิล',
     '/drivers': n(c.drivers, (v) => '$v คัน', 'รถและคนขับ'),
     '/settings': n(c.products, (v) => 'สินค้า $v รายการ', 'สินค้า ราคา ค่าส่ง'),
     '/new': 'เปิดออเดอร์ใหม่',

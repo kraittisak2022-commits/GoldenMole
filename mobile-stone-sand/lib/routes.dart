@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'screens/bill_screen.dart';
+import 'screens/bill_summary_screen.dart';
 import 'screens/customers_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/driver_pay_screen.dart';
@@ -19,6 +20,7 @@ enum Dest {
   customers('ลูกค้า', Icons.people_outline, Icons.people),
   statements('เคลียร์บิล', Icons.fact_check_outlined, Icons.fact_check),
   driverPay('เคลียร์ค่ารถ', Icons.account_balance_wallet_outlined, Icons.account_balance_wallet),
+  billSummary('สรุปบิล', Icons.bar_chart_outlined, Icons.bar_chart),
   drivers('รถ / คนขับ', Icons.local_shipping_outlined, Icons.local_shipping),
   settings('ตั้งค่า', Icons.settings_outlined, Icons.settings),
   menu('เมนู', Icons.grid_view_outlined, Icons.grid_view_rounded);
@@ -35,6 +37,7 @@ enum Dest {
         Dest.customers => '/customers',
         Dest.statements => '/statements',
         Dest.driverPay => '/driver-pay',
+        Dest.billSummary => '/bill-summary',
         Dest.drivers => '/drivers',
         Dest.settings => '/settings',
         Dest.menu => '/menu',
@@ -47,6 +50,7 @@ const navItems = [
   Dest.customers,
   Dest.statements,
   Dest.driverPay,
+  Dest.billSummary,
   Dest.drivers,
   Dest.settings,
 ];
@@ -104,6 +108,7 @@ Widget sectionBody(Dest d, Map<String, String> params, {Key? key}) => switch (d)
       Dest.customers => CustomersScreen(key: key, params: params),
       Dest.statements => StatementsScreen(key: key, params: params),
       Dest.driverPay => DriverPayScreen(key: key, params: params),
+      Dest.billSummary => BillSummaryScreen(key: key, params: params),
       Dest.drivers => DriversScreen(key: key),
       Dest.settings => SettingsScreen(key: key),
       Dest.menu => MenuScreen(key: key),

@@ -309,11 +309,13 @@ class KpiCard extends StatelessWidget {
     this.warn = false,
     this.pending = false,
     this.onTap,
+    this.valueColor,
   });
   final String label;
   final String value;
   final String? hint;
   final bool warn;
+  final Color? valueColor;
 
   /// Data not loaded yet: show a placeholder instead of a misleading 0.
   final bool pending;
@@ -340,7 +342,7 @@ class KpiCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
-                color: warn ? AppColors.warning : AppColors.ink,
+                color: warn ? AppColors.warning : (valueColor ?? AppColors.ink),
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
