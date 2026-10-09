@@ -69,9 +69,12 @@ export function settleWithDriver(pay: number, cod: number): { handover: number; 
   return { handover: Math.max(0, cod - pay), topUp: Math.max(0, pay - cod) };
 }
 
-/** Cash the driver collected from the customer (เก็บเงินปลายทาง) and still has to hand to the shop. */
-export function codToCollect(o: Pick<Order, 'paymentMethod' | 'paymentStatus' | 'total'>): number {
-  return o.paymentMethod === 'cod' && o.paymentStatus !== 'paid' ? o.total : 0;
+/**
+ * Cash the driver collected from the customer (เก็บเงินปลายทาง) and still has to hand to the shop.
+ * An order billed on a statement is paid through เคลียร์บิล instead, so the driver owes nothing for it.
+ */
+export function codToCollect(o: Pick<Order, 'paymentMethod' | 'paymentStatus' | 'total' | 'statementId'>): number {
+  return o.paymentMethod === 'cod' && o.paymentStatus !== 'paid' && !o.statementId ? o.total : 0;
 }
 
 export interface DriverDue {

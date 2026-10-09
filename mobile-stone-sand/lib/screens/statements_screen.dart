@@ -654,6 +654,11 @@ class _CreateStatementScreenState extends State<CreateStatementScreen> {
                                               overflow: TextOverflow.ellipsis,
                                               style: const TextStyle(fontSize: 12, color: AppColors.muted),
                                             ),
+                                            if (o.paymentMethod == PaymentMethod.cod && o.driverId != null)
+                                              const Text(
+                                                'เก็บปลายทาง · ถ้าคนขับเก็บเงินมาแล้ว อย่าใส่ในใบวางบิล ให้รับเงินที่เคลียร์ค่ารถแทน',
+                                                style: TextStyle(fontSize: 12, color: AppColors.warning),
+                                              ),
                                           ],
                                         ),
                                       ),

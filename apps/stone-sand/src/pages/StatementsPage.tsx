@@ -696,6 +696,11 @@ function CreateStatementPanel({
                     <span className="block truncate text-xs text-muted">
                       {o.items.map((it) => `${it.name} ${formatNumber(it.quantity)}`).join(', ')}
                     </span>
+                    {o.paymentMethod === 'cod' && o.driverId ? (
+                      <span className="block text-xs text-warning">
+                        เก็บปลายทาง · ถ้าคนขับเก็บเงินมาแล้ว อย่าใส่ในใบวางบิล ให้รับเงินที่เคลียร์ค่ารถแทน
+                      </span>
+                    ) : null}
                   </span>
                   <span className="tabular-nums">{formatMoney(o.total)}</span>
                 </label>

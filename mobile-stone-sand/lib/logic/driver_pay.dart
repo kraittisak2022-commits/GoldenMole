@@ -5,8 +5,11 @@ import 'order_status.dart' show stableSorted;
 double suggestedDriverPay(Order o) => o.driverWage > 0 ? o.driverWage : o.deliveryTotal;
 
 /// Cash the driver collected from the customer (เก็บเงินปลายทาง) and still has to hand to the shop.
+/// An order billed on a statement is paid through เคลียร์บิล instead, so the driver owes nothing for it.
 double codToCollect(Order o) =>
-    o.paymentMethod == PaymentMethod.cod && o.paymentStatus != PaymentStatus.paid ? o.total : 0;
+    o.paymentMethod == PaymentMethod.cod && o.paymentStatus != PaymentStatus.paid && o.statementId == null
+        ? o.total
+        : 0;
 
 class DriverDue {
   DriverDue({required this.driverId, required this.oldestDate});

@@ -103,6 +103,10 @@ describe('codToCollect', () => {
     expect(codToCollect(make({ paymentMethod: 'cod', paymentStatus: 'paid' }))).toBe(0);
     expect(codToCollect(make({ paymentMethod: 'credit', paymentStatus: 'credit' }))).toBe(0);
   });
+
+  it('is zero for an order billed on a statement, which is collected through เคลียร์บิล', () => {
+    expect(codToCollect(make({ paymentMethod: 'cod', total: 2130, statementId: 'stm-1' }))).toBe(0);
+  });
 });
 
 describe('summarizeDriverDues', () => {

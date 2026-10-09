@@ -308,6 +308,7 @@ function PaymentBadge({ o }: { o: Order }) {
   const cod = codToCollect(o);
   if (cod) return <Badge tone="warning">เก็บปลายทาง {formatNumber(cod)}</Badge>;
   if (o.paymentStatus === 'paid') return <Badge tone="success">ลูกค้าจ่ายแล้ว</Badge>;
+  if (o.statementId) return <Badge tone="info">อยู่ในใบวางบิล · ลูกค้าจ่ายที่เคลียร์บิล</Badge>;
   if (o.paymentStatus === 'credit') return <Badge>เครดิต</Badge>;
   return <Badge>ลูกค้ายังไม่จ่าย ({PAYMENT_METHOD_LABEL[o.paymentMethod]})</Badge>;
 }

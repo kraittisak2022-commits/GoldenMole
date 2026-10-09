@@ -702,6 +702,11 @@ class _PayoutOrderInfo extends StatelessWidget {
           Text(
             'เก็บเงินปลายทาง ${formatNumber(cod)}',
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.primary),
+          )
+        else if (o.statementId != null && o.paymentStatus != PaymentStatus.paid)
+          const Text(
+            'อยู่ในใบวางบิล · ลูกค้าจ่ายที่เคลียร์บิล',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.primary),
           ),
         Text('${formatDateShort(o.orderDate)} · ${o.customer.name}',
             maxLines: 1, overflow: TextOverflow.ellipsis, style: small),

@@ -198,6 +198,8 @@ void main() {
       expect(codToCollect(make(paymentMethod: PaymentMethod.cod, total: 3060)), 3060);
       expect(codToCollect(make(paymentMethod: PaymentMethod.cod, paymentStatus: PaymentStatus.paid)), 0);
       expect(codToCollect(make(paymentMethod: PaymentMethod.credit, paymentStatus: PaymentStatus.credit)), 0);
+      // billed on a statement: collected through เคลียร์บิล, not from the driver
+      expect(codToCollect(make(paymentMethod: PaymentMethod.cod).copyWith(statementId: 'stm-1')), 0);
     });
 
     test('groups by driver with count, trips, suggested pay, COD cash and oldest date', () {
