@@ -88,6 +88,45 @@ String driverMessage(Order o, Zone? zone, Driver? driver) {
   return lines.join('\n');
 }
 
+/// Human text for one status_log event (`kind:arg`); unknown events fall back to a driver name or the raw text.
+String orderLogLabel(StatusLogEntry e, String? Function(String id) driverName) {
+  final i = e.event.indexOf(':');
+  final kind = i < 0 ? e.event : e.event.substring(0, i);
+  final arg = i < 0 ? '' : e.event.substring(i + 1);
+  switch (kind) {
+    case 'created':
+      return 'สร้างออเดอร์';
+    case 'paid':
+      final m = PaymentMethod.values.where((p) => p.name == arg);
+      return 'รับเงินแล้ว (${m.isEmpty ? arg : m.first.label})';
+    case 'unpaid':
+      return 'ยกเลิกการรับเงิน';
+    case 'delivery':
+      final s = DeliveryStatus.values.where((d) => d.name == arg);
+      return 'สถานะจัดส่ง: ${s.isEmpty ? arg : s.first.label}';
+    case 'cleared':
+      return 'เคลียร์บิลกับใบวางบิล $arg';
+    case 'driver':
+      return 'เปลี่ยนคนขับ';
+    case 'wage':
+      return 'ค่าจ้างคนขับ ${formatNumber(num.tryParse(arg) ?? 0)} บาท';
+    case 'cancelled':
+      return 'ยกเลิกออเดอร์';
+    case 'edited':
+      return 'แก้ไขออเดอร์';
+    case 'uncleared':
+      return 'ลบใบวางบิล $arg (กลับเป็นยังไม่เคลียร์)';
+    case 'restored':
+      return 'กู้คืนออเดอร์';
+    case 'wage_paid':
+      return 'จ่ายค่ารถให้คนขับแล้ว ($arg)';
+    case 'wage_unpaid':
+      return 'ลบรายการจ่ายค่ารถ $arg (กลับเป็นค่ารถยังไม่จ่าย)';
+    default:
+      return driverName(arg) ?? e.event;
+  }
+}
+
 double outstanding(Order o) => o.cancelled || o.cleared ? 0 : o.total;
 
 /// One row per customer and order source: a statement never mixes ร้านวัสดุ and ท่าทราย orders.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/menu_screen.dart';
 import 'screens/new_order/new_order_screen.dart';
+import 'screens/order_detail_screen.dart';
 import 'screens/orders_screen.dart';
 import 'screens/placeholder_screen.dart';
 import 'widgets/ui.dart';
@@ -124,7 +125,7 @@ void goTo(BuildContext context, Dest d, [Map<String, String> params = const {}])
 }
 
 Future<void> openOrder(BuildContext context, String id) => Navigator.of(context, rootNavigator: true)
-    .push(MaterialPageRoute<void>(builder: (_) => const PlaceholderScreen('รายละเอียดออเดอร์')));
+    .push(MaterialPageRoute<void>(builder: (_) => OrderDetailScreen(orderId: id)));
 
 Future<void> openNewOrder(BuildContext context, {String? customerId}) => Navigator.of(context, rootNavigator: true)
     .push(MaterialPageRoute<void>(builder: (_) => NewOrderScreen(customerId: customerId)));
@@ -135,3 +136,6 @@ Future<void> openOrderBill(BuildContext context, String orderId, {bool created =
   final nav = Navigator.of(context, rootNavigator: true);
   return replace ? nav.pushReplacement(route) : nav.push(route);
 }
+
+Future<void> openStatementBill(BuildContext context, String statementId) => Navigator.of(context, rootNavigator: true)
+    .push(MaterialPageRoute<void>(builder: (_) => const PlaceholderScreen('ใบวางบิล')));
