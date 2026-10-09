@@ -25,7 +25,15 @@ import '../widgets/ui.dart';
 import 'new_order/wizard_widgets.dart';
 import 'order_edit_screen.dart';
 
-const _deliverySteps = [DeliveryStatus.waiting, DeliveryStatus.dispatched, DeliveryStatus.delivered];
+const _deliverySteps = [DeliveryStatus.dispatched, DeliveryStatus.delivered];
+
+/// The driver link stamps driver_reported_at together with delivered_at.
+bool _confirmedByDriver(Order o) {
+  final reported = DateTime.tryParse(o.driverReportedAt ?? '');
+  final delivered = DateTime.tryParse(o.deliveredAt ?? '');
+  if (reported == null || delivered == null) return false;
+  return !reported.isBefore(delivered.subtract(const Duration(seconds: 1)));
+}
 
 class OrderDetailScreen extends StatefulWidget {
   const OrderDetailScreen({super.key, required this.orderId});
@@ -421,7 +429,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 label: 'การจัดส่ง',
                 badge: AppBadge(del.label, tone: del.tone),
                 children: [
-                  if (o.deliveredAt != null) _muted('ส่งถึง ${formatDateTime(o.deliveredAt)}'),
+                  if (o.deliveryStatus == DeliveryStatus.delivered)
+                    _muted(
+                      '${o.deliveredAt != null ? 'ส่งถึง ${formatDateTime(o.deliveredAt)} · ' : ''}'
+                      '${_confirmedByDriver(o) ? 'คนขับยืนยันผ่านลิงก์' : 'ร้านกดยืนยันเอง'}',
+                    )
+                  else if (!o.cancelled)
+                    _muted(
+                      o.driverId != null
+                          ? 'รอคนขับกด "ยืนยันส่งสำเร็จ" ในลิงก์ที่ส่งให้ สถานะจะเปลี่ยนเป็น "ส่งแล้ว" เอง'
+                          : 'ยังไม่ได้เลือกคนขับ เลือกคนขับแล้วส่งข้อความพร้อมลิงก์ยืนยันให้คนขับ',
+                    ),
                   if (!o.cancelled)
                     TourTarget(
                       'delivery-steps',

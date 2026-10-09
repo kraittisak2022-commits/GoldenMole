@@ -14,6 +14,7 @@ import type {
   PaymentMethod,
   TruckSize,
 } from '../types';
+import { normalizeDeliveryStatus } from '../types';
 import { toSnapshot } from './customers';
 
 const num = (v: unknown) => (v == null ? 0 : Number(v));
@@ -74,7 +75,7 @@ export function mapOrder(row: any): Order {
     paymentMethod: row.payment_method,
     paymentStatus: row.payment_status,
     paidAt: row.paid_at,
-    deliveryStatus: row.delivery_status,
+    deliveryStatus: normalizeDeliveryStatus(row.delivery_status),
     deliveredAt: row.delivered_at,
     cleared: !!row.cleared,
     clearedAt: row.cleared_at,
@@ -240,7 +241,7 @@ export async function createOrder(d: OrderDraft, by: string): Promise<Order> {
     total: totals.total,
     payment_method: d.paymentMethod,
     payment_status: paymentStatus,
-    delivery_status: (delivery ? 'waiting' : 'pickup') as DeliveryStatus,
+    delivery_status: (delivery ? 'dispatched' : 'pickup') as DeliveryStatus,
     driver_wage: delivery ? d.driverWage : 0,
     note: d.note.trim(),
     demo_session: demoSession(),

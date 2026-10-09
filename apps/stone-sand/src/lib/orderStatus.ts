@@ -9,7 +9,7 @@ export const ORDER_FILTERS: { id: OrderFilter; label: string }[] = [
   { id: 'all', label: 'ทั้งหมด' },
   { id: 'unpaid', label: 'ยังไม่จ่าย' },
   { id: 'credit', label: 'ค้างเครดิต' },
-  { id: 'waiting', label: 'รอส่ง' },
+  { id: 'waiting', label: 'กำลังจัดส่ง' },
   { id: 'delivered', label: 'ส่งแล้ว' },
   { id: 'uncleared', label: 'ยังไม่เคลียร์บิล' },
   { id: 'cancelled', label: 'ยกเลิก' },

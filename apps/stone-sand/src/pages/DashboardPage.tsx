@@ -122,7 +122,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-tour="dash-pending">
           <Kpi
             to="/orders?f=waiting&r=all"
-            label="รอจัดส่ง"
+            label="กำลังจัดส่ง"
             value={`${formatNumber(waitingAll.length)} ออเดอร์`}
             warn={waitingAll.length > 0}
             pending={waitingPending}

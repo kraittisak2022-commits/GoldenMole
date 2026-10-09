@@ -6,7 +6,7 @@ enum OrderFilter {
   all('ทั้งหมด'),
   unpaid('ยังไม่จ่าย'),
   credit('ค้างเครดิต'),
-  waiting('รอส่ง'),
+  waiting('กำลังจัดส่ง'),
   delivered('ส่งแล้ว'),
   uncleared('ยังไม่เคลียร์บิล'),
   cancelled('ยกเลิก');

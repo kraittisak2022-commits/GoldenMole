@@ -64,7 +64,7 @@ describe('summarizeBill', () => {
 describe('billStage', () => {
   it('walks driver, delivery, money and driver pay in order', () => {
     expect(billStage(make({ driverId: null, deliveryStatus: 'waiting' }))).toBe('needDriver');
-    expect(billStage(make({ deliveryStatus: 'waiting' }))).toBe('waitDelivery');
+    expect(billStage(make({ deliveryStatus: 'waiting' }))).toBe('onTheWay');
     expect(billStage(make({ deliveryStatus: 'dispatched' }))).toBe('onTheWay');
     expect(billStage(make({ paymentMethod: 'cod', paymentStatus: 'unpaid', cleared: false }))).toBe('driverCash');
     expect(billStage(make({ paymentMethod: 'credit', paymentStatus: 'credit', cleared: false }))).toBe('unbilled');
@@ -102,7 +102,7 @@ describe('stageAction / netMargin', () => {
     expect(stageAction(make(), 'payDriver')?.to).toBe('/driver-pay?driver=drv-a');
     expect(stageAction(make(), 'unbilled')?.to).toBe('/statements?customer=c1&source=pit');
     expect(stageAction(make({ statementId: 's1' }), 'billed')?.to).toBe('/statements?open=s1');
-    expect(stageAction(make(), 'waitDelivery')?.to).toBe('/orders/o1');
+    expect(stageAction(make(), 'onTheWay')?.to).toBe('/orders/o1');
     expect(stageAction(make(), 'done')).toBeNull();
   });
 

@@ -95,6 +95,16 @@ void main() {
     });
   });
 
+  group('DeliveryStatus.parse', () {
+    test('reads legacy waiting as dispatched', () {
+      expect(DeliveryStatus.parse('waiting'), DeliveryStatus.dispatched);
+      expect(DeliveryStatus.parse('dispatched'), DeliveryStatus.dispatched);
+      expect(DeliveryStatus.parse('delivered'), DeliveryStatus.delivered);
+      expect(DeliveryStatus.parse('pickup'), DeliveryStatus.pickup);
+      expect(DeliveryStatus.dispatched.label, 'กำลังจัดส่ง');
+    });
+  });
+
   group('matchesFilter', () {
     test('classifies payment and delivery state', () {
       expect(matchesFilter(base, OrderFilter.unpaid), true);
@@ -394,7 +404,7 @@ void main() {
         products: 6,
       ));
       expect(h['/'], 'วันนี้ 3 ออเดอร์');
-      expect(h['/orders'], 'รอส่ง 0 ออเดอร์');
+      expect(h['/orders'], 'กำลังจัดส่ง 0 ออเดอร์');
       expect(h['/customers'], '1,250 ราย');
       expect(h['/statements'], 'รอเก็บเงิน 2 ใบ');
       expect(h['/drivers'], '4 คัน');

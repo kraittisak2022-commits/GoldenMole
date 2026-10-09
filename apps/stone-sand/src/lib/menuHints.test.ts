@@ -5,7 +5,7 @@ describe('menuHints', () => {
   it('shows counts once they are known', () => {
     const h = menuHints({ ordersToday: 3, waitingDelivery: 0, customers: 1250, openStatements: 2, driverUnpaid: 5, drivers: 4, products: 6 });
     expect(h['/']).toBe('วันนี้ 3 ออเดอร์');
-    expect(h['/orders']).toBe('รอส่ง 0 ออเดอร์');
+    expect(h['/orders']).toBe('กำลังจัดส่ง 0 ออเดอร์');
     expect(h['/customers']).toBe('1,250 ราย');
     expect(h['/statements']).toBe('รอเก็บเงิน 2 ใบ');
     expect(h['/drivers']).toBe('4 คัน');

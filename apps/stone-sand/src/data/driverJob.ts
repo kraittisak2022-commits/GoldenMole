@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { DeliveryStatus } from '../types';
+import { normalizeDeliveryStatus, type DeliveryStatus } from '../types';
 
 /** What the public /d/:token page may see: no prices beyond the cash to collect. */
 export interface DriverJob {
@@ -52,7 +52,7 @@ function mapJob(raw: unknown): DriverJob | null {
     note: String(j.note ?? ''),
     codAmount: Number(j.codAmount) || 0,
     paid: !!j.paid,
-    deliveryStatus: j.deliveryStatus as DeliveryStatus,
+    deliveryStatus: normalizeDeliveryStatus(j.deliveryStatus as DeliveryStatus),
     deliveredAt: (j.deliveredAt as string | null) ?? null,
     cashReported: num(j.cashReported),
     reportedAt: (j.reportedAt as string | null) ?? null,

@@ -508,7 +508,7 @@ class BillTile extends StatelessWidget {
   ({String label, VoidCallback onTap})? _action(BuildContext context) {
     final o = order;
     return switch (summary.stage) {
-      BillStage.needDriver || BillStage.waitDelivery || BillStage.onTheWay || BillStage.awaitPayment => (
+      BillStage.needDriver || BillStage.onTheWay || BillStage.awaitPayment => (
           label: 'เปิดออเดอร์',
           onTap: () => openOrder(context, o.id),
         ),

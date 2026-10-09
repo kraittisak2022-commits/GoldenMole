@@ -63,7 +63,7 @@ function JobView({ token, job, onConfirmed }: { token: string; job: DriverJob; o
           ) : job.deliveryStatus === 'delivered' ? (
             <Badge tone="success">ส่งแล้ว</Badge>
           ) : (
-            <Badge tone="warning">รอส่ง</Badge>
+            <Badge tone="warning">กำลังจัดส่ง</Badge>
           )}
         </div>
 

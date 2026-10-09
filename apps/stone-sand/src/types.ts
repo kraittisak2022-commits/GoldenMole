@@ -3,7 +3,10 @@ export type TruckSize = 3 | 5;
 export type Fulfillment = 'pickup' | 'delivery';
 export type PaymentMethod = 'cash' | 'transfer' | 'cod' | 'credit';
 export type PaymentStatus = 'unpaid' | 'paid' | 'credit';
+/** 'waiting' is a legacy DB value; reads map it to 'dispatched' (see normalizeDeliveryStatus). */
 export type DeliveryStatus = 'pickup' | 'waiting' | 'dispatched' | 'delivered';
+
+export const normalizeDeliveryStatus = (s: DeliveryStatus): DeliveryStatus => (s === 'waiting' ? 'dispatched' : s);
 export type DiscountType = 'baht' | 'percent';
 
 export type ProductCategory = 'stone' | 'sand';
@@ -285,8 +288,8 @@ export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
 
 export const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
   pickup: 'มารับเอง',
-  waiting: 'รอจัดส่ง',
-  dispatched: 'กำลังส่ง',
+  waiting: 'กำลังจัดส่ง',
+  dispatched: 'กำลังจัดส่ง',
   delivered: 'ส่งแล้ว',
 };
 

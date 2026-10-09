@@ -195,7 +195,7 @@ class _DashboardScreenState extends State<DashboardScreen> with ReloadOnDataChan
                   columns: width >= 600 ? 3 : 1,
                   children: [
                     KpiCard(
-                      label: 'รอจัดส่ง',
+                      label: 'กำลังจัดส่ง',
                       value: '${formatNumber(waitingAll.length)} ออเดอร์',
                       warn: waitingAll.isNotEmpty,
                       pending: _waiting.pending,

@@ -54,7 +54,13 @@ import {
   type StatusLogEntry,
 } from '../types';
 
-const DELIVERY_STEPS: DeliveryStatus[] = ['waiting', 'dispatched', 'delivered'];
+const DELIVERY_STEPS: DeliveryStatus[] = ['dispatched', 'delivered'];
+
+/** The driver's link report counts only if it came after the latest switch to "ส่งแล้ว". */
+const confirmedByDriver = (o: Order) =>
+  !!o.driverReportedAt &&
+  !!o.deliveredAt &&
+  new Date(o.driverReportedAt).getTime() >= new Date(o.deliveredAt).getTime() - 1000;
 
 export default function OrderDetailPage() {
   const { id = '' } = useParams();
@@ -282,10 +288,21 @@ export default function OrderDetailPage() {
 
             {delivery ? (
               <StatusRow label="การจัดส่ง" badge={<Badge tone={del.tone}>{del.label}</Badge>}>
-                {o.deliveredAt ? <p className="text-sm text-muted">ส่งถึง {formatDateTime(o.deliveredAt)}</p> : null}
+                {o.deliveryStatus === 'delivered' ? (
+                  <p className="text-sm text-muted">
+                    {o.deliveredAt ? `ส่งถึง ${formatDateTime(o.deliveredAt)} · ` : ''}
+                    {confirmedByDriver(o) ? 'คนขับยืนยันผ่านลิงก์' : 'ร้านกดยืนยันเอง'}
+                  </p>
+                ) : !o.cancelled ? (
+                  <p className="text-sm text-muted">
+                    {o.driverId
+                      ? 'รอคนขับกด "ยืนยันส่งสำเร็จ" ในลิงก์ที่ส่งให้ สถานะจะเปลี่ยนเป็น "ส่งแล้ว" เอง'
+                      : 'ยังไม่ได้เลือกคนขับ เลือกคนขับแล้วส่งข้อความพร้อมลิงก์ยืนยันให้คนขับ'}
+                  </p>
+                ) : null}
                 {!o.cancelled ? (
                   <div
-                    className="grid grid-cols-3 gap-1 rounded border border-border p-1"
+                    className="grid grid-cols-2 gap-1 rounded border border-border p-1"
                     role="radiogroup"
                     aria-label="สถานะจัดส่ง"
                     data-tour="delivery-steps"

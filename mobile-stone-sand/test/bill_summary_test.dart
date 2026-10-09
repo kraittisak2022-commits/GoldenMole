@@ -90,7 +90,7 @@ void main() {
 
   test('billStage walks driver, delivery, money and driver pay in order', () {
     expect(billStage(_o(driverId: null, deliveryStatus: DeliveryStatus.waiting)), BillStage.needDriver);
-    expect(billStage(_o(deliveryStatus: DeliveryStatus.waiting)), BillStage.waitDelivery);
+    expect(billStage(_o(deliveryStatus: DeliveryStatus.waiting)), BillStage.onTheWay);
     expect(billStage(_o(deliveryStatus: DeliveryStatus.dispatched)), BillStage.onTheWay);
     expect(
       billStage(_o(paymentMethod: PaymentMethod.cod, paymentStatus: PaymentStatus.unpaid, cleared: false)),

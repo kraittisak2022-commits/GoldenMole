@@ -58,15 +58,19 @@ enum PaymentStatus {
 
 enum DeliveryStatus {
   pickup('มารับเอง'),
-  waiting('รอจัดส่ง'),
-  dispatched('กำลังส่ง'),
+
+  /// Legacy DB value; [parse] reads it as [dispatched].
+  waiting('กำลังจัดส่ง'),
+  dispatched('กำลังจัดส่ง'),
   delivered('ส่งแล้ว');
 
   const DeliveryStatus(this.label);
   final String label;
 
-  static DeliveryStatus parse(Object? v) =>
-      DeliveryStatus.values.firstWhere((e) => e.name == v, orElse: () => DeliveryStatus.waiting);
+  static DeliveryStatus parse(Object? v) {
+    final s = DeliveryStatus.values.firstWhere((e) => e.name == v, orElse: () => DeliveryStatus.dispatched);
+    return s == DeliveryStatus.waiting ? DeliveryStatus.dispatched : s;
+  }
 }
 
 enum ProductCategory {
@@ -439,7 +443,7 @@ class Order {
     this.paymentMethod = PaymentMethod.cash,
     this.paymentStatus = PaymentStatus.unpaid,
     this.paidAt,
-    this.deliveryStatus = DeliveryStatus.waiting,
+    this.deliveryStatus = DeliveryStatus.dispatched,
     this.deliveredAt,
     this.cleared = false,
     this.clearedAt,

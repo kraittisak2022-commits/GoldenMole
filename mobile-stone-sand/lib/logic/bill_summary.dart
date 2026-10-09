@@ -5,8 +5,7 @@ import 'order_status.dart' show BadgeTone, outstanding;
 /// Where an order is held up, in the order the desk works through them.
 enum BillStage {
   needDriver('รอเลือกคนขับ', BadgeTone.danger),
-  waitDelivery('รอจัดส่ง', BadgeTone.warning),
-  onTheWay('กำลังส่ง', BadgeTone.warning),
+  onTheWay('กำลังจัดส่ง', BadgeTone.warning),
   driverCash('รอรับเงินจากคนขับ', BadgeTone.warning),
   unbilled('รอวางบิล', BadgeTone.info),
   billed('รอลูกค้าจ่ายตามใบวางบิล', BadgeTone.info),
@@ -82,8 +81,7 @@ BillStage billStage(Order o) {
   if (o.cancelled) return BillStage.cancelled;
   final delivery = o.fulfillment == Fulfillment.delivery;
   if (delivery && o.driverId == null) return BillStage.needDriver;
-  if (delivery && o.deliveryStatus == DeliveryStatus.waiting) return BillStage.waitDelivery;
-  if (delivery && o.deliveryStatus == DeliveryStatus.dispatched) return BillStage.onTheWay;
+  if (delivery && o.deliveryStatus != DeliveryStatus.delivered) return BillStage.onTheWay;
   final money = _moneyStage(o);
   if (money != null) return money;
   if (delivery && o.driverPayoutId == null) return BillStage.payDriver;

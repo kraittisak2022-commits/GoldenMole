@@ -1,5 +1,13 @@
-import type { Order } from '../types';
-import { driverMessage, matchesFilter, matchesSearch, outstanding, statementPaidMap, summarizeOutstanding } from './orderStatus';
+import { normalizeDeliveryStatus, type Order } from '../types';
+import {
+  deliveryBadge,
+  driverMessage,
+  matchesFilter,
+  matchesSearch,
+  outstanding,
+  statementPaidMap,
+  summarizeOutstanding,
+} from './orderStatus';
 
 const base: Order = {
   id: 'o1',
@@ -53,6 +61,13 @@ describe('matchesFilter', () => {
     expect(matchesFilter(base, 'credit')).toBe(false);
     expect(matchesFilter({ ...base, paymentStatus: 'credit' }, 'credit')).toBe(true);
     expect(matchesFilter({ ...base, paymentStatus: 'credit', cleared: true }, 'credit')).toBe(false);
+  });
+
+  it('treats the legacy waiting status as on the way', () => {
+    expect(normalizeDeliveryStatus('waiting')).toBe('dispatched');
+    expect(normalizeDeliveryStatus('delivered')).toBe('delivered');
+    expect(deliveryBadge({ ...base, deliveryStatus: 'dispatched' }).label).toBe('กำลังจัดส่ง');
+    expect(matchesFilter({ ...base, deliveryStatus: 'dispatched' }, 'waiting')).toBe(true);
   });
 
   it('hides cancelled orders from status filters', () => {

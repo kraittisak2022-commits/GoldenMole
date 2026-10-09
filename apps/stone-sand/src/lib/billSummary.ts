@@ -6,7 +6,6 @@ import { outstanding } from './orderStatus';
 /** Where an order is held up, in the order the desk works through them. */
 export type BillStage =
   | 'needDriver'
-  | 'waitDelivery'
   | 'onTheWay'
   | 'driverCash'
   | 'unbilled'
@@ -18,8 +17,7 @@ export type BillStage =
 
 export const BILL_STAGES: { id: BillStage; label: string; tone: BadgeTone }[] = [
   { id: 'needDriver', label: 'รอเลือกคนขับ', tone: 'danger' },
-  { id: 'waitDelivery', label: 'รอจัดส่ง', tone: 'warning' },
-  { id: 'onTheWay', label: 'กำลังส่ง', tone: 'warning' },
+  { id: 'onTheWay', label: 'กำลังจัดส่ง', tone: 'warning' },
   { id: 'driverCash', label: 'รอรับเงินจากคนขับ', tone: 'warning' },
   { id: 'unbilled', label: 'รอวางบิล', tone: 'info' },
   { id: 'billed', label: 'รอลูกค้าจ่ายตามใบวางบิล', tone: 'info' },
@@ -77,8 +75,7 @@ export function billStage(o: Order): BillStage {
   if (o.cancelled) return 'cancelled';
   const delivery = o.fulfillment === 'delivery';
   if (delivery && !o.driverId) return 'needDriver';
-  if (delivery && o.deliveryStatus === 'waiting') return 'waitDelivery';
-  if (delivery && o.deliveryStatus === 'dispatched') return 'onTheWay';
+  if (delivery && o.deliveryStatus !== 'delivered') return 'onTheWay';
   const money = moneyStage(o);
   if (money) return money;
   if (delivery && !o.driverPayoutId) return 'payDriver';
@@ -239,7 +236,6 @@ export function billSummaryCsv(rows: { order: Order; summary: BillSummary; drive
 export function stageAction(o: Order, stage: BillStage): { to: string; label: string } | null {
   switch (stage) {
     case 'needDriver':
-    case 'waitDelivery':
     case 'onTheWay':
     case 'awaitPayment':
       return { to: `/orders/${o.id}`, label: 'เปิดออเดอร์' };

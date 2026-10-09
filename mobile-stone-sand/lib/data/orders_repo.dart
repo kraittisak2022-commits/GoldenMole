@@ -134,7 +134,7 @@ Future<Order> createOrder(OrderDraft d, String by) async {
     'total': totals.total,
     'payment_method': d.paymentMethod.name,
     'payment_status': paymentStatus.name,
-    'delivery_status': delivery ? DeliveryStatus.waiting.name : DeliveryStatus.pickup.name,
+    'delivery_status': delivery ? DeliveryStatus.dispatched.name : DeliveryStatus.pickup.name,
     'driver_wage': delivery ? d.driverWage : 0,
     'note': d.note.trim(),
     'demo_session': demoSession(),

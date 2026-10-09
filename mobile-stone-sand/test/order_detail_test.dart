@@ -28,7 +28,7 @@ void main() {
     test('known events', () {
       expect(label('created'), 'สร้างออเดอร์');
       expect(label('paid:transfer'), 'รับเงินแล้ว (โอนเงิน)');
-      expect(label('delivery:dispatched'), 'สถานะจัดส่ง: กำลังส่ง');
+      expect(label('delivery:dispatched'), 'สถานะจัดส่ง: กำลังจัดส่ง');
       expect(label('wage:1500'), 'ค่าจ้างคนขับ 1,500 บาท');
       expect(label('cleared:BL6910-0002'), 'เคลียร์บิลกับใบวางบิล BL6910-0002');
       expect(label('wage_unpaid:DP6910-0001'), 'ลบรายการจ่ายค่ารถ DP6910-0001 (กลับเป็นค่ารถยังไม่จ่าย)');

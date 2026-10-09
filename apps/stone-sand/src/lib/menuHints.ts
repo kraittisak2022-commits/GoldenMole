@@ -16,7 +16,7 @@ export function menuHints(c: MenuCounts): Record<string, string> {
     v === undefined ? fallback : text(formatNumber(v));
   return {
     '/': n(c.ordersToday, (v) => `วันนี้ ${v} ออเดอร์`, 'สรุปยอดวันนี้'),
-    '/orders': n(c.waitingDelivery, (v) => `รอส่ง ${v} ออเดอร์`, 'ติดตามออเดอร์'),
+    '/orders': n(c.waitingDelivery, (v) => `กำลังจัดส่ง ${v} ออเดอร์`, 'ติดตามออเดอร์'),
     '/customers': n(c.customers, (v) => `${v} ราย`, 'ข้อมูลลูกค้า'),
     '/statements': n(c.openStatements, (v) => `รอเก็บเงิน ${v} ใบ`, 'ใบวางบิล'),
     '/driver-pay': n(c.driverUnpaid, (v) => `รอจ่าย ${v} ออเดอร์`, 'ค่าจ้างคนขับ'),
