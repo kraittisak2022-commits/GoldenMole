@@ -1,6 +1,9 @@
 # App-specific ProGuard / R8 rules (release minification).
 # See: https://developer.android.com/topic/performance/app-optimization/enable-app-optimization
 
+# รวมคลาสที่ไม่ได้ keep ไว้ในแพ็กเกจเดียว — ลดขนาด DEX (คลาสที่ keep ชื่อไว้ไม่ถูกย้าย)
+-repackageclasses
+
 # --- Flutter engine & plugins ---
 -keep class io.flutter.app.** { *; }
 -keep class io.flutter.plugin.** { *; }
