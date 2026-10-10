@@ -210,6 +210,15 @@ Future<AdvanceLineNotifyStatus> _sendOrQueueLineNotify({
   }
 }
 
+/// ส่งข้อความเข้ากลุ่ม LINE แอดมิน — ออฟไลน์/ล้มเหลวชั่วคราวจะเข้าคิวส่งซ้ำ
+Future<AdvanceLineNotifyStatus> notifyAdminLineGroups({
+  required String text,
+  required String debugTag,
+}) async {
+  final to = await _adminLineRecipientIds();
+  return _sendOrQueueLineNotify(text: text, to: to, debugTag: debugTag);
+}
+
 String _formatBahtTh(num value) {
   final isInt = value == value.roundToDouble();
   final raw = isInt ? value.round().toString() : value.toStringAsFixed(2);

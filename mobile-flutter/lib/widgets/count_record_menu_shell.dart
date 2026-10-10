@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../services/battery_line_alert_service.dart';
+
 /// กรอบเมนู «บันทึกและนับจำนวน» — ประหยัดพลังงาน (หน้าจอไม่ดับ)
 class CountRecordMenuShell extends StatefulWidget {
   const CountRecordMenuShell({
@@ -68,10 +70,12 @@ class _CountRecordMenuShellState extends State<CountRecordMenuShell>
     super.initState();
     unawaited(_enableKeepAwake());
     _startPowerTick();
+    BatteryLineAlertService.instance.start();
   }
 
   @override
   void dispose() {
+    BatteryLineAlertService.instance.stop();
     _powerTickTimer?.cancel();
     _stopPulse(dispose: true);
     unawaited(_releaseKeepAwake(restoreBrightness: true));
