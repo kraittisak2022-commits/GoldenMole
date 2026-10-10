@@ -82,13 +82,13 @@ if ($ReleaseNotesFile) {
   if (-not (Test-Path $ReleaseNotesFile)) {
     throw "ReleaseNotesFile not found: $ReleaseNotesFile"
   }
-  $ReleaseNotes = Get-Content $ReleaseNotesFile -Raw
+  $ReleaseNotes = Get-Content $ReleaseNotesFile -Raw -Encoding UTF8
 }
 
 if (-not $ReleaseNotes) {
   $defaultChangelog = Join-Path $FlutterRoot "fastlane/metadata/android/th/changelogs/$versionCode.txt"
   if (Test-Path $defaultChangelog) {
-    $ReleaseNotes = Get-Content $defaultChangelog -Raw
+    $ReleaseNotes = Get-Content $defaultChangelog -Raw -Encoding UTF8
   } else {
     throw "Provide -ReleaseNotes or -ReleaseNotesFile, or create fastlane/metadata/android/th/changelogs/$versionCode.txt"
   }
@@ -170,6 +170,9 @@ if (-not $SkipUpload) {
   $track = if ($env:PLAY_STORE_TRACK) { $env:PLAY_STORE_TRACK } else { "alpha" }
   Write-Host "Uploading to Play track '$track' via Fastlane..."
   bundle exec fastlane android closed_beta
+  if ($LASTEXITCODE -ne 0) {
+    throw "Fastlane upload failed (exit $LASTEXITCODE) - Supabase soft-update version was not changed."
+  }
 }
 
 if (-not $SkipSupabase) {
