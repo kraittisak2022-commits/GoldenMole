@@ -440,8 +440,13 @@ class BillDocument extends StatelessWidget {
     );
   }
 
-  bool get _showPayChannel =>
-      !bill.paid && !bill.cancelled && (payment.qrPayload.isNotEmpty || payment.bankAccountNo.isNotEmpty);
+  /// Cash and transfer bills name the method outright and carry no receiving QR in the header.
+  bool get _directPay =>
+      bill.kind != DocKind.statement && (bill.paymentMethod == 'cash' || bill.paymentMethod == 'transfer');
+
+  bool get _headerQr => payment.qrPayload.isNotEmpty && !_directPay;
+
+  bool get _showPayChannel => !bill.paid && !bill.cancelled && (_headerQr || payment.bankAccountNo.isNotEmpty);
 
   bool get _partlyPaid => !bill.paid && bill.paidAmount > 0;
 
@@ -456,7 +461,7 @@ class BillDocument extends StatelessWidget {
   Widget _payChannel(_Layout l) {
     const small = TextStyle(fontSize: 10, height: 1.3, color: _s700);
     const hint = TextStyle(fontSize: 10, height: 1.3, color: _s500);
-    final qr = payment.qrPayload.isEmpty
+    final qr = !_headerQr
         ? ''
         : billQrPayload(payment.qrPayload, ref: bill.docNo, amount: _payNow ? _due : null);
     final qrIsBill = qr.isNotEmpty && qr != payment.qrPayload.trim();
@@ -718,34 +723,57 @@ class BillDocument extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                b.kind == DocKind.receipt ? 'ได้รับเงินถูกต้องแล้ว โดย' : 'การชำระเงิน',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-            Wrap(
-              spacing: 16,
-              runSpacing: 4,
-              children: [
-                for (final m in _paymentChoices)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 14,
-                        height: 14,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(border: Border.all(color: _s500)),
-                        child: b.paymentMethod == m ? const Icon(Icons.check, size: 12, color: _s900) : null,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(paymentMethodLabel(m)),
-                    ],
+            if (_directPay)
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    b.kind == DocKind.receipt ? 'ได้รับเงินถูกต้องแล้ว โดย' : 'การชำระเงิน:',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-              ],
-            ),
+                  Container(
+                    key: const ValueKey('bill-pay-method'),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(border: Border.all(color: _s500), borderRadius: BorderRadius.circular(4)),
+                    child: Text(
+                      paymentMethodLabel(b.paymentMethod),
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _s900),
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  b.kind == DocKind.receipt ? 'ได้รับเงินถูกต้องแล้ว โดย' : 'การชำระเงิน',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              Wrap(
+                spacing: 16,
+                runSpacing: 4,
+                children: [
+                  for (final m in _paymentChoices)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 14,
+                          height: 14,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(border: Border.all(color: _s500)),
+                          child: b.paymentMethod == m ? const Icon(Icons.check, size: 12, color: _s900) : null,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(paymentMethodLabel(m)),
+                      ],
+                    ),
+                ],
+              ),
+            ],
             if (status != null) ...[
               const SizedBox(height: 4),
               Row(children: [

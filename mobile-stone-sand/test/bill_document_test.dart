@@ -53,7 +53,7 @@ Future<void> _pump(WidgetTester tester, Widget sheet, GlobalKey key) async {
 void main() {
   testWidgets('order bill: original + copy spread, PromptPay and verify QR', (tester) async {
     final key = GlobalKey();
-    final bill = billFromOrder(_order, DocKind.delivery);
+    final bill = billFromOrder(_order.copyWith(paymentMethod: PaymentMethod.cod), DocKind.delivery);
     Widget doc(BillCopy c) => BillDocument(
           bill: bill,
           copy: c,
@@ -88,6 +88,33 @@ void main() {
       expect(utf8.decode(pdf.sublist(0, 5)), '%PDF-');
     });
   });
+
+  for (final (method, label) in [(PaymentMethod.cash, 'เงินสด'), (PaymentMethod.transfer, 'โอนเงิน')]) {
+    testWidgets('${method.name} bill names the method and has no header QR, but keeps the bank account', (tester) async {
+      final key = GlobalKey();
+      await _pump(
+        tester,
+        BillDocument(
+          bill: billFromOrder(_order.copyWith(paymentMethod: method), DocKind.delivery),
+          copy: BillCopy.original,
+          company: CompanySettings.defaults,
+          payment: _payment,
+        ),
+        key,
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.text('การชำระเงิน:'), findsOneWidget);
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('bill-pay-method')), matching: find.text(label)),
+        findsOneWidget,
+      );
+      expect(find.text('จ่ายปลายทาง'), findsNothing);
+      expect(find.text('ช่องทางรับเงิน'), findsOneWidget);
+      expect(find.text('123-4-56789-0'), findsOneWidget);
+      expect(find.text('สแกน QR เพื่อชำระ'), findsNothing);
+      expect(find.bySemanticsLabel('QR รับเงิน'), findsNothing);
+    });
+  }
 
   testWidgets('paid receipt hides PromptPay and shows the paid stamp; cancelled shows VOID', (tester) async {
     final key = GlobalKey();

@@ -74,10 +74,12 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
   const payNow = !b.paid && !b.cancelled && due > 0 && (statement || b.paymentMethod !== 'credit');
   const showPromptPay = payNow && !!payment.promptPayId;
   const ppPayload = showPromptPay ? promptPayPayload(payment.promptPayId, due) : null;
-  const showPayChannel = !b.paid && !b.cancelled && !!(payment.qrPayload || payment.bankAccountNo);
-  const billQr = payment.qrPayload
+  // Cash and transfer bills name the method outright and carry no receiving QR in the header.
+  const directPay = !statement && (b.paymentMethod === 'cash' || b.paymentMethod === 'transfer');
+  const billQr = payment.qrPayload && !directPay
     ? billQrPayload(payment.qrPayload, { ref: b.docNo, amount: payNow ? due : undefined })
     : '';
+  const showPayChannel = !b.paid && !b.cancelled && !!(billQr || payment.bankAccountNo);
   const qrIsBill = !!billQr && billQr !== payment.qrPayload.trim();
   const billRef = qrIsBill ? qrReference(b.docNo) : '';
   const qrAmount = qrIsBill && payNow ? due : 0;
@@ -257,17 +259,28 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
               </div>
             ) : (
               <div className="text-[11.5px]">
-                <p className="mb-1 font-semibold">{b.kind === 'receipt' ? 'ได้รับเงินถูกต้องแล้ว โดย' : 'การชำระเงิน'}</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {PAYMENT_CHOICES.map((m) => (
-                    <span key={m} className="inline-flex items-center gap-1.5">
-                      <span className="inline-flex h-3.5 w-3.5 items-center justify-center border border-slate-500 text-[10px] font-bold leading-none">
-                        {b.paymentMethod === m ? '✓' : ''}
-                      </span>
-                      {PAYMENT_METHOD_LABEL[m]}
+                {directPay && b.paymentMethod ? (
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold">
+                    {b.kind === 'receipt' ? 'ได้รับเงินถูกต้องแล้ว โดย' : 'การชำระเงิน:'}
+                    <span className="rounded border border-slate-500 px-2 py-0.5 text-[12.5px] font-bold text-slate-900">
+                      {PAYMENT_METHOD_LABEL[b.paymentMethod]}
                     </span>
-                  ))}
-                </div>
+                  </p>
+                ) : (
+                  <>
+                    <p className="mb-1 font-semibold">{b.kind === 'receipt' ? 'ได้รับเงินถูกต้องแล้ว โดย' : 'การชำระเงิน'}</p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {PAYMENT_CHOICES.map((m) => (
+                        <span key={m} className="inline-flex items-center gap-1.5">
+                          <span className="inline-flex h-3.5 w-3.5 items-center justify-center border border-slate-500 text-[10px] font-bold leading-none">
+                            {b.paymentMethod === m ? '✓' : ''}
+                          </span>
+                          {PAYMENT_METHOD_LABEL[m]}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
                 {b.paid || b.paymentMethod === 'credit' ? (
                   <p className="mt-1 text-slate-600">
                     สถานะ:{' '}
