@@ -29,7 +29,7 @@ import {
   type Zone,
 } from '../../types';
 import StepTitle from './StepTitle';
-import { quantitiesOf, totalQuantity, type WizardState } from './wizardState';
+import { driverFeeKey, editedDriverFee, quantitiesOf, totalQuantity, type WizardState } from './wizardState';
 
 interface Props {
   state: WizardState;
@@ -445,6 +445,8 @@ export default function StepFulfillment({ state: s, patch, customer, zones, driv
               roadDistanceKm={s.roadDistanceKm}
               delivery={settings.delivery}
               otherSizeFits={truckFits(s.truckSize === 3 ? 5 : 3, loadLines)}
+              edited={editedDriverFee(s)}
+              onEdit={(perTrip) => patch({ driverFeeEdit: perTrip == null ? null : { perTrip, key: driverFeeKey(s) } })}
             />
             <div className="flex flex-wrap gap-2">
               <Chip active={group === 'all'} onClick={() => setGroup('all')} count={groupCounts.all}>
@@ -545,6 +547,8 @@ function DriverPayCard({
   roadDistanceKm,
   delivery,
   otherSizeFits,
+  edited,
+  onEdit,
 }: {
   zone: Zone | undefined;
   truckSize: TruckSize;
@@ -552,7 +556,11 @@ function DriverPayCard({
   roadDistanceKm: number | null;
   delivery: DeliverySettings;
   otherSizeFits: boolean;
+  /** Pay per trip typed in by the admin; null = the tambon rate. */
+  edited: number | null;
+  onEdit: (perTrip: number | null) => void;
 }) {
+  const [editing, setEditing] = useState(false);
   if (!zone) {
     return (
       <div className="flex items-center gap-2 rounded border border-dashed border-border px-3 py-2.5 text-sm text-muted">
@@ -561,51 +569,130 @@ function DriverPayCard({
     );
   }
   const rate = driverTripRate(zone, truckSize, roadDistanceKm, delivery);
-  if (!rate.perTrip) {
+  const pay = edited ?? rate.perTrip;
+  const startEdit = () => {
+    if (edited == null) onEdit(rate.perTrip);
+    setEditing(true);
+  };
+  if (!pay && !editing) {
     return (
-      <div className="flex items-start gap-2 rounded bg-warning-soft px-3 py-2.5 text-sm text-warning">
-        <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
-        ยังไม่ได้ตั้งค่ารถคนขับ ต.{zone.name} สำหรับรถ {truckSize} คิว ตั้งได้ที่ ตั้งค่า › ค่าส่งตามตำบล
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded bg-warning-soft px-3 py-2.5 text-sm text-warning">
+        <span className="flex min-w-0 flex-1 items-start gap-2">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
+          ยังไม่ได้ตั้งค่ารถคนขับ ต.{zone.name} สำหรับรถ {truckSize} คิว ตั้งได้ที่ ตั้งค่า › ค่าส่งตามตำบล
+        </span>
+        <Button variant="secondary" onClick={startEdit}>
+          <Pencil size={14} aria-hidden /> ใส่ค่ารถเอง
+        </Button>
       </div>
     );
   }
   const km = chargedKm(roadDistanceKm, delivery.nearKm);
   const otherSize: TruckSize = truckSize === 3 ? 5 : 3;
-  const other = otherSizeFits ? driverTripRate(zone, otherSize, roadDistanceKm, delivery).perTrip : 0;
+  const other = otherSizeFits && edited == null ? driverTripRate(zone, otherSize, roadDistanceKm, delivery).perTrip : 0;
+  const adjusted = edited != null && edited !== rate.perTrip;
+  const diff = pay - rate.perTrip;
   return (
-    <div className="overflow-hidden rounded border border-primary/30 bg-primary-soft/40" data-testid="driver-pay">
+    <div
+      className={[
+        'overflow-hidden rounded border bg-primary-soft/40',
+        adjusted ? 'border-warning/50' : 'border-primary/30',
+      ].join(' ')}
+      data-testid="driver-pay"
+    >
       <div className="flex items-center gap-3 px-3 py-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
           <Wallet size={20} aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-primary">ค่ารถคนขับเที่ยวนี้ · บอกคนขับตอนโทร</p>
-          <p className="text-2xl font-semibold tabular-nums leading-tight">
-            {formatNumber(rate.perTrip)} <span className="text-sm font-medium text-muted">บาท/เที่ยว</span>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-medium text-primary">
+            ค่ารถคนขับเที่ยวนี้ · บอกคนขับตอนโทร
+            {adjusted ? <Badge tone="warning">ปรับเอง</Badge> : null}
           </p>
+          {editing ? (
+            <div className="mt-1 flex items-center gap-2">
+              <NumberInput
+                id="f-driver-fee"
+                aria-label="ค่ารถคนขับต่อเที่ยว (บาท)"
+                autoFocus
+                value={pay}
+                placeholder="0"
+                onValueChange={(v) => onEdit(v)}
+                onBlur={() => {
+                  if (!edited) onEdit(null);
+                  setEditing(false);
+                }}
+                className="h-11 w-32 text-xl font-semibold tabular-nums"
+              />
+              <span className="text-sm font-medium text-muted">บาท/เที่ยว</span>
+            </div>
+          ) : (
+            <p className="flex flex-wrap items-baseline gap-x-2 text-2xl font-semibold tabular-nums leading-tight">
+              <span>
+                {formatNumber(pay)} <span className="text-sm font-medium text-muted">บาท/เที่ยว</span>
+              </span>
+              <button
+                type="button"
+                onClick={startEdit}
+                aria-label="ปรับค่ารถคนขับต่อเที่ยว"
+                className="inline-flex min-h-9 items-center gap-1 self-center rounded px-2 text-sm font-medium text-primary hover:bg-surface cursor-pointer"
+              >
+                <Pencil size={14} aria-hidden /> ปรับ
+              </button>
+            </p>
+          )}
         </div>
         {trips > 1 ? (
           <div className="shrink-0 text-right">
             <p className="text-xs text-muted">รวม {trips} เที่ยว</p>
-            <p className="text-lg font-semibold tabular-nums">{formatNumber(rate.perTrip * trips)}</p>
+            <p className="text-lg font-semibold tabular-nums">{formatNumber(pay * trips)}</p>
           </div>
         ) : null}
       </div>
       <dl className="flex flex-col gap-1 border-t border-primary/20 bg-surface/70 px-3 py-2 text-sm">
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted">
-            ค่ารถ ต.{zone.name} (รถ {truckSize} คิว)
-          </dt>
-          <dd className="tabular-nums">{formatNumber(rate.base)}</dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted">
-            {rate.extra
-              ? `ตามระยะ เกิน ${formatNumber(delivery.nearKm)} กม. คิด ${km} กม. × ${formatNumber(perKmFor(truckSize, delivery))}`
-              : `ตามระยะ (ไม่เกิน ${formatNumber(delivery.nearKm)} กม. ไม่คิดเพิ่ม)`}
-          </dt>
-          <dd className="tabular-nums">{rate.extra ? `+${formatNumber(rate.extra)}` : '0'}</dd>
-        </div>
+        {rate.perTrip ? (
+          <>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">
+                ค่ารถ ต.{zone.name} (รถ {truckSize} คิว)
+              </dt>
+              <dd className="tabular-nums">{formatNumber(rate.base)}</dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted">
+                {rate.extra
+                  ? `ตามระยะ เกิน ${formatNumber(delivery.nearKm)} กม. คิด ${km} กม. × ${formatNumber(perKmFor(truckSize, delivery))}`
+                  : `ตามระยะ (ไม่เกิน ${formatNumber(delivery.nearKm)} กม. ไม่คิดเพิ่ม)`}
+              </dt>
+              <dd className="tabular-nums">{rate.extra ? `+${formatNumber(rate.extra)}` : '0'}</dd>
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-muted">ต.{zone.name} ยังไม่ได้ตั้งค่ารถ ใช้ค่ารถที่ใส่เอง</p>
+        )}
+        {adjusted && rate.perTrip ? (
+          <div className="flex justify-between gap-3 font-medium text-warning">
+            <dt>
+              {diff > 0 ? 'ปรับเพิ่ม' : 'ปรับลด'} (ระบบคำนวณ {formatNumber(rate.perTrip)})
+            </dt>
+            <dd className="tabular-nums">
+              {diff > 0 ? '+' : '−'}
+              {formatNumber(Math.abs(diff))}
+            </dd>
+          </div>
+        ) : null}
+        {edited != null && rate.perTrip ? (
+          <button
+            type="button"
+            onClick={() => {
+              onEdit(null);
+              setEditing(false);
+            }}
+            className="self-start text-sm text-primary underline cursor-pointer"
+          >
+            ใช้ค่ารถตามระบบ ({formatNumber(rate.perTrip)} บาท/เที่ยว)
+          </button>
+        ) : null}
         {other ? (
           <p className="text-xs text-muted">
             ถ้าใช้รถ {otherSize} คิว: {formatNumber(other)} บาท/เที่ยว

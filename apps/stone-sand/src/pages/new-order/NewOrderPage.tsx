@@ -21,6 +21,7 @@ import StepSource from './StepSource';
 import StepSummary from './StepSummary';
 import {
   DRAFT_KEY,
+  editedDriverFee,
   STEPS,
   buildItems,
   initialWizardState,
@@ -172,7 +173,8 @@ export default function NewOrderPage() {
     setSubmitting(true);
     setSubmitError('');
     try {
-      const order = await createOrder(toDraft(state, products, driverTripRate(zone, state.truckSize, state.roadDistanceKm, settings.delivery).perTrip), user?.displayName || user?.username || '');
+      const driverFee = editedDriverFee(state) ?? driverTripRate(zone, state.truckSize, state.roadDistanceKm, settings.delivery).perTrip;
+      const order = await createOrder(toDraft(state, products, driverFee), user?.displayName || user?.username || '');
       clearDraft();
       // The guided tour expects to land on the bill straight away
       if (order.fulfillment === 'delivery' && !demoSession()) setCreated(order);

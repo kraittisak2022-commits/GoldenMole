@@ -26,6 +26,8 @@ int stepIndex(StepKey key) => steps.indexOf(key);
 
 const _unset = Object();
 
+typedef DriverFeeEdit = ({double perTrip, String key});
+
 class WizardState {
   const WizardState({
     this.source,
@@ -53,6 +55,7 @@ class WizardState {
     this.driverId,
     this.driverTruckSize,
     this.driverConfirmed = false,
+    this.driverFeeEdit,
     this.unitDiscounts = const {},
     this.discountType = DiscountType.baht,
     this.discountValue = 0,
@@ -101,6 +104,9 @@ class WizardState {
   final int? driverTruckSize;
   final bool driverConfirmed;
 
+  /// Driver pay per trip typed in by the admin, for the tambon + truck size it was typed for ([driverFeeKey]).
+  final DriverFeeEdit? driverFeeEdit;
+
   /// ส่วนลดบาทต่อคิว by product id.
   final Map<String, double> unitDiscounts;
   final DiscountType discountType;
@@ -137,6 +143,7 @@ class WizardState {
     Object? driverId = _unset,
     Object? driverTruckSize = _unset,
     bool? driverConfirmed,
+    Object? driverFeeEdit = _unset,
     Map<String, double>? unitDiscounts,
     DiscountType? discountType,
     double? discountValue,
@@ -170,6 +177,7 @@ class WizardState {
         driverId: identical(driverId, _unset) ? this.driverId : driverId as String?,
         driverTruckSize: identical(driverTruckSize, _unset) ? this.driverTruckSize : driverTruckSize as int?,
         driverConfirmed: driverConfirmed ?? this.driverConfirmed,
+        driverFeeEdit: identical(driverFeeEdit, _unset) ? this.driverFeeEdit : driverFeeEdit as DriverFeeEdit?,
         unitDiscounts: unitDiscounts ?? this.unitDiscounts,
         discountType: discountType ?? this.discountType,
         discountValue: discountValue ?? this.discountValue,
@@ -204,6 +212,7 @@ class WizardState {
         'driverId': driverId,
         'driverTruckSize': driverTruckSize,
         'driverConfirmed': driverConfirmed,
+        'driverFeeEdit': driverFeeEdit == null ? null : {'perTrip': driverFeeEdit!.perTrip, 'key': driverFeeEdit!.key},
         'unitDiscounts': unitDiscounts,
         'discountType': discountType.name,
         'discountValue': discountValue,
@@ -250,6 +259,10 @@ class WizardState {
       driverId: j['driverId'] as String?,
       driverTruckSize: (j['driverTruckSize'] as num?)?.toInt(),
       driverConfirmed: j['driverConfirmed'] == true,
+      driverFeeEdit: switch (j['driverFeeEdit']) {
+        {'perTrip': final num perTrip, 'key': final String key} => (perTrip: perTrip.toDouble(), key: key),
+        _ => null,
+      },
       unitDiscounts: unit,
       discountType: DiscountType.parse(j['discountType']),
       discountValue: d(j['discountValue']) ?? 0,
@@ -261,6 +274,14 @@ class WizardState {
 }
 
 const initialWizardState = WizardState();
+
+String driverFeeKey(WizardState s) => '${s.zoneId ?? ''}|${s.truckSize}';
+
+/// The driver pay per trip the admin typed in, or null when it was typed for another tambon or truck size.
+double? editedDriverFee(WizardState s) {
+  final edit = s.driverFeeEdit;
+  return edit != null && edit.key == driverFeeKey(s) ? edit.perTrip : null;
+}
 
 List<OrderItem> buildItems(
   List<Product> products,

@@ -34,6 +34,8 @@ export interface WizardState {
   driverId: string | null;
   driverTruckSize: TruckSize | null;
   driverConfirmed: boolean;
+  /** Driver pay per trip typed in by the admin, for the tambon + truck size it was typed for ([driverFeeKey]). */
+  driverFeeEdit: { perTrip: number; key: string } | null;
   /** ส่วนลดบาทต่อคิว by product id. */
   unitDiscounts: Record<string, number>;
   discountType: DiscountType;
@@ -84,6 +86,7 @@ export const initialWizardState: WizardState = {
   driverId: null,
   driverTruckSize: null,
   driverConfirmed: false,
+  driverFeeEdit: null,
   unitDiscounts: {},
   discountType: 'baht',
   discountValue: 0,
@@ -164,6 +167,13 @@ export function validateStep(step: number, s: WizardState): string {
     default:
       return '';
   }
+}
+
+export const driverFeeKey = (s: Pick<WizardState, 'zoneId' | 'truckSize'>): string => `${s.zoneId ?? ''}|${s.truckSize}`;
+
+/** The driver pay per trip the admin typed in, while the tambon and truck size are still the ones it was typed for. */
+export function editedDriverFee(s: Pick<WizardState, 'zoneId' | 'truckSize' | 'driverFeeEdit'>): number | null {
+  return s.driverFeeEdit && s.driverFeeEdit.key === driverFeeKey(s) ? s.driverFeeEdit.perTrip : null;
 }
 
 export function defaultPaidNow(method: PaymentMethod): boolean {

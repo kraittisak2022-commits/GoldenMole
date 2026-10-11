@@ -128,8 +128,12 @@ class NumberField extends StatefulWidget {
     this.dense = false,
     this.semanticLabel,
     this.style,
+    this.autofocus = false,
+    this.onSubmitted,
   });
   final TextStyle? style;
+  final bool autofocus;
+  final VoidCallback? onSubmitted;
   final num value;
   final ValueChanged<double> onChanged;
   final bool decimal;
@@ -167,6 +171,7 @@ class _NumberFieldState extends State<NumberField> {
     final field = TextField(
       controller: _c,
       enabled: widget.enabled,
+      autofocus: widget.autofocus,
       textAlign: widget.textAlign,
       keyboardType: TextInputType.numberWithOptions(decimal: widget.decimal),
       textInputAction: TextInputAction.done,
@@ -180,6 +185,7 @@ class _NumberFieldState extends State<NumberField> {
         contentPadding: widget.dense ? const EdgeInsets.symmetric(horizontal: 12, vertical: 10) : null,
       ),
       onChanged: (t) => widget.onChanged(double.tryParse(t) ?? 0),
+      onSubmitted: widget.onSubmitted == null ? null : (_) => widget.onSubmitted!(),
     );
     return widget.semanticLabel == null ? field : Semantics(label: widget.semanticLabel, child: field);
   }

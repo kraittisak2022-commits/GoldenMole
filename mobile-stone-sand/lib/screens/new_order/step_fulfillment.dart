@@ -731,6 +731,10 @@ class _StepFulfillmentState extends State<StepFulfillment> {
         roadDistanceKm: s.roadDistanceKm,
         delivery: widget.settings.delivery,
         otherSizeFits: truckFits(s.truckSize == 3 ? 5 : 3, _loads),
+        edited: editedDriverFee(s),
+        onEdit: (perTrip) => widget.patch(
+          (st) => st.copyWith(driverFeeEdit: perTrip == null ? null : (perTrip: perTrip, key: driverFeeKey(st))),
+        ),
       ),
       const SizedBox(height: 12),
       Wrap(
@@ -834,7 +838,8 @@ class _StepFulfillmentState extends State<StepFulfillment> {
 }
 
 /// What the driver earns for this job, for the admin to tell him on the phone. Never shown on the customer's bill.
-class DriverPayCard extends StatelessWidget {
+/// The admin can raise or lower the pay per trip; [edited] is that pay, null = the tambon rate.
+class DriverPayCard extends StatefulWidget {
   const DriverPayCard({
     super.key,
     required this.zone,
@@ -843,6 +848,8 @@ class DriverPayCard extends StatelessWidget {
     required this.roadDistanceKm,
     required this.delivery,
     required this.otherSizeFits,
+    this.edited,
+    this.onEdit,
   });
 
   final Zone? zone;
@@ -851,10 +858,46 @@ class DriverPayCard extends StatelessWidget {
   final double? roadDistanceKm;
   final DeliverySettings delivery;
   final bool otherSizeFits;
+  final double? edited;
+  final ValueChanged<double?>? onEdit;
+
+  @override
+  State<DriverPayCard> createState() => _DriverPayCardState();
+}
+
+class _DriverPayCardState extends State<DriverPayCard> {
+  bool _editing = false;
+  double _typed = 0;
+
+  void _startEdit(double perTrip) {
+    _typed = widget.edited ?? perTrip;
+    if (widget.edited == null) widget.onEdit?.call(perTrip);
+    setState(() => _editing = true);
+  }
+
+  void _type(double v) {
+    _typed = v < 0 ? 0 : v;
+    widget.onEdit?.call(_typed);
+  }
+
+  void _finishEdit() {
+    if (!_editing) return;
+    if (_typed <= 0) widget.onEdit?.call(null);
+    setState(() => _editing = false);
+  }
+
+  void _reset() {
+    widget.onEdit?.call(null);
+    setState(() => _editing = false);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final z = zone;
+    final z = widget.zone;
+    final truckSize = widget.truckSize;
+    final delivery = widget.delivery;
+    final edited = widget.edited;
+    final canEdit = widget.onEdit != null;
     if (z == null) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -862,52 +905,154 @@ class DriverPayCard extends StatelessWidget {
           border: Border.all(color: AppColors.border),
           borderRadius: BorderRadius.circular(kRadius),
         ),
-        child: const Row(children: [
-          Icon(Icons.account_balance_wallet_outlined, size: 16, color: AppColors.muted),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text('เลือกตำบลก่อน ระบบจะคำนวณค่ารถคนขับให้', style: TextStyle(fontSize: 14, color: AppColors.muted)),
-          ),
-        ]),
+        child: const Row(
+          children: [
+            Icon(Icons.account_balance_wallet_outlined, size: 16, color: AppColors.muted),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'เลือกตำบลก่อน ระบบจะคำนวณค่ารถคนขับให้',
+                style: TextStyle(fontSize: 14, color: AppColors.muted),
+              ),
+            ),
+          ],
+        ),
       );
     }
-    final rate = driverTripRate(z, truckSize, roadDistanceKm, delivery);
-    if (rate.perTrip <= 0) {
+    final rate = driverTripRate(z, truckSize, widget.roadDistanceKm, delivery);
+    final pay = edited ?? rate.perTrip;
+    if (pay <= 0 && !_editing) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(color: AppColors.warningSoft, borderRadius: BorderRadius.circular(kRadius)),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(Icons.warning_amber_rounded, size: 16, color: AppColors.warning),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'ยังไม่ได้ตั้งค่ารถคนขับ ต.${z.name} สำหรับรถ $truckSize คิว ตั้งได้ที่ ตั้งค่า › ค่าส่งตามตำบล',
-              style: const TextStyle(fontSize: 14, color: AppColors.warning),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.warning_amber_rounded, size: 16, color: AppColors.warning),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'ยังไม่ได้ตั้งค่ารถคนขับ ต.${z.name} สำหรับรถ $truckSize คิว ตั้งได้ที่ ตั้งค่า › ค่าส่งตามตำบล',
+                    style: const TextStyle(fontSize: 14, color: AppColors.warning),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ]),
+            if (canEdit) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => _startEdit(rate.perTrip),
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('ใส่ค่ารถเอง'),
+              ),
+            ],
+          ],
+        ),
       );
     }
-    final km = chargedKm(roadDistanceKm, delivery.nearKm);
+    final km = chargedKm(widget.roadDistanceKm, delivery.nearKm);
     final otherSize = truckSize == 3 ? 5 : 3;
-    final other = otherSizeFits ? driverTripRate(z, otherSize, roadDistanceKm, delivery).perTrip : 0.0;
+    final other = widget.otherSizeFits && edited == null
+        ? driverTripRate(z, otherSize, widget.roadDistanceKm, delivery).perTrip
+        : 0.0;
+    final adjusted = edited != null && edited != rate.perTrip;
+    final diff = pay - rate.perTrip;
     const label = TextStyle(fontSize: 14, color: AppColors.muted);
     const value = TextStyle(fontSize: 14, fontFeatures: tabular);
+    const unit = TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.muted);
 
-    Widget line(String l, String v) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 1),
-          child: Row(children: [
-            Expanded(child: Text(l, style: label)),
-            Text(v, style: value),
-          ]),
-        );
+    Widget line(String l, String v, {TextStyle? style}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Row(
+        children: [
+          Expanded(child: Text(l, style: style ?? label)),
+          Text(v, style: style ?? value),
+        ],
+      ),
+    );
+
+    final amount = _editing
+        ? Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              children: [
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 128),
+                    child: Focus(
+                      onFocusChange: (focused) {
+                        if (!focused) _finishEdit();
+                      },
+                      child: NumberField(
+                        key: const ValueKey('driver-fee-field'),
+                        decimal: false,
+                        autofocus: true,
+                        dense: true,
+                        semanticLabel: 'ค่ารถคนขับต่อเที่ยว (บาท)',
+                        value: pay,
+                        onChanged: _type,
+                        onSubmitted: _finishEdit,
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('บาท/เที่ยว', style: unit),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'เสร็จ',
+                  onPressed: _finishEdit,
+                  icon: const Icon(Icons.check_circle, color: AppColors.primary),
+                ),
+              ],
+            ),
+          )
+        : Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 4,
+            children: [
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: formatNumber(pay),
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600, color: AppColors.ink),
+                    ),
+                    const TextSpan(text: ' บาท/เที่ยว', style: unit),
+                  ],
+                ),
+                style: const TextStyle(fontFeatures: tabular),
+              ),
+              if (canEdit)
+                TextButton.icon(
+                  key: const ValueKey('driver-fee-edit'),
+                  onPressed: () => _startEdit(rate.perTrip),
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 36),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('ปรับ'),
+                ),
+            ],
+          );
 
     return Container(
       key: const ValueKey('driver-pay'),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.primarySoft.withValues(alpha: 0.4),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: adjusted ? AppColors.warning.withValues(alpha: 0.5) : AppColors.primary.withValues(alpha: 0.3),
+        ),
         borderRadius: BorderRadius.circular(kRadius),
       ),
       child: Column(
@@ -915,50 +1060,51 @@ class DriverPayCard extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                child: const Icon(Icons.account_balance_wallet_outlined, size: 20, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'ค่ารถคนขับเที่ยวนี้ · บอกคนขับตอนโทร',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.primary),
-                    ),
-                    Text.rich(
-                      TextSpan(children: [
-                        TextSpan(
-                          text: formatNumber(rate.perTrip),
-                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600, color: AppColors.ink),
-                        ),
-                        const TextSpan(
-                          text: ' บาท/เที่ยว',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.muted),
-                        ),
-                      ]),
-                      style: const TextStyle(fontFeatures: tabular),
-                    ),
-                  ],
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                  child: const Icon(Icons.account_balance_wallet_outlined, size: 20, color: Colors.white),
                 ),
-              ),
-              if (trips > 1)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('รวม $trips เที่ยว', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-                    Text(
-                      formatNumber(rate.perTrip * trips),
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, fontFeatures: tabular),
-                    ),
-                  ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 2,
+                        children: [
+                          const Text(
+                            'ค่ารถคนขับเที่ยวนี้ · บอกคนขับตอนโทร',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.primary),
+                          ),
+                          if (adjusted) const AppBadge('ปรับเอง', tone: BadgeTone.warning),
+                        ],
+                      ),
+                      amount,
+                      if (widget.trips > 1)
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: 'รวม ${widget.trips} เที่ยว '),
+                              TextSpan(
+                                text: formatNumber(pay * widget.trips),
+                                style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.ink),
+                              ),
+                              const TextSpan(text: ' บาท'),
+                            ],
+                          ),
+                          style: const TextStyle(fontSize: 14, color: AppColors.muted, fontFeatures: tabular),
+                        ),
+                    ],
+                  ),
                 ),
-            ]),
+              ],
+            ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -969,13 +1115,47 @@ class DriverPayCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                line('ค่ารถ ต.${z.name} (รถ $truckSize คิว)', formatNumber(rate.base)),
-                line(
-                  rate.extra > 0
-                      ? 'ตามระยะ เกิน ${formatNumber(delivery.nearKm)} กม. คิด $km กม. × ${formatNumber(perKmFor(truckSize, delivery))}'
-                      : 'ตามระยะ (ไม่เกิน ${formatNumber(delivery.nearKm)} กม. ไม่คิดเพิ่ม)',
-                  rate.extra > 0 ? '+${formatNumber(rate.extra)}' : '0',
-                ),
+                if (rate.perTrip > 0) ...[
+                  line('ค่ารถ ต.${z.name} (รถ $truckSize คิว)', formatNumber(rate.base)),
+                  line(
+                    rate.extra > 0
+                        ? 'ตามระยะ เกิน ${formatNumber(delivery.nearKm)} กม. คิด $km กม. × ${formatNumber(perKmFor(truckSize, delivery))}'
+                        : 'ตามระยะ (ไม่เกิน ${formatNumber(delivery.nearKm)} กม. ไม่คิดเพิ่ม)',
+                    rate.extra > 0 ? '+${formatNumber(rate.extra)}' : '0',
+                  ),
+                ] else
+                  Text(
+                    'ต.${z.name} ยังไม่ได้ตั้งค่ารถ ใช้ค่ารถที่ใส่เอง',
+                    style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                  ),
+                if (adjusted && rate.perTrip > 0)
+                  line(
+                    '${diff > 0 ? 'ปรับเพิ่ม' : 'ปรับลด'} (ระบบคำนวณ ${formatNumber(rate.perTrip)})',
+                    '${diff > 0 ? '+' : '−'}${formatNumber(diff.abs())}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.warning,
+                      fontFeatures: tabular,
+                    ),
+                  ),
+                if (edited != null && rate.perTrip > 0)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      key: const ValueKey('driver-fee-reset'),
+                      onPressed: _reset,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: EdgeInsets.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        'ใช้ค่ารถตามระบบ (${formatNumber(rate.perTrip)} บาท/เที่ยว)',
+                        style: const TextStyle(fontSize: 14, decoration: TextDecoration.underline),
+                      ),
+                    ),
+                  ),
                 if (other > 0)
                   Text(
                     'ถ้าใช้รถ $otherSize คิว: ${formatNumber(other)} บาท/เที่ยว',

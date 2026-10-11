@@ -366,8 +366,9 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
                                         ? null
                                         : () => _submit(
                                               products,
-                                              driverTripRate(zone, s.truckSize, s.roadDistanceKm, catalog.settings.delivery)
-                                                  .perTrip,
+                                              editedDriverFee(s) ??
+                                                  driverTripRate(zone, s.truckSize, s.roadDistanceKm, catalog.settings.delivery)
+                                                      .perTrip,
                                             ),
                                     icon: const Icon(Icons.check, size: 18),
                                     label: Text(_submitting ? 'กำลังบันทึก…' : 'ยืนยันและออกบิล'),

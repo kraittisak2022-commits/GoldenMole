@@ -2,6 +2,8 @@ import type { Customer, Product } from '../../types';
 import {
   STEPS,
   buildItems,
+  driverFeeKey,
+  editedDriverFee,
   initialWizardState,
   quantitiesOf,
   stepIndex,
@@ -167,5 +169,16 @@ describe('quantitiesOf', () => {
       'small-stone': 6,
       'fill-sand': 0,
     });
+  });
+});
+
+describe('editedDriverFee', () => {
+  it('uses the typed driver pay only for the tambon and truck size it was typed for', () => {
+    const s = state({ zoneId: 'z1', truckSize: 5 });
+    const edited = { ...s, driverFeeEdit: { perTrip: 450, key: driverFeeKey(s) } };
+    expect(editedDriverFee(s)).toBeNull();
+    expect(editedDriverFee(edited)).toBe(450);
+    expect(editedDriverFee({ ...edited, truckSize: 3 })).toBeNull();
+    expect(editedDriverFee({ ...edited, zoneId: 'z2' })).toBeNull();
   });
 });
