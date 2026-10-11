@@ -68,6 +68,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
   const L = LAYOUT[size];
   const title = DOC_TITLE[b.kind];
   const statement = b.kind === 'statement';
+  const discountCol = !statement && b.lines.some((l) => !!l.discount);
   const partlyPaid = !b.paid && (b.paidAmount ?? 0) > 0;
   const due = partlyPaid ? Math.max(0, b.total - (b.paidAmount ?? 0)) : b.total;
   // A credit delivery note is paid later through its statement, so its QR carries no amount.
@@ -201,6 +202,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
                   <Th className="w-16 text-right">จำนวน</Th>
                   <Th className="w-14 text-center">หน่วย</Th>
                   <Th className="w-24 text-right">ราคา/หน่วย</Th>
+                  {discountCol ? <Th className="w-20 text-right">ส่วนลด</Th> : null}
                 </>
               ) : null}
               <Th className="w-28 text-right">จำนวนเงิน</Th>
@@ -220,6 +222,20 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
                     <Td className="text-right tabular-nums">{l.quantity != null ? formatNumber(l.quantity) : ''}</Td>
                     <Td className="text-center">{l.unit ?? ''}</Td>
                     <Td className="text-right tabular-nums">{l.unitPrice != null ? formatMoney(l.unitPrice) : ''}</Td>
+                    {discountCol ? (
+                      <Td className="text-right tabular-nums">
+                        {l.discount ? (
+                          <>
+                            -{formatMoney(l.discount)}
+                            <span className="block text-[11px] text-slate-500">
+                              {l.unit}ละ {formatNumber(l.discountPerUnit ?? 0)}
+                            </span>
+                          </>
+                        ) : (
+                          ''
+                        )}
+                      </Td>
+                    ) : null}
                   </>
                 ) : null}
                 <Td className="text-right tabular-nums">{formatMoney(l.amount)}</Td>
@@ -227,7 +243,7 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
             ))}
             {Array.from({ length: Math.max(0, L.padRows + (statement ? 1 : 0) - b.lines.length) }).map((_, i) => (
               <tr key={`pad-${i}`} className="border-b border-slate-100">
-                <td className="h-7" colSpan={statement ? 4 : 6} />
+                <td className="h-7" colSpan={statement ? 4 : discountCol ? 7 : 6} />
               </tr>
             ))}
           </tbody>

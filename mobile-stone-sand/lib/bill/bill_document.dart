@@ -593,6 +593,7 @@ class BillDocument extends StatelessWidget {
           child: Text(t, textAlign: align, style: const TextStyle(fontSize: 12, fontFeatures: _tab)),
         );
 
+    final discountCol = !statement && b.lines.any((line) => line.discount != 0);
     final widths = <int, TableColumnWidth>{
       0: const FixedColumnWidth(44),
       if (statement) ...{
@@ -604,10 +605,11 @@ class BillDocument extends StatelessWidget {
         2: const FixedColumnWidth(64),
         3: const FixedColumnWidth(56),
         4: const FixedColumnWidth(96),
-        5: const FixedColumnWidth(112),
+        if (discountCol) 5: const FixedColumnWidth(84),
+        discountCol ? 6 : 5: const FixedColumnWidth(112),
       },
     };
-    final cols = statement ? 4 : 6;
+    final cols = statement ? 4 : (discountCol ? 7 : 6);
     final padCount = math.max(0, l.padRows + (statement ? 1 : 0) - b.lines.length);
 
     return Table(
@@ -624,6 +626,7 @@ class BillDocument extends StatelessWidget {
               th('จำนวน', align: TextAlign.right),
               th('หน่วย', align: TextAlign.center),
               th('ราคา/หน่วย', align: TextAlign.right),
+              if (discountCol) th('ส่วนลด', align: TextAlign.right),
             ],
             th('จำนวนเงิน', align: TextAlign.right),
           ],
@@ -649,6 +652,21 @@ class BillDocument extends StatelessWidget {
                 td(line.quantity != null ? formatNumber(line.quantity) : '', align: TextAlign.right),
                 td(line.unit ?? '', align: TextAlign.center),
                 td(line.unitPrice != null ? formatMoney(line.unitPrice) : '', align: TextAlign.right),
+                if (discountCol)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    child: line.discount == 0
+                        ? const SizedBox.shrink()
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text('-${formatMoney(line.discount)}',
+                                  style: const TextStyle(fontSize: 12, fontFeatures: _tab)),
+                              Text('${line.unit ?? ''}ละ ${formatNumber(line.discountPerUnit)}',
+                                  style: const TextStyle(fontSize: 11, color: _s500)),
+                            ],
+                          ),
+                  ),
               ],
               td(formatMoney(line.amount), align: TextAlign.right),
             ],

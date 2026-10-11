@@ -10,6 +10,8 @@ class BillLine {
     this.quantity,
     this.unit,
     this.unitPrice,
+    this.discount = 0,
+    this.discountPerUnit = 0,
     required this.amount,
   });
   final String? date;
@@ -18,6 +20,10 @@ class BillLine {
   final double? quantity;
   final String? unit;
   final double? unitPrice;
+
+  /// Baht off this line (discount per unit × quantity); [amount] is before it.
+  final double discount;
+  final double discountPerUnit;
   final double amount;
 }
 
@@ -90,12 +96,11 @@ BillData billFromOrder(Order o, DocKind kind, {Zone? zone, Driver? driver}) {
     final off = lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit);
     return BillLine(
       description: it.name,
-      detail: off != 0
-          ? 'ลด${it.unit}ละ ${formatNumber(it.discountPerUnit)} บาท (-${formatNumber(off)})'
-          : null,
       quantity: it.quantity,
       unit: it.unit,
       unitPrice: it.unitPrice,
+      discount: off,
+      discountPerUnit: off != 0 ? it.discountPerUnit : 0,
       amount: it.amount,
     );
   }).toList();
@@ -140,7 +145,7 @@ BillData billFromOrder(Order o, DocKind kind, {Zone? zone, Driver? driver}) {
   String? discountLabel;
   if (o.discountAmount != 0) {
     discountLabel = [
-      itemDiscount != 0 ? 'ส่วนลดต่อคิว' : '',
+      itemDiscount != 0 ? 'ส่วนลด' : '',
       o.deliveryDiscount != 0 ? 'ส่วนลดค่าส่ง' : '',
       billDiscountPart
           ? 'ส่วนลด${o.discountType == DiscountType.percent ? ' ${formatNumber(o.discountValue)}% (ค่าสินค้า)' : ''}'

@@ -51,3 +51,21 @@ describe('BillDocument payment', () => {
     expect(screen.getByLabelText('QR รับเงิน')).toBeInTheDocument();
   });
 });
+
+describe('BillDocument discount column', () => {
+  it('is left out when no line has a discount', () => {
+    renderBill('cash');
+    expect(screen.queryByRole('columnheader', { name: 'ส่วนลด' })).not.toBeInTheDocument();
+  });
+
+  it('shows each line discount when there is one', () => {
+    const discounted: BillData = {
+      ...bill('cash'),
+      lines: [{ description: 'หินคลุก', quantity: 5, unit: 'คิว', unitPrice: 400, discount: 250, discountPerUnit: 50, amount: 2000 }],
+    };
+    render(<BillDocument bill={discounted} copy="original" company={company} payment={payment} />);
+    expect(screen.getByRole('columnheader', { name: 'ส่วนลด' })).toBeInTheDocument();
+    expect(screen.getByText('-250.00')).toBeInTheDocument();
+    expect(screen.getByText('คิวละ 50')).toBeInTheDocument();
+  });
+});

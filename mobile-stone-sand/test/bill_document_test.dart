@@ -116,6 +116,34 @@ void main() {
     });
   }
 
+  testWidgets('discount column shows only when an item has a discount', (tester) async {
+    final key = GlobalKey();
+    Widget doc(Order o) => BillDocument(
+          bill: billFromOrder(o, DocKind.delivery),
+          copy: BillCopy.original,
+          company: CompanySettings.defaults,
+          payment: _payment,
+        );
+    await _pump(tester, doc(_order), key);
+    expect(find.text('ส่วนลด'), findsNothing);
+
+    final discounted = _order.copyWith(
+      items: [
+        const OrderItem(
+            id: 'i1', productId: 'p1', name: 'หินคลุก', unit: 'คิว', unitPrice: 400, quantity: 5, amount: 2000,
+            discountPerUnit: 50),
+      ],
+      discountAmount: 250,
+      total: 2250,
+    );
+    await _pump(tester, doc(discounted), key);
+    expect(tester.takeException(), isNull);
+    expect(find.text('ส่วนลด'), findsNWidgets(2));
+    expect(find.text('-250.00'), findsNWidgets(2));
+    expect(find.text('คิวละ 50'), findsOneWidget);
+    expect(find.textContaining('ส่วนลดต่อคิว'), findsNothing);
+  });
+
   testWidgets('paid receipt hides PromptPay and shows the paid stamp; cancelled shows VOID', (tester) async {
     final key = GlobalKey();
     final paid = _order.copyWith(paymentStatus: PaymentStatus.paid, cancelled: true);

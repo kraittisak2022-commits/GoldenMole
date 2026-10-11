@@ -17,6 +17,9 @@ export interface BillLine {
   quantity?: number;
   unit?: string;
   unitPrice?: number;
+  /** Baht off this line (discount per unit × quantity); [amount] is before it. */
+  discount?: number;
+  discountPerUnit?: number;
   amount: number;
 }
 
@@ -52,10 +55,11 @@ export function billFromOrder(o: Order, kind: 'delivery' | 'receipt', zone?: Zon
     const off = lineDiscount(it.unitPrice, it.quantity, it.discountPerUnit);
     return {
       description: it.name,
-      detail: off ? `ลด${it.unit}ละ ${formatNumber(it.discountPerUnit ?? 0)} บาท (-${formatNumber(off)})` : undefined,
       quantity: it.quantity,
       unit: it.unit,
       unitPrice: it.unitPrice,
+      discount: off || undefined,
+      discountPerUnit: off ? it.discountPerUnit : undefined,
       amount: it.amount,
     };
   });
@@ -104,7 +108,7 @@ export function billFromOrder(o: Order, kind: 'delivery' | 'receipt', zone?: Zon
     gross: o.subtotal + o.deliveryTotal,
     discountLabel: o.discountAmount
       ? [
-          itemDiscount ? 'ส่วนลดต่อคิว' : '',
+          itemDiscount ? 'ส่วนลด' : '',
           o.deliveryDiscount ? 'ส่วนลดค่าส่ง' : '',
           billDiscountPart ? `ส่วนลด${o.discountType === 'percent' ? ` ${formatNumber(o.discountValue)}% (ค่าสินค้า)` : ''}` : '',
         ]
