@@ -8,7 +8,6 @@ import {
   CircleDot,
   FileText,
 } from "lucide-react";
-import DemoBadge from "../../components/DemoBadge";
 import SourceBadge from "../../components/SourceBadge";
 import Badge from "../../components/ui/Badge";
 import {
@@ -213,7 +212,6 @@ function BillRow(row: BillRowData) {
           <span aria-hidden>·</span>
           <span>{formatDateShort(o.orderDate)}</span>
           <SourceBadge source={o.source} />
-          {o.demo ? <DemoBadge /> : null}
           <span className="min-w-0 truncate">{fulfillment}</span>
         </p>
         <div className="mt-1">

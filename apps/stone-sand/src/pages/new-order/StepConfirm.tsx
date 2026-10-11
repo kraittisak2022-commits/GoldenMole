@@ -26,7 +26,7 @@ export default function StepConfirm({ state: s, items, zone, driver, onEdit }: P
     <div className="step-enter flex flex-col gap-6">
       <StepTitle title="ตรวจสอบก่อนออกบิล" subtitle="แตะ 'แก้ไข' เพื่อกลับไปแก้ขั้นตอนนั้น" />
 
-      <div className="divide-y divide-border border-y border-border" data-tour="wiz-confirm">
+      <div className="divide-y divide-border border-y border-border">
         <Block title="วันที่ออเดอร์" onEdit={edit('source')}>
           <p className={s.orderDate ? 'font-medium text-warning' : 'font-medium'}>
             {formatDateLongTh(s.orderDate || toIsoDate())}

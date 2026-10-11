@@ -1,4 +1,3 @@
-import { endDemoSession, startDemoSession } from '../tour/tourSession';
 import { canSeeSource, lockedSource, parseOrderSource, scoped, setLockedSource } from './sourceScope';
 
 function fakeQuery() {
@@ -13,17 +12,12 @@ function fakeQuery() {
       calls.push(['is', column, value]);
       return q;
     },
-    or(filters: string) {
-      calls.push(['or', filters]);
-      return q;
-    },
   };
   return q;
 }
 
 afterEach(() => {
   setLockedSource(null);
-  endDemoSession();
 });
 
 describe('sourceScope', () => {
@@ -41,11 +35,6 @@ describe('sourceScope', () => {
       ['eq', 'source', 'shop'],
       ['is', 'demo_session', null],
     ]);
-  });
-
-  it('includes only the current tour session demo rows while a tour runs', () => {
-    const session = startDemoSession();
-    expect(scoped(fakeQuery()).calls).toEqual([['or', `demo_session.is.null,demo_session.eq.${session}`]]);
   });
 
   it('parses only known sources from the database', () => {

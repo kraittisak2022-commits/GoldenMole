@@ -15,8 +15,6 @@ import '../data/statements_repo.dart';
 import '../logic/format.dart';
 import '../models/models.dart';
 import '../theme/app_theme.dart';
-import '../tour/tour_controller.dart';
-import '../tour/tour_steps.dart';
 import '../widgets/ui.dart';
 import 'new_order/new_order_screen.dart';
 import 'order_detail_screen.dart';
@@ -165,17 +163,12 @@ class _BillScreenState extends State<BillScreen> {
     final catalog = CatalogScope.of(context);
     final bill = _bill(catalog);
     final busy = _busy.isNotEmpty;
-    final orderId = widget.orderId;
-    return TourMarker(
-      page: orderId != null ? TourPage.orderBill : TourPage.statementBill,
-      id: orderId ?? widget.statementId,
-      child: PopScope(
-        canPop: !widget.created,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) _back();
-        },
-        child: _scaffold(catalog, bill, busy),
-      ),
+    return PopScope(
+      canPop: !widget.created,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: _scaffold(catalog, bill, busy),
     );
   }
 
@@ -183,7 +176,7 @@ class _BillScreenState extends State<BillScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF1F5F9),
       appBar: AppBar(
-        leading: TourTarget('bill-back', child: BackButton(onPressed: _back)),
+        leading: BackButton(onPressed: _back),
         title: bill == null
             ? const Text('บิล')
             : Column(
@@ -200,31 +193,28 @@ class _BillScreenState extends State<BillScreen> {
         actions: bill == null
             ? null
             : [
-                TourTarget(
-                  'bill-print',
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: 'บันทึกรูป / ส่ง LINE',
-                        onPressed: busy ? null : () => _shareImage(bill),
-                        icon: _busy == 'png' ? const _Spinner() : const Icon(Icons.image_outlined),
-                      ),
-                      IconButton(
-                        tooltip: 'แชร์ PDF',
-                        onPressed: busy ? null : () => _sharePdf(bill),
-                        icon: _busy == 'pdf' ? const _Spinner() : const Icon(Icons.picture_as_pdf_outlined),
-                      ),
-                      FilledButton.icon(
-                        style: FilledButton.styleFrom(minimumSize: const Size(44, 40)),
-                        onPressed: busy ? null : () => _print(bill),
-                        icon: _busy == 'print'
-                            ? const _Spinner(light: true)
-                            : const Icon(Icons.print_outlined, size: 18),
-                        label: const Text('พิมพ์'),
-                      ),
-                    ],
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'บันทึกรูป / ส่ง LINE',
+                      onPressed: busy ? null : () => _shareImage(bill),
+                      icon: _busy == 'png' ? const _Spinner() : const Icon(Icons.image_outlined),
+                    ),
+                    IconButton(
+                      tooltip: 'แชร์ PDF',
+                      onPressed: busy ? null : () => _sharePdf(bill),
+                      icon: _busy == 'pdf' ? const _Spinner() : const Icon(Icons.picture_as_pdf_outlined),
+                    ),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(minimumSize: const Size(44, 40)),
+                      onPressed: busy ? null : () => _print(bill),
+                      icon: _busy == 'print'
+                          ? const _Spinner(light: true)
+                          : const Icon(Icons.print_outlined, size: 18),
+                      label: const Text('พิมพ์'),
+                    ),
+                  ],
                 ),
                 const SizedBox(width: 8),
               ],
@@ -258,34 +248,31 @@ class _BillScreenState extends State<BillScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TourTarget(
-                  'bill-options',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (o != null && (o.receiptNo ?? '').isNotEmpty) ...[
-                        Semantics(
-                          label: 'ประเภทเอกสาร',
-                          child: Segmented<DocKind>(
-                            values: const [DocKind.delivery, DocKind.receipt],
-                            selected: _effectiveKind,
-                            labelOf: (k) => k == DocKind.delivery ? 'ใบส่งของ' : 'ใบเสร็จรับเงิน',
-                            onChanged: (k) => setState(() => _kind = k),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (o != null && (o.receiptNo ?? '').isNotEmpty) ...[
                       Semantics(
-                        label: 'จำนวนชุดที่พิมพ์',
-                        child: Segmented<BillCopies>(
-                          values: BillCopies.values,
-                          selected: _copies,
-                          labelOf: (c) => c == BillCopies.both ? 'ต้นฉบับ + สำเนา' : 'ต้นฉบับอย่างเดียว',
-                          onChanged: (c) => setState(() => _copies = c),
+                        label: 'ประเภทเอกสาร',
+                        child: Segmented<DocKind>(
+                          values: const [DocKind.delivery, DocKind.receipt],
+                          selected: _effectiveKind,
+                          labelOf: (k) => k == DocKind.delivery ? 'ใบส่งของ' : 'ใบเสร็จรับเงิน',
+                          onChanged: (k) => setState(() => _kind = k),
                         ),
                       ),
+                      const SizedBox(height: 8),
                     ],
-                  ),
+                    Semantics(
+                      label: 'จำนวนชุดที่พิมพ์',
+                      child: Segmented<BillCopies>(
+                        values: BillCopies.values,
+                        selected: _copies,
+                        labelOf: (c) => c == BillCopies.both ? 'ต้นฉบับ + สำเนา' : 'ต้นฉบับอย่างเดียว',
+                        onChanged: (c) => setState(() => _copies = c),
+                      ),
+                    ),
+                  ],
                 ),
                 if (widget.created) ...[
                   const SizedBox(height: 12),
@@ -308,23 +295,20 @@ class _BillScreenState extends State<BillScreen> {
             ),
           ),
         ),
-        TourTarget(
-          'bill-sheet',
-          child: Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: _copies == BillCopies.both ? 1123 : 794),
-              child: AspectRatio(
-                aspectRatio: sheetSize.width / sheetSize.height,
-                child: DecoratedBox(
-                  decoration: const BoxDecoration(
-                    boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 12, offset: Offset(0, 4))],
-                  ),
-                  child: InteractiveViewer(
-                    maxScale: 5,
-                    child: FittedBox(
-                      fit: BoxFit.contain,
-                      child: RepaintBoundary(key: _sheetKey, child: sheet),
-                    ),
+        Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: _copies == BillCopies.both ? 1123 : 794),
+            child: AspectRatio(
+              aspectRatio: sheetSize.width / sheetSize.height,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 12, offset: Offset(0, 4))],
+                ),
+                child: InteractiveViewer(
+                  maxScale: 5,
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: RepaintBoundary(key: _sheetKey, child: sheet),
                   ),
                 ),
               ),

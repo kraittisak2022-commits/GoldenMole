@@ -45,7 +45,6 @@ export interface BillData {
   cancelled: boolean;
   verifyToken: string;
   issuedBy?: string | null;
-  demo?: boolean;
 }
 
 export function billFromOrder(o: Order, kind: 'delivery' | 'receipt', zone?: Zone, driver?: Driver): BillData {
@@ -122,7 +121,6 @@ export function billFromOrder(o: Order, kind: 'delivery' | 'receipt', zone?: Zon
     cancelled: o.cancelled,
     verifyToken: o.verifyToken,
     issuedBy: o.createdBy,
-    demo: o.demo,
   };
 }
 
@@ -156,7 +154,6 @@ export function billFromStatement(s: Statement, orders: Order[]): BillData {
     cancelled: false,
     verifyToken: s.verifyToken,
     issuedBy: s.createdBy,
-    demo: s.demo,
   };
 }
 

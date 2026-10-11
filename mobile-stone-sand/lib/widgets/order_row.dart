@@ -73,7 +73,6 @@ class OrderRow extends StatelessWidget {
                         style: const TextStyle(fontSize: 12, color: AppColors.muted, fontFeatures: tabular),
                       ),
                       SourceBadge(o.source),
-                      if (o.demo) const DemoBadge(),
                       if (o.cancelled)
                         const AppBadge('ยกเลิก', tone: BadgeTone.danger)
                       else ...[

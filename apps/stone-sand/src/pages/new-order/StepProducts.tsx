@@ -58,7 +58,7 @@ export default function StepProducts({ products, loads, onChange }: Props) {
   return (
     <div className="step-enter flex flex-col gap-6">
       <StepTitle title="เลือกสินค้า" subtitle="เลือกหมวด ทราย หรือ หิน แล้วเลือกคิวต่อเที่ยวและจำนวนเที่ยว" />
-      <div className="flex flex-col gap-3" data-tour="wiz-products">
+      <div className="flex flex-col gap-3">
         {CATEGORIES.map((c) => {
           const list = active.filter((p) => p.category === c);
           if (!list.length) return null;

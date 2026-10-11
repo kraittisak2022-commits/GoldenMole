@@ -7,8 +7,6 @@ import '../logic/stats.dart';
 import '../models/models.dart';
 import '../routes.dart';
 import '../theme/app_theme.dart';
-import '../tour/tour_controller.dart';
-import '../tour/tour_steps.dart';
 import '../widgets/calendar_picker.dart';
 import '../widgets/loader.dart';
 import '../widgets/order_row.dart';
@@ -116,116 +114,104 @@ class _DashboardScreenState extends State<DashboardScreen> with ReloadOnDataChan
           ],
         );
 
-        return TourMarker(
-          page: TourPage.home,
-          child: PageScroll(
-            onRefresh: reloadAll,
-            children: [
-              if (isWide(context)) ...[
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TourTarget(
-                    'new-order',
-                    child: FilledButton.icon(
-                      onPressed: () => openNewOrder(context),
-                      icon: const Icon(Icons.add, size: 20),
-                      label: const Text('สร้างออเดอร์'),
-                    ),
-                  ),
+        return PageScroll(
+          onRefresh: reloadAll,
+          children: [
+            if (isWide(context)) ...[
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: () => openNewOrder(context),
+                  icon: const Icon(Icons.add, size: 20),
+                  label: const Text('สร้างออเดอร์'),
                 ),
-                const SizedBox(height: 16),
-              ],
-              _DateBar(date: _date, today: today, counts: dayCounts, onChange: _setDate),
-              if (error != null) ...[const SizedBox(height: 16), ErrorBox(error, onRetry: reloadAll)],
+              ),
               const SizedBox(height: 16),
-              TourTarget(
-                'dash-kpis',
-                child: GridRows(
-                  columns: width >= 1024 ? 4 : 2,
-                  children: [
-                    KpiCard(
-                      label: 'ออเดอร์',
-                      value: formatNumber(day.orderCount),
-                      hint: '${formatMoney(day.net)} บาท',
-                      pending: monthPending,
-                    ),
-                    KpiCard(
-                      label: 'สินค้า',
-                      value: '${formatNumber(day.quantity)} คิว',
-                      hint: '${formatNumber(day.trips)} เที่ยว',
-                      pending: monthPending,
-                    ),
-                    KpiCard(label: 'รับเงินแล้ว', value: formatMoney(day.paid), hint: 'บาท', pending: monthPending),
-                    KpiCard(
-                      label: 'ค้างรับ',
-                      value: formatMoney(day.outstanding),
-                      hint: 'ยังไม่จ่าย + เครดิต',
-                      warn: day.outstanding > 0,
-                      pending: monthPending,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              if (twoCol)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: daySection),
-                    const SizedBox(width: 24),
-                    SizedBox(width: 352, child: summarySection),
-                  ],
-                )
-              else ...[
-                daySection,
-                const SizedBox(height: 24),
-                summarySection,
-              ],
-              const SizedBox(height: 24),
-              SectionTitle(
-                'งานค้าง (ทุกวัน)',
-                action: TextButton(
-                  onPressed: () => goTo(context, Dest.orders, {'f': 'waiting', 'r': 'all'}),
-                  child: const Text('ดูทั้งหมด'),
-                ),
-              ),
-              TourTarget(
-                'dash-pending',
-                child: GridRows(
-                  columns: width >= 600 ? 3 : 1,
-                  children: [
-                    KpiCard(
-                      label: 'กำลังจัดส่ง',
-                      value: '${formatNumber(waitingAll.length)} ออเดอร์',
-                      warn: waitingAll.isNotEmpty,
-                      pending: _waiting.pending,
-                      onTap: () => goTo(context, Dest.orders, {'f': 'waiting', 'r': 'all'}),
-                    ),
-                    KpiCard(
-                      label: 'ยังไม่จ่าย',
-                      value: formatMoney(unpaidTotal),
-                      warn: unpaidTotal > 0,
-                      pending: _open.pending,
-                      onTap: () => goTo(context, Dest.orders, {'f': 'unpaid', 'r': 'all'}),
-                    ),
-                    KpiCard(
-                      label: 'ค้างเครดิต',
-                      value: formatMoney(creditTotal),
-                      pending: _open.pending,
-                      onTap: () => goTo(context, Dest.statements),
-                    ),
-                  ],
-                ),
-              ),
-              if (waitingAll.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                OrderList(orders: waitingAll.take(6).toList()),
-              ],
-              const SizedBox(height: 24),
-              SectionTitle('สรุปเดือน${thMonths[ymd[1] - 1]} ${ymd[0] + 543}'),
-              Reveal(pending: monthPending, placeholder: const LoadingList(rows: 2), child: SummaryCard(stats: monthStats)),
             ],
-          ),
+            _DateBar(date: _date, today: today, counts: dayCounts, onChange: _setDate),
+            if (error != null) ...[const SizedBox(height: 16), ErrorBox(error, onRetry: reloadAll)],
+            const SizedBox(height: 16),
+            GridRows(
+              columns: width >= 1024 ? 4 : 2,
+              children: [
+                KpiCard(
+                  label: 'ออเดอร์',
+                  value: formatNumber(day.orderCount),
+                  hint: '${formatMoney(day.net)} บาท',
+                  pending: monthPending,
+                ),
+                KpiCard(
+                  label: 'สินค้า',
+                  value: '${formatNumber(day.quantity)} คิว',
+                  hint: '${formatNumber(day.trips)} เที่ยว',
+                  pending: monthPending,
+                ),
+                KpiCard(label: 'รับเงินแล้ว', value: formatMoney(day.paid), hint: 'บาท', pending: monthPending),
+                KpiCard(
+                  label: 'ค้างรับ',
+                  value: formatMoney(day.outstanding),
+                  hint: 'ยังไม่จ่าย + เครดิต',
+                  warn: day.outstanding > 0,
+                  pending: monthPending,
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            if (twoCol)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: daySection),
+                  const SizedBox(width: 24),
+                  SizedBox(width: 352, child: summarySection),
+                ],
+              )
+            else ...[
+              daySection,
+              const SizedBox(height: 24),
+              summarySection,
+            ],
+            const SizedBox(height: 24),
+            SectionTitle(
+              'งานค้าง (ทุกวัน)',
+              action: TextButton(
+                onPressed: () => goTo(context, Dest.orders, {'f': 'waiting', 'r': 'all'}),
+                child: const Text('ดูทั้งหมด'),
+              ),
+            ),
+            GridRows(
+              columns: width >= 600 ? 3 : 1,
+              children: [
+                KpiCard(
+                  label: 'กำลังจัดส่ง',
+                  value: '${formatNumber(waitingAll.length)} ออเดอร์',
+                  warn: waitingAll.isNotEmpty,
+                  pending: _waiting.pending,
+                  onTap: () => goTo(context, Dest.orders, {'f': 'waiting', 'r': 'all'}),
+                ),
+                KpiCard(
+                  label: 'ยังไม่จ่าย',
+                  value: formatMoney(unpaidTotal),
+                  warn: unpaidTotal > 0,
+                  pending: _open.pending,
+                  onTap: () => goTo(context, Dest.orders, {'f': 'unpaid', 'r': 'all'}),
+                ),
+                KpiCard(
+                  label: 'ค้างเครดิต',
+                  value: formatMoney(creditTotal),
+                  pending: _open.pending,
+                  onTap: () => goTo(context, Dest.statements),
+                ),
+              ],
+            ),
+            if (waitingAll.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              OrderList(orders: waitingAll.take(6).toList()),
+            ],
+            const SizedBox(height: 24),
+            SectionTitle('สรุปเดือน${thMonths[ymd[1] - 1]} ${ymd[0] + 543}'),
+            Reveal(pending: monthPending, placeholder: const LoadingList(rows: 2), child: SummaryCard(stats: monthStats)),
+          ],
         );
       },
     );

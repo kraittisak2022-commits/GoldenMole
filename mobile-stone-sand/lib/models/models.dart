@@ -461,7 +461,6 @@ class Order {
     this.items = const [],
     this.statementId,
     this.driverPayoutId,
-    this.demo = false,
   });
 
   final String id;
@@ -526,10 +525,6 @@ class Order {
   final List<OrderItem> items;
   final String? statementId;
   final String? driverPayoutId;
-
-  /// Created during the guided tour; carries DEMO- document numbers and is deleted when the tour ends.
-  final bool demo;
-
   factory Order.fromRow(Map<String, dynamic> r) {
     final stmtRaw = r['stmt'];
     final stmt = stmtRaw is List ? (stmtRaw.isEmpty ? null : stmtRaw.first) : stmtRaw;
@@ -589,7 +584,6 @@ class Order {
       items: rawItems.map((m) => OrderItem.fromRow(Map<String, dynamic>.from(m))).toList(),
       statementId: stmt is Map ? stmt['statement_id'] as String? : null,
       driverPayoutId: r['driver_payout_id'] as String?,
-      demo: r['demo_session'] != null,
     );
   }
 
@@ -629,7 +623,6 @@ class Order {
     List<OrderItem>? items,
     Object? statementId = _unset,
     String? driverToken,
-    bool? demo,
   }) =>
       Order(
         id: id ?? this.id,
@@ -680,7 +673,6 @@ class Order {
         items: items ?? this.items,
         statementId: identical(statementId, _unset) ? this.statementId : statementId as String?,
         driverPayoutId: driverPayoutId,
-        demo: demo ?? this.demo,
       );
 }
 
@@ -753,7 +745,6 @@ class Statement {
     this.createdAt = '',
     this.orderIds = const [],
     this.payments = const [],
-    this.demo = false,
   });
 
   final String id;
@@ -779,7 +770,6 @@ class Statement {
 
   /// Oldest first.
   final List<StatementPayment> payments;
-  final bool demo;
 
   bool get isCleared => status == 'cleared';
 
@@ -814,7 +804,6 @@ class Statement {
                     .toList()
                   ..sort((a, b) => a.paidAt.compareTo(b.paidAt)))
             : const [],
-        demo: r['demo_session'] != null,
       );
 }
 

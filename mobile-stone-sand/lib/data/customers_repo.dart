@@ -9,7 +9,7 @@ List<Customer> _map(Object? data) =>
     (data as List).map((r) => Customer.fromRow(Map<String, dynamic>.from(r as Map))).toList();
 
 Future<List<Customer>> listCustomers() => guard(() async {
-      final data = await demoFilter(db.from('ss_customers').select('*')).order('name');
+      final data = await hideDemo(db.from('ss_customers').select('*')).order('name');
       return _map(data);
     });
 
@@ -21,19 +21,11 @@ Future<List<Customer>> searchCustomers(String query, {int limit = 8}) async {
     final escaped = q.replaceAll(RegExp('[%,()]'), ' ');
     final filters = ['name.ilike.%$escaped%', 'aliases.ilike.%$escaped%'];
     if (digits.length >= 3) filters.add('phone.ilike.%$digits%');
-    final data = await db
-        .from('ss_customers')
-        .select('*')
+    final data = await hideDemo(db.from('ss_customers').select('*'))
         .or(filters.join(','))
         .order('name')
-        .limit(limit + 4);
-    // A second .or() would collide with the search filter, so demo rows are dropped here.
-    return (data as List)
-        .map((r) => Map<String, dynamic>.from(r as Map))
-        .where((r) => isVisibleDemo(r['demo_session']))
-        .take(limit)
-        .map(Customer.fromRow)
-        .toList();
+        .limit(limit);
+    return _map(data);
   });
 }
 
@@ -59,7 +51,7 @@ Future<Customer> saveCustomer(Customer input, {bool isNew = false}) async {
     final data = isNew || input.id.isEmpty
         ? await db
             .from('ss_customers')
-            .insert({'id': newId('cus'), ...row, 'demo_session': demoSession()})
+            .insert({'id': newId('cus'), ...row})
             .select('*')
             .single()
         : await db.from('ss_customers').update(row).eq('id', input.id).select('*').single();

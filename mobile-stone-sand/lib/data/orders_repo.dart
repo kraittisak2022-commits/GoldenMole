@@ -45,7 +45,6 @@ Future<List<Order>> listUnclearedOrders({String? customerId}) => guard(() async 
 /// Delivery orders with a driver whose ค่ารถ has not been paid yet, oldest first.
 Future<List<Order>> listDriverUnpaidOrders() => guard(() async {
       final data = await scoped(db.from('ss_orders').select(_orderSelect))
-          .isFilter('demo_session', null)
           .eq('fulfillment', 'delivery')
           .eq('cancelled', false)
           .not('driver_id', 'is', null)
@@ -138,7 +137,6 @@ Future<Order> createOrder(OrderDraft d, String by) async {
     'driver_wage': delivery ? d.driverWage : 0,
     'driver_wage_manual': delivery && d.driverWageManual,
     'note': d.note.trim(),
-    'demo_session': demoSession(),
   };
   final items = d.items.where((it) => it.quantity > 0).map(_itemRow).toList();
   final data = await guard(

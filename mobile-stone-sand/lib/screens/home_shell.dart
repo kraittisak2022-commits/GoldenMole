@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../auth/auth_scope.dart';
 import '../routes.dart';
 import '../theme/app_theme.dart';
-import '../tour/tour_controller.dart';
 import '../widgets/ui.dart';
 
 class HomeShell extends StatelessWidget {
@@ -222,52 +221,46 @@ class BottomTabs extends StatelessWidget {
       );
     }
 
-    return TourTarget(
-      'main-nav',
-      child: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          border: Border(top: BorderSide(color: AppColors.border)),
-        ),
-        padding: EdgeInsets.only(bottom: bottom),
-        child: SizedBox(
-          height: 60,
-          child: Row(
-            children: [
-              tab(phoneTabs[0]),
-              tab(phoneTabs[1]),
-              Expanded(
-                child: Center(
-                  child: TourTarget(
-                    'new-order',
-                    child: Tooltip(
-                      message: 'สร้างออเดอร์',
-                      child: Material(
-                        color: AppColors.primary,
-                        shape: const CircleBorder(side: BorderSide(color: AppColors.surface, width: 4)),
-                        elevation: 4,
-                        shadowColor: AppColors.primary.withValues(alpha: 0.35),
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: () {
-                            HapticFeedback.mediumImpact();
-                            openNewOrder(context);
-                          },
-                          child: const SizedBox(
-                            width: 56,
-                            height: 56,
-                            child: Icon(Icons.add, size: 28, color: Colors.white),
-                          ),
-                        ),
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      padding: EdgeInsets.only(bottom: bottom),
+      child: SizedBox(
+        height: 60,
+        child: Row(
+          children: [
+            tab(phoneTabs[0]),
+            tab(phoneTabs[1]),
+            Expanded(
+              child: Center(
+                child: Tooltip(
+                  message: 'สร้างออเดอร์',
+                  child: Material(
+                    color: AppColors.primary,
+                    shape: const CircleBorder(side: BorderSide(color: AppColors.surface, width: 4)),
+                    elevation: 4,
+                    shadowColor: AppColors.primary.withValues(alpha: 0.35),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () {
+                        HapticFeedback.mediumImpact();
+                        openNewOrder(context);
+                      },
+                      child: const SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: Icon(Icons.add, size: 28, color: Colors.white),
                       ),
                     ),
                   ),
                 ),
               ),
-              tab(phoneTabs[2]),
-              tab(phoneTabs[3]),
-            ],
-          ),
+            ),
+            tab(phoneTabs[2]),
+            tab(phoneTabs[3]),
+          ],
         ),
       ),
     );
@@ -348,28 +341,22 @@ class _Sidebar extends StatelessWidget {
             const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.all(12),
-              child: TourTarget(
-                'new-order',
-                child: SizedBox(
-                  height: 48,
-                  child: FilledButton.icon(
-                    onPressed: () => openNewOrder(context),
-                    icon: const Icon(Icons.add, size: 20),
-                    label: const Text('สร้างออเดอร์'),
-                  ),
+              child: SizedBox(
+                height: 48,
+                child: FilledButton.icon(
+                  onPressed: () => openNewOrder(context),
+                  icon: const Icon(Icons.add, size: 20),
+                  label: const Text('สร้างออเดอร์'),
                 ),
               ),
             ),
             Expanded(
               child: Align(
                 alignment: Alignment.topCenter,
-                child: TourTarget(
-                  'main-nav',
-                  child: ListView(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    children: [for (final d in navItems) item(d)],
-                  ),
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [for (final d in navItems) item(d)],
                 ),
               ),
             ),
@@ -379,13 +366,7 @@ class _Sidebar extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  item(
-                    Dest.menu,
-                    icon: Icons.school_outlined,
-                    label: 'สอนใช้งาน / เมนู',
-                    color: const Color(0xFF6D28D9),
-                    onTap: () => shell.select(Dest.menu),
-                  ),
+                  item(Dest.menu, onTap: () => shell.select(Dest.menu)),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
                     child: Column(

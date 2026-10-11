@@ -7,15 +7,12 @@ import '../../data/catalog_scope.dart';
 import '../../data/customers_repo.dart';
 import '../../data/db.dart';
 import '../../data/orders_repo.dart';
-import '../../data/scope.dart';
 import '../../logic/driver_pay.dart';
 import '../../logic/format.dart';
 import '../../logic/wizard_state.dart';
 import '../../models/models.dart';
 import '../../routes.dart';
 import '../../theme/app_theme.dart';
-import '../../tour/tour_controller.dart';
-import '../../tour/tour_steps.dart';
 import '../../widgets/ui.dart';
 import 'order_created_dialog.dart';
 import 'step_confirm.dart';
@@ -177,8 +174,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
       final order = await createOrder(toDraft(_state, products, driverFeePerTrip), by);
       clearDraft();
       if (!mounted) return;
-      // The guided tour expects to land on the bill straight away
-      if (order.fulfillment == Fulfillment.delivery && demoSession() == null) {
+      if (order.fulfillment == Fulfillment.delivery) {
         await showOrderCreatedDialog(context, order);
         if (!mounted) return;
       }
@@ -240,152 +236,135 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
       StepKey.summary => StepSummary(state: s, patch: _patch, items: items),
       StepKey.confirm => StepConfirm(state: s, items: items, zone: zone, driver: driver, onEdit: _setStep),
     };
-    final bodyTarget = switch (stepKey) {
-      StepKey.source => 'wiz-source',
-      StepKey.products => 'wiz-products',
-      StepKey.fulfillment => 'wiz-fulfillment',
-      StepKey.confirm => 'wiz-confirm',
-      StepKey.customer || StepKey.summary => null,
-    };
 
-    return TourMarker(
-      page: TourPage.wizard,
-      wizardStep: stepKey,
-      child: PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) _back();
-        },
-        child: Scaffold(
-          backgroundColor: AppColors.page,
-          appBar: AppBar(
-            leading: IconButton(tooltip: 'ปิด', icon: const Icon(Icons.close), onPressed: _close),
-            titleSpacing: 0,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.page,
+        appBar: AppBar(
+          leading: IconButton(tooltip: 'ปิด', icon: const Icon(Icons.close), onPressed: _close),
+          titleSpacing: 0,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('สร้างออเดอร์', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              if (s.source != null)
+                Text(
+                  'ออเดอร์${s.source!.label}${s.orderDate.isNotEmpty ? ' · ${formatDateShort(s.orderDate)}' : ''}',
+                  style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w500),
+                ),
+            ],
+          ),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Center(
+                child: Text(
+                  '${_step + 1} / ${steps.length}',
+                  style: const TextStyle(fontSize: 14, color: AppColors.muted, fontFeatures: tabular),
+                ),
+              ),
+            ),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(40),
+            child: _Progress(step: _step, onTap: _goTo),
+          ),
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 672),
+            child: ListView(
+              controller: _scroll,
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
               children: [
-                const Text('สร้างออเดอร์', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                if (s.source != null)
-                  Text(
-                    'ออเดอร์${s.source!.label}${s.orderDate.isNotEmpty ? ' · ${formatDateShort(s.orderDate)}' : ''}',
-                    style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w500),
-                  ),
+                if (catalog.error.isNotEmpty) ...[
+                  ErrorBox(catalog.error, onRetry: catalog.reload),
+                  const SizedBox(height: 16),
+                ],
+                body,
+                if (_submitError.isNotEmpty) ...[const SizedBox(height: 16), ErrorBox(_submitError)],
               ],
             ),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: Center(
-                  child: Text(
-                    '${_step + 1} / ${steps.length}',
-                    style: const TextStyle(fontSize: 14, color: AppColors.muted, fontFeatures: tabular),
-                  ),
-                ),
-              ),
-            ],
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(40),
-              child: TourTarget(
-                'wiz-progress',
-                child: _Progress(step: _step, onTap: _goTo),
-              ),
-            ),
           ),
-          body: Center(
+        ),
+        bottomNavigationBar: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(top: BorderSide(color: AppColors.border)),
+          ),
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.paddingOf(context).bottom),
+          child: Center(
+            heightFactor: 1,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 672),
-              child: ListView(
-                controller: _scroll,
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (catalog.error.isNotEmpty) ...[
-                    ErrorBox(catalog.error, onRetry: catalog.reload),
-                    const SizedBox(height: 16),
-                  ],
-                  if (bodyTarget != null) TourTarget(bodyTarget, child: body) else body,
-                  if (_submitError.isNotEmpty) ...[const SizedBox(height: 16), ErrorBox(_submitError)],
-                ],
-              ),
-            ),
-          ),
-          bottomNavigationBar: Container(
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              border: Border(top: BorderSide(color: AppColors.border)),
-            ),
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.paddingOf(context).bottom),
-            child: Center(
-              heightFactor: 1,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 640),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_stepError.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(_stepError, style: const TextStyle(fontSize: 14, color: AppColors.destructive)),
+                  if (_stepError.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(_stepError, style: const TextStyle(fontSize: 14, color: AppColors.destructive)),
+                    ),
+                  Row(
+                    children: [
+                      IconButton(
+                        tooltip: _step == 0 ? 'ยกเลิก' : 'ย้อนกลับ',
+                        iconSize: 24,
+                        onPressed: _back,
+                        icon: const Icon(Icons.arrow_back),
                       ),
-                    Row(
-                      children: [
-                        IconButton(
-                          tooltip: _step == 0 ? 'ยกเลิก' : 'ย้อนกลับ',
-                          iconSize: 24,
-                          onPressed: _back,
-                          icon: const Icon(Icons.arrow_back),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('ยอดสุทธิ', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                            Text(
+                              formatMoney(totals.total),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
+                                fontFeatures: tabular,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('ยอดสุทธิ', style: TextStyle(fontSize: 12, color: AppColors.muted)),
-                              Text(
-                                formatMoney(totals.total),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w600,
-                                  fontFeatures: tabular,
+                      ),
+                      SizedBox(
+                        height: 52,
+                        child: last
+                            ? FilledButton.icon(
+                                style: FilledButton.styleFrom(backgroundColor: AppColors.success),
+                                onPressed: _submitting
+                                    ? null
+                                    : () => _submit(
+                                          products,
+                                          editedDriverFee(s) ??
+                                              driverTripRate(zone, s.truckSize, s.roadDistanceKm, catalog.settings.delivery)
+                                                  .perTrip,
+                                        ),
+                                icon: const Icon(Icons.check, size: 18),
+                                label: Text(_submitting ? 'กำลังบันทึก…' : 'ยืนยันและออกบิล'),
+                              )
+                            : FilledButton(
+                                onPressed: _next,
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [Text('ถัดไป'), SizedBox(width: 6), Icon(Icons.arrow_forward, size: 18)],
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(
-                          height: 52,
-                          child: last
-                              ? TourTarget(
-                                  'wiz-submit',
-                                  child: FilledButton.icon(
-                                    style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-                                    onPressed: _submitting
-                                        ? null
-                                        : () => _submit(
-                                              products,
-                                              editedDriverFee(s) ??
-                                                  driverTripRate(zone, s.truckSize, s.roadDistanceKm, catalog.settings.delivery)
-                                                      .perTrip,
-                                            ),
-                                    icon: const Icon(Icons.check, size: 18),
-                                    label: Text(_submitting ? 'กำลังบันทึก…' : 'ยืนยันและออกบิล'),
-                                  ),
-                                )
-                              : FilledButton(
-                                  onPressed: _next,
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [Text('ถัดไป'), SizedBox(width: 6), Icon(Icons.arrow_forward, size: 18)],
-                                  ),
-                                ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),

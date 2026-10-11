@@ -47,7 +47,6 @@ export default function StepSource({ sources, source, onSelect, orderDate, onDat
       <section
         className="flex flex-col gap-3 rounded border border-border bg-surface p-4"
         aria-labelledby="order-date-label"
-        data-tour={fixed ? 'wiz-source' : 'wiz-date'}
       >
         <div className="flex items-center gap-2">
           <CalendarDays size={18} className="text-primary" aria-hidden />
@@ -86,7 +85,7 @@ export default function StepSource({ sources, source, onSelect, orderDate, onDat
       </section>
 
       {fixed ? null : (
-        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="ประเภทออเดอร์" data-tour="wiz-source">
+        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="ประเภทออเดอร์">
           {OPTIONS.filter((o) => sources.includes(o.value)).map((o) => {
             const active = source === o.value;
             return (

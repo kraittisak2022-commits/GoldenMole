@@ -170,8 +170,6 @@ export interface Order {
   items: OrderItem[];
   statementId?: string | null;
   driverPayoutId?: string | null;
-  /** Created during the guided tour; carries DEMO- document numbers and is deleted when the tour ends. */
-  demo?: boolean;
 }
 
 export interface DriverPayoutOrder {
@@ -222,7 +220,6 @@ export interface Statement {
   paidAmount: number;
   /** total − paidAmount; 0 once cleared. */
   balance: number;
-  demo?: boolean;
 }
 
 export interface StatementPayment {

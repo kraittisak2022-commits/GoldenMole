@@ -76,13 +76,6 @@ class SourceBadge extends StatelessWidget {
   }
 }
 
-class DemoBadge extends StatelessWidget {
-  const DemoBadge({super.key});
-
-  @override
-  Widget build(BuildContext context) => const AppBadge('ตัวอย่าง', tone: BadgeTone.violet, icon: Icons.school_outlined);
-}
-
 class ErrorBox extends StatelessWidget {
   const ErrorBox(this.message, {super.key, this.onRetry});
   final String message;

@@ -10,7 +10,6 @@ import { getCustomer } from '../../data/customers';
 import { createOrder, draftTotals } from '../../data/orders';
 import { driverTripRate } from '../../lib/driverPay';
 import { formatDateShort, formatMoney } from '../../lib/format';
-import { demoSession } from '../../tour/tourSession';
 import { ORDER_SOURCE_LABEL, type Customer, type Order, type OrderSource } from '../../types';
 import OrderCreatedModal from './OrderCreatedModal';
 import StepConfirm from './StepConfirm';
@@ -176,8 +175,7 @@ export default function NewOrderPage() {
       const driverFee = editedDriverFee(state) ?? driverTripRate(zone, state.truckSize, state.roadDistanceKm, settings.delivery).perTrip;
       const order = await createOrder(toDraft(state, products, driverFee), user?.displayName || user?.username || '');
       clearDraft();
-      // The guided tour expects to land on the bill straight away
-      if (order.fulfillment === 'delivery' && !demoSession()) setCreated(order);
+      if (order.fulfillment === 'delivery') setCreated(order);
       else openBill(order);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'บันทึกออเดอร์ไม่สำเร็จ');
@@ -212,7 +210,7 @@ export default function NewOrderPage() {
             {step + 1} / {STEPS.length}
           </span>
         </div>
-        <ol className="mx-auto flex max-w-2xl gap-1.5 px-4 pb-3 pt-1 short:pb-1" aria-label="ขั้นตอน" data-tour="wiz-progress">
+        <ol className="mx-auto flex max-w-2xl gap-1.5 px-4 pb-3 pt-1 short:pb-1" aria-label="ขั้นตอน">
           {STEPS.map((s, i) => {
             const done = i < step;
             const current = i === step;
@@ -305,11 +303,11 @@ export default function NewOrderPage() {
               <p className="truncate text-xl font-semibold tabular-nums text-ink">{formatMoney(totals.total)}</p>
             </div>
             {step < STEPS.length - 1 ? (
-              <Button size="lg" onClick={next} data-tour="wiz-next">
+              <Button size="lg" onClick={next}>
                 ถัดไป <ArrowRight size={18} aria-hidden />
               </Button>
             ) : (
-              <Button size="lg" variant="success" onClick={submit} disabled={submitting} data-tour="wiz-submit">
+              <Button size="lg" variant="success" onClick={submit} disabled={submitting}>
                 <Check size={18} aria-hidden /> {submitting ? 'กำลังบันทึก…' : 'ยืนยันและออกบิล'}
               </Button>
             )}

@@ -11,7 +11,6 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     Prefs.setForTest(await SharedPreferences.getInstance());
-    endDemoSession();
   });
 
   group('verifyStoredPassword', () {
@@ -146,25 +145,13 @@ void main() {
     });
   });
 
-  group('source and demo scope', () {
+  group('source scope', () {
     test('locks to one source', () {
       setLockedSource(OrderSource.shop);
       expect(canSeeSource(OrderSource.shop), true);
       expect(canSeeSource(OrderSource.pit), false);
       setLockedSource(null);
       expect(canSeeSource(OrderSource.pit), true);
-    });
-
-    test('shows demo rows only for the current session', () {
-      expect(isVisibleDemo(null), true);
-      expect(isVisibleDemo('demo-x'), false);
-      final s = startDemoSession();
-      expect(s, startsWith('demo-'));
-      expect(isVisibleDemo(s), true);
-      expect(isVisibleDemo('demo-other'), false);
-      expect(Prefs.instance.getString(demoSessionKey), s);
-      endDemoSession();
-      expect(demoSession(), isNull);
     });
   });
 }

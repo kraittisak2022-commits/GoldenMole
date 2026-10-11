@@ -726,7 +726,6 @@ class BillTile extends StatelessWidget {
             Text(o.orderNo, style: meta.copyWith(fontWeight: FontWeight.w500, color: AppColors.ink.withValues(alpha: 0.8))),
             Text('· ${formatDateShort(o.orderDate)}', style: meta),
             SourceBadge(o.source),
-            if (o.demo) const DemoBadge(),
             Text(fulfillment, maxLines: 1, overflow: TextOverflow.ellipsis, style: meta),
           ],
         ),

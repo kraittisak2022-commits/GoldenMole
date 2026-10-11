@@ -18,8 +18,6 @@ import '../logic/order_status.dart';
 import '../models/models.dart';
 import '../routes.dart';
 import '../theme/app_theme.dart';
-import '../tour/tour_controller.dart';
-import '../tour/tour_steps.dart';
 import '../widgets/delivery_map.dart';
 import '../widgets/ui.dart';
 import 'new_order/wizard_widgets.dart';
@@ -225,44 +223,33 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget build(BuildContext context) {
     final o = _order;
     final auth = AuthScope.of(context);
-    final canEdit = o != null && (auth.isSuperAdmin || o.demo);
-    return TourMarker(
-      page: TourPage.order,
-      id: o?.id ?? widget.orderId,
-      order: o == null ? null : TourOrder.of(o),
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(o?.orderNo ?? 'ออเดอร์', style: const TextStyle(fontFeatures: tabular)),
-          actions: [
-            if (canEdit)
-              TourTarget(
-                'edit-order',
-                child: IconButton(
-                  tooltip: 'แก้ไขออเดอร์',
-                  icon: const Icon(Icons.edit_outlined),
-                  onPressed: _busy.isEmpty ? () => _edit(o) : null,
+    final canEdit = o != null && auth.isSuperAdmin;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(o?.orderNo ?? 'ออเดอร์', style: const TextStyle(fontFeatures: tabular)),
+        actions: [
+          if (canEdit)
+            IconButton(
+              tooltip: 'แก้ไขออเดอร์',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: _busy.isEmpty ? () => _edit(o) : null,
+            ),
+          if (o != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(44, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
                 ),
+                onPressed: () => openOrderBill(context, o.id),
+                icon: const Icon(Icons.description_outlined, size: 18),
+                label: const Text('ดู / พิมพ์บิล'),
               ),
-            if (o != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: TourTarget(
-                  'bill-link',
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(44, 40),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                    ),
-                    onPressed: () => openOrderBill(context, o.id),
-                    icon: const Icon(Icons.description_outlined, size: 18),
-                    label: const Text('ดู / พิมพ์บิล'),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        body: _body(context, o),
+            ),
+        ],
       ),
+      body: _body(context, o),
     );
   }
 
@@ -332,21 +319,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 label: const Text('ลบออเดอร์'),
               ),
               if (!inOpen && !inCleared)
-                TourTarget(
-                  'cancel-order',
-                  child: o.cancelled
-                      ? OutlinedButton.icon(
-                          onPressed: busy ? null : () => _toggleCancel(o),
-                          icon: const Icon(Icons.restore, size: 18),
-                          label: const Text('กู้คืนออเดอร์'),
-                        )
-                      : TextButton.icon(
-                          style: TextButton.styleFrom(foregroundColor: AppColors.muted),
-                          onPressed: busy ? null : () => _toggleCancel(o),
-                          icon: const Icon(Icons.block, size: 18),
-                          label: const Text('ยกเลิกออเดอร์'),
-                        ),
-                ),
+                o.cancelled
+                    ? OutlinedButton.icon(
+                        onPressed: busy ? null : () => _toggleCancel(o),
+                        icon: const Icon(Icons.restore, size: 18),
+                        label: const Text('กู้คืนออเดอร์'),
+                      )
+                    : TextButton.icon(
+                        style: TextButton.styleFrom(foregroundColor: AppColors.muted),
+                        onPressed: busy ? null : () => _toggleCancel(o),
+                        icon: const Icon(Icons.block, size: 18),
+                        label: const Text('ยกเลิกออเดอร์'),
+                      ),
             ],
           ),
         ],
@@ -358,137 +342,125 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final pay = paymentBadge(o);
     final del = deliveryBadge(o);
     final delivery = o.fulfillment == Fulfillment.delivery;
-    return TourTarget(
-      'status-card',
-      child: AppCard(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SectionTitle('สถานะ'),
-            _StatusRow(
-              label: 'การชำระเงิน',
-              badge: AppBadge(pay.label, tone: pay.tone),
-              children: [
-                _muted('${o.paymentMethod.label}${o.paidAt != null ? ' · รับเงิน ${formatDateTime(o.paidAt)}' : ''}'),
-                if (o.driverCashReported != null && o.paymentStatus != PaymentStatus.paid && !o.cancelled)
-                  Text(
-                    'คนขับแจ้งเก็บเงินสด ${formatMoney(o.driverCashReported)} บาท'
-                    '${o.driverCashReported! < o.total ? ' (ขาด ${formatMoney(o.total - o.driverCashReported!)} บาท)' : ''}'
-                    '${o.driverReportedAt != null ? ' · ${formatDateTime(o.driverReportedAt)}' : ''}'
-                    ' — รับเงินจากคนขับตอนเคลียร์ค่ารถ',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: o.driverCashReported! < o.total ? AppColors.warning : AppColors.success,
-                    ),
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SectionTitle('สถานะ'),
+          _StatusRow(
+            label: 'การชำระเงิน',
+            badge: AppBadge(pay.label, tone: pay.tone),
+            children: [
+              _muted('${o.paymentMethod.label}${o.paidAt != null ? ' · รับเงิน ${formatDateTime(o.paidAt)}' : ''}'),
+              if (o.driverCashReported != null && o.paymentStatus != PaymentStatus.paid && !o.cancelled)
+                Text(
+                  'คนขับแจ้งเก็บเงินสด ${formatMoney(o.driverCashReported)} บาท'
+                  '${o.driverCashReported! < o.total ? ' (ขาด ${formatMoney(o.total - o.driverCashReported!)} บาท)' : ''}'
+                  '${o.driverReportedAt != null ? ' · ${formatDateTime(o.driverReportedAt)}' : ''}'
+                  ' — รับเงินจากคนขับตอนเคลียร์ค่ารถ',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: o.driverCashReported! < o.total ? AppColors.warning : AppColors.success,
                   ),
-                if (!o.cancelled && o.paymentStatus != PaymentStatus.paid)
-                  if (inOpen)
-                    _LinkText(
-                      prefix: 'อยู่ในใบวางบิล ',
-                      link: st!.statementNo,
-                      suffix: ' — เคลียร์ผ่านใบวางบิล',
-                      onTap: () => goTo(context, Dest.statements, {'open': st.id}),
-                    )
-                  else
-                    TourTarget(
-                      'pay-buttons',
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          FilledButton.icon(
-                            style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-                            onPressed: busy ? null : () => _run('pay-cash', () => markOrderPaid(o.id, 'cash', _by)),
-                            icon: const Icon(Icons.check, size: 18),
-                            label: const Text('รับเงินสด'),
-                          ),
-                          OutlinedButton(
-                            onPressed: busy
-                                ? null
-                                : () => _run('pay-transfer', () => markOrderPaid(o.id, 'transfer', _by)),
-                            child: const Text('รับโอนแล้ว'),
-                          ),
-                          if (o.paymentMethod == PaymentMethod.cod)
-                            OutlinedButton(
-                              onPressed: busy ? null : () => _run('pay-cod', () => markOrderPaid(o.id, 'cod', _by)),
-                              child: const Text('เก็บปลายทางแล้ว'),
-                            ),
-                        ],
+                ),
+              if (!o.cancelled && o.paymentStatus != PaymentStatus.paid)
+                if (inOpen)
+                  _LinkText(
+                    prefix: 'อยู่ในใบวางบิล ',
+                    link: st!.statementNo,
+                    suffix: ' — เคลียร์ผ่านใบวางบิล',
+                    onTap: () => goTo(context, Dest.statements, {'open': st.id}),
+                  )
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(backgroundColor: AppColors.success),
+                        onPressed: busy ? null : () => _run('pay-cash', () => markOrderPaid(o.id, 'cash', _by)),
+                        icon: const Icon(Icons.check, size: 18),
+                        label: const Text('รับเงินสด'),
                       ),
-                    ),
-                if (o.paymentStatus == PaymentStatus.paid && !inCleared && !o.cancelled)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      style: TextButton.styleFrom(foregroundColor: AppColors.muted, padding: EdgeInsets.zero),
-                      onPressed: busy ? null : () => _undoPay(o),
-                      icon: const Icon(Icons.undo, size: 16),
-                      label: const Text('ยกเลิกการรับเงิน', style: TextStyle(decoration: TextDecoration.underline)),
-                    ),
-                  ),
-              ],
-            ),
-            const Divider(height: 24),
-            if (delivery)
-              _StatusRow(
-                label: 'การจัดส่ง',
-                badge: AppBadge(del.label, tone: del.tone),
-                children: [
-                  if (o.deliveryStatus == DeliveryStatus.delivered)
-                    _muted(
-                      '${o.deliveredAt != null ? 'ส่งถึง ${formatDateTime(o.deliveredAt)} · ' : ''}'
-                      '${_confirmedByDriver(o) ? 'คนขับยืนยันผ่านลิงก์' : 'ร้านกดยืนยันเอง'}',
-                    )
-                  else if (!o.cancelled)
-                    _muted(
-                      o.driverId != null
-                          ? 'รอคนขับกด "ยืนยันส่งสำเร็จ" ในลิงก์ที่ส่งให้ สถานะจะเปลี่ยนเป็น "ส่งแล้ว" เอง'
-                          : 'ยังไม่ได้เลือกคนขับ เลือกคนขับแล้วส่งข้อความพร้อมลิงก์ยืนยันให้คนขับ',
-                    ),
-                  if (!o.cancelled)
-                    TourTarget(
-                      'delivery-steps',
-                      child: Semantics(
-                        label: 'สถานะจัดส่ง',
-                        child: Segmented<DeliveryStatus>(
-                          values: _deliverySteps,
-                          selected: o.deliveryStatus,
-                          labelOf: (s) => s.label,
-                          onChanged: (s) {
-                            if (busy || s == o.deliveryStatus) return;
-                            _run('del-${s.name}', () => setDeliveryStatus(o.id, s, _by));
-                          },
+                      OutlinedButton(
+                        onPressed: busy
+                            ? null
+                            : () => _run('pay-transfer', () => markOrderPaid(o.id, 'transfer', _by)),
+                        child: const Text('รับโอนแล้ว'),
+                      ),
+                      if (o.paymentMethod == PaymentMethod.cod)
+                        OutlinedButton(
+                          onPressed: busy ? null : () => _run('pay-cod', () => markOrderPaid(o.id, 'cod', _by)),
+                          child: const Text('เก็บปลายทางแล้ว'),
                         ),
-                      ),
-                    ),
-                ],
-              )
-            else
-              const _StatusRow(label: 'การรับสินค้า', badge: AppBadge('มารับเอง')),
-            const Divider(height: 24),
+                    ],
+                  ),
+              if (o.paymentStatus == PaymentStatus.paid && !inCleared && !o.cancelled)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    style: TextButton.styleFrom(foregroundColor: AppColors.muted, padding: EdgeInsets.zero),
+                    onPressed: busy ? null : () => _undoPay(o),
+                    icon: const Icon(Icons.undo, size: 16),
+                    label: const Text('ยกเลิกการรับเงิน', style: TextStyle(decoration: TextDecoration.underline)),
+                  ),
+                ),
+            ],
+          ),
+          const Divider(height: 24),
+          if (delivery)
             _StatusRow(
-              label: 'เคลียร์บิล',
-              badge: o.cleared
-                  ? const AppBadge('เคลียร์แล้ว', tone: BadgeTone.success)
-                  : const AppBadge('ยังไม่เคลียร์', tone: BadgeTone.warning),
+              label: 'การจัดส่ง',
+              badge: AppBadge(del.label, tone: del.tone),
               children: [
-                if (o.clearedAt != null) _muted('เคลียร์เมื่อ ${formatDateTime(o.clearedAt)}'),
-                if (st != null)
-                  _LinkText(prefix: 'ใบวางบิล ', link: st.statementNo, onTap: () => openStatementBill(context, st.id))
-                else if (!o.cleared && o.paymentStatus == PaymentStatus.credit && !o.cancelled)
-                  TourTarget(
-                    'to-statement',
-                    child: _LinkText(
-                      link: 'รวมเข้าใบวางบิลรายเดือน',
-                      onTap: () => goTo(context, Dest.statements, {'customer': o.customerId, 'source': o.source.name}),
+                if (o.deliveryStatus == DeliveryStatus.delivered)
+                  _muted(
+                    '${o.deliveredAt != null ? 'ส่งถึง ${formatDateTime(o.deliveredAt)} · ' : ''}'
+                    '${_confirmedByDriver(o) ? 'คนขับยืนยันผ่านลิงก์' : 'ร้านกดยืนยันเอง'}',
+                  )
+                else if (!o.cancelled)
+                  _muted(
+                    o.driverId != null
+                        ? 'รอคนขับกด "ยืนยันส่งสำเร็จ" ในลิงก์ที่ส่งให้ สถานะจะเปลี่ยนเป็น "ส่งแล้ว" เอง'
+                        : 'ยังไม่ได้เลือกคนขับ เลือกคนขับแล้วส่งข้อความพร้อมลิงก์ยืนยันให้คนขับ',
+                  ),
+                if (!o.cancelled)
+                  Semantics(
+                    label: 'สถานะจัดส่ง',
+                    child: Segmented<DeliveryStatus>(
+                      values: _deliverySteps,
+                      selected: o.deliveryStatus,
+                      labelOf: (s) => s.label,
+                      onChanged: (s) {
+                        if (busy || s == o.deliveryStatus) return;
+                        _run('del-${s.name}', () => setDeliveryStatus(o.id, s, _by));
+                      },
                     ),
                   ),
               ],
-            ),
-          ],
-        ),
+            )
+          else
+            const _StatusRow(label: 'การรับสินค้า', badge: AppBadge('มารับเอง')),
+          const Divider(height: 24),
+          _StatusRow(
+            label: 'เคลียร์บิล',
+            badge: o.cleared
+                ? const AppBadge('เคลียร์แล้ว', tone: BadgeTone.success)
+                : const AppBadge('ยังไม่เคลียร์', tone: BadgeTone.warning),
+            children: [
+              if (o.clearedAt != null) _muted('เคลียร์เมื่อ ${formatDateTime(o.clearedAt)}'),
+              if (st != null)
+                _LinkText(prefix: 'ใบวางบิล ', link: st.statementNo, onTap: () => openStatementBill(context, st.id))
+              else if (!o.cleared && o.paymentStatus == PaymentStatus.credit && !o.cancelled)
+                _LinkText(
+                  link: 'รวมเข้าใบวางบิลรายเดือน',
+                  onTap: () => goTo(context, Dest.statements, {'customer': o.customerId, 'source': o.source.name}),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -764,16 +736,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             runSpacing: 8,
             children: [
               if (dirty) FilledButton(onPressed: busy ? null : () => _saveDriver(o), child: const Text('บันทึกคนขับ')),
-              TourTarget(
-                'copy-driver',
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: message));
-                    if (mounted) showSnack(context, 'คัดลอกข้อความส่งคนขับแล้ว');
-                  },
-                  icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('คัดลอกข้อความส่งคนขับ'),
-                ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: message));
+                  if (mounted) showSnack(context, 'คัดลอกข้อความส่งคนขับแล้ว');
+                },
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('คัดลอกข้อความส่งคนขับ'),
               ),
               OutlinedButton.icon(
                 onPressed: () => launchUrl(
@@ -887,7 +856,6 @@ class _Header extends StatelessWidget {
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, fontFeatures: tabular),
             ),
             SourceBadge(o.source, long: true),
-            if (o.demo) const DemoBadge(),
           ],
         ),
         const SizedBox(height: 2),

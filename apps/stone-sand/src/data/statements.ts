@@ -46,7 +46,6 @@ export function mapStatement(row: any): Statement {
     payments,
     paidAmount,
     balance: row.status === 'cleared' ? 0 : Math.max(0, total - paidAmount),
-    demo: !!row.demo_session,
   };
 }
 

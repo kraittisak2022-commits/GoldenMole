@@ -1,4 +1,3 @@
-import { demoFilter } from '../tour/tourSession';
 import type { OrderSource } from '../types';
 
 /**
@@ -24,8 +23,13 @@ export function parseOrderSource(raw: unknown): OrderSource | null {
   return raw === 'shop' || raw === 'pit' ? raw : null;
 }
 
-/** Adds `source = locked` when the account is limited, and hides demo rows of other tour sessions. */
+/** Hides rows made by the retired guided tour; older app versions can still create them. */
+export function hideDemo<Q>(q: Q): Q {
+  return (q as unknown as { is: (column: string, value: null) => Q }).is('demo_session', null);
+}
+
+/** Adds `source = locked` when the account is limited, and hides guided-tour demo rows. */
 export function scoped<Q>(q: Q): Q {
   const limited = locked ? (q as unknown as { eq: (column: string, value: string) => Q }).eq('source', locked) : q;
-  return demoFilter(limited);
+  return hideDemo(limited);
 }

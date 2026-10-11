@@ -4,7 +4,6 @@ import { Check, ChevronDown, FileText, Trash2, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { useVisibleSources } from '../auth/useVisibleSources';
 import PayMethodPicker, { type PayMethod } from '../components/PayMethodPicker';
-import DemoBadge from '../components/DemoBadge';
 import SourceBadge from '../components/SourceBadge';
 import SourceToggle from '../components/SourceToggle';
 import Badge from '../components/ui/Badge';
@@ -224,7 +223,6 @@ export default function StatementsPage() {
                   <li
                     key={s.id}
                     className={['flex flex-wrap items-center gap-3 px-4 py-3', highlight === s.id ? 'bg-warning-soft' : ''].join(' ')}
-                    data-tour={s.demo ? 'st-demo-row' : undefined}
                   >
                     <button
                       type="button"
@@ -242,7 +240,6 @@ export default function StatementsPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-medium tabular-nums">{s.statementNo}</p>
                           <SourceBadge source={s.source} />
-                          {s.demo ? <DemoBadge /> : null}
                           {s.status === 'cleared' ? (
                             <Badge tone="success">
                               เคลียร์แล้ว{s.paymentMethod ? ` · ${PAYMENT_METHOD_LABEL[s.paymentMethod]}` : ''}
@@ -281,7 +278,6 @@ export default function StatementsPage() {
                           variant="success"
                           className="flex-1 sm:flex-none"
                           onClick={() => setClearingId(s.id)}
-                          data-tour={s.demo ? 'st-clear' : undefined}
                         >
                           <Check size={16} aria-hidden /> เคลียร์บิล
                         </Button>
@@ -452,7 +448,7 @@ function ReceivePaymentForm({
   };
 
   return (
-    <div className="flex flex-col gap-4" data-tour={s.demo ? 'st-clear-modal' : undefined}>
+    <div className="flex flex-col gap-4">
       <div>
         <p className="text-sm text-muted">
           {s.statementNo} · {s.customer.name}
@@ -637,7 +633,7 @@ function CreateStatementPanel({
   };
 
   return (
-    <Card className="p-4" data-tour={orders.some((o) => o.demo) ? 'st-create' : undefined}>
+    <Card className="p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="font-semibold">สร้างใบวางบิล · {ORDER_SOURCE_SHORT[source]}</h2>
@@ -737,7 +733,6 @@ function CreateStatementPanel({
             size="lg"
             onClick={submit}
             disabled={saving || !chosen.length}
-            data-tour={orders.some((o) => o.demo) ? 'st-create-submit' : undefined}
           >
             <FileText size={18} aria-hidden /> {saving ? 'กำลังสร้าง…' : 'สร้างใบวางบิลและพิมพ์'}
           </Button>

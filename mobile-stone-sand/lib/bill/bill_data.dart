@@ -52,7 +52,6 @@ class BillData {
     required this.cancelled,
     required this.verifyToken,
     this.issuedBy,
-    this.demo = false,
   });
 
   final DocKind kind;
@@ -84,7 +83,6 @@ class BillData {
   final bool cancelled;
   final String verifyToken;
   final String? issuedBy;
-  final bool demo;
 }
 
 BillData billFromOrder(Order o, DocKind kind, {Zone? zone, Driver? driver}) {
@@ -177,7 +175,6 @@ BillData billFromOrder(Order o, DocKind kind, {Zone? zone, Driver? driver}) {
     cancelled: o.cancelled,
     verifyToken: o.verifyToken,
     issuedBy: o.createdBy,
-    demo: o.demo,
   );
 }
 
@@ -213,7 +210,6 @@ BillData billFromStatement(Statement s, List<Order> orders) {
     cancelled: false,
     verifyToken: s.verifyToken,
     issuedBy: s.createdBy,
-    demo: s.demo,
   );
 }
 

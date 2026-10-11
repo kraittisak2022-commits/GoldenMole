@@ -10,9 +10,6 @@ import '../logic/menu_hints.dart';
 import '../models/models.dart';
 import '../routes.dart';
 import '../theme/app_theme.dart';
-import '../tour/tour_controller.dart';
-import '../tour/tour_menu_card.dart';
-import '../tour/tour_steps.dart';
 import '../widgets/loader.dart';
 import '../widgets/page.dart';
 import '../widgets/ui.dart';
@@ -74,7 +71,6 @@ class _MenuScreenState extends State<MenuScreen> with ReloadOnDataChange {
   Widget build(BuildContext context) {
     final auth = AuthScope.of(context);
     final catalog = CatalogScope.of(context);
-    final tour = TourScope.maybeOf(context);
     final user = auth.user;
     final width = MediaQuery.sizeOf(context).width;
     final columns = width >= 1024 ? 4 : (width >= 600 ? 3 : 2);
@@ -93,82 +89,75 @@ class _MenuScreenState extends State<MenuScreen> with ReloadOnDataChange {
             products: catalog.loading ? null : catalog.products.length,
           ),
         );
-        return TourMarker(
-          page: TourPage.menu,
-          child: PageScroll(
-            onRefresh: () async {
-              await Future.wait([_counts.load(), catalog.reload()]);
-            },
-            children: [
-              const PageHeader(title: 'เมนู', subtitle: 'เลือกส่วนที่ต้องการใช้งาน'),
-              if (tour != null && (tour.state != null || !tour.done)) ...[
-                const TourMenuCard(),
-                const SizedBox(height: 24),
+        return PageScroll(
+          onRefresh: () async {
+            await Future.wait([_counts.load(), catalog.reload()]);
+          },
+          children: [
+            const PageHeader(title: 'เมนู', subtitle: 'เลือกส่วนที่ต้องการใช้งาน'),
+            GridRows(
+              columns: columns,
+              children: [
+                for (final d in navItems)
+                  _MenuCard(icon: d.icon, label: d.label, hint: hints[d.route] ?? '', onTap: () => goTo(context, d)),
+                _MenuCard(
+                  icon: Icons.add,
+                  label: 'สร้างออเดอร์',
+                  hint: hints['/new'] ?? '',
+                  onTap: () => openNewOrder(context),
+                ),
               ],
-              GridRows(
-                columns: columns,
+            ),
+            const SizedBox(height: 24),
+            AppCard(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (final d in navItems)
-                    _MenuCard(icon: d.icon, label: d.label, hint: hints[d.route] ?? '', onTap: () => goTo(context, d)),
-                  _MenuCard(
-                    icon: Icons.add,
-                    label: 'สร้างออเดอร์',
-                    hint: hints['/new'] ?? '',
-                    onTap: () => openNewOrder(context),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              AppCard(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  user?.displayName ?? '',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
-                                ),
-                                Text(user?.role ?? '', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-                              ],
-                            ),
-                          ),
-                          if (auth.lockedSource != null) SourceBadge(auth.lockedSource!, long: true),
-                        ],
-                      ),
-                    ),
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(kRadius),
-                        onTap: () => signOutWithConfirm(context),
-                        child: const SizedBox(
-                          height: 48,
-                          child: Row(
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              SizedBox(width: 12),
-                              Icon(Icons.logout, size: 20, color: AppColors.destructive),
-                              SizedBox(width: 12),
-                              Text('ออกจากระบบ', style: TextStyle(fontSize: 14, color: AppColors.destructive)),
+                              Text(
+                                user?.displayName ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+                              ),
+                              Text(user?.role ?? '', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
                             ],
                           ),
                         ),
+                        if (auth.lockedSource != null) SourceBadge(auth.lockedSource!, long: true),
+                      ],
+                    ),
+                  ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(kRadius),
+                      onTap: () => signOutWithConfirm(context),
+                      child: const SizedBox(
+                        height: 48,
+                        child: Row(
+                          children: [
+                            SizedBox(width: 12),
+                            Icon(Icons.logout, size: 20, color: AppColors.destructive),
+                            SizedBox(width: 12),
+                            Text('ออกจากระบบ', style: TextStyle(fontSize: 14, color: AppColors.destructive)),
+                          ],
+                        ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         );
       },
     );

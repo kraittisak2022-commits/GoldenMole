@@ -310,17 +310,6 @@ class BillDocument extends StatelessWidget {
                   titleSize: 64,
                 ),
               ),
-            if (b.demo)
-              const Positioned.fill(
-                child: _Overlay(
-                  color: Color(0xFF8B5CF6),
-                  opacity: 0.45,
-                  border: 5,
-                  title: 'ตัวอย่าง',
-                  titleSize: 40,
-                  subtitle: 'ไม่ใช่เอกสารจริง · สาธิตการใช้งาน',
-                ),
-              ),
           ],
         ),
       ),
@@ -1012,14 +1001,12 @@ class _Overlay extends StatelessWidget {
     required this.border,
     required this.title,
     required this.titleSize,
-    this.subtitle,
   });
   final Color color;
   final double opacity;
   final double border;
   final String title;
   final double titleSize;
-  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -1035,13 +1022,9 @@ class _Overlay extends StatelessWidget {
                 border: Border.all(color: color, width: border),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(title, style: TextStyle(fontSize: titleSize, fontWeight: FontWeight.w800, color: color, height: 1.2)),
-                  if (subtitle != null)
-                    Text(subtitle!, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
-                ],
+              child: Text(
+                title,
+                style: TextStyle(fontSize: titleSize, fontWeight: FontWeight.w800, color: color, height: 1.2),
               ),
             ),
           ),
