@@ -79,6 +79,14 @@ describe('suggestedDriverPay', () => {
   it('reports the tambon rate as the source when it is set', () => {
     expect(driverPayBreakdown(make({ truckSize: 5 }), zone, delivery).source).toBe('zone');
   });
+
+  it('pays the wage the admin typed over the tambon rate, 0 included', () => {
+    expect(driverPayBreakdown(make({ trips: 2, driverWage: 900, driverWageManual: true }), zone, delivery)).toMatchObject({
+      amount: 900,
+      source: 'manual',
+    });
+    expect(suggestedDriverPay(make({ trips: 2, driverWage: 0, driverWageManual: true }), zone, delivery)).toBe(0);
+  });
 });
 
 describe('settleWithDriver', () => {

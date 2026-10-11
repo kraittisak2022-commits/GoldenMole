@@ -448,6 +448,7 @@ class Order {
     this.cleared = false,
     this.clearedAt,
     this.driverWage = 0,
+    this.driverWageManual = false,
     this.note = '',
     this.cancelled = false,
     this.verifyToken = '',
@@ -506,6 +507,9 @@ class Order {
   final bool cleared;
   final String? clearedAt;
   final double driverWage;
+
+  /// The admin typed [driverWage] (0 included), so it wins over the tambon rate.
+  final bool driverWageManual;
   final String note;
   final bool cancelled;
   final String verifyToken;
@@ -570,6 +574,7 @@ class Order {
       cleared: r['cleared'] == true,
       clearedAt: r['cleared_at'] as String?,
       driverWage: _num(r['driver_wage']),
+      driverWageManual: r['driver_wage_manual'] == true,
       note: _str(r['note']),
       cancelled: r['cancelled'] == true,
       verifyToken: _str(r['verify_token']),
@@ -618,6 +623,7 @@ class Order {
     DeliveryStatus? deliveryStatus,
     bool? cleared,
     double? driverWage,
+    bool? driverWageManual,
     String? note,
     bool? cancelled,
     List<OrderItem>? items,
@@ -661,6 +667,7 @@ class Order {
         cleared: cleared ?? this.cleared,
         clearedAt: clearedAt,
         driverWage: driverWage ?? this.driverWage,
+        driverWageManual: driverWageManual ?? this.driverWageManual,
         note: note ?? this.note,
         cancelled: cancelled ?? this.cancelled,
         verifyToken: verifyToken,

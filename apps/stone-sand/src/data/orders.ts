@@ -80,6 +80,7 @@ export function mapOrder(row: any): Order {
     cleared: !!row.cleared,
     clearedAt: row.cleared_at,
     driverWage: num(row.driver_wage),
+    driverWageManual: row.driver_wage_manual === true,
     note: row.note || '',
     cancelled: !!row.cancelled,
     verifyToken: row.verify_token,
@@ -189,6 +190,7 @@ export interface OrderDraft {
   paymentMethod: PaymentMethod;
   paidNow: boolean;
   driverWage: number;
+  driverWageManual: boolean;
   note: string;
 }
 
@@ -243,6 +245,7 @@ export async function createOrder(d: OrderDraft, by: string): Promise<Order> {
     payment_status: paymentStatus,
     delivery_status: (delivery ? 'dispatched' : 'pickup') as DeliveryStatus,
     driver_wage: delivery ? d.driverWage : 0,
+    driver_wage_manual: delivery && d.driverWageManual,
     note: d.note.trim(),
     demo_session: demoSession(),
   };
@@ -340,7 +343,7 @@ export async function deleteOrder(id: string): Promise<void> {
 
 export async function updateOrderFields(
   id: string,
-  patch: Partial<{ driverId: string | null; driverWage: number; note: string; cancelled: boolean }>,
+  patch: Partial<{ driverId: string | null; driverWage: number; driverWageManual: boolean; note: string; cancelled: boolean }>,
   by: string,
   current: Order,
 ): Promise<Order> {
@@ -354,6 +357,7 @@ export async function updateOrderFields(
     row.driver_wage = patch.driverWage;
     events.push(`wage:${patch.driverWage}`);
   }
+  if (patch.driverWageManual !== undefined) row.driver_wage_manual = patch.driverWageManual;
   if (patch.note !== undefined) row.note = patch.note;
   if (patch.cancelled !== undefined) {
     row.cancelled = patch.cancelled;

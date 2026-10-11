@@ -12,7 +12,7 @@ import '../../theme/app_theme.dart';
 Future<void> showOrderCreatedDialog(BuildContext context, Order order) {
   final catalog = CatalogScope.read(context);
   final zone = catalog.zoneById(order.zoneId);
-  final pay = order.driverWage > 0
+  final pay = order.driverWageManual || order.driverWage > 0
       ? order.driverWage
       : driverTripRate(zone, order.truckSize, order.roadDistanceKm, catalog.settings.delivery).perTrip * order.trips;
   final message = driverMessage(order, zone, catalog.driverById(order.driverId), pay);

@@ -12,7 +12,10 @@ export default function OrderCreatedModal({ order, onBill }: { order: Order; onB
   const { zoneById, driverById, settings } = useCatalog();
   const [copied, setCopied] = useState(false);
   const zone = zoneById(order.zoneId);
-  const pay = order.driverWage || driverTripRate(zone, order.truckSize, order.roadDistanceKm, settings.delivery).perTrip * order.trips;
+  const pay =
+    order.driverWageManual || order.driverWage
+      ? order.driverWage
+      : driverTripRate(zone, order.truckSize, order.roadDistanceKm, settings.delivery).perTrip * order.trips;
   const message = driverMessage(order, zone, driverById(order.driverId), pay);
 
   const copy = async () => {

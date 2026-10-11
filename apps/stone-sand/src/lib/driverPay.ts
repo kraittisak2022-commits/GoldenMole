@@ -25,10 +25,16 @@ export function driverTripRate(
   return { base, extra, perTrip: base > 0 ? base + extra : 0 };
 }
 
-type PayOrder = Pick<Order, 'driverWage' | 'trips' | 'truckSize' | 'roadDistanceKm' | 'deliveryTotal' | 'deliveryDiscount'>;
+type PayOrder = Pick<
+  Order,
+  'driverWage' | 'driverWageManual' | 'trips' | 'truckSize' | 'roadDistanceKm' | 'deliveryTotal' | 'deliveryDiscount'
+>;
 
-/** zone = tambon rate for the truck size; stored = wage saved on the order; customerFee = what the customer paid for delivery. */
-export type DriverPaySource = 'zone' | 'stored' | 'customerFee';
+/**
+ * manual = wage the admin typed on the order; zone = tambon rate for the truck size;
+ * stored = wage saved on the order; customerFee = what the customer paid for delivery.
+ */
+export type DriverPaySource = 'manual' | 'zone' | 'stored' | 'customerFee';
 
 export interface DriverPayBreakdown {
   amount: number;
@@ -42,12 +48,14 @@ export function customerDeliveryFee(o: Pick<Order, 'deliveryTotal' | 'deliveryDi
 }
 
 /**
- * Default amount to pay the driver: (tambon rate for the truck size + distance surcharge) × trips.
+ * Default amount to pay the driver: the wage the admin typed on the order (0 included), else
+ * (tambon rate for the truck size + distance surcharge) × trips.
  * While the tambon has no rate for that truck size it uses the wage stored on the order,
  * and failing that the delivery fee the customer paid for the order.
  */
 export function driverPayBreakdown(o: PayOrder, zone: ZoneRates, delivery: DeliverySettings): DriverPayBreakdown {
   const rate = driverTripRate(zone, o.truckSize, o.roadDistanceKm, delivery);
+  if (o.driverWageManual) return { amount: o.driverWage, source: 'manual', rate };
   if (rate.perTrip > 0) return { amount: rate.perTrip * o.trips, source: 'zone', rate };
   if (o.driverWage > 0) return { amount: o.driverWage, source: 'stored', rate };
   return { amount: customerDeliveryFee(o), source: 'customerFee', rate };

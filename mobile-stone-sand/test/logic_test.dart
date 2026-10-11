@@ -310,6 +310,13 @@ void main() {
       expect([c.amount, c.source], [1000, DriverPaySource.customerFee]);
     });
 
+    test('pays the wage the admin typed over the tambon rate, 0 included', () {
+      final o = make(zoneId: 'wang-nuea', truckSize: 5, trips: 2, driverWage: 0).copyWith(driverWageManual: true);
+      final b = driverPayBreakdown(o, wangNuea, delivery);
+      expect([b.amount, b.source], [0, DriverPaySource.manual]);
+      expect(suggestedDriverPay(o.copyWith(driverWage: 900), wangNuea, delivery), 900);
+    });
+
     test('settles the driver pay against the COD cash he holds', () {
       expect(settleWithDriver(700, 3000), (handover: 2300.0, topUp: 0.0));
       expect(settleWithDriver(1400, 500), (handover: 0.0, topUp: 900.0));

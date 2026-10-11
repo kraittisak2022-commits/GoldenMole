@@ -154,6 +154,8 @@ export interface Order {
   cleared: boolean;
   clearedAt: string | null;
   driverWage: number;
+  /** The admin typed [driverWage] (0 included), so it wins over the tambon rate. */
+  driverWageManual?: boolean;
   note: string;
   cancelled: boolean;
   verifyToken: string;

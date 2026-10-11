@@ -53,6 +53,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   String _driverId = '';
   double _wage = 0;
+  bool _wageManual = false;
   final _note = TextEditingController();
 
   @override
@@ -95,6 +96,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         prev.id != o.id ||
         prev.driverId != o.driverId ||
         prev.driverWage != o.driverWage ||
+        prev.driverWageManual != o.driverWageManual ||
         prev.note != o.note;
     final statementChanged = prev?.statementId != o.statementId || prev?.total != o.total;
     setState(() {
@@ -102,6 +104,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       if (sync) {
         _driverId = o.driverId ?? '';
         _wage = o.driverWage;
+        _wageManual = o.driverWageManual;
         _note.text = o.note;
       }
     });
@@ -185,19 +188,23 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final perTrip = driverTripRate(catalog.zoneById(o.zoneId), o.truckSize, o.roadDistanceKm, catalog.settings.delivery).perTrip;
     setState(() {
       _driverId = id;
-      if (id.isNotEmpty && perTrip > 0) _wage = perTrip * o.trips;
+      if (id.isNotEmpty && perTrip > 0) {
+        _wage = perTrip * o.trips;
+        _wageManual = false;
+      }
     });
   }
 
   Future<void> _saveDriver(Order o) {
     final next = _driverId.isEmpty ? null : _driverId;
     final driverChanged = next != o.driverId;
-    final wageChanged = _wage != o.driverWage;
+    final wage = _wage != o.driverWage ? _wage : null;
+    final manual = _wageManual != o.driverWageManual ? _wageManual : null;
     return _run(
       'driver',
       () => driverChanged
-          ? updateOrderFields(o.id, _by, o, driverId: next, driverWage: wageChanged ? _wage : null)
-          : updateOrderFields(o.id, _by, o, driverWage: wageChanged ? _wage : null),
+          ? updateOrderFields(o.id, _by, o, driverId: next, driverWage: wage, driverWageManual: manual)
+          : updateOrderFields(o.id, _by, o, driverWage: wage, driverWageManual: manual),
     );
   }
 
@@ -597,7 +604,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final driver = catalog.driverById(o.driverId);
     final wagePaid = o.driverPayoutId != null;
     final locked = o.cancelled || wagePaid;
-    final dirty = (_driverId.isEmpty ? null : _driverId) != o.driverId || _wage != o.driverWage;
+    final dirty = (_driverId.isEmpty ? null : _driverId) != o.driverId ||
+        _wage != o.driverWage ||
+        _wageManual != o.driverWageManual;
     final message = driverMessage(o, zone, catalog.driverById(_driverId) ?? driver, _wage);
     final drivers = catalog.drivers.where((d) => d.active || d.id == o.driverId).toList();
     final hasPin = o.pinLat != null && o.pinLng != null;
@@ -635,7 +644,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       decimal: false,
       enabled: !locked,
       semanticLabel: 'ค่าจ้างคนขับ (บาท)',
-      onChanged: (v) => setState(() => _wage = math.max(0, v)),
+      onChanged: (v) => setState(() {
+        _wage = math.max(0, v);
+        _wageManual = true;
+      }),
     );
 
     return AppCard(

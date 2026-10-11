@@ -206,6 +206,7 @@ export function toDraft(s: WizardState, products: Product[], driverFeePerTrip: n
     paymentMethod: s.paymentMethod,
     paidNow: s.paymentMethod === 'credit' ? false : s.paidNow,
     driverWage: delivery && s.driverId ? driverFeePerTrip * s.trips : 0,
+    driverWageManual: delivery && !!s.driverId && editedDriverFee(s) != null,
     note: s.note,
   };
 }

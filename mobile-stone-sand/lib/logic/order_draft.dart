@@ -25,6 +25,7 @@ class OrderDraft {
     required this.paymentMethod,
     required this.paidNow,
     required this.driverWage,
+    this.driverWageManual = false,
     required this.note,
   });
 
@@ -52,6 +53,9 @@ class OrderDraft {
   final PaymentMethod paymentMethod;
   final bool paidNow;
   final double driverWage;
+
+  /// [driverWage] was typed by the admin (0 included) rather than taken from the tambon rate.
+  final bool driverWageManual;
   final String note;
 }
 

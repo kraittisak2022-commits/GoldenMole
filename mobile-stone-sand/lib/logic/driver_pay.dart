@@ -27,8 +27,9 @@ DriverTripRate driverTripRate(Zone? zone, int? truckSize, double? roadDistanceKm
   return DriverTripRate(base: base, extra: extra, perTrip: base > 0 ? base + extra : 0);
 }
 
-/// zone = tambon rate for the truck size; stored = wage saved on the order; customerFee = what the customer paid for delivery.
-enum DriverPaySource { zone, stored, customerFee }
+/// manual = wage the admin typed on the order; zone = tambon rate for the truck size;
+/// stored = wage saved on the order; customerFee = what the customer paid for delivery.
+enum DriverPaySource { manual, zone, stored, customerFee }
 
 class DriverPayBreakdown {
   const DriverPayBreakdown({required this.amount, required this.source, required this.rate});
@@ -40,11 +41,13 @@ class DriverPayBreakdown {
 /// Delivery charged to the customer on the order, after its delivery discount.
 double customerDeliveryFee(Order o) => math.max(0, o.deliveryTotal - o.deliveryDiscount);
 
-/// Default amount to pay the driver: (tambon rate for the truck size + distance surcharge) × trips.
+/// Default amount to pay the driver: the wage the admin typed on the order (0 included) if any,
+/// else (tambon rate for the truck size + distance surcharge) × trips.
 /// While the tambon has no rate for that truck size it uses the wage stored on the order,
 /// and failing that the delivery fee the customer paid for the order.
 DriverPayBreakdown driverPayBreakdown(Order o, Zone? zone, DeliverySettings delivery) {
   final rate = driverTripRate(zone, o.truckSize, o.roadDistanceKm, delivery);
+  if (o.driverWageManual) return DriverPayBreakdown(amount: o.driverWage, source: DriverPaySource.manual, rate: rate);
   if (rate.perTrip > 0) return DriverPayBreakdown(amount: rate.perTrip * o.trips, source: DriverPaySource.zone, rate: rate);
   if (o.driverWage > 0) return DriverPayBreakdown(amount: o.driverWage, source: DriverPaySource.stored, rate: rate);
   return DriverPayBreakdown(amount: customerDeliveryFee(o), source: DriverPaySource.customerFee, rate: rate);

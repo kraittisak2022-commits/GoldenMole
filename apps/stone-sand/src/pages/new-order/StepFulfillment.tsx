@@ -574,7 +574,7 @@ function DriverPayCard({
     if (edited == null) onEdit(rate.perTrip);
     setEditing(true);
   };
-  if (!pay && !editing) {
+  if (edited == null && !rate.perTrip && !editing) {
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded bg-warning-soft px-3 py-2.5 text-sm text-warning">
         <span className="flex min-w-0 flex-1 items-start gap-2">
@@ -618,10 +618,7 @@ function DriverPayCard({
                 value={pay}
                 placeholder="0"
                 onValueChange={(v) => onEdit(v)}
-                onBlur={() => {
-                  if (!edited) onEdit(null);
-                  setEditing(false);
-                }}
+                onBlur={() => setEditing(false)}
                 className="h-11 w-32 text-xl font-semibold tabular-nums"
               />
               <span className="text-sm font-medium text-muted">บาท/เที่ยว</span>

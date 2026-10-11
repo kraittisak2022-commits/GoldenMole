@@ -527,7 +527,9 @@ function PayoutPanel({
                       >
                         {b.source === 'zone' && zone
                           ? `ค่ารถ ต.${zone.name} ${truckLabel} ${formatNumber(b.rate.base)}${b.rate.extra ? ` + ตามระยะ ${formatNumber(b.rate.extra)}` : ''} × ${o.trips} เที่ยว`
-                          : b.source === 'stored'
+                          : b.source === 'manual'
+                            ? `ค่ารถที่แอดมินปรับเอง${b.rate.perTrip ? ` (ระบบคำนวณ ${formatNumber(b.rate.perTrip * o.trips)})` : ''}`
+                            : b.source === 'stored'
                             ? 'ค่ารถตามที่บันทึกไว้ในออเดอร์'
                             : `${zone ? `ต.${zone.name} ยังไม่ได้ตั้งค่ารถ (${truckLabel})` : 'ไม่มีตำบล'} · ใช้ค่าส่งในบิลแทน`}
                       </span>

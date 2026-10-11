@@ -110,6 +110,35 @@ void main() {
     expect(find.text('รวม 2 เที่ยว 1,000 บาท'), findsOneWidget);
   });
 
+  testWidgets('the admin can set the pay to 0 baht', (tester) async {
+    double? edited;
+    await _pump(
+      tester,
+      StatefulBuilder(
+        builder: (context, setState) => DriverPayCard(
+          zone: _zone,
+          truckSize: 5,
+          trips: 2,
+          roadDistanceKm: 7.4,
+          delivery: _delivery,
+          otherSizeFits: true,
+          edited: edited,
+          onEdit: (v) => setState(() => edited = v),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('driver-fee-edit')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const ValueKey('driver-fee-field')), '0');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(edited, 0);
+    expect(find.text('ปรับเอง'), findsOneWidget);
+    expect(find.text('รวม 2 เที่ยว 0 บาท'), findsOneWidget);
+    expect(find.textContaining('ยังไม่ได้ตั้งค่ารถคนขับ'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('pay can be typed in when the tambon has no rate', (tester) async {
     double? edited;
     await _pump(

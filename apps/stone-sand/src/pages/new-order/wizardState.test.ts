@@ -89,6 +89,10 @@ describe('toDraft', () => {
     expect(d.source).toBe('shop');
     expect(d.items.map((i) => i.amount)).toEqual([2000, 1100]);
     expect(d.driverWage).toBe(1000);
+    expect(d.driverWageManual).toBe(false);
+    const free = toDraft({ ...s, driverFeeEdit: { perTrip: 0, key: driverFeeKey(s) } }, products, 0);
+    expect(free.driverWage).toBe(0);
+    expect(free.driverWageManual).toBe(true);
     expect(d.deliveryDiscount).toBe(100);
     expect(d.feePerCubic).toBe(40);
     expect(d.paidNow).toBe(true);

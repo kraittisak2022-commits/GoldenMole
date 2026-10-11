@@ -136,6 +136,7 @@ Future<Order> createOrder(OrderDraft d, String by) async {
     'payment_status': paymentStatus.name,
     'delivery_status': delivery ? DeliveryStatus.dispatched.name : DeliveryStatus.pickup.name,
     'driver_wage': delivery ? d.driverWage : 0,
+    'driver_wage_manual': delivery && d.driverWageManual,
     'note': d.note.trim(),
     'demo_session': demoSession(),
   };
@@ -246,6 +247,7 @@ Future<Order> updateOrderFields(
   Order current, {
   Object? driverId = _keep,
   double? driverWage,
+  bool? driverWageManual,
   String? note,
   bool? cancelled,
 }) async {
@@ -259,6 +261,7 @@ Future<Order> updateOrderFields(
     row['driver_wage'] = driverWage;
     events.add('wage:${_plain(driverWage)}');
   }
+  if (driverWageManual != null) row['driver_wage_manual'] = driverWageManual;
   if (note != null) row['note'] = note;
   if (cancelled != null) {
     row['cancelled'] = cancelled;

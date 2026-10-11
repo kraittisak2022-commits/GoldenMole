@@ -80,14 +80,16 @@ export default function OrderDetailPage() {
   const [copied, setCopied] = useState(false);
   const [driverId, setDriverId] = useState('');
   const [wage, setWage] = useState(0);
+  const [wageManual, setWageManual] = useState(false);
   const [note, setNote] = useState('');
 
   useEffect(() => {
     if (!order) return;
     setDriverId(order.driverId ?? '');
     setWage(order.driverWage);
+    setWageManual(!!order.driverWageManual);
     setNote(order.note);
-  }, [order?.id, order?.driverId, order?.driverWage, order?.note]);
+  }, [order?.id, order?.driverId, order?.driverWage, order?.driverWageManual, order?.note]);
 
   if (loading && !order) return <Loading />;
   if (error) return <ErrorBox message={error} />;
@@ -142,9 +144,13 @@ export default function OrderDetailPage() {
   const pickDriver = (value: string) => {
     setDriverId(value);
     const { perTrip } = driverTripRate(zone, o.truckSize, o.roadDistanceKm, settings.delivery);
-    if (value && perTrip) setWage(perTrip * o.trips);
+    if (value && perTrip) {
+      setWage(perTrip * o.trips);
+      setWageManual(false);
+    }
   };
-  const driverDirty = (driverId || null) !== o.driverId || wage !== o.driverWage;
+  const wageManualChanged = wageManual !== !!o.driverWageManual;
+  const driverDirty = (driverId || null) !== o.driverId || wage !== o.driverWage || wageManualChanged;
   const saveDriver = () =>
     run('driver', () =>
       updateOrderFields(
@@ -152,6 +158,7 @@ export default function OrderDetailPage() {
         {
           ...((driverId || null) !== o.driverId ? { driverId: driverId || null } : {}),
           ...(wage !== o.driverWage ? { driverWage: wage } : {}),
+          ...(wageManualChanged ? { driverWageManual: wageManual } : {}),
         },
         by,
         o,
@@ -477,7 +484,10 @@ export default function OrderDetailPage() {
                     min={0}
                     value={wage || ''}
                     placeholder="0"
-                    onChange={(e) => setWage(Math.max(0, Number(e.target.value) || 0))}
+                    onChange={(e) => {
+                      setWage(Math.max(0, Number(e.target.value) || 0));
+                      setWageManual(true);
+                    }}
                     disabled={o.cancelled || wagePaid}
                   />
                 </Field>

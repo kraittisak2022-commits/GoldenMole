@@ -771,6 +771,8 @@ class _PayoutOrderInfo extends StatelessWidget {
     final truckLabel = o.truckSize == 3 ? 'รถ 3 คิว' : 'รถ 5 คิว';
     const small = TextStyle(fontSize: 12, color: AppColors.muted);
     final source = switch (b.source) {
+      DriverPaySource.manual => 'ค่ารถที่แอดมินปรับเอง'
+          '${b.rate.perTrip > 0 ? ' (ระบบคำนวณ ${formatNumber(b.rate.perTrip * o.trips)})' : ''}',
       DriverPaySource.zone when z != null =>
         'ค่ารถ ต.${z.name} $truckLabel ${formatNumber(b.rate.base)}'
             '${b.rate.extra > 0 ? ' + ตามระยะ ${formatNumber(b.rate.extra)}' : ''} × ${o.trips} เที่ยว',

@@ -41,6 +41,7 @@ export function demoCreditDraft(customer: Customer, product: Product, source: Or
     paymentMethod: 'credit',
     paidNow: false,
     driverWage: 0,
+    driverWageManual: false,
     note: 'ออเดอร์สาธิต',
   };
 }

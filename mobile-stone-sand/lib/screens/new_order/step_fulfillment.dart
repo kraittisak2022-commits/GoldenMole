@@ -882,7 +882,6 @@ class _DriverPayCardState extends State<DriverPayCard> {
 
   void _finishEdit() {
     if (!_editing) return;
-    if (_typed <= 0) widget.onEdit?.call(null);
     setState(() => _editing = false);
   }
 
@@ -921,7 +920,7 @@ class _DriverPayCardState extends State<DriverPayCard> {
     }
     final rate = driverTripRate(z, truckSize, widget.roadDistanceKm, delivery);
     final pay = edited ?? rate.perTrip;
-    if (pay <= 0 && !_editing) {
+    if (edited == null && rate.perTrip <= 0 && !_editing) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(color: AppColors.warningSoft, borderRadius: BorderRadius.circular(kRadius)),

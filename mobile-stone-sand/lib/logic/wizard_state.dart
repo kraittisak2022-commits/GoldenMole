@@ -377,6 +377,7 @@ OrderDraft toDraft(WizardState s, List<Product> products, double driverWagePerTr
     paymentMethod: s.paymentMethod!,
     paidNow: s.paymentMethod == PaymentMethod.credit ? false : s.paidNow,
     driverWage: delivery && s.driverId != null ? driverWagePerTrip * s.trips : 0,
+    driverWageManual: delivery && s.driverId != null && editedDriverFee(s) != null,
     note: s.note,
   );
 }
