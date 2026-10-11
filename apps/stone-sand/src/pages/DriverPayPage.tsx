@@ -4,6 +4,7 @@ import { ArrowDownLeft, ArrowUpRight, Check, Trash2, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import PayMethodPicker, { type PayMethod } from '../components/PayMethodPicker';
 import SourceBadge from '../components/SourceBadge';
+import SourceToggle from '../components/SourceToggle';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -24,26 +25,32 @@ import {
   summarizeDriverDues,
 } from '../lib/driverPay';
 import { formatDateShort, formatDateTime, formatMoney, formatNumber, toIsoDate } from '../lib/format';
-import { PAYMENT_METHOD_LABEL, type DriverPayout, type Order } from '../types';
+import { ORDER_SOURCES, PAYMENT_METHOD_LABEL, type DriverPayout, type Order } from '../types';
 
 const PAY_HINTS: Record<PayMethod, string> = { cash: 'จ่ายเงินสดให้คนขับ', transfer: 'โอนเข้าบัญชีคนขับ' };
 const DRIVER_PAYS_HINTS: Record<PayMethod, string> = { cash: 'คนขับส่งเงินสด', transfer: 'คนขับโอนเข้าบัญชีร้าน' };
 
 export default function DriverPayPage() {
-  const { user, isSuperAdmin } = useAuth();
+  const { user, isSuperAdmin, lockedSource } = useAuth();
   const by = user?.displayName || user?.username || '';
   const { driverById, zoneById, settings } = useCatalog();
   const [params, setParams] = useSearchParams();
   const selectedDriver = params.get('driver');
+  const viewParam = params.get('view');
+  const view = lockedSource ? null : (ORDER_SOURCES.find((s) => s === viewParam) ?? null);
 
   const unpaid = useAsync(() => listDriverUnpaidOrders(), [], 'driver-unpaid');
   const payouts = useAsync(() => listDriverPayouts(), [], 'driver-payouts');
   const [actionError, setActionError] = useState('');
   const [doneMessage, setDoneMessage] = useState('');
 
+  const unpaidOrders = useMemo(
+    () => (unpaid.data ?? []).filter((o) => !view || o.source === view),
+    [unpaid.data, view],
+  );
   const dues = useMemo(
-    () => summarizeDriverDues(unpaid.data ?? [], zoneById, settings.delivery),
-    [unpaid.data, zoneById, settings.delivery],
+    () => summarizeDriverDues(unpaidOrders, zoneById, settings.delivery),
+    [unpaidOrders, zoneById, settings.delivery],
   );
   const totals = useMemo(() => {
     let pay = 0;
@@ -59,15 +66,18 @@ export default function DriverPayPage() {
     }
     return { pay, cash, handover, topUp };
   }, [dues]);
-  const visiblePayouts = (payouts.data ?? []).filter((p) => !selectedDriver || p.driverId === selectedDriver);
+  const visiblePayouts = (payouts.data ?? []).filter(
+    (p) => (!selectedDriver || p.driverId === selectedDriver) && (!view || p.orders.some((o) => o.source === view)),
+  );
   const driverName = (id: string) => driverById(id)?.name ?? 'คนขับ';
 
-  const selectDriver = (id: string | null) => {
+  const setParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
-    if (id) next.set('driver', id);
-    else next.delete('driver');
+    if (value) next.set(key, value);
+    else next.delete(key);
     setParams(next, { replace: true });
   };
+  const selectDriver = (id: string | null) => setParam('driver', id);
 
   const reloadAll = async () => {
     await Promise.all([unpaid.reload(), payouts.reload()]);
@@ -100,6 +110,8 @@ export default function DriverPayPage() {
           <Check size={18} aria-hidden /> {doneMessage}
         </div>
       ) : null}
+
+      {lockedSource ? null : <SourceToggle className="mb-4" value={view} onChange={(s) => setParam('view', s)} />}
 
       {!loadingDues && dues.length ? (
         <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -175,10 +187,10 @@ export default function DriverPayPage() {
             <Loading />
           ) : selectedDriver ? (
             <PayoutPanel
-              key={`${selectedDriver}-${unpaid.data?.length}`}
+              key={`${selectedDriver}-${view}-${unpaid.data?.length}`}
               driverId={selectedDriver}
               driverName={driverName(selectedDriver)}
-              orders={(unpaid.data ?? []).filter((o) => o.driverId === selectedDriver)}
+              orders={unpaidOrders.filter((o) => o.driverId === selectedDriver)}
               by={by}
               onClose={() => selectDriver(null)}
               onPaid={async (message) => {

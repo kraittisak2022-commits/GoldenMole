@@ -177,6 +177,7 @@ export interface DriverPayoutOrder {
   orderNo: string;
   orderDate: string;
   customerName: string;
+  source: OrderSource | null;
   trips: number;
   amount: number;
 }

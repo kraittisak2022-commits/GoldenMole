@@ -4,6 +4,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import OrderRow from '../components/OrderRow';
 import SourceBadge from '../components/SourceBadge';
+import SourceToggle from '../components/SourceToggle';
 import CalendarPicker from '../components/ui/CalendarPicker';
 import Card from '../components/ui/Card';
 import Skeleton from '../components/ui/Skeleton';
@@ -12,7 +13,7 @@ import { listOrders, listUnclearedOrders } from '../data/orders';
 import { useAsync } from '../hooks/useAsync';
 import { TH_MONTHS, formatDateLongTh, formatMoney, formatNumber, monthRange, shiftIsoDate, toIsoDate } from '../lib/format';
 import { periodStats, type PeriodStats } from '../lib/stats';
-import { ORDER_SOURCES } from '../types';
+import { ORDER_SOURCES, type Order, type OrderSource } from '../types';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,18 +25,31 @@ export default function DashboardPage() {
   const isToday = date === today;
   const { from, to } = monthRange(date);
 
-  const setDate = (next: string) => {
+  const { lockedSource } = useAuth();
+  const sourceParam = params.get('source');
+  const source = lockedSource ? null : (ORDER_SOURCES.find((s) => s === sourceParam) ?? null);
+  const ofSource = useCallback((orders: Order[]) => (source ? orders.filter((o) => o.source === source) : orders), [source]);
+  const withSource = (path: string) => (source ? `${path}${path.includes('?') ? '&' : '?'}source=${source}` : path);
+
+  const setParam = (key: string, value: string | null) => {
     const p = new URLSearchParams(params);
-    if (!next || next === today) p.delete('d');
-    else p.set('d', next);
+    if (value) p.set(key, value);
+    else p.delete(key);
     setParams(p, { replace: true });
   };
+  const setDate = (next: string) => setParam('d', next && next !== today ? next : null);
 
   const month = useAsync(() => listOrders({ from, to, limit: 3000 }), [from, to], 'orders-month');
   const open = useAsync(() => listUnclearedOrders(), [], 'orders-uncleared');
   const waiting = useAsync(() => listOrders({ deliveryStatuses: ['waiting', 'dispatched'], limit: 200 }), [], 'orders-waiting');
 
-  const monthOrders = useMemo(() => month.data ?? [], [month.data]);
+  const sourceCounts = useMemo(() => {
+    const day = (month.data ?? []).filter((o) => o.orderDate === date);
+    const c = { all: day.length } as Record<OrderSource | 'all', number>;
+    for (const s of ORDER_SOURCES) c[s] = day.filter((o) => o.source === s).length;
+    return c;
+  }, [month.data, date]);
+  const monthOrders = useMemo(() => ofSource(month.data ?? []), [ofSource, month.data]);
   const dayOrders = useMemo(() => monthOrders.filter((o) => o.orderDate === date), [monthOrders, date]);
   const dayCounts = useMemo(() => {
     const out: Record<string, number> = {};
@@ -45,8 +59,8 @@ export default function DashboardPage() {
   const day = useMemo(() => periodStats(dayOrders), [dayOrders]);
   const monthStats = useMemo(() => periodStats(monthOrders), [monthOrders]);
 
-  const openOrders = open.data ?? [];
-  const waitingAll = waiting.data ?? [];
+  const openOrders = useMemo(() => ofSource(open.data ?? []), [ofSource, open.data]);
+  const waitingAll = useMemo(() => ofSource(waiting.data ?? []), [ofSource, waiting.data]);
   const unpaidTotal = openOrders.filter((o) => o.paymentStatus === 'unpaid').reduce((s, o) => s + o.total, 0);
   const creditTotal = openOrders.filter((o) => o.paymentStatus === 'credit').reduce((s, o) => s + o.total, 0);
 
@@ -69,6 +83,10 @@ export default function DashboardPage() {
       </div>
 
       <DateBar date={date} today={today} counts={dayCounts} onChange={setDate} />
+
+      {lockedSource ? null : (
+        <SourceToggle className="-mt-3" value={source} onChange={(s) => setParam('source', s)} counts={sourceCounts} />
+      )}
 
       {error ? <ErrorBox message={error} /> : null}
 
@@ -111,24 +129,36 @@ export default function DashboardPage() {
 
         <section>
           <SectionTitle>สรุปวัน</SectionTitle>
-          {monthPending ? <Loading rows={2} /> : <SummaryCard stats={day} />}
+          {monthPending ? <Loading rows={2} /> : <SummaryCard stats={day} bySource={!source} />}
         </section>
       </div>
 
       <section>
-        <SectionTitle action={<Link to="/orders?f=waiting&r=all" className="text-sm text-primary">ดูทั้งหมด</Link>}>
+        <SectionTitle
+          action={
+            <Link to={withSource('/orders?f=waiting&r=all')} className="text-sm text-primary">
+              ดูทั้งหมด
+            </Link>
+          }
+        >
           งานค้าง (ทุกวัน)
         </SectionTitle>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" data-tour="dash-pending">
           <Kpi
-            to="/orders?f=waiting&r=all"
+            to={withSource('/orders?f=waiting&r=all')}
             label="กำลังจัดส่ง"
             value={`${formatNumber(waitingAll.length)} ออเดอร์`}
             warn={waitingAll.length > 0}
             pending={waitingPending}
           />
-          <Kpi to="/orders?f=unpaid&r=all" label="ยังไม่จ่าย" value={formatMoney(unpaidTotal)} warn={unpaidTotal > 0} pending={openPending} />
-          <Kpi to="/statements" label="ค้างเครดิต" value={formatMoney(creditTotal)} pending={openPending} />
+          <Kpi
+            to={withSource('/orders?f=unpaid&r=all')}
+            label="ยังไม่จ่าย"
+            value={formatMoney(unpaidTotal)}
+            warn={unpaidTotal > 0}
+            pending={openPending}
+          />
+          <Kpi to={source ? `/statements?view=${source}` : '/statements'} label="ค้างเครดิต" value={formatMoney(creditTotal)} pending={openPending} />
         </div>
         {waitingAll.length ? (
           <Card className="mt-3 overflow-hidden">
@@ -147,7 +177,7 @@ export default function DashboardPage() {
         <SectionTitle>
           สรุปเดือน{TH_MONTHS[m - 1]} {y + 543}
         </SectionTitle>
-        {monthPending ? <Loading rows={2} /> : <SummaryCard stats={monthStats} />}
+        {monthPending ? <Loading rows={2} /> : <SummaryCard stats={monthStats} bySource={!source} />}
       </section>
     </div>
   );
@@ -227,7 +257,7 @@ function SectionTitle({ children, action }: { children: ReactNode; action?: Reac
   );
 }
 
-function SummaryCard({ stats }: { stats: PeriodStats }) {
+function SummaryCard({ stats, bySource }: { stats: PeriodStats; bySource: boolean }) {
   const { lockedSource } = useAuth();
   return (
     <Card className="p-4">
@@ -244,7 +274,7 @@ function SummaryCard({ stats }: { stats: PeriodStats }) {
         <Row label="ค้างรับ" value={formatMoney(stats.outstanding)} />
         <Row label="ค่าจ้างคนขับ" value={formatMoney(stats.driverWages)} />
       </dl>
-      {lockedSource ? null : (
+      {lockedSource || !bySource ? null : (
         <div className="mt-4 border-t border-border pt-3">
           <p className="mb-2 text-xs font-semibold text-muted">แยกตามประเภทออเดอร์</p>
           <ul className="grid grid-cols-2 gap-2">

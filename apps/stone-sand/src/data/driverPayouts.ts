@@ -21,6 +21,7 @@ function mapPayout(row: any): DriverPayout {
       orderNo: o.order_no,
       orderDate: o.order_date,
       customerName: o.customer_snapshot?.name || '',
+      source: parseOrderSource(o.source),
       trips: Number(o.trips || 0),
       amount: Number(o.driver_wage || 0),
     }));

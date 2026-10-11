@@ -6,6 +6,7 @@ import { useVisibleSources } from '../auth/useVisibleSources';
 import PayMethodPicker, { type PayMethod } from '../components/PayMethodPicker';
 import DemoBadge from '../components/DemoBadge';
 import SourceBadge from '../components/SourceBadge';
+import SourceToggle from '../components/SourceToggle';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -50,6 +51,8 @@ export default function StatementsPage() {
   const [params, setParams] = useSearchParams();
   const selectedCustomer = params.get('customer');
   const sourceParam = params.get('source');
+  const viewParam = params.get('view');
+  const view = lockedSource ? null : (ORDER_SOURCES.find((s) => s === viewParam) ?? null);
   const highlight = params.get('open');
 
   const uncleared = useAsync(() => listUnclearedOrders(), [], 'orders-uncleared');
@@ -73,8 +76,17 @@ export default function StatementsPage() {
     () => (uncleared.data ?? []).filter((o) => o.customerId === selectedCustomer && !o.statementId),
     [uncleared.data, selectedCustomer],
   );
-  const visibleStatements = (statements.data ?? []).filter((s) => statusFilter === 'all' || s.status === statusFilter);
-  const openTotal = (statements.data ?? []).filter((s) => s.status === 'open').reduce((sum, s) => sum + s.balance, 0);
+  const visibleSummary = view ? summary.filter((r) => r.source === view) : summary;
+  const viewStatements = (statements.data ?? []).filter((s) => !view || s.source === view);
+  const visibleStatements = viewStatements.filter((s) => statusFilter === 'all' || s.status === statusFilter);
+  const openTotal = viewStatements.filter((s) => s.status === 'open').reduce((sum, s) => sum + s.balance, 0);
+
+  const setView = (s: OrderSource | null) => {
+    const next = new URLSearchParams(params);
+    if (s) next.set('view', s);
+    else next.delete('view');
+    setParams(next, { replace: true });
+  };
 
   const selectCustomer = (id: string | null, source?: OrderSource) => {
     const next = new URLSearchParams(params);
@@ -113,6 +125,8 @@ export default function StatementsPage() {
         </div>
       ) : null}
 
+      {lockedSource ? null : <SourceToggle className="mb-4" value={view} onChange={setView} />}
+
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <section>
           <h2 className="mb-2 text-sm font-semibold text-muted">ลูกค้าที่ยังไม่เคลียร์บิล</h2>
@@ -121,9 +135,9 @@ export default function StatementsPage() {
             <Loading />
           ) : (
             <Card className="overflow-hidden">
-              {summary.length ? (
+              {visibleSummary.length ? (
                 <ul className="divide-y divide-border">
-                  {summary.map((row) => (
+                  {visibleSummary.map((row) => (
                     <li key={`${row.customerId}:${row.source}`}>
                       <button
                         type="button"

@@ -1,6 +1,6 @@
 import { ORDER_SOURCES, ORDER_SOURCE_SHORT, type OrderSource } from '../types';
 
-/** ทั้งหมด / ร้านวัสดุ / ท่าทราย segmented control with a count on each option. */
+/** ทั้งหมด / ร้านวัสดุ / ท่าทราย segmented control, with a count on each option when [counts] is given. */
 export default function SourceToggle({
   value,
   onChange,
@@ -9,7 +9,7 @@ export default function SourceToggle({
 }: {
   value: OrderSource | null;
   onChange: (source: OrderSource | null) => void;
-  counts: Record<OrderSource | 'all', number>;
+  counts?: Record<OrderSource | 'all', number>;
   className?: string;
 }) {
   return (
@@ -33,7 +33,9 @@ export default function SourceToggle({
             ].join(' ')}
           >
             {s ? ORDER_SOURCE_SHORT[s] : 'ทั้งหมด'}
-            <span className={['tabular-nums text-xs', active ? 'opacity-80' : ''].join(' ')}>{counts[s ?? 'all']}</span>
+            {counts ? (
+              <span className={['tabular-nums text-xs', active ? 'opacity-80' : ''].join(' ')}>{counts[s ?? 'all']}</span>
+            ) : null}
           </button>
         );
       })}
