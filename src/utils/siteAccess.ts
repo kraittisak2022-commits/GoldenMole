@@ -11,19 +11,21 @@ export function parseOrderSourceLimit(raw: unknown): OrderSourceLimit | null {
     return raw === 'shop' || raw === 'pit' ? raw : null;
 }
 
-export type SiteKey = 'main' | 'order' | 'flowaccount';
+export type SiteKey = 'main' | 'order' | 'flowaccount' | 'photo';
 
 export const SITES: { key: SiteKey; label: string; host: string }[] = [
     { key: 'main', label: 'ระบบหลัก', host: 'goldenmole.pro' },
     { key: 'order', label: 'ออเดอร์หิน-ทราย', host: 'order.goldenmole.pro' },
     { key: 'flowaccount', label: 'FlowAccount', host: 'flowaccount.goldenmole.pro' },
+    { key: 'photo', label: 'อัลบั้มรูป', host: 'photo.goldenmole.pro' },
 ];
 
-/** Same rule is copied into apps/stone-sand and apps/flowaccount (src/auth/siteAccess.ts). */
+/** Same rule is copied into apps/stone-sand, apps/flowaccount (src/auth/siteAccess.ts) and apps/photo (shared/siteAccess.ts). */
 const ROLE_DEFAULTS: Record<SiteKey, AdminRole[]> = {
     main: ['SuperAdmin', 'Admin', 'Assistant'],
     order: ['SuperAdmin', 'Admin'],
     flowaccount: ['SuperAdmin'],
+    photo: ['SuperAdmin', 'Admin'],
 };
 
 export interface SiteAccessSubject {

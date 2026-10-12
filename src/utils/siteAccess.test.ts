@@ -17,8 +17,9 @@ describe('site access', () => {
     });
 
     it('lists the sites an account can use, in display order', () => {
-        expect(SITES.map(s => s.key)).toEqual(['main', 'order', 'flowaccount']);
-        expect(effectiveSites({ role: 'Admin' })).toEqual(['main', 'order']);
+        expect(SITES.map(s => s.key)).toEqual(['main', 'order', 'flowaccount', 'photo']);
+        expect(effectiveSites({ role: 'Admin' })).toEqual(['main', 'order', 'photo']);
+        expect(effectiveSites({ role: 'Assistant' })).toEqual(['main']);
         expect(effectiveSites({ role: 'Admin', allowedApps: ['flowaccount', 'main'] })).toEqual(['main', 'flowaccount']);
     });
 });

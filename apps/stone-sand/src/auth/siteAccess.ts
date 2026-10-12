@@ -1,12 +1,13 @@
 import type { AdminRole } from './session';
 
 /** Copy of src/utils/siteAccess.ts in the main app — keep the rule in sync. */
-export type SiteKey = 'main' | 'order' | 'flowaccount';
+export type SiteKey = 'main' | 'order' | 'flowaccount' | 'photo';
 
 const ROLE_DEFAULTS: Record<SiteKey, AdminRole[]> = {
   main: ['SuperAdmin', 'Admin', 'Assistant'],
   order: ['SuperAdmin', 'Admin'],
   flowaccount: ['SuperAdmin'],
+  photo: ['SuperAdmin', 'Admin'],
 };
 
 export function canAccessSite(user: { role: AdminRole; allowed_apps?: string[] | null }, site: SiteKey): boolean {

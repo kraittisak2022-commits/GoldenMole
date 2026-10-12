@@ -1,0 +1,142 @@
+/* Material 3 tones as in Google Photos. RGB channels so Tailwind opacity modifiers (bg-ink/50) work. */
+:root {
+  color-scheme: light;
+  --rgb-page: 255 255 255;
+  --rgb-surface: 255 255 255;
+  --rgb-container: 240 244 249;
+  --rgb-container-high: 233 238 246;
+  --rgb-ink: 31 31 31;
+  --rgb-muted: 68 71 70;
+  --rgb-border: 196 199 197;
+  --rgb-primary: 11 87 208;
+  --rgb-primary-hover: 8 66 160;
+  --rgb-primary-foreground: 255 255 255;
+  --rgb-primary-soft: 211 227 253;
+  --rgb-primary-soft-foreground: 4 30 73;
+  --rgb-success: 20 108 46;
+  --rgb-destructive: 179 38 30;
+  --rgb-destructive-foreground: 255 255 255;
+  --rgb-destructive-soft: 249 222 220;
+  --rgb-ring: 11 87 208;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --rgb-page: 19 19 20;
+    --rgb-surface: 30 31 32;
+    --rgb-container: 40 42 44;
+    --rgb-container-high: 51 53 55;
+    --rgb-ink: 227 227 227;
+    --rgb-muted: 196 199 197;
+    --rgb-border: 68 71 70;
+    --rgb-primary: 168 199 250;
+    --rgb-primary-hover: 211 227 253;
+    --rgb-primary-foreground: 6 46 111;
+    --rgb-primary-soft: 0 74 119;
+    --rgb-primary-soft-foreground: 194 231 255;
+    --rgb-success: 109 213 140;
+    --rgb-destructive: 242 184 181;
+    --rgb-destructive-foreground: 96 20 16;
+    --rgb-destructive-soft: 140 29 24;
+    --rgb-ring: 168 199 250;
+  }
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-page text-ink font-sans antialiased;
+    margin: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #root {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  a,
+  button,
+  input,
+  label {
+    touch-action: manipulation;
+  }
+
+  *:focus-visible {
+    outline: 2px solid rgb(var(--rgb-ring));
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .fade-in {
+    animation: fade-in 0.18s ease-out backwards;
+  }
+
+  .sheet-up {
+    animation: sheet-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+
+  @media (min-width: 640px) {
+    .sheet-up {
+      animation-name: pop-in;
+      animation-duration: 0.18s;
+    }
+  }
+
+  .skeleton {
+    @apply bg-container;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(32px);
+    opacity: 0.6;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    transform: scale(0.97);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
