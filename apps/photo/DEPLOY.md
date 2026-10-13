@@ -42,10 +42,14 @@ Create a new project from `kraittisak2022-commits/GoldenMole`:
 | `SUPABASE_SERVICE_ROLE_KEY` | *Copy the key itself, not this text:* Supabase dashboard, Project Settings, API Keys, the `service_role` (secret) key. It starts with `eyJ` or `sb_secret_`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *Copy from step 2.* The ID ends with `.apps.googleusercontent.com`; the secret starts with `GOCSPX-`. |
 | `PHOTO_SESSION_SECRET` | *Generate one:* output of `openssl rand -base64 48` (or any 40+ random characters, no spaces). |
+| `PHOTO_ALBUM_PIN` | 4 digits that people with an album link must enter, e.g. `8888`. Tell the team separately from the link. |
 | `PUBLIC_ORIGIN` | `https://photo.goldenmole.pro` |
 | `ALLOWED_ORIGINS` (optional) | extra origins allowed to upload, comma-separated, e.g. `https://photo.vercel.app` |
 
 Changing `PHOTO_SESSION_SECRET` signs everyone out; it does not affect share links.
+Changing `PHOTO_ALBUM_PIN` makes every device that opened an album enter the new PIN.
+5 wrong PINs from one address lock PIN entry for 15 minutes; 5 wrong passwords for one username (or 20 from one address)
+lock sign-in for 15 minutes. Attempts are kept in `ph_auth_attempts` (migration `20261013100000_ph_auth_attempts.sql`).
 If a value contains spaces or non-ASCII characters (for example a pasted label with "→"), the API answers
 "ระบบยังตั้งค่าไม่ครบ" and the Vercel logs name the variable. Redeploy after editing env vars.
 
@@ -77,8 +81,9 @@ to Google One if needed. Uploads fail with a Drive error when it is full.
 
 - Create an album, add a few photos and a short video, and check that the folder appears in Drive under the right year and month.
 - Press **คัดลอกชื่อรายงาน + ลิงก์**, paste into a chat: two lines, the title and `https://photo.goldenmole.pro/a/<token>`.
-- Open the link in a private window (not signed in): photos show, download works, **เปิดใน Google Drive** opens the folder.
-- Turn off "ให้คนที่มีลิงก์เพิ่มรูปได้" in the album settings: the public page no longer shows **เพิ่มรูป**.
+- Open the link in a private window (not signed in): it asks for the PIN; a wrong PIN is refused, the right one shows the
+  photos, download works, **เปิดใน Google Drive** opens the folder, and **เพิ่มรูป** uploads into the album.
+- `https://photo.goldenmole.pro/robots.txt` disallows everything and responses carry `X-Robots-Tag: noindex` and a CSP.
 - Delete the test album afterwards (its Drive folder goes to the Drive trash).
 
 ## Local development

@@ -102,4 +102,7 @@ export type ApiErrorCode =
   | 'rate_limited'
   | 'wrong_folder'
   | 'not_configured'
+  | 'pin_required'
+  | 'bad_pin'
+  | 'too_many_attempts'
   | 'server_error';

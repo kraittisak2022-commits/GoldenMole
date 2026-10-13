@@ -7,7 +7,9 @@ import { useAuth } from '../auth/AuthProvider';
 import AlbumView from '../components/AlbumView';
 import AllAlbumsLink from '../components/AllAlbumsLink';
 import Logo from '../components/Logo';
+import PinGate from '../components/PinGate';
 import { EmptyState, ErrorState, Spinner } from '../components/ui/States';
+import { albumAccessHeaders, clearAlbumAccess } from '../lib/albumAccess';
 import { api, errorCode } from '../lib/api';
 import { errorMessage } from '../lib/errors';
 import { useUploadedMedia } from '../lib/useUploadedMedia';
@@ -22,20 +24,32 @@ function PublicTopBar({ token }: { token: string }) {
   );
 }
 
-/** What anyone with the link sees: no sign-in, view and download, add photos when the album allows it. */
+type LoadError = { message: string; notFound: boolean };
+
+/** What someone with the link sees once they enter the PIN (staff skip it): view, download, add photos. */
 export default function SharedAlbumPage() {
   const { token = '' } = useParams();
   const [album, setAlbum] = useState<SharedAlbum | null>(null);
-  const [error, setError] = useState<{ message: string; notFound: boolean } | null>(null);
+  const [needsPin, setNeedsPin] = useState(false);
+  const [error, setError] = useState<LoadError | null>(null);
 
   const load = () => {
     setError(null);
-    api<SharedAlbum>(`/api/share/${encodeURIComponent(token)}`)
+    setNeedsPin(false);
+    api<SharedAlbum>(`/api/share/${encodeURIComponent(token)}`, { headers: albumAccessHeaders(token) })
       .then((a) => {
         setAlbum(a);
         document.title = `${a.title} · GoldenMole Photos`;
       })
-      .catch((err) => setError({ message: errorMessage(err), notFound: errorCode(err) === 'not_found' }));
+      .catch((err) => {
+        const code = errorCode(err);
+        if (code === 'pin_required') {
+          clearAlbumAccess(token);
+          setNeedsPin(true);
+        } else {
+          setError({ message: errorMessage(err), notFound: code === 'not_found' });
+        }
+      });
   };
   useEffect(load, [token]);
 
@@ -44,6 +58,14 @@ export default function SharedAlbumPage() {
     setAlbum((a) => (a && !a.media.some((m) => m.id === media.id) ? { ...a, media: sortMedia([...a.media, media]) } : a)),
   );
 
+  if (needsPin) {
+    return (
+      <>
+        <PublicTopBar token={token} />
+        <PinGate shareToken={token} onUnlocked={load} />
+      </>
+    );
+  }
   if (error) {
     return (
       <>

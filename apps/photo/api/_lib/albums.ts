@@ -2,6 +2,7 @@ import { sortMedia } from '../../shared/mediaOrder.js';
 import { driveFolderUrl, mediaSources } from '../../shared/mediaUrls.js';
 import { shareUrl } from '../../shared/shareText.js';
 import type { AlbumSummary, MediaItem, MediaKind, SharedAlbum, StaffUser, UploadTarget } from '../../shared/types.js';
+import { requireAlbumViewer } from './albumAccess.js';
 import { publicOrigin } from './env.js';
 import { HttpError } from './http.js';
 import { requireStaff } from './session.js';
@@ -117,7 +118,10 @@ export function readTarget(body: Record<string, unknown>): UploadTarget {
   return { albumId, shareToken };
 }
 
-/** Staff upload by album id (session required) or link upload by share token (album must allow it). */
+/**
+ * Staff upload by album id (session required) or link upload by share token: the album must allow it and
+ * the device must have entered the PIN (or be signed in as staff).
+ */
 export async function resolveUploadTarget(
   request: Request,
   target: UploadTarget,
@@ -127,8 +131,9 @@ export async function resolveUploadTarget(
     return { album: await loadAlbum(target.albumId), staff };
   }
   const album = await loadAlbumByToken(target.shareToken ?? '');
+  const staff = await requireAlbumViewer(request, album.id);
   if (!album.allow_link_upload) throw new HttpError('upload_disabled', 403);
-  return { album, staff: null };
+  return { album, staff };
 }
 
 /** Recounts media and picks a cover (the first item) when the album has none. */

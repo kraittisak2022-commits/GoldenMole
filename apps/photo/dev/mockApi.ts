@@ -85,7 +85,11 @@ const albums: MockAlbum[] = [
 const uploads = new Map<string, { albumId: string; name: string; mime: string }>();
 
 /** Same `<payload>.<signature>` shape as real sessions so the client can read the expiry. */
-const mockToken = () => `${Buffer.from(JSON.stringify({ typ: 'session', exp: Date.now() + 30 * 86_400_000 })).toString('base64url')}.mock`;
+const signedMock = (typ: string, days: number) =>
+  `${Buffer.from(JSON.stringify({ typ, exp: Date.now() + days * 86_400_000 })).toString('base64url')}.mock`;
+const mockToken = () => signedMock('session', 30);
+const mockAccess = () => signedMock('album', 7);
+const MOCK_PIN = '8888';
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const summary = ({ media: _m, token: _t, ...rest }: MockAlbum) => ({ ...rest, mediaCount: _m.length, cover: rest.cover ?? _m[0]?.src ?? null });
 const detail = ({ token: _t, ...rest }: MockAlbum) => ({ ...rest, mediaCount: rest.media.length });
@@ -138,7 +142,12 @@ export async function handleMock(request: Request): Promise<Response> {
   }
   if (a === 'share') {
     const found = albums.find((x) => x.token === b);
-    return found ? json(shared(found)) : json({ error: 'not_found' }, 404);
+    if (!found) return json({ error: 'not_found' }, 404);
+    if (request.method === 'POST') {
+      return body.pin === MOCK_PIN ? json({ access: mockAccess() }) : json({ error: 'bad_pin' }, 400);
+    }
+    const unlocked = request.headers.get('authorization') || request.headers.get('x-album-access');
+    return unlocked ? json(shared(found)) : json({ error: 'pin_required' }, 403);
   }
   if (a === 'media' && request.method === 'DELETE') {
     albums.forEach((x) => (x.media = x.media.filter((m) => m.id !== b)));

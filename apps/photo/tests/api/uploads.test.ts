@@ -1,47 +1,19 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetFake } from './fakeDb';
 
-interface Query {
-  table: string;
-  filters: Record<string, unknown>;
-  insert?: unknown;
-}
-type Result = { data: unknown; error: { message: string } | null; count?: number | null };
-
-/** Chainable stand-in for the supabase-js query builder; `respond` decides what each query returns. */
-const fake = vi.hoisted(() => {
-  const state: { respond: (q: Query) => Result } = { respond: () => ({ data: null, error: null }) };
-  const builder = (q: Query): unknown =>
-    new Proxy(
-      {},
-      {
-        get(_t, prop: string) {
-          if (prop === 'then') return (resolve: (r: Result) => void) => resolve(state.respond(q));
-          return (...args: unknown[]) => {
-            if (['eq', 'is', 'gte', 'in', 'like'].includes(prop)) q.filters[String(args[0])] = args[1];
-            if (prop === 'insert') q.insert = args[0];
-            return builder(q);
-          };
-        },
-      },
-    );
-  return { state, db: () => ({ from: (table: string) => builder({ table, filters: {} }) }) };
-});
-
-vi.mock('../../api/_lib/supabaseAdmin.js', () => ({
-  db: fake.db,
-  must: (r: Result) => {
-    if (r.error) throw new Error(r.error.message);
-    return r.data;
-  },
-}));
+vi.mock('../../api/_lib/supabaseAdmin.js', async () => (await import('./fakeDb')).supabaseAdminMock);
 
 vi.mock('../../api/_lib/drive.js', () => ({
   startResumableUpload: vi.fn(async () => 'https://www.googleapis.com/upload/drive/v3/files?upload_id=xyz'),
   getFile: vi.fn(),
 }));
 
+process.env.PHOTO_SESSION_SECRET = 'test-secret-for-uploads';
+process.env.PHOTO_ALBUM_PIN = '8888';
+
 const { startResumableUpload, getFile } = await import('../../api/_lib/drive.js');
+const { createAlbumAccess } = await import('../../api/_lib/albumAccess');
 const { POST: start } = await import('../../api/uploads/start');
 const { POST: complete } = await import('../../api/uploads/complete');
 
@@ -61,22 +33,26 @@ const ALBUM = {
   deleted_at: null,
 };
 
-const post = (body: unknown) =>
+const post = (body: unknown, { pin = true } = {}) =>
   new Request('http://localhost:5190/api/uploads/x', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:5190' },
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: 'http://localhost:5190',
+      ...(pin ? { 'X-Album-Access': createAlbumAccess(ALBUM.id) } : {}),
+    },
     body: JSON.stringify(body),
   });
 
 function setup({ album = ALBUM, recentLinkUploads = 0, existingMedia = null as unknown } = {}) {
-  fake.state.respond = (q) => {
+  resetFake((q) => {
     if (q.table === 'ph_albums') return { data: q.filters.share_token === album.share_token ? album : null, error: null };
     if (q.table === 'ph_media' && 'uploaded_by_staff_id' in q.filters) {
       return { data: null, error: null, count: recentLinkUploads };
     }
     if (q.table === 'ph_media' && 'drive_file_id' in q.filters) return { data: existingMedia, error: null };
     return { data: null, error: null };
-  };
+  });
 }
 
 beforeEach(() => {
@@ -95,6 +71,13 @@ describe('POST /api/uploads/start', () => {
     expect(startResumableUpload).toHaveBeenCalledWith(
       expect.objectContaining({ parentId: 'folder-album', name: 'IMG_1.jpg', origin: 'http://localhost:5190' }),
     );
+  });
+
+  it('refuses link uploads from a device that has not entered the PIN', async () => {
+    const res = await start(post(file, { pin: false }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'pin_required' });
+    expect(startResumableUpload).not.toHaveBeenCalled();
   });
 
   it('refuses link uploads when the album has them turned off', async () => {

@@ -6,6 +6,7 @@ type EnvName =
   | 'GOOGLE_CLIENT_ID'
   | 'GOOGLE_CLIENT_SECRET'
   | 'PHOTO_SESSION_SECRET'
+  | 'PHOTO_ALBUM_PIN'
   | 'PUBLIC_ORIGIN';
 
 export function requireEnv(name: EnvName): string {

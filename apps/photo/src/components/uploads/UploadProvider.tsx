@@ -1,6 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { checkUpload, guessMimeType } from '../../../shared/limits';
 import type { MediaItem, UploadTarget } from '../../../shared/types';
+import { albumAccessHeaders } from '../../lib/albumAccess';
 import { api } from '../../lib/api';
 import { errorMessage, messageFor } from '../../lib/errors';
 import { readFileMeta } from '../../lib/fileMeta';
@@ -49,10 +50,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     update(item.id, { status: 'uploading', progress: 0, error: null });
     try {
       const meta = await readFileMeta(item.file, item.mimeType);
+      const headers = albumAccessHeaders(item.target);
       const { uploadUrl } = await api<{ uploadUrl: string }>('/api/uploads/start', {
         method: 'POST',
         body: { ...item.target, name: item.file.name, mimeType: item.mimeType, size: item.file.size },
         signal: ctrl.signal,
+        headers,
       });
       let shown = 0;
       const driveFile = await uploadResumable(item.file, uploadUrl, {
@@ -75,6 +78,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           takenAt: meta.takenAt,
           uploaderName: item.uploaderName,
         },
+        headers,
       });
       update(item.id, { status: 'done', progress: 1 });
       listeners.current.get(targetKey(item.target))?.forEach((cb) => cb(media));

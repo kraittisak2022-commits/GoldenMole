@@ -19,11 +19,12 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
+  headers?: Record<string, string>;
 }
 
-export async function api<T>(path: string, { method = 'GET', body, signal }: RequestOptions = {}): Promise<T> {
+export async function api<T>(path: string, { method = 'GET', body, signal, headers: extra }: RequestOptions = {}): Promise<T> {
   const session = readSession();
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...extra };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (session) headers.Authorization = `Bearer ${session.token}`;
 
