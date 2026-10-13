@@ -18,6 +18,7 @@ struct PhotoMediaSources: Decodable, Hashable, Sendable {
 struct PhotoMediaItem: Decodable, Identifiable, Hashable, Sendable {
     let id: String
     let kind: String
+    let mime: String
     let name: String
     let width: Int
     let height: Int
@@ -27,6 +28,19 @@ struct PhotoMediaItem: Decodable, Identifiable, Hashable, Sendable {
     let src: PhotoMediaSources
 
     var isVideo: Bool { kind == "video" }
+
+    /// Direct Drive file URL (supports byte ranges, so AVPlayer can stream it). Album folders are link-shared.
+    var streamURL: URL? {
+        guard let id = URLComponents(string: src.download)?.queryItems?.first(where: { $0.name == "id" })?.value
+        else { return nil }
+        var components = URLComponents(string: "https://drive.usercontent.google.com/download")
+        components?.queryItems = [
+            URLQueryItem(name: "id", value: id),
+            URLQueryItem(name: "export", value: "download"),
+            URLQueryItem(name: "confirm", value: "t"),
+        ]
+        return components?.url
+    }
 }
 
 struct PhotoAlbumSummary: Decodable, Identifiable, Hashable, Sendable {
@@ -68,7 +82,19 @@ enum PhotoAlbumError: LocalizedError, Equatable {
         case .tooManyAttempts: return "ใส่รหัสผิดหลายครั้ง — รอ 15 นาทีแล้วลองใหม่"
         case .notFound: return "ไม่พบอัลบั้มนี้ (อาจถูกลบแล้ว)"
         case .network(let detail): return "เชื่อมต่อ GoldenMole Photos ไม่ได้ — \(detail)"
-        case .server(let code): return "GoldenMole Photos ขัดข้อง (\(code))"
+        case .server(let code):
+            switch code {
+            case "drive_not_connected": return "ยังไม่ได้เชื่อม Google Drive — ให้ SuperAdmin เชื่อมที่เว็บ GoldenMole Photos (ตั้งค่า)"
+            case "drive_error": return "Google Drive ขัดข้อง — ลองใหม่อีกครั้ง"
+            case "bad_type": return "รองรับเฉพาะรูปและวิดีโอ"
+            case "too_large": return "ไฟล์ใหญ่เกินไป (รูปไม่เกิน 50 MB · วิดีโอไม่เกิน 2 GB)"
+            case "empty_file": return "ไฟล์ว่าง"
+            case "bad_request": return "ข้อมูลไม่ถูกต้อง"
+            case "wrong_folder": return "ไฟล์ไม่ได้อยู่ในโฟลเดอร์ของอัลบั้มนี้"
+            case "upload_expired": return "การอัปโหลดหมดเวลา — ลองใหม่"
+            case "upload_failed": return "อัปโหลดไม่สำเร็จ — ลองใหม่"
+            default: return "GoldenMole Photos ขัดข้อง (\(code))"
+            }
         }
     }
 }
@@ -105,9 +131,44 @@ enum PhotoAlbumAPI {
         try await send(authorized(path: "albums/\(id)", token: token))
     }
 
-    private static func authorized(path: String, token: String) -> URLRequest {
+    /// `reportDate` is YYYY-MM-DD; the server creates the Drive folder under year/month.
+    static func createAlbum(title: String, reportDate: String, token: String) async throws -> PhotoAlbumSummary {
+        try await send(authorized(path: "albums", token: token, json: ["title": title, "reportDate": reportDate]))
+    }
+
+    /// Returns a Drive resumable upload session URL for one file.
+    static func startUpload(albumId: String, name: String, mimeType: String, size: Int64, token: String) async throws -> URL {
+        struct Body: Decodable { let uploadUrl: String }
+        let body: Body = try await send(authorized(
+            path: "uploads/start",
+            token: token,
+            json: ["albumId": albumId, "name": name, "mimeType": mimeType, "size": size]
+        ))
+        guard let url = URL(string: body.uploadUrl) else { throw PhotoAlbumError.server("upload_failed") }
+        return url
+    }
+
+    static func completeUpload(
+        albumId: String,
+        fileId: String,
+        width: Int,
+        height: Int,
+        takenAt: Date?,
+        token: String
+    ) async throws -> PhotoMediaItem {
+        var json: [String: Any] = ["albumId": albumId, "fileId": fileId, "width": width, "height": height]
+        json["takenAt"] = takenAt.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull()
+        return try await send(authorized(path: "uploads/complete", token: token, json: json))
+    }
+
+    private static func authorized(path: String, token: String, json: [String: Any]? = nil) -> URLRequest {
         var request = URLRequest(url: apiURL.appendingPathComponent(path))
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let json {
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: json)
+        }
         return request
     }
 
