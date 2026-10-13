@@ -7,7 +7,6 @@ import { drivePathLabel } from '../lib/drivePath';
 import { errorMessage } from '../lib/errors';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
-import Switch from './ui/Switch';
 import TextField from './ui/TextField';
 import { useToast } from './ui/Toast';
 
@@ -25,7 +24,6 @@ export default function AlbumSettingsDialog({ album, open, onClose, onSaved, onD
   const toast = useToast();
   const [title, setTitle] = useState(album.title);
   const [reportDate, setReportDate] = useState(album.reportDate);
-  const [allowLinkUpload, setAllowLinkUpload] = useState(album.allowLinkUpload);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<Confirm>(null);
@@ -34,7 +32,6 @@ export default function AlbumSettingsDialog({ album, open, onClose, onSaved, onD
     if (!open) return;
     setTitle(album.title);
     setReportDate(album.reportDate);
-    setAllowLinkUpload(album.allowLinkUpload);
     setError(null);
     setConfirm(null);
   }, [open]);
@@ -60,7 +57,7 @@ export default function AlbumSettingsDialog({ album, open, onClose, onSaved, onD
       setError('ตั้งชื่อรายงาน');
       return;
     }
-    void patch({ title: clean, reportDate, allowLinkUpload }, 'บันทึกแล้ว');
+    void patch({ title: clean, reportDate }, 'บันทึกแล้ว');
   };
 
   const remove = async () => {
@@ -136,7 +133,6 @@ export default function AlbumSettingsDialog({ album, open, onClose, onSaved, onD
           onChange={(e) => setReportDate(e.target.value || album.reportDate)}
           hint={`เก็บใน ${drivePathLabel(reportDate)}${reportDate !== album.reportDate ? ' (ย้ายโฟลเดอร์ให้อัตโนมัติ)' : ''}`}
         />
-        <Switch checked={allowLinkUpload} onChange={setAllowLinkUpload} label="ให้คนที่มีลิงก์เพิ่มรูปได้" />
       </form>
       <div className="mt-4 space-y-1 border-t border-border/70 pt-3">
         <button

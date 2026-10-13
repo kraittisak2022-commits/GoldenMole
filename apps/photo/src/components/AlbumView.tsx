@@ -188,7 +188,7 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
             </div>
             {uploadTarget ? (
               <Button variant="tonal" onClick={pick}>
-                <ImagePlus size={18} aria-hidden /> เพิ่มรูป
+                <ImagePlus size={18} aria-hidden /> เพิ่มรูป/วิดีโอ
               </Button>
             ) : null}
             <a
@@ -197,7 +197,7 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
               rel="noreferrer"
               className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-5 text-sm font-medium text-primary transition hover:bg-primary/[0.08] active:bg-primary/[0.12]"
             >
-              <ExternalLink size={18} aria-hidden /> เปิดใน <span className="hidden sm:inline">Google</span> Drive
+              <ExternalLink size={18} aria-hidden /> <span className="hidden sm:inline">เปิดใน Google</span> Drive
             </a>
             {staff ? (
               <IconButton label="ตั้งค่าอัลบั้ม" onClick={staff.onOpenSettings}>
@@ -216,11 +216,11 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
           <EmptyState
             icon={<GalleryVerticalEnd size={44} strokeWidth={1.5} aria-hidden />}
             title="ยังไม่มีรูปในอัลบั้มนี้"
-            body={uploadTarget ? 'กด “เพิ่มรูป” หรือลากไฟล์มาวางที่หน้านี้ รองรับรูปและวิดีโอ' : 'เมื่อมีคนเพิ่มรูป รูปจะแสดงที่นี่'}
+            body={uploadTarget ? 'กด “เพิ่มรูป/วิดีโอ” หรือลากไฟล์มาวางที่หน้านี้' : 'เมื่อมีคนเพิ่มรูป รูปจะแสดงที่นี่'}
             action={
               uploadTarget ? (
                 <Button onClick={pick}>
-                  <ImagePlus size={18} aria-hidden /> เพิ่มรูป
+                  <ImagePlus size={18} aria-hidden /> เพิ่มรูป/วิดีโอ
                 </Button>
               ) : undefined
             }
@@ -234,7 +234,7 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
           onClick={pick}
           className="fade-in fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-30 flex h-14 cursor-pointer items-center gap-2 rounded-2xl bg-primary-soft pl-4 pr-5 text-sm font-medium text-primary-soft-foreground shadow-e3 transition active:scale-95 sm:hidden"
         >
-          <ImagePlus size={22} aria-hidden /> เพิ่มรูป
+          <ImagePlus size={22} aria-hidden /> เพิ่มรูป/วิดีโอ
         </button>
       ) : null}
 
@@ -279,7 +279,7 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
 
       <Modal
         open={namePrompt}
-        title="เพิ่มรูปลงอัลบั้ม"
+        title="เพิ่มรูปและวิดีโอลงอัลบั้ม"
         onClose={() => setNamePrompt(false)}
         footer={
           <Button onClick={confirmName}>

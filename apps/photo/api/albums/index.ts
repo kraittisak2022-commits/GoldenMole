@@ -23,14 +23,13 @@ export const GET = route(async (request) => {
   return json(rows.map((r) => toAlbumSummary(r, r.cover_media_id ? covers.get(r.cover_media_id) ?? null : null)));
 });
 
-/** POST (staff) { title, reportDate, allowLinkUpload } → AlbumSummary. Creates the Drive folder first. */
+/** POST (staff) { title, reportDate } → AlbumSummary. Creates the Drive folder first; anyone with the link may add photos. */
 export const POST = route(async (request) => {
   const staff = await requireStaff(request);
   const body = await readJson(request);
   const title = normalizeTitle(body.title);
   const reportDate = body.reportDate;
   if (!title || !isValidReportDate(reportDate)) throw new HttpError('bad_request', 400);
-  const allowLinkUpload = body.allowLinkUpload !== false;
 
   const folderId = await createAlbumFolder(title, reportDate);
   const result = await db()
@@ -40,7 +39,7 @@ export const POST = route(async (request) => {
       report_date: reportDate,
       drive_folder_id: folderId,
       share_token: newShareToken(),
-      allow_link_upload: allowLinkUpload,
+      allow_link_upload: true,
       created_by: staff.id,
     })
     .select(ALBUM_COLUMNS)

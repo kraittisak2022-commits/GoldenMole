@@ -7,11 +7,13 @@ import { api } from '../lib/api';
 import { errorMessage } from '../lib/errors';
 import { formatReportDateLong } from '../lib/format';
 import { drivePathLabel } from '../lib/drivePath';
+import MediaPicker from './MediaPicker';
 import ShareCard from './ShareCard';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
-import Switch from './ui/Switch';
 import TextField from './ui/TextField';
+import { useToast } from './ui/Toast';
+import { useUploads } from './uploads/UploadProvider';
 
 interface Props {
   open: boolean;
@@ -21,9 +23,11 @@ interface Props {
 
 export default function CreateAlbumDialog({ open, onClose, onCreated }: Props) {
   const navigate = useNavigate();
+  const toast = useToast();
+  const { enqueue } = useUploads();
   const [title, setTitle] = useState('');
   const [reportDate, setReportDate] = useState(todayInBangkok());
-  const [allowLinkUpload, setAllowLinkUpload] = useState(true);
+  const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<AlbumSummary | null>(null);
@@ -32,7 +36,7 @@ export default function CreateAlbumDialog({ open, onClose, onCreated }: Props) {
     if (!open) return;
     setTitle('');
     setReportDate(todayInBangkok());
-    setAllowLinkUpload(true);
+    setFiles([]);
     setError(null);
     setCreated(null);
   }, [open]);
@@ -47,9 +51,16 @@ export default function CreateAlbumDialog({ open, onClose, onCreated }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const album = await api<AlbumSummary>('/api/albums', { method: 'POST', body: { title: clean, reportDate, allowLinkUpload } });
-      setCreated(album);
+      const album = await api<AlbumSummary>('/api/albums', { method: 'POST', body: { title: clean, reportDate } });
       onCreated(album);
+      if (files.length) {
+        enqueue(files, { albumId: album.id });
+        onClose();
+        navigate(`/albums/${album.id}`);
+        toast(`สร้างอัลบั้มแล้ว กำลังอัปโหลด ${files.length} รายการ`);
+      } else {
+        setCreated(album);
+      }
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -90,7 +101,7 @@ export default function CreateAlbumDialog({ open, onClose, onCreated }: Props) {
             ยกเลิก
           </Button>
           <Button type="submit" form="create-album" disabled={busy}>
-            {busy ? 'กำลังสร้าง…' : 'สร้าง'}
+            {busy ? 'กำลังสร้าง…' : files.length ? `สร้างและอัปโหลด ${files.length} รายการ` : 'สร้าง'}
           </Button>
         </>
       }
@@ -103,20 +114,15 @@ export default function CreateAlbumDialog({ open, onClose, onCreated }: Props) {
           maxLength={MAX_TITLE_LENGTH}
           onChange={(e) => setTitle(e.target.value)}
           error={error}
-          autoFocus
+          autoFocus={window.matchMedia('(hover: hover)').matches}
         />
+        <MediaPicker files={files} onChange={setFiles} />
         <TextField
           label="วันที่รายงาน"
           type="date"
           value={reportDate}
           onChange={(e) => setReportDate(e.target.value || todayInBangkok())}
-          hint={`${formatReportDateLong(reportDate)} · เก็บใน ${drivePathLabel(reportDate)}`}
-        />
-        <Switch
-          checked={allowLinkUpload}
-          onChange={setAllowLinkUpload}
-          label="ให้คนที่มีลิงก์เพิ่มรูปได้"
-          description="ปิดไว้ถ้าต้องการให้คนที่มีลิงก์ดูได้อย่างเดียว"
+          hint={`${formatReportDateLong(reportDate)} · เก็บใน ${drivePathLabel(reportDate)} · คนที่มีลิงก์เพิ่มรูปได้`}
         />
       </form>
     </Modal>

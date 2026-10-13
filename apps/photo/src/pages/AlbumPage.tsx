@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { sortMedia } from '../../shared/mediaOrder';
 import type { AlbumDetail, MediaItem } from '../../shared/types';
 import AlbumSettingsDialog from '../components/AlbumSettingsDialog';
+import AllAlbumsLink from '../components/AllAlbumsLink';
 import AlbumView from '../components/AlbumView';
 import TopBar from '../components/TopBar';
 import { ErrorState, Spinner } from '../components/ui/States';
@@ -12,11 +12,13 @@ import { api } from '../lib/api';
 import { errorMessage } from '../lib/errors';
 import { useUploadedMedia } from '../lib/useUploadedMedia';
 
-const backLink = (
-  <Link to="/" aria-label="กลับไปหน้าอัลบั้ม" className="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted hover:bg-ink/[0.08]">
-    <ArrowLeft size={22} aria-hidden />
-  </Link>
-);
+function withMedia(album: AlbumDetail, added: MediaItem[]): AlbumDetail {
+  const fresh = added.filter((m, i) => !album.media.some((x) => x.id === m.id) && added.findIndex((x) => x.id === m.id) === i);
+  if (!fresh.length) return album;
+  return { ...album, media: sortMedia([...album.media, ...fresh]), mediaCount: album.mediaCount + fresh.length };
+}
+
+const backLink = <AllAlbumsLink />;
 
 export default function AlbumPage() {
   const { id = '' } = useParams();
@@ -26,18 +28,25 @@ export default function AlbumPage() {
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // Uploads started while creating the album can finish before it has loaded; keep them to merge in.
+  const arrived = useRef<MediaItem[]>([]);
+
   const load = () => {
     setError(null);
     api<AlbumDetail>(`/api/albums/${id}`)
-      .then(setAlbum)
+      .then((a) => setAlbum(withMedia(a, arrived.current)))
       .catch((err) => setError(errorMessage(err)));
   };
-  useEffect(load, [id]);
+  useEffect(() => {
+    arrived.current = [];
+    load();
+  }, [id]);
 
-  const target = useMemo(() => (album ? { albumId: album.id } : null), [album?.id]);
-  useUploadedMedia(target, (media: MediaItem) =>
-    setAlbum((a) => (a && !a.media.some((m) => m.id === media.id) ? { ...a, media: sortMedia([...a.media, media]), mediaCount: a.mediaCount + 1 } : a)),
-  );
+  const target = useMemo(() => ({ albumId: id }), [id]);
+  useUploadedMedia(target, (media: MediaItem) => {
+    arrived.current.push(media);
+    setAlbum((a) => a && withMedia(a, [media]));
+  });
 
   if (error) {
     return (
@@ -67,7 +76,9 @@ export default function AlbumPage() {
         failed.push(mediaId);
       }
     }
-    setAlbum((a) => (a ? { ...a, media: a.media.filter((m) => !ids.includes(m.id) || failed.includes(m.id)) } : a));
+    const gone = (m: MediaItem) => ids.includes(m.id) && !failed.includes(m.id);
+    arrived.current = arrived.current.filter((m) => !gone(m));
+    setAlbum((a) => (a ? { ...a, media: a.media.filter((m) => !gone(m)) } : a));
     toast(failed.length ? `ลบไม่สำเร็จ ${failed.length} รายการ` : `ลบ ${ids.length} รายการแล้ว`);
   };
 

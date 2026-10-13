@@ -55,7 +55,7 @@ interface MockAlbum extends AlbumDetail {
   token: string;
 }
 
-function album(title: string, reportDate: string, unsorted: MediaItem[], allowLinkUpload = true): MockAlbum {
+function album(title: string, reportDate: string, unsorted: MediaItem[]): MockAlbum {
   const media = sortMedia(unsorted);
   const token = randomUUID().replace(/-/g, '').slice(0, 22);
   const now = new Date().toISOString();
@@ -65,7 +65,7 @@ function album(title: string, reportDate: string, unsorted: MediaItem[], allowLi
     reportDate,
     mediaCount: media.length,
     cover: media[0]?.src ?? null,
-    allowLinkUpload,
+    allowLinkUpload: true,
     shareUrl: `${ORIGIN}/a/${token}`,
     driveFolderUrl: 'https://drive.google.com/drive/my-drive',
     createdAt: now,
@@ -78,7 +78,7 @@ function album(title: string, reportDate: string, unsorted: MediaItem[], allowLi
 const albums: MockAlbum[] = [
   album('เทปูนชั้น 2 อาคาร A', '2026-10-12', [...makeMedia('a', 9, '2026-10-12'), ...makeMedia('b', 6, '2026-10-11')]),
   album('ตรวจรับงานเหล็กเสริม โครงการบ้านพักครู', '2026-10-08', makeMedia('c', 7, '2026-10-08')),
-  album('ส่งหินคลุก หน้างานวังเหนือ', '2026-09-28', makeMedia('d', 4, '2026-09-28'), false),
+  album('ส่งหินคลุก หน้างานวังเหนือ', '2026-09-28', makeMedia('d', 4, '2026-09-28')),
   album('อัลบั้มว่าง', '2026-09-20', []),
 ];
 
@@ -110,7 +110,7 @@ export async function handleMock(request: Request): Promise<Response> {
 
   if (a === 'albums' && !b) {
     if (request.method === 'POST') {
-      const created = album(String(body.title), String(body.reportDate), [], body.allowLinkUpload !== false);
+      const created = album(String(body.title), String(body.reportDate), []);
       albums.unshift(created);
       return json(summary(created), 201);
     }
