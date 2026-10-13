@@ -15,7 +15,11 @@ grant it to other accounts in the main app's admin page (edit user → เว็
 ## 2. Google Cloud (once)
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a project (e.g. `goldenmole-photos`) and enable **Google Drive API**.
-2. **OAuth consent screen**: user type External, app name `GoldenMole Photos`, support email, authorized domain `goldenmole.pro`.
+2. **OAuth consent screen**: user type External, app name `GoldenMole Photos`, support email, and under App domain:
+   - Home page `https://photo.goldenmole.pro`
+   - Privacy policy `https://photo.goldenmole.pro/privacy`
+   - Terms of service `https://photo.goldenmole.pro/terms`
+   - Authorized domain `goldenmole.pro`
    Scopes: `.../auth/drive.file`, `openid`, `email` (all non-sensitive, so no Google review is needed).
 3. **Publish the app** (Publishing status → *In production*). While it is in *Testing*, Google revokes the refresh token after 7 days and uploads stop.
 4. **Credentials → Create OAuth client ID → Web application**:

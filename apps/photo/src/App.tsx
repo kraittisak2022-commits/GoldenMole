@@ -14,6 +14,8 @@ const AlbumPage = lazy(() => import('./pages/AlbumPage'));
 const SharedAlbumPage = lazy(() => import('./pages/SharedAlbumPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
 
 const PageFallback = () => (
   <div className="flex min-h-[60dvh] items-center justify-center">
@@ -32,6 +34,8 @@ export default function App() {
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/a/:token" element={<SharedAlbumPage />} />
+                  <Route path="/privacy" element={<PrivacyPage />} />
+                  <Route path="/terms" element={<TermsPage />} />
                   <Route path="/" element={<RequireAuth><AlbumsPage /></RequireAuth>} />
                   <Route path="/albums/:id" element={<RequireAuth><AlbumPage /></RequireAuth>} />
                   <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />

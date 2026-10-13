@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { LogoMark } from '../components/Logo';
@@ -40,7 +40,7 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center bg-container px-4 py-10 sm:bg-page">
+    <main className="flex min-h-[100dvh] flex-col items-center justify-center bg-container px-4 py-10 sm:bg-page">
       <form
         onSubmit={submit}
         noValidate
@@ -80,6 +80,10 @@ export default function LoginPage() {
           </Button>
         </div>
       </form>
+      <nav className="mt-6 flex gap-6 text-xs">
+        <Link to="/privacy" className="text-muted hover:text-primary hover:underline">นโยบายความเป็นส่วนตัว</Link>
+        <Link to="/terms" className="text-muted hover:text-primary hover:underline">ข้อกำหนดการใช้งาน</Link>
+      </nav>
     </main>
   );
 }
