@@ -39,13 +39,15 @@ Create a new project from `kraittisak2022-commits/GoldenMole`:
 | Name | Value |
 | --- | --- |
 | `SUPABASE_URL` | `https://cocvespahjymyrvmqzcs.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → `service_role` |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | from step 2 |
-| `PHOTO_SESSION_SECRET` | a long random string, e.g. `openssl rand -base64 48` |
+| `SUPABASE_SERVICE_ROLE_KEY` | *Copy the key itself, not this text:* Supabase dashboard, Project Settings, API Keys, the `service_role` (secret) key. It starts with `eyJ` or `sb_secret_`. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *Copy from step 2.* The ID ends with `.apps.googleusercontent.com`; the secret starts with `GOCSPX-`. |
+| `PHOTO_SESSION_SECRET` | *Generate one:* output of `openssl rand -base64 48` (or any 40+ random characters, no spaces). |
 | `PUBLIC_ORIGIN` | `https://photo.goldenmole.pro` |
 | `ALLOWED_ORIGINS` (optional) | extra origins allowed to upload, comma-separated, e.g. `https://photo.vercel.app` |
 
 Changing `PHOTO_SESSION_SECRET` signs everyone out; it does not affect share links.
+If a value contains spaces or non-ASCII characters (for example a pasted label with "→"), the API answers
+"ระบบยังตั้งค่าไม่ครบ" and the Vercel logs name the variable. Redeploy after editing env vars.
 
 Optional **Ignored Build Step**, so pushes that only touch other apps skip this build:
 

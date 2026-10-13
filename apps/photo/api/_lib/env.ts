@@ -14,6 +14,11 @@ export function requireEnv(name: EnvName): string {
     console.error(`Missing environment variable ${name}`);
     throw new HttpError('not_configured', 503);
   }
+  // Keys, secrets and URLs are plain ASCII without spaces; anything else is a pasted label, not the value.
+  if (!/^[\x21-\x7e]+$/.test(value)) {
+    console.error(`Environment variable ${name} contains spaces or non-ASCII characters; paste the value itself`);
+    throw new HttpError('not_configured', 503);
+  }
   return value;
 }
 
