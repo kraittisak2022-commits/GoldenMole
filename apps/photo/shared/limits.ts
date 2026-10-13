@@ -60,6 +60,24 @@ export function normalizeTitle(raw: unknown): string | null {
   return title;
 }
 
+export const MAX_FILE_NAME_LENGTH = 200;
+
+/** "IMG_1.JPG" → ["IMG_1", ".JPG"]; a name without an extension keeps an empty one. */
+export function splitExtension(name: string): [string, string] {
+  const m = /^(.+?)(\.[A-Za-z0-9]{1,8})$/.exec(name);
+  return m ? [m[1], m[2]] : [name, ''];
+}
+
+/** New name for an existing file: cleaned, and always ending in the original extension so downloads keep their type. */
+export function renamedFileName(raw: unknown, original: string): string | null {
+  if (typeof raw !== 'string') return null;
+  const [, ext] = splitExtension(original);
+  let base = raw.normalize('NFC').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim();
+  if (ext && base.toLowerCase().endsWith(ext.toLowerCase())) base = base.slice(0, -ext.length).trim();
+  if (!base) return null;
+  return base.slice(0, MAX_FILE_NAME_LENGTH - ext.length) + ext;
+}
+
 export function normalizeUploaderName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const name = raw.normalize('NFC').replace(/\s+/g, ' ').trim().slice(0, MAX_UPLOADER_NAME_LENGTH);

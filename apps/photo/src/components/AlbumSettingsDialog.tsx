@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link2, Trash2 } from 'lucide-react';
 import { MAX_TITLE_LENGTH, normalizeTitle } from '../../shared/limits';
-import type { AlbumDetail } from '../../shared/types';
+import type { AlbumDetail, AlbumSummary } from '../../shared/types';
 import { api } from '../lib/api';
 import { drivePathLabel } from '../lib/drivePath';
 import { errorMessage } from '../lib/errors';
@@ -11,7 +11,7 @@ import TextField from './ui/TextField';
 import { useToast } from './ui/Toast';
 
 interface Props {
-  album: AlbumDetail;
+  album: AlbumSummary;
   open: boolean;
   onClose: () => void;
   onSaved: (album: AlbumDetail) => void;
@@ -96,7 +96,7 @@ export default function AlbumSettingsDialog({ album, open, onClose, onSaved, onD
       >
         <p className="text-sm text-muted">
           {isDelete
-            ? `“${album.title}” และไฟล์ทั้งหมด ${album.media.length} รายการจะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)`
+            ? `“${album.title}” และไฟล์ทั้งหมด ${album.mediaCount} รายการจะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)`
             : 'ลิงก์เดิมที่แชร์ไปแล้วจะใช้ไม่ได้ทันที แต่คนที่เคยเปิดอัลบั้มหรือบันทึกลิงก์ Google Drive ไว้แล้ว ยังเปิดรูปผ่าน Drive ได้ ถ้าต้องการปิดทั้งหมดให้ลบอัลบั้ม'}
         </p>
         {error ? (

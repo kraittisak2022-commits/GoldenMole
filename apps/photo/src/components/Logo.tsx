@@ -13,7 +13,7 @@ export function LogoMark({ size = 28 }: { size?: number }) {
 
 export default function Logo({ to = '/' }: { to?: string }) {
   return (
-    <Link to={to} className="flex min-h-11 items-center gap-2 rounded-full pr-2" aria-label="GoldenMole Photos หน้าแรก">
+    <Link to={to} className="flex min-h-11 min-w-0 items-center gap-2 rounded-full pr-2" aria-label="GoldenMole Photos หน้าแรก">
       <LogoMark />
       <span className="text-[1.375rem] leading-none text-muted">
         <span className="font-medium text-ink">GoldenMole</span> Photos

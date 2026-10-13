@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { normalizeUploaderName, renamedFileName } from '../shared/limits';
 import { sortMedia } from '../shared/mediaOrder';
 import type { AlbumDetail, MediaItem, MediaSources } from '../shared/types';
 
@@ -148,6 +149,20 @@ export async function handleMock(request: Request): Promise<Response> {
     }
     const unlocked = request.headers.get('authorization') || request.headers.get('x-album-access');
     return unlocked ? json(shared(found)) : json({ error: 'pin_required' }, 403);
+  }
+  if (a === 'media' && request.method === 'PATCH') {
+    const owner = albums.find((x) => x.media.some((m) => m.id === b));
+    const item = owner?.media.find((m) => m.id === b);
+    if (!owner || !item) return json({ error: 'not_found' }, 404);
+    if (body.name !== undefined) {
+      const name = renamedFileName(body.name, item.name);
+      if (!name) return json({ error: 'bad_request' }, 400);
+      item.name = name;
+    }
+    if (body.uploadedByName !== undefined) item.uploadedByName = normalizeUploaderName(body.uploadedByName);
+    if (body.takenAt !== undefined) item.takenAt = body.takenAt;
+    owner.media = sortMedia(owner.media);
+    return json(item);
   }
   if (a === 'media' && request.method === 'DELETE') {
     albums.forEach((x) => (x.media = x.media.filter((m) => m.id !== b)));

@@ -80,8 +80,17 @@ export default function AlbumPage() {
     }
     const gone = (m: MediaItem) => ids.includes(m.id) && !failed.includes(m.id);
     arrived.current = arrived.current.filter((m) => !gone(m));
-    setAlbum((a) => (a ? { ...a, media: a.media.filter((m) => !gone(m)) } : a));
+    setAlbum((a) => {
+      if (!a) return a;
+      const media = a.media.filter((m) => !gone(m));
+      return { ...a, media, mediaCount: media.length };
+    });
     toast(failed.length ? `ลบไม่สำเร็จ ${failed.length} รายการ` : `ลบ ${ids.length} รายการแล้ว`);
+  };
+
+  const replaceMedia = (item: MediaItem) => {
+    arrived.current = arrived.current.map((m) => (m.id === item.id ? item : m));
+    setAlbum((a) => (a ? { ...a, media: sortMedia(a.media.map((m) => (m.id === item.id ? item : m))) } : a));
   };
 
   const setCover = async (mediaId: string) => {
@@ -104,7 +113,7 @@ export default function AlbumPage() {
         uploadTarget={target}
         staff={
           isSuperAdmin
-            ? { onDelete: removeMedia, onSetCover: setCover, onOpenSettings: () => setSettingsOpen(true) }
+            ? { onDelete: removeMedia, onSetCover: setCover, onOpenSettings: () => setSettingsOpen(true), onMediaSaved: replaceMedia }
             : {}
         }
         topBar={<TopBar leading={backLink} />}

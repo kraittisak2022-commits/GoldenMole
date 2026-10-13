@@ -1,9 +1,10 @@
-import { ChangeEvent, DragEvent, ReactNode, useCallback, useRef, useState } from 'react';
+import { ChangeEvent, DragEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCheck, Copy, Download, ExternalLink, ImagePlus, GalleryVerticalEnd, Settings, Share2, Star, Trash2, UploadCloud, X } from 'lucide-react';
 import type { MediaItem, UploadTarget } from '../../shared/types';
 import { formatCount, formatReportDateLong } from '../lib/format';
 import JustifiedGrid from './JustifiedGrid';
 import Lightbox from './Lightbox';
+import MediaEditDialog from './MediaEditDialog';
 import { useCopyShare, useNativeShare } from './ShareCard';
 import Button from './ui/Button';
 import IconButton from './ui/IconButton';
@@ -17,6 +18,8 @@ export interface StaffActions {
   onDelete?: (ids: string[]) => Promise<void>;
   onSetCover?: (id: string) => Promise<void>;
   onOpenSettings?: () => void;
+  /** Enables editing a photo's name, sender and date; called with the saved item. */
+  onMediaSaved?: (item: MediaItem) => void;
 }
 
 interface Props {
@@ -64,6 +67,15 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState<MediaItem | null>(null);
+  // A new date taken can move the item in the sorted list; keep the viewer on it.
+  const follow = useRef<string | null>(null);
+  useEffect(() => {
+    if (!follow.current) return;
+    const at = media.findIndex((m) => m.id === follow.current);
+    follow.current = null;
+    if (at >= 0) setViewing((v) => (v === null ? v : at));
+  }, [media]);
   const [dragging, setDragging] = useState(false);
   const [namePrompt, setNamePrompt] = useState(false);
   const [uploaderName, setUploaderName] = useState(() => readName() ?? '');
@@ -261,6 +273,19 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
           onIndex={setViewing}
           onClose={() => setViewing(null)}
           onDelete={staff?.onDelete ? (item) => setConfirmDelete([item.id]) : undefined}
+          onEdit={staff?.onMediaSaved ? setEditing : undefined}
+          paused={!!confirmDelete || !!editing}
+        />
+      ) : null}
+
+      {staff?.onMediaSaved ? (
+        <MediaEditDialog
+          item={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(item) => {
+            follow.current = item.id;
+            staff.onMediaSaved?.(item);
+          }}
         />
       ) : null}
 

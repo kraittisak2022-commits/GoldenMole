@@ -1,12 +1,13 @@
 import { Link } from 'react-router-dom';
-import { Copy, GalleryVerticalEnd } from 'lucide-react';
+import { Copy, GalleryVerticalEnd, Pencil } from 'lucide-react';
 import type { AlbumSummary } from '../../shared/types';
 import { formatCount, formatReportDate } from '../lib/format';
 import { useCopyShare } from './ShareCard';
 import IconButton from './ui/IconButton';
 import Thumb from './Thumb';
 
-export default function AlbumCard({ album }: { album: AlbumSummary }) {
+/** `onEdit` (SuperAdmin) adds a button that opens the album settings: rename, change date, new link, delete. */
+export default function AlbumCard({ album, onEdit }: { album: AlbumSummary; onEdit?: (album: AlbumSummary) => void }) {
   const copyShare = useCopyShare();
   return (
     <div className="group min-w-0">
@@ -28,9 +29,16 @@ export default function AlbumCard({ album }: { album: AlbumSummary }) {
             {formatReportDate(album.reportDate)} · {formatCount(album.mediaCount)}
           </p>
         </Link>
-        <IconButton label={`คัดลอกชื่อรายงานและลิงก์ ${album.title}`} onClick={() => copyShare(album.title, album.shareUrl)} className="-mr-2 -mt-1">
-          <Copy size={18} aria-hidden />
-        </IconButton>
+        <div className="-mr-2 -mt-1 flex shrink-0">
+          {onEdit ? (
+            <IconButton label={`แก้ไขหรือลบอัลบั้ม ${album.title}`} onClick={() => onEdit(album)}>
+              <Pencil size={18} aria-hidden />
+            </IconButton>
+          ) : null}
+          <IconButton label={`คัดลอกชื่อรายงานและลิงก์ ${album.title}`} onClick={() => copyShare(album.title, album.shareUrl)}>
+            <Copy size={18} aria-hidden />
+          </IconButton>
+        </div>
       </div>
     </div>
   );

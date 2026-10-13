@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { checkUpload, guessMimeType, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, normalizeTitle, normalizeUploaderName } from './limits';
+import { checkUpload, guessMimeType, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, normalizeTitle, normalizeUploaderName, renamedFileName, splitExtension } from './limits';
+
+describe('renamedFileName', () => {
+  it('keeps the original extension', () => {
+    expect(renamedFileName('เทปูน ชั้น 2', 'IMG_0001.JPG')).toBe('เทปูน ชั้น 2.JPG');
+    expect(renamedFileName('เทปูน.jpg', 'IMG_0001.JPG')).toBe('เทปูน.JPG');
+    expect(renamedFileName('clip', 'VID.mov')).toBe('clip.mov');
+  });
+
+  it('cleans whitespace and control characters, and refuses an empty name', () => {
+    expect(renamedFileName('  a \n b\u0007 ', 'x.png')).toBe('a b.png');
+    expect(renamedFileName('   ', 'x.png')).toBeNull();
+    expect(renamedFileName('.png', 'x.png')).toBeNull();
+    expect(renamedFileName(42, 'x.png')).toBeNull();
+  });
+
+  it('stays within 200 characters including the extension', () => {
+    expect(renamedFileName('a'.repeat(300), 'x.jpeg')).toHaveLength(200);
+  });
+
+  it('splits names without an extension', () => {
+    expect(splitExtension('README')).toEqual(['README', '']);
+    expect(splitExtension('a.b.heic')).toEqual(['a.b', '.heic']);
+  });
+});
 
 describe('guessMimeType', () => {
   it('keeps the browser type when present', () => {

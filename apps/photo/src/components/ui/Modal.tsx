@@ -27,7 +27,7 @@ export default function Modal({ open, title, onClose, children, footer }: ModalP
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+    <div className="fixed inset-0 z-[65] flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <button type="button" aria-label="ปิด" className="fade-in absolute inset-0 cursor-pointer bg-black/50" onClick={onClose} />
       <div className="sheet-up relative z-10 flex max-h-[92dvh] w-full flex-col rounded-t-2xl bg-surface shadow-e3 sm:max-w-md sm:rounded-2xl">
         <div className="flex items-center justify-between gap-2 px-6 pb-2 pt-5">

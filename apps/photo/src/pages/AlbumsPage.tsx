@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { GalleryVerticalEnd, Plus, Search, X } from 'lucide-react';
 import type { AlbumSummary } from '../../shared/types';
+import { useAuth } from '../auth/AuthProvider';
 import AlbumCard from '../components/AlbumCard';
+import AlbumSettingsDialog from '../components/AlbumSettingsDialog';
 import CreateAlbumDialog from '../components/CreateAlbumDialog';
 import TopBar from '../components/TopBar';
 import Button from '../components/ui/Button';
@@ -36,6 +38,8 @@ export default function AlbumsPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<AlbumSummary | null>(null);
+  const isSuperAdmin = useAuth().user?.role === 'SuperAdmin';
 
   const load = () => {
     setError(null);
@@ -95,7 +99,7 @@ export default function AlbumsPage() {
         ) : (
           <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {shown.map((album) => (
-              <AlbumCard key={album.id} album={album} />
+              <AlbumCard key={album.id} album={album} onEdit={isSuperAdmin ? setEditing : undefined} />
             ))}
           </div>
         )}
@@ -116,6 +120,19 @@ export default function AlbumsPage() {
         onClose={() => setCreating(false)}
         onCreated={(album) => setAlbums((list) => [album, ...(list ?? [])])}
       />
+
+      {editing && isSuperAdmin ? (
+        <AlbumSettingsDialog
+          album={editing}
+          open
+          onClose={() => setEditing(null)}
+          onSaved={({ media: _media, ...saved }) => setAlbums((list) => list && list.map((a) => (a.id === saved.id ? saved : a)))}
+          onDeleted={() => {
+            setAlbums((list) => list && list.filter((a) => a.id !== editing.id));
+            setEditing(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

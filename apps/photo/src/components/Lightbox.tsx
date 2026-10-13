@@ -1,5 +1,5 @@
 import { TouchEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, Info, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, Info, Pencil, Trash2 } from 'lucide-react';
 import type { MediaItem } from '../../shared/types';
 import { formatDateTime } from '../lib/format';
 import { clampZoom, NO_ZOOM, pinchZoom, rubberBand, shouldDismiss, swipeDirection, toggleZoomAt, Zoom } from '../lib/gestures';
@@ -12,6 +12,9 @@ interface Props {
   onIndex: (index: number) => void;
   onClose: () => void;
   onDelete?: (item: MediaItem) => void;
+  onEdit?: (item: MediaItem) => void;
+  /** A dialog is open on top: leave the keyboard (Esc, arrows) to it. */
+  paused?: boolean;
 }
 
 type Point = { x: number; y: number };
@@ -59,7 +62,7 @@ function Viewer({ item, active }: { item: MediaItem; active: boolean }) {
  * Full-screen viewer. Touch: swipe sideways to move, down to close, up for info, tap to hide the bars,
  * pinch or double tap to zoom. Desktop: arrows and keyboard. Videos play in Drive's player.
  */
-export default function Lightbox({ media, index, onIndex, onClose, onDelete }: Props) {
+export default function Lightbox({ media, index, onIndex, onClose, onDelete, onEdit, paused = false }: Props) {
   const item = media[index];
   const [showInfo, setShowInfo] = useState(false);
   const [chrome, setChrome] = useState(true);
@@ -89,6 +92,7 @@ export default function Lightbox({ media, index, onIndex, onClose, onDelete }: P
   }, []);
 
   useEffect(() => {
+    if (paused) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
       else if (e.key === 'ArrowLeft' && hasPrev) onIndex(index - 1);
@@ -96,7 +100,7 @@ export default function Lightbox({ media, index, onIndex, onClose, onDelete }: P
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [index, hasPrev, hasNext, onClose, onIndex]);
+  }, [index, hasPrev, hasNext, onClose, onIndex, paused]);
 
   // Neighbours are already rendered beside the current slide; warm the cache one step further.
   useEffect(() => {
@@ -322,6 +326,11 @@ export default function Lightbox({ media, index, onIndex, onClose, onDelete }: P
         >
           <Download size={22} aria-hidden />
         </a>
+        {onEdit ? (
+          <IconButton label="แก้ไข" tone="onDark" onClick={() => onEdit(item)}>
+            <Pencil size={20} aria-hidden />
+          </IconButton>
+        ) : null}
         {onDelete ? (
           <IconButton label="ลบ" tone="onDark" onClick={() => onDelete(item)}>
             <Trash2 size={22} aria-hidden />
@@ -342,7 +351,14 @@ export default function Lightbox({ media, index, onIndex, onClose, onDelete }: P
 
       {showInfo ? (
         <div className="sheet-up absolute inset-x-0 bottom-0 z-20 rounded-t-2xl bg-[#1E1F20] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 text-sm sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-80 sm:rounded-2xl">
-          <p className="break-all font-medium">{item.name}</p>
+          <div className="flex items-start gap-2">
+            <p className="min-w-0 flex-1 break-all pt-2.5 font-medium">{item.name}</p>
+            {onEdit ? (
+              <IconButton label="แก้ไขชื่อ ผู้ส่ง และวันที่ถ่าย" tone="onDark" onClick={() => onEdit(item)} className="-mr-2 shrink-0">
+                <Pencil size={18} aria-hidden />
+              </IconButton>
+            ) : null}
+          </div>
           <dl className="mt-3 space-y-1.5 text-white/75">
             {item.takenAt ? (
               <div className="flex gap-2">

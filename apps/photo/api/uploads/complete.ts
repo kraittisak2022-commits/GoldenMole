@@ -1,16 +1,10 @@
 import { mediaKindOf, normalizeUploaderName } from '../../shared/limits.js';
-import { MEDIA_COLUMNS, type MediaRow, readTarget, refreshAlbumStats, resolveUploadTarget, toMediaItem } from '../_lib/albums.js';
+import { MEDIA_COLUMNS, type MediaRow, readTakenAt, readTarget, refreshAlbumStats, resolveUploadTarget, toMediaItem } from '../_lib/albums.js';
 import { type DriveFile, getFile } from '../_lib/drive.js';
 import { HttpError, json, readJson, route } from '../_lib/http.js';
 import { db, must } from '../_lib/supabaseAdmin.js';
 
 const positiveInt = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : 0);
-
-function readTakenAt(v: unknown): string | null {
-  if (typeof v !== 'string') return null;
-  const t = Date.parse(v);
-  return Number.isNaN(t) ? null : new Date(t).toISOString();
-}
 
 /** Width/height from the browser, else from Drive; swapped when Drive reports a quarter-turn rotation. */
 export function resolveSize(file: DriveFile, width: number, height: number): { width: number; height: number } {

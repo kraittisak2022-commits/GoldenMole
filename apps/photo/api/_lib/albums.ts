@@ -111,6 +111,13 @@ export async function loadMedia(albumId: string): Promise<MediaRow[]> {
   return sortMedia(must(await db().from('ph_media').select(MEDIA_COLUMNS).eq('album_id', albumId)) as MediaRow[]);
 }
 
+/** Any parseable date string → ISO; anything else → null. */
+export function readTakenAt(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
 export function readTarget(body: Record<string, unknown>): UploadTarget {
   const albumId = typeof body.albumId === 'string' ? body.albumId : undefined;
   const shareToken = typeof body.shareToken === 'string' ? body.shareToken : undefined;

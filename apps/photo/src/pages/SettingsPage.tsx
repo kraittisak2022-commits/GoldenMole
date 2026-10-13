@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, CloudOff, FolderTree, HardDrive } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { CheckCircle2, CloudOff, FolderTree, HardDrive } from 'lucide-react';
 import { ROOT_FOLDER_NAME } from '../../shared/folderPath';
 import type { GoogleStatus } from '../../shared/types';
 import { useAuth } from '../auth/AuthProvider';
+import AllAlbumsLink from '../components/AllAlbumsLink';
 import TopBar from '../components/TopBar';
 import Button from '../components/ui/Button';
 import { ErrorState, Spinner } from '../components/ui/States';
@@ -58,13 +59,7 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-[100dvh] pb-16">
-      <TopBar
-        leading={
-          <Link to="/" aria-label="กลับไปหน้าอัลบั้ม" className="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted hover:bg-ink/[0.08]">
-            <ArrowLeft size={22} aria-hidden />
-          </Link>
-        }
-      />
+      <TopBar leading={<AllAlbumsLink />} />
       <main className="mx-auto max-w-2xl px-4 sm:px-6">
         <h1 className="py-5 text-2xl font-normal text-ink">ตั้งค่า</h1>
 

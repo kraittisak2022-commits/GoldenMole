@@ -38,3 +38,15 @@ export function formatBytes(bytes: number): string {
 export function bangkokDayKey(iso: string): string {
   return new Date(Date.parse(iso) + 7 * 3600_000).toISOString().slice(0, 10);
 }
+
+/** ISO → `YYYY-MM-DDTHH:mm` in Thai time for `<input type="datetime-local">`, whatever the device time zone. */
+export function toBangkokInput(iso: string | null): string {
+  return iso ? new Date(Date.parse(iso) + 7 * 3600_000).toISOString().slice(0, 16) : '';
+}
+
+/** `<input type="datetime-local">` value read as Thai time → ISO; empty → null. */
+export function fromBangkokInput(value: string): string | null {
+  if (!value) return null;
+  const t = Date.parse(`${value.length === 16 ? `${value}:00` : value}+07:00`);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
