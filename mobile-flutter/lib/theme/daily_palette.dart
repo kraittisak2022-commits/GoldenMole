@@ -49,6 +49,7 @@ abstract final class DailyPalette {
   static const moduleIncomeExpense = Color(0xFF4F46E5);
   static const moduleMaintenance = Color(0xFFB45309);
   static const moduleCountRecord = Color(0xFF1D4ED8);
+  static const moduleAlbum = Color(0xFFC026D3);
 
   // ── Count-record icons ────────────────────────────────────────────────────
   static const countTripIcon = Color(0xFF1D4ED8);

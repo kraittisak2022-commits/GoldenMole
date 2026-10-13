@@ -49,6 +49,7 @@ import 'app_settings_screen.dart';
 import 'calendar_screen.dart';
 import 'employees_screen.dart';
 import 'mobile_error_report_hub_screen.dart';
+import 'photo_albums_screen.dart';
 import 'projects_screen.dart';
 import 'quick_input_screen.dart';
 import 'transactions_screen.dart';
@@ -1255,6 +1256,22 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
         },
       );
     }
+    Widget buildAlbumEntryCard() {
+      return RecordModuleCard(
+        title: 'อัลบั้มรูป',
+        icon: Icons.photo_library_outlined,
+        tileColor: DailyPalette.moduleAlbum,
+        fillStatus: DailyModuleFillStatus.pending,
+        pendingStatusLabel: 'ดูอัลบั้ม · อัปโหลดรูป',
+        onTap: () {
+          Navigator.of(context).push(
+            AppPageRoute(
+              page: PhotoAlbumPinScreen(admin: widget.currentAdmin),
+            ),
+          );
+        },
+      );
+    }
     final headerAnim = CurvedAnimation(
       parent: _entranceController,
       curve: const Interval(0.0, 0.46, curve: Curves.easeOutCubic),
@@ -1690,7 +1707,8 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                       ...secondaryModules,
                     ]
                   : primaryModules;
-              final gridItemCount = visibleModules.length + 1;
+              // + การ์ด «บันทึกและนับจำนวน» (แรก) + «อัลบั้มรูป» (ท้าย)
+              final gridItemCount = visibleModules.length + 2;
               final gap = phonePortrait
                   ? 12.0
                   : TouchProfile.of(context).gridGap;
@@ -1799,6 +1817,21 @@ class _DailyHomeContentState extends State<_DailyHomeContent>
                             return _StaggerMenuTile(
                               parent: _entranceController,
                               index: 0,
+                              lite: useLiteAnimations,
+                              child: card,
+                            );
+                          }
+                          if (index == gridItemCount - 1) {
+                            final card = buildAlbumEntryCard();
+                            if (_gridEntranceCompleted) {
+                              return RepaintBoundary(
+                                key: const ValueKey('mod_photo_album'),
+                                child: card,
+                              );
+                            }
+                            return _StaggerMenuTile(
+                              parent: _entranceController,
+                              index: _kDailyModules.length,
                               lite: useLiteAnimations,
                               child: card,
                             );

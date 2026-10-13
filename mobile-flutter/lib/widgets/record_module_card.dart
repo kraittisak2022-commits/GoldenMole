@@ -18,6 +18,7 @@ class RecordModuleCard extends StatelessWidget {
     required this.onTap,
     this.tileColor = const Color(0xFF0D9488),
     this.completeStatusLabelOverride,
+    this.pendingStatusLabel,
     this.statusMaxLines = 2,
   });
 
@@ -27,6 +28,9 @@ class RecordModuleCard extends StatelessWidget {
   final VoidCallback onTap;
   final Color tileColor;
   final String? completeStatusLabelOverride;
+
+  /// แทน «แตะเพื่อบันทึก» สำหรับเมนูที่ไม่ใช่การบันทึก
+  final String? pendingStatusLabel;
   final int statusMaxLines;
 
   @override
@@ -48,7 +52,7 @@ class RecordModuleCard extends StatelessWidget {
         ? l10n.statusComplete
         : partial
         ? l10n.statusIncomplete
-        : l10n.statusTapToRecord;
+        : (pendingStatusLabel ?? l10n.statusTapToRecord);
 
     final statusColor = recorded
         ? p.statusComplete
