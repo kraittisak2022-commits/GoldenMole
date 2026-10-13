@@ -124,6 +124,47 @@ List<PhotoDaySection<T>> groupPhotosByDay<T>(
   return sections;
 }
 
+// MARK: - Justified rows (port of apps/photo/src/lib/justify.ts)
+
+typedef PhotoRowItem = ({int index, double width});
+typedef PhotoRow = ({double height, List<PhotoRowItem> items});
+
+/// Very wide or tall shots would otherwise make a whole row tiny or a single tile huge.
+double _clampAspect(double aspect) => aspect.isFinite && aspect > 0 ? aspect.clamp(0.4, 3.0) : 1;
+
+/// Google Photos-style rows: fill each row until it reaches [containerWidth] at [targetHeight],
+/// then scale the row to fit exactly. The last row keeps [targetHeight] instead of stretching.
+List<PhotoRow> justifiedPhotoRows(List<double> aspects, double containerWidth, double targetHeight, double gap) {
+  if (containerWidth <= 0) return const [];
+  final rows = <PhotoRow>[];
+  var current = <int>[];
+  var aspectSum = 0.0;
+
+  void push(double height) {
+    rows.add((
+      height: height,
+      items: [for (final i in current) (index: i, width: _clampAspect(aspects[i]) * height)],
+    ));
+    current = [];
+    aspectSum = 0;
+  }
+
+  for (var i = 0; i < aspects.length; i++) {
+    current.add(i);
+    aspectSum += _clampAspect(aspects[i]);
+    final gaps = gap * (current.length - 1);
+    if (aspectSum * targetHeight + gaps >= containerWidth) push((containerWidth - gaps) / aspectSum);
+  }
+  if (current.isNotEmpty) push(targetHeight);
+  return rows;
+}
+
+double photoTargetRowHeight(double containerWidth) {
+  if (containerWidth < 640) return 120;
+  if (containerWidth < 1024) return 180;
+  return 220;
+}
+
 // MARK: - EXIF capture time (port of apps/photo/src/lib/exif.ts)
 
 /// `2026:10:12 09:30:00` (+ optional `+07:00`) → ISO UTC; null for blank or zeroed camera dates.

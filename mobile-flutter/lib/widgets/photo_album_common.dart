@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:fc_native_video_thumbnail/fc_native_video_thumbnail.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -13,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/admin_user.dart';
 import '../services/photo_album_service.dart';
+import '../services/photo_upload_manager.dart';
 import '../theme/daily_palette.dart';
 import '../utils/maintenance_image_permissions.dart';
 import '../utils/photo_album_format.dart';
@@ -530,14 +532,8 @@ class PhotoReportDateTile extends StatelessWidget {
 
 // MARK: - Picking photos and videos
 
-class PickedPhotoMedia {
-  const PickedPhotoMedia(this.path);
-
-  final String path;
-  bool get isVideo => photoPathIsVideo(path);
-}
-
 /// Source sheet (gallery photos/videos, camera photo, camera video), permissions, then the picker.
+/// Files over the size limits are skipped with a notice, as on the web.
 Future<List<PickedPhotoMedia>> pickPhotoAlbumMedia(BuildContext context) async {
   final choice = await showModalBottomSheet<String>(
     context: context,
@@ -591,11 +587,49 @@ Future<List<PickedPhotoMedia>> pickPhotoAlbumMedia(BuildContext context) async {
       default:
         files = [?await picker.pickVideo(source: ImageSource.camera)];
     }
-    return files.map((f) => PickedPhotoMedia(f.path)).toList();
+    final picked = <PickedPhotoMedia>[];
+    for (final f in files) {
+      int size;
+      try {
+        size = await f.length();
+      } catch (_) {
+        size = 0;
+      }
+      picked.add(PickedPhotoMedia(f.path, size));
+    }
+    final ok = picked.where((f) => f.withinLimit).toList();
+    final skipped = picked.length - ok.length;
+    if (skipped > 0 && context.mounted) {
+      photoSnack(
+        context,
+        'ข้าม $skipped ไฟล์ที่ใหญ่เกินไป (รูปไม่เกิน ${formatPhotoBytes(kPhotoMaxImageBytes)} '
+        'วิดีโอไม่เกิน ${formatPhotoBytes(kPhotoMaxVideoBytes)})',
+      );
+    }
+    return ok;
   } catch (e) {
     if (context.mounted) photoSnack(context, maintenanceImagePickErrorMessage(e));
     return const [];
   }
+}
+
+final Map<String, Future<Uint8List?>> _videoThumbs = {};
+
+/// First frame of a picked video (cached per path for the session).
+Future<Uint8List?> pickedVideoThumbnail(String path) {
+  return _videoThumbs.putIfAbsent(path, () async {
+    try {
+      return await FcNativeVideoThumbnail().saveThumbnailToBytes(
+        srcFile: path,
+        width: 320,
+        height: 320,
+        format: 'jpeg',
+        quality: 70,
+      );
+    } catch (_) {
+      return null;
+    }
+  });
 }
 
 /// Square preview of a picked file (videos show an icon).
@@ -608,18 +642,47 @@ class PickedMediaThumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = DailyPalette.of(context);
+    final placeholder = ColoredBox(
+      color: p.hairline,
+      child: Center(
+        child: Icon(
+          media.isVideo ? Icons.movie_outlined : Icons.image_outlined,
+          color: Colors.black45,
+          size: 28,
+        ),
+      ),
+    );
     return Stack(
       fit: StackFit.expand,
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: media.isVideo
-              ? ColoredBox(
-                  color: p.hairline,
-                  child: const Center(child: Icon(Icons.movie_outlined, color: Colors.black45, size: 32)),
+              ? FutureBuilder<Uint8List?>(
+                  future: pickedVideoThumbnail(media.path),
+                  builder: (context, snap) => snap.data == null
+                      ? placeholder
+                      : Image.memory(snap.data!, fit: BoxFit.cover, gaplessPlayback: true),
                 )
-              : Image.file(File(media.path), fit: BoxFit.cover, cacheWidth: 300),
+              : Image.file(
+                  File(media.path),
+                  fit: BoxFit.cover,
+                  cacheWidth: 300,
+                  errorBuilder: (context, _, _) => placeholder,
+                ),
         ),
+        if (media.isVideo)
+          const Positioned(
+            left: 4,
+            bottom: 4,
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+              child: Padding(
+                padding: EdgeInsets.all(3),
+                child: Icon(Icons.play_arrow_rounded, size: 14, color: Colors.white),
+              ),
+            ),
+          ),
         if (onRemove != null)
           Positioned(
             top: 2,

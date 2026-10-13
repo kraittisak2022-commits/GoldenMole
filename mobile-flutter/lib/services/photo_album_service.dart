@@ -209,6 +209,8 @@ String photoAlbumErrorMessage(String code, [String? detail]) {
       return 'รองรับเฉพาะรูปและวิดีโอ';
     case 'too_large':
       return 'ไฟล์ใหญ่เกินไป (รูปไม่เกิน 50 MB · วิดีโอไม่เกิน 2 GB)';
+    case 'canceled':
+      return 'ยกเลิกแล้ว';
     case 'upload_disabled':
       return 'อัลบั้มนี้ปิดการเพิ่มรูปผ่านลิงก์';
     case 'empty_file':
@@ -379,12 +381,14 @@ class PhotoAlbumApi {
     required String fileId,
     required String token,
     String? takenAt,
+    int width = 0,
+    int height = 0,
   }) async {
     return PhotoMediaItem.fromJson(await _send('POST', 'uploads/complete', token: token, json: {
       'albumId': albumId,
       'fileId': fileId,
-      'width': 0,
-      'height': 0,
+      'width': width,
+      'height': height,
       'takenAt': takenAt,
     }));
   }
@@ -411,12 +415,14 @@ class PhotoAlbumApi {
     required int size,
     required Uri sessionUrl,
     void Function(double progress)? onProgress,
+    bool Function()? isCanceled,
   }) async {
     final raf = await file.open();
     try {
       var offset = 0;
       var attempt = 0;
       while (true) {
+        if (isCanceled?.call() ?? false) throw const PhotoAlbumException('canceled');
         final end = math.min(offset + chunkSize, size);
         await raf.setPosition(offset);
         final chunk = await raf.read(end - offset);

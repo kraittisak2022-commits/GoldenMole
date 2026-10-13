@@ -1,15 +1,18 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/admin_user.dart';
 import '../services/photo_album_service.dart';
+import '../services/photo_upload_manager.dart';
 import '../theme/daily_palette.dart';
 import '../utils/app_haptics.dart';
 import '../utils/photo_album_format.dart';
 import '../widgets/app_page_route.dart';
 import '../widgets/photo_album_common.dart';
+import '../widgets/photo_upload_tray.dart';
 import 'photo_album_detail_screen.dart';
 
 // MARK: - PIN gate
@@ -212,18 +215,20 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen> {
     );
     if (result == null || !mounted) return;
     setState(() => _albums = [result.album, ...?_albums?.where((a) => a.id != result.album.id)]);
+    if (result.uploads.isNotEmpty) {
+      PhotoUploadManager.instance.enqueue(widget.admin, result.album, result.uploads);
+      photoSnack(context, 'สร้างอัลบั้มแล้ว กำลังอัปโหลด ${result.uploads.length} รายการ');
+    }
     if (result.open) {
-      await _open(result.album, uploads: result.uploads);
+      await _open(result.album);
     } else {
       unawaited(_load());
     }
   }
 
-  Future<void> _open(PhotoAlbumSummary album, {List<PickedPhotoMedia> uploads = const []}) async {
+  Future<void> _open(PhotoAlbumSummary album) async {
     await Navigator.of(context).push(
-      AppPageRoute(
-        page: PhotoAlbumDetailScreen(admin: widget.admin, album: album, initialUploads: uploads),
-      ),
+      AppPageRoute(page: PhotoAlbumDetailScreen(admin: widget.admin, album: album)),
     );
     if (mounted) unawaited(_load());
   }
@@ -345,8 +350,20 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen> {
       );
     }
 
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop && PhotoUploadManager.instance.isBusy()) {
+          photoSnack(context, 'ยังอัปโหลดต่อเบื้องหลัง — เปิดแอปค้างไว้จนกว่าจะเสร็จ');
+        }
+      },
+      child: _scaffold(p, body),
+    );
+  }
+
+  Widget _scaffold(DailyColors p, Widget body) {
     return Scaffold(
       backgroundColor: p.surface,
+      bottomNavigationBar: const PhotoUploadTray(),
       appBar: AppBar(
         title: Text('อัลบั้มรูป', style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
         actions: [
@@ -488,6 +505,9 @@ class _CreateAlbumScreen extends StatefulWidget {
 }
 
 class _CreateAlbumScreenState extends State<_CreateAlbumScreen> {
+  /// Rendering every full-size photo would exhaust memory; the rest are counted in a "+N" tile.
+  static const _maxPreviews = 30;
+
   final _title = TextEditingController();
   final List<PickedPhotoMedia> _files = [];
   DateTime _date = DateTime.now();
@@ -543,6 +563,9 @@ class _CreateAlbumScreenState extends State<_CreateAlbumScreen> {
   Widget _form(DailyColors p) {
     final ymd = photoYmd(_date);
     final count = _files.length;
+    final shown = math.min(count, _maxPreviews);
+    final hidden = count - shown;
+    final totalBytes = _files.fold<int>(0, (s, f) => s + f.size);
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
@@ -565,10 +588,15 @@ class _CreateAlbumScreenState extends State<_CreateAlbumScreen> {
           children: [
             Expanded(
               child: Text(
-                count == 0 ? 'รูปและวิดีโอ' : 'รูปและวิดีโอ · $count รายการ',
+                'รูปและวิดีโอ',
                 style: GoogleFonts.kanit(fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
               ),
             ),
+            if (count > 0)
+              Text(
+                '$count รายการ · ${formatPhotoBytes(totalBytes)}',
+                style: GoogleFonts.kanit(fontSize: 12.5, color: p.inkMuted),
+              ),
             if (count > 0)
               TextButton(
                 onPressed: _busy ? null : () => setState(_files.clear),
@@ -585,9 +613,19 @@ class _CreateAlbumScreenState extends State<_CreateAlbumScreen> {
             mainAxisSpacing: 6,
             crossAxisSpacing: 6,
           ),
-          itemCount: count + 1,
+          itemCount: shown + 1 + (hidden > 0 ? 1 : 0),
           itemBuilder: (context, i) {
-            if (i == count) {
+            if (i == shown + 1) {
+              return Container(
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: p.hairline, borderRadius: BorderRadius.circular(8)),
+                child: Text(
+                  '+$hidden',
+                  style: GoogleFonts.kanit(fontSize: 16, fontWeight: FontWeight.w600, color: p.inkMuted),
+                ),
+              );
+            }
+            if (i == 0) {
               return Material(
                 color: kPhotoAlbumAccent.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
@@ -600,7 +638,7 @@ class _CreateAlbumScreenState extends State<_CreateAlbumScreen> {
                       const Icon(Icons.add_photo_alternate_outlined, color: kPhotoAlbumAccent, size: 30),
                       const SizedBox(height: 4),
                       Text(
-                        'เพิ่มรูป/วิดีโอ',
+                        count == 0 ? 'เลือก' : 'เพิ่มอีก',
                         textAlign: TextAlign.center,
                         style: GoogleFonts.kanit(fontSize: 12, color: kPhotoAlbumAccent),
                       ),
@@ -609,12 +647,21 @@ class _CreateAlbumScreenState extends State<_CreateAlbumScreen> {
                 ),
               );
             }
+            final file = _files[i - 1];
             return PickedMediaThumb(
-              media: _files[i],
-              onRemove: _busy ? null : () => setState(() => _files.removeAt(i)),
+              media: file,
+              onRemove: _busy ? null : () => setState(() => _files.remove(file)),
             );
           },
         ),
+        if (count == 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'เลือกไว้ก่อนได้เลย ระบบจะอัปโหลดให้ทันทีหลังสร้างอัลบั้ม',
+              style: GoogleFonts.kanit(fontSize: 12, color: p.inkMuted),
+            ),
+          ),
         const SizedBox(height: 8),
         PhotoReportDateTile(
           ymd: ymd,
