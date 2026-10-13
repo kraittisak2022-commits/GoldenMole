@@ -21,11 +21,11 @@ export const GET = route(async (request) => {
 });
 
 /**
- * PATCH (staff) { title?, reportDate?, allowLinkUpload?, regenerateLink?, coverMediaId? } → AlbumDetail.
+ * PATCH (SuperAdmin) { title?, reportDate?, allowLinkUpload?, regenerateLink?, coverMediaId? } → AlbumDetail.
  * Renames or moves the Drive folder before saving, so Drive and the database stay in step.
  */
 export const PATCH = route(async (request) => {
-  await requireStaff(request);
+  await requireStaff(request, { superAdmin: true });
   const album = await loadAlbum(lastSegment(request));
   const body = await readJson(request);
   const update: Partial<AlbumRow> = {};
@@ -66,9 +66,9 @@ export const PATCH = route(async (request) => {
   return json(await detail(saved));
 });
 
-/** DELETE (staff): moves the Drive folder to the Drive trash (restorable for 30 days) and hides the album. */
+/** DELETE (SuperAdmin): moves the Drive folder to the Drive trash (restorable for 30 days) and hides the album. */
 export const DELETE = route(async (request) => {
-  await requireStaff(request);
+  await requireStaff(request, { superAdmin: true });
   const album = await loadAlbum(lastSegment(request));
   try {
     await trashFile(album.drive_folder_id);

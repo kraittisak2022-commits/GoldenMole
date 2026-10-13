@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { sortMedia } from '../../shared/mediaOrder';
+import { useAuth } from '../auth/AuthProvider';
 import type { AlbumDetail, MediaItem } from '../../shared/types';
 import AlbumSettingsDialog from '../components/AlbumSettingsDialog';
 import AllAlbumsLink from '../components/AllAlbumsLink';
@@ -24,6 +25,7 @@ export default function AlbumPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const isSuperAdmin = useAuth().user?.role === 'SuperAdmin';
   const [album, setAlbum] = useState<AlbumDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -100,12 +102,16 @@ export default function AlbumPage() {
         shareUrl={album.shareUrl}
         driveFolderUrl={album.driveFolderUrl}
         uploadTarget={target}
-        staff={{ onDelete: removeMedia, onSetCover: setCover, onOpenSettings: () => setSettingsOpen(true) }}
+        staff={
+          isSuperAdmin
+            ? { onDelete: removeMedia, onSetCover: setCover, onOpenSettings: () => setSettingsOpen(true) }
+            : {}
+        }
         topBar={<TopBar leading={backLink} />}
       />
       <AlbumSettingsDialog
         album={album}
-        open={settingsOpen}
+        open={settingsOpen && isSuperAdmin}
         onClose={() => setSettingsOpen(false)}
         onSaved={setAlbum}
         onDeleted={() => navigate('/', { replace: true })}

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile_flutter/models/admin_user.dart';
 import 'package:mobile_flutter/screens/photo_albums_screen.dart';
 import 'package:mobile_flutter/services/photo_album_service.dart';
 
@@ -8,6 +9,19 @@ void main() {
     expect(photoAlbumPinMatches(' 8888 '), isTrue);
     expect(photoAlbumPinMatches('1234'), isFalse);
     expect(photoAlbumPinMatches(''), isFalse);
+  });
+
+  test('only SuperAdmin may edit or delete albums', () {
+    AdminUser user(String role) =>
+        AdminUser(id: 'u', username: 'u', password: '', displayName: 'U', role: role);
+    expect(canManagePhotoAlbums(user('SuperAdmin')), isTrue);
+    expect(canManagePhotoAlbums(user('Admin')), isFalse);
+    expect(canManagePhotoAlbums(user('Assistant')), isFalse);
+  });
+
+  test('allowLinkUpload defaults to true and reads false', () {
+    expect(PhotoAlbumSummary.fromJson({'id': 'a'}).allowLinkUpload, isTrue);
+    expect(PhotoAlbumSummary.fromJson({'id': 'a', 'allowLinkUpload': false}).allowLinkUpload, isFalse);
   });
 
   test('album summary parses the Photos API shape', () {

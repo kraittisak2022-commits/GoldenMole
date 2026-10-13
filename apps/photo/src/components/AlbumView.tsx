@@ -12,10 +12,11 @@ import { EmptyState } from './ui/States';
 import TextField from './ui/TextField';
 import { useUploads } from './uploads/UploadProvider';
 
+/** Signed-in staff can select and download; editing and deleting are SuperAdmin only (left undefined otherwise). */
 export interface StaffActions {
-  onDelete: (ids: string[]) => Promise<void>;
-  onSetCover: (id: string) => Promise<void>;
-  onOpenSettings: () => void;
+  onDelete?: (ids: string[]) => Promise<void>;
+  onSetCover?: (id: string) => Promise<void>;
+  onOpenSettings?: () => void;
 }
 
 interface Props {
@@ -119,7 +120,7 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
   const selectedItems = media.filter((m) => selected.has(m.id));
 
   const runDelete = async () => {
-    if (!staff || !confirmDelete) return;
+    if (!staff?.onDelete || !confirmDelete) return;
     setDeleting(true);
     try {
       await staff.onDelete(confirmDelete);
@@ -150,18 +151,20 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
             <IconButton label="ดาวน์โหลดที่เลือก" onClick={() => downloadAll(selectedItems)} className="text-primary-soft-foreground">
               <Download size={22} aria-hidden />
             </IconButton>
-            {selected.size === 1 ? (
+            {selected.size === 1 && staff.onSetCover ? (
               <IconButton
                 label="ตั้งเป็นภาพปก"
-                onClick={() => staff.onSetCover([...selected][0]).then(() => setSelected(new Set()))}
+                onClick={() => staff.onSetCover?.([...selected][0]).then(() => setSelected(new Set()))}
                 className="text-primary-soft-foreground"
               >
                 <Star size={22} aria-hidden />
               </IconButton>
             ) : null}
-            <IconButton label="ลบที่เลือก" onClick={() => setConfirmDelete([...selected])} className="text-primary-soft-foreground">
-              <Trash2 size={22} aria-hidden />
-            </IconButton>
+            {staff.onDelete ? (
+              <IconButton label="ลบที่เลือก" onClick={() => setConfirmDelete([...selected])} className="text-primary-soft-foreground">
+                <Trash2 size={22} aria-hidden />
+              </IconButton>
+            ) : null}
           </div>
         </div>
       ) : (
@@ -199,14 +202,16 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
             >
               <ExternalLink size={18} aria-hidden /> <span className="hidden sm:inline">เปิดใน Google</span> Drive
             </a>
-            {staff ? (
+            {staff?.onOpenSettings ? (
               <IconButton label="ตั้งค่าอัลบั้ม" onClick={staff.onOpenSettings}>
                 <Settings size={22} aria-hidden />
               </IconButton>
             ) : null}
           </div>
           {staff && media.length > 1 ? (
-            <p className="mt-4 text-xs text-muted [@media(hover:hover)]:hidden">แตะค้างที่รูปเพื่อเลือกหลายรูป แล้วดาวน์โหลดหรือลบพร้อมกัน</p>
+            <p className="mt-4 text-xs text-muted [@media(hover:hover)]:hidden">
+              {staff.onDelete ? 'แตะค้างที่รูปเพื่อเลือกหลายรูป แล้วดาวน์โหลดหรือลบพร้อมกัน' : 'แตะค้างที่รูปเพื่อเลือกหลายรูป แล้วดาวน์โหลดพร้อมกัน'}
+            </p>
           ) : null}
         </header>
 
@@ -255,7 +260,7 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
           index={viewing}
           onIndex={setViewing}
           onClose={() => setViewing(null)}
-          onDelete={staff ? (item) => setConfirmDelete([item.id]) : undefined}
+          onDelete={staff?.onDelete ? (item) => setConfirmDelete([item.id]) : undefined}
         />
       ) : null}
 

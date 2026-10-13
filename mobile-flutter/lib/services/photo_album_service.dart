@@ -14,6 +14,9 @@ const String kPhotoAlbumMenuPin = '8888';
 
 bool photoAlbumPinMatches(String input) => input.trim() == kPhotoAlbumMenuPin;
 
+/// แก้ไข/ลบอัลบั้มและรูป — เซิร์ฟเวอร์บังคับสิทธิ์เดียวกัน (`requireStaff({ superAdmin: true })`)
+bool canManagePhotoAlbums(AdminUser admin) => admin.role.trim() == 'SuperAdmin';
+
 // MARK: - Models (mirror apps/photo/shared/types.ts)
 
 class PhotoMediaSources {
@@ -87,6 +90,7 @@ class PhotoAlbumSummary {
     required this.shareUrl,
     required this.driveFolderUrl,
     this.cover,
+    this.allowLinkUpload = true,
   });
 
   final String id;
@@ -98,6 +102,9 @@ class PhotoAlbumSummary {
   final PhotoMediaSources? cover;
   final String shareUrl;
   final String driveFolderUrl;
+
+  /// คนที่มีลิงก์แชร์เพิ่มรูปได้
+  final bool allowLinkUpload;
 
   /// ข้อความคัดลอกไปวางในกลุ่ม — ชื่ออัลบั้ม แล้วลิงก์ (เหมือนเว็บ)
   String get shareText => '$title\n$shareUrl';
@@ -112,6 +119,7 @@ class PhotoAlbumSummary {
       cover: cover is Map ? PhotoMediaSources.fromJson(_map(cover)) : null,
       shareUrl: (json['shareUrl'] ?? '').toString(),
       driveFolderUrl: (json['driveFolderUrl'] ?? '').toString(),
+      allowLinkUpload: json['allowLinkUpload'] != false,
     );
   }
 }
@@ -279,6 +287,35 @@ class PhotoAlbumApi {
       token: token,
       json: {'title': title, 'reportDate': reportDate},
     ));
+  }
+
+  /// SuperAdmin only. Sends just the fields given; renaming or changing the date also moves the Drive folder.
+  Future<PhotoAlbumDetail> updateAlbum(
+    String id,
+    String token, {
+    String? title,
+    String? reportDate,
+    bool? allowLinkUpload,
+    bool regenerateLink = false,
+    String? coverMediaId,
+  }) async {
+    return PhotoAlbumDetail.fromJson(await _send('PATCH', 'albums/$id', token: token, json: {
+      'title': ?title,
+      'reportDate': ?reportDate,
+      'allowLinkUpload': ?allowLinkUpload,
+      if (regenerateLink) 'regenerateLink': true,
+      'coverMediaId': ?coverMediaId,
+    }));
+  }
+
+  /// SuperAdmin only. The Drive folder goes to the Drive trash (restorable for 30 days).
+  Future<void> deleteAlbum(String id, String token) async {
+    await _send('DELETE', 'albums/$id', token: token);
+  }
+
+  /// SuperAdmin only. The file goes to the Drive trash (restorable for 30 days).
+  Future<void> deleteMedia(String id, String token) async {
+    await _send('DELETE', 'media/$id', token: token);
   }
 
   /// Drive resumable upload session URL for one file.

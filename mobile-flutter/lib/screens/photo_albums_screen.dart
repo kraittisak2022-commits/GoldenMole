@@ -147,6 +147,191 @@ class _PasswordDialogState extends State<_PasswordDialog> {
   }
 }
 
+String _errorText(Object e, String fallback) =>
+    e is PhotoAlbumException ? e.message : fallback;
+
+Future<bool> _confirm(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String action,
+}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title, style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+      content: Text(body, style: GoogleFonts.kanit()),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('ยกเลิก')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(action),
+        ),
+      ],
+    ),
+  );
+  return ok ?? false;
+}
+
+/// SuperAdmin: ชื่อ วันที่รายงาน และการเพิ่มรูปผ่านลิงก์ — คืนค่าอัลบั้มที่บันทึกแล้ว
+Future<PhotoAlbumDetail?> _editAlbum(
+  BuildContext context,
+  AdminUser admin,
+  PhotoAlbumSummary album,
+) {
+  return showDialog<PhotoAlbumDetail>(
+    context: context,
+    builder: (_) => _EditAlbumDialog(admin: admin, album: album),
+  );
+}
+
+/// SuperAdmin: ย้ายโฟลเดอร์ไปถังขยะ Drive — true เมื่อลบสำเร็จ
+Future<bool> _deleteAlbum(
+  BuildContext context,
+  AdminUser admin,
+  PhotoAlbumSummary album,
+) async {
+  final ok = await _confirm(
+    context,
+    title: 'ลบอัลบั้ม «${album.title}»?',
+    body: 'รูปทั้งหมด ${album.mediaCount} รายการจะถูกย้ายไปถังขยะของ Google Drive และกู้คืนได้ภายใน 30 วัน',
+    action: 'ลบอัลบั้ม',
+  );
+  if (!ok || !context.mounted) return false;
+  try {
+    await _photoCall(context, admin, (api, t) => api.deleteAlbum(album.id, t));
+    if (context.mounted) _snack(context, 'ลบอัลบั้ม «${album.title}» แล้ว');
+    return true;
+  } catch (e) {
+    if (context.mounted) _snack(context, _errorText(e, 'ลบอัลบั้มไม่สำเร็จ'));
+    return false;
+  }
+}
+
+class _EditAlbumDialog extends StatefulWidget {
+  const _EditAlbumDialog({required this.admin, required this.album});
+
+  final AdminUser admin;
+  final PhotoAlbumSummary album;
+
+  @override
+  State<_EditAlbumDialog> createState() => _EditAlbumDialogState();
+}
+
+class _EditAlbumDialogState extends State<_EditAlbumDialog> {
+  late final _title = TextEditingController(text: widget.album.title);
+  late DateTime _date = DateTime.tryParse(widget.album.reportDate) ?? DateTime.now();
+  late bool _allowLinkUpload = widget.album.allowLinkUpload;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null && mounted) setState(() => _date = picked);
+  }
+
+  Future<void> _submit() async {
+    final title = _title.text.trim();
+    if (title.isEmpty) {
+      setState(() => _error = 'กรุณาใส่ชื่ออัลบั้ม');
+      return;
+    }
+    final a = widget.album;
+    final reportDate = _ymd(_date);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final detail = await _photoCall(
+        context,
+        widget.admin,
+        (api, t) => api.updateAlbum(
+          a.id,
+          t,
+          title: title != a.title ? title : null,
+          reportDate: reportDate != a.reportDate ? reportDate : null,
+          allowLinkUpload: _allowLinkUpload != a.allowLinkUpload ? _allowLinkUpload : null,
+        ),
+      );
+      if (mounted) Navigator.of(context).pop(detail);
+    } catch (e) {
+      if (mounted) setState(() => _error = _errorText(e, 'บันทึกไม่สำเร็จ'));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('แก้ไขอัลบั้ม', style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _title,
+              enabled: !_busy,
+              maxLength: 200,
+              decoration: const InputDecoration(
+                labelText: 'ชื่ออัลบั้ม / รายงาน',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.event_rounded),
+              title: Text('วันที่รายงาน', style: GoogleFonts.kanit(fontSize: 13)),
+              subtitle: Text(
+                formatPhotoAlbumDate(_ymd(_date)),
+                style: GoogleFonts.kanit(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              trailing: const Icon(Icons.edit_calendar_outlined),
+              onTap: _busy ? null : _pickDate,
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _allowLinkUpload,
+              onChanged: _busy ? null : (v) => setState(() => _allowLinkUpload = v),
+              title: Text('ให้คนที่มีลิงก์เพิ่มรูปได้', style: GoogleFonts.kanit(fontSize: 14)),
+            ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(_error!, style: GoogleFonts.kanit(color: Colors.red)),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: const Text('ยกเลิก'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : _submit,
+          child: _busy
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('บันทึก'),
+        ),
+      ],
+    );
+  }
+}
+
 // MARK: - PIN gate
 
 class PhotoAlbumPinScreen extends StatefulWidget {
@@ -422,6 +607,45 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen> {
     if (mounted) unawaited(_load());
   }
 
+  Future<void> _manage(PhotoAlbumSummary album) async {
+    AppHaptics.tap();
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(album.title, style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+              subtitle: Text(formatPhotoAlbumDate(album.reportDate), style: GoogleFonts.kanit()),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: Text('แก้ไขอัลบั้ม', style: GoogleFonts.kanit()),
+              onTap: () => Navigator.of(context).pop('edit'),
+            ),
+            ListTile(
+              leading: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700),
+              title: Text('ลบอัลบั้ม', style: GoogleFonts.kanit(color: Colors.red.shade700)),
+              onTap: () => Navigator.of(context).pop('delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'edit') {
+      final saved = await _editAlbum(context, widget.admin, album);
+      if (saved == null || !mounted) return;
+      _snack(context, 'บันทึกแล้ว');
+    } else if (!await _deleteAlbum(context, widget.admin, album)) {
+      return;
+    }
+    if (mounted) unawaited(_load());
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = DailyPalette.of(context);
@@ -458,7 +682,11 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen> {
           childAspectRatio: 0.78,
         ),
         itemCount: albums.length,
-        itemBuilder: (context, i) => _AlbumCard(album: albums[i], onTap: () => _open(albums[i])),
+        itemBuilder: (context, i) => _AlbumCard(
+          album: albums[i],
+          onTap: () => _open(albums[i]),
+          onLongPress: canManagePhotoAlbums(widget.admin) ? () => _manage(albums[i]) : null,
+        ),
       );
     }
 
@@ -515,10 +743,11 @@ class _PhotoAlbumsScreenState extends State<PhotoAlbumsScreen> {
 }
 
 class _AlbumCard extends StatelessWidget {
-  const _AlbumCard({required this.album, required this.onTap});
+  const _AlbumCard({required this.album, required this.onTap, this.onLongPress});
 
   final PhotoAlbumSummary album;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -529,6 +758,7 @@ class _AlbumCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -716,6 +946,9 @@ class _PhotoAlbumDetailScreenState extends State<PhotoAlbumDetailScreen> {
 
   final List<_UploadJob> _jobs = [];
   bool _uploading = false;
+
+  /// SuperAdmin multi-select (long-press) for delete / cover.
+  final Set<String> _selected = {};
 
   int get _doneCount => _jobs.where((j) => j.state == _JobState.done).length;
   int get _failedCount => _jobs.where((j) => j.state == _JobState.failed).length;
@@ -916,12 +1149,123 @@ class _PhotoAlbumDetailScreenState extends State<PhotoAlbumDetailScreen> {
     return leave ?? false;
   }
 
+  bool get _canManage => canManagePhotoAlbums(widget.admin);
+
   void _openViewer(int index) {
     final media = _media;
     if (media == null) return;
     Navigator.of(context).push(
-      AppPageRoute(page: _PhotoViewerScreen(media: media, initialIndex: index)),
+      AppPageRoute(
+        page: _PhotoViewerScreen(
+          media: media,
+          initialIndex: index,
+          onDelete: _canManage ? (m) => _deleteMedia([m.id]) : null,
+          onSetCover: _canManage ? _setCover : null,
+        ),
+      ),
     );
+  }
+
+  void _toggleSelected(String id) {
+    AppHaptics.tap();
+    setState(() {
+      if (!_selected.remove(id)) _selected.add(id);
+    });
+  }
+
+  /// Returns true when every item was deleted.
+  Future<bool> _deleteMedia(List<String> ids) async {
+    if (ids.isEmpty) return false;
+    final ok = await _confirm(
+      context,
+      title: ids.length > 1 ? 'ลบ ${ids.length} รายการ?' : 'ลบรายการนี้?',
+      body: 'ไฟล์จะถูกย้ายไปถังขยะของ Google Drive และกู้คืนได้ภายใน 30 วัน',
+      action: 'ลบ',
+    );
+    if (!ok || !mounted) return false;
+    final failed = <String>[];
+    String? lastError;
+    for (final id in ids) {
+      try {
+        await _photoCall(context, widget.admin, (api, t) => api.deleteMedia(id, t));
+      } catch (e) {
+        failed.add(id);
+        lastError = _errorText(e, 'ลบไม่สำเร็จ');
+      }
+      if (!mounted) return false;
+    }
+    final gone = ids.where((id) => !failed.contains(id)).toSet();
+    setState(() {
+      _media = _media?.where((m) => !gone.contains(m.id)).toList();
+      _selected.clear();
+    });
+    _snack(
+      context,
+      failed.isEmpty ? 'ลบ ${gone.length} รายการแล้ว' : 'ลบไม่สำเร็จ ${failed.length} รายการ · $lastError',
+    );
+    unawaited(_load());
+    return failed.isEmpty;
+  }
+
+  Future<void> _setCover(PhotoMediaItem m) async {
+    try {
+      final detail = await _photoCall(
+        context,
+        widget.admin,
+        (api, t) => api.updateAlbum(_album.id, t, coverMediaId: m.id),
+      );
+      if (!mounted) return;
+      setState(() {
+        _album = detail.album;
+        _media = detail.media;
+        _selected.clear();
+      });
+      _snack(context, 'ตั้งเป็นภาพปกแล้ว');
+    } catch (e) {
+      if (mounted) _snack(context, _errorText(e, 'ตั้งภาพปกไม่สำเร็จ'));
+    }
+  }
+
+  Future<void> _albumMenu(String action) async {
+    switch (action) {
+      case 'edit':
+        final saved = await _editAlbum(context, widget.admin, _album);
+        if (saved == null || !mounted) return;
+        setState(() {
+          _album = saved.album;
+          _media = saved.media;
+        });
+        _snack(context, 'บันทึกแล้ว');
+      case 'relink':
+        final ok = await _confirm(
+          context,
+          title: 'สร้างลิงก์แชร์ใหม่?',
+          body: 'ลิงก์เดิมที่ส่งในกลุ่มไปแล้วจะเปิดไม่ได้อีก',
+          action: 'สร้างลิงก์ใหม่',
+        );
+        if (!ok || !mounted) return;
+        try {
+          final detail = await _photoCall(
+            context,
+            widget.admin,
+            (api, t) => api.updateAlbum(_album.id, t, regenerateLink: true),
+          );
+          if (!mounted) return;
+          setState(() => _album = detail.album);
+          await Clipboard.setData(ClipboardData(text: _album.shareText));
+          if (mounted) _snack(context, 'สร้างลิงก์ใหม่และคัดลอกแล้ว');
+        } catch (e) {
+          if (mounted) _snack(context, _errorText(e, 'สร้างลิงก์ใหม่ไม่สำเร็จ'));
+        }
+      case 'delete':
+        if (_uploading) {
+          _snack(context, 'รอให้อัปโหลดเสร็จก่อนลบอัลบั้ม');
+          return;
+        }
+        if (await _deleteAlbum(context, widget.admin, _album) && mounted) {
+          Navigator.of(context).pop();
+        }
+    }
   }
 
   Widget _uploadBanner() {
@@ -1011,18 +1355,34 @@ class _PhotoAlbumDetailScreenState extends State<PhotoAlbumDetailScreen> {
         itemCount: media.length,
         itemBuilder: (context, i) {
           final m = media[i];
+          final selected = _selected.contains(m.id);
           return GestureDetector(
-            onTap: () => _openViewer(i),
+            onTap: () => _selected.isNotEmpty ? _toggleSelected(m.id) : _openViewer(i),
+            onLongPress: _canManage ? () => _toggleSelected(m.id) : null,
             child: Stack(
               fit: StackFit.expand,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: _DriveImage(url: m.src.thumb, fallbackUrl: m.src.thumbFallback),
+                AnimatedPadding(
+                  duration: const Duration(milliseconds: 120),
+                  padding: EdgeInsets.all(selected ? 8 : 0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: _DriveImage(url: m.src.thumb, fallbackUrl: m.src.thumbFallback),
+                  ),
                 ),
                 if (m.isVideo)
                   const Center(
                     child: Icon(Icons.play_circle_fill_rounded, size: 40, color: Colors.white70),
+                  ),
+                if (_selected.isNotEmpty)
+                  Positioned(
+                    top: 4,
+                    left: 4,
+                    child: Icon(
+                      selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                      color: selected ? kPhotoAlbumAccent : Colors.white,
+                      shadows: const [Shadow(blurRadius: 4, color: Colors.black45)],
+                    ),
                   ),
               ],
             ),
@@ -1031,16 +1391,53 @@ class _PhotoAlbumDetailScreenState extends State<PhotoAlbumDetailScreen> {
       );
     }
 
+    final selecting = _selected.isNotEmpty;
+    final selectionBar = AppBar(
+      backgroundColor: kPhotoAlbumAccent.withValues(alpha: 0.12),
+      leading: IconButton(
+        tooltip: 'ยกเลิกการเลือก',
+        onPressed: () => setState(_selected.clear),
+        icon: const Icon(Icons.close_rounded),
+      ),
+      title: Text('เลือกแล้ว ${_selected.length}', style: GoogleFonts.kanit(fontWeight: FontWeight.w700)),
+      actions: [
+        if (media != null && _selected.length < media.length)
+          IconButton(
+            tooltip: 'เลือกทั้งหมด',
+            onPressed: () => setState(() => _selected.addAll(media.map((m) => m.id))),
+            icon: const Icon(Icons.select_all_rounded),
+          ),
+        if (_selected.length == 1)
+          IconButton(
+            tooltip: 'ตั้งเป็นภาพปก',
+            onPressed: () {
+              final m = media?.where((m) => m.id == _selected.first).firstOrNull;
+              if (m != null) unawaited(_setCover(m));
+            },
+            icon: const Icon(Icons.star_outline_rounded),
+          ),
+        IconButton(
+          tooltip: 'ลบที่เลือก',
+          onPressed: () => _deleteMedia(_selected.toList()),
+          icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700),
+        ),
+      ],
+    );
+
     return PopScope(
-      canPop: !_uploading,
+      canPop: !_uploading && !selecting,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
+        if (_selected.isNotEmpty) {
+          setState(_selected.clear);
+          return;
+        }
         final navigator = Navigator.of(context);
         if (await _confirmLeave()) navigator.pop();
       },
       child: Scaffold(
         backgroundColor: p.surface,
-        appBar: AppBar(
+        appBar: selecting ? selectionBar : AppBar(
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1067,6 +1464,34 @@ class _PhotoAlbumDetailScreenState extends State<PhotoAlbumDetailScreen> {
               onPressed: _loading ? null : _load,
               icon: const Icon(Icons.refresh_rounded),
             ),
+            if (_canManage)
+              PopupMenuButton<String>(
+                tooltip: 'จัดการอัลบั้ม',
+                onSelected: _albumMenu,
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'edit',
+                    child: ListTile(
+                      leading: const Icon(Icons.edit_outlined),
+                      title: Text('แก้ไขอัลบั้ม', style: GoogleFonts.kanit()),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'relink',
+                    child: ListTile(
+                      leading: const Icon(Icons.link_off_rounded),
+                      title: Text('สร้างลิงก์แชร์ใหม่', style: GoogleFonts.kanit()),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      leading: Icon(Icons.delete_outline_rounded, color: Colors.red.shade700),
+                      title: Text('ลบอัลบั้ม', style: GoogleFonts.kanit(color: Colors.red.shade700)),
+                    ),
+                  ),
+                ],
+              ),
           ],
         ),
         body: RefreshIndicator(
@@ -1074,11 +1499,19 @@ class _PhotoAlbumDetailScreenState extends State<PhotoAlbumDetailScreen> {
           child: Column(
             children: [
               if (_jobs.isNotEmpty) _uploadBanner(),
+              if (_canManage && !selecting && (media?.length ?? 0) > 1)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+                  child: Text(
+                    'กดค้างที่รูปเพื่อเลือกหลายรูป แล้วลบหรือตั้งเป็นภาพปก',
+                    style: GoogleFonts.kanit(fontSize: 12, color: p.inkMuted),
+                  ),
+                ),
               Expanded(child: body),
             ],
           ),
         ),
-        floatingActionButton: FloatingActionButton.extended(
+        floatingActionButton: selecting ? null : FloatingActionButton.extended(
           onPressed: _addPhotos,
           backgroundColor: kPhotoAlbumAccent,
           foregroundColor: Colors.white,
@@ -1093,10 +1526,19 @@ class _PhotoAlbumDetailScreenState extends State<PhotoAlbumDetailScreen> {
 // MARK: - Viewer
 
 class _PhotoViewerScreen extends StatefulWidget {
-  const _PhotoViewerScreen({required this.media, required this.initialIndex});
+  const _PhotoViewerScreen({
+    required this.media,
+    required this.initialIndex,
+    this.onDelete,
+    this.onSetCover,
+  });
 
   final List<PhotoMediaItem> media;
   final int initialIndex;
+
+  /// SuperAdmin only; resolves true when the item was deleted.
+  final Future<bool> Function(PhotoMediaItem item)? onDelete;
+  final Future<void> Function(PhotoMediaItem item)? onSetCover;
 
   @override
   State<_PhotoViewerScreen> createState() => _PhotoViewerScreenState();
@@ -1105,6 +1547,17 @@ class _PhotoViewerScreen extends StatefulWidget {
 class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
   late final PageController _controller = PageController(initialPage: widget.initialIndex);
   late int _index = widget.initialIndex;
+  late final List<PhotoMediaItem> _media = [...widget.media];
+
+  Future<void> _delete(PhotoMediaItem m) async {
+    final deleted = await widget.onDelete!(m);
+    if (!deleted || !mounted) return;
+    setState(() {
+      _media.removeWhere((x) => x.id == m.id);
+      if (_index >= _media.length) _index = _media.length - 1;
+    });
+    if (_media.isEmpty) Navigator.of(context).pop();
+  }
 
   @override
   void dispose() {
@@ -1121,17 +1574,30 @@ class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final current = widget.media[_index];
+    if (_media.isEmpty) return const ColoredBox(color: Colors.black);
+    final current = _media[_index];
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         title: Text(
-          '${_index + 1} / ${widget.media.length}',
+          '${_index + 1} / ${_media.length}',
           style: GoogleFonts.kanit(fontWeight: FontWeight.w600),
         ),
         actions: [
+          if (widget.onSetCover != null)
+            IconButton(
+              tooltip: 'ตั้งเป็นภาพปก',
+              onPressed: () => widget.onSetCover!(current),
+              icon: const Icon(Icons.star_outline_rounded),
+            ),
+          if (widget.onDelete != null)
+            IconButton(
+              tooltip: 'ลบ',
+              onPressed: () => _delete(current),
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
           IconButton(
             tooltip: 'เปิดใน Google Drive',
             onPressed: () => _openExternal(current),
@@ -1141,10 +1607,10 @@ class _PhotoViewerScreenState extends State<_PhotoViewerScreen> {
       ),
       body: PageView.builder(
         controller: _controller,
-        itemCount: widget.media.length,
+        itemCount: _media.length,
         onPageChanged: (i) => setState(() => _index = i),
         itemBuilder: (context, i) {
-          final m = widget.media[i];
+          final m = _media[i];
           if (m.isVideo) {
             return GestureDetector(
               onTap: () => _openExternal(m),

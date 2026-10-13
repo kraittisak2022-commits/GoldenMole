@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetFake } from './fakeDb';
 
 vi.mock('../../api/_lib/supabaseAdmin.js', async () => (await import('./fakeDb')).supabaseAdminMock);
-vi.mock('../../api/_lib/session.js', () => ({ requireStaff: async () => ({ id: 'u1' }) }));
+vi.mock('../../api/_lib/session.js', () => ({ requireStaff: vi.fn(async () => ({ id: 'u1' })) }));
 vi.mock('../../api/_lib/drive.js', () => ({ renameFile: vi.fn(), moveAlbumFolder: vi.fn(), trashFile: vi.fn() }));
 
 const { renameFile, moveAlbumFolder } = await import('../../api/_lib/drive.js');
+const { requireStaff } = await import('../../api/_lib/session.js');
 const { PATCH } = await import('../../api/albums/[id]');
 
 const ALBUM = {
@@ -39,6 +40,11 @@ beforeEach(() => {
 });
 
 describe('PATCH /api/albums/:id', () => {
+  it('is limited to SuperAdmin', async () => {
+    await patch({ title: 'ชื่อใหม่' });
+    expect(requireStaff).toHaveBeenCalledWith(expect.any(Request), { superAdmin: true });
+  });
+
   it('rejects a bad date before renaming anything in Drive', async () => {
     const res = await patch({ title: 'ชื่อใหม่', reportDate: '2026-13-45' });
     expect(res.status).toBe(400);

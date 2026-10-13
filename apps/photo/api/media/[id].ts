@@ -4,9 +4,9 @@ import { HttpError, json, lastSegment, route } from '../_lib/http.js';
 import { requireStaff } from '../_lib/session.js';
 import { db, must } from '../_lib/supabaseAdmin.js';
 
-/** DELETE (staff): sends the file to the Drive trash and removes it from the album. */
+/** DELETE (SuperAdmin): sends the file to the Drive trash and removes it from the album. */
 export const DELETE = route(async (request) => {
-  await requireStaff(request);
+  await requireStaff(request, { superAdmin: true });
   const id = lastSegment(request);
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw new HttpError('not_found', 404);
   const media = must(await db().from('ph_media').select(MEDIA_COLUMNS).eq('id', id).maybeSingle()) as MediaRow | null;
