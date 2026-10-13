@@ -59,9 +59,22 @@ struct PhotoAlbumDetail: Decodable, Sendable {
     let title: String
     let reportDate: String
     let mediaCount: Int
+    let cover: PhotoMediaSources?
     let shareUrl: String
     let driveFolderUrl: String
     let media: [PhotoMediaItem]
+
+    var summary: PhotoAlbumSummary {
+        PhotoAlbumSummary(
+            id: id,
+            title: title,
+            reportDate: reportDate,
+            mediaCount: mediaCount,
+            cover: cover,
+            shareUrl: shareUrl,
+            driveFolderUrl: driveFolderUrl
+        )
+    }
 }
 
 enum PhotoAlbumError: LocalizedError, Equatable {
@@ -161,11 +174,45 @@ enum PhotoAlbumAPI {
         return try await send(authorized(path: "uploads/complete", token: token, json: json))
     }
 
-    private static func authorized(path: String, token: String, json: [String: Any]? = nil) -> URLRequest {
+    /// Renames or moves the album (the server renames/moves the Drive folder too), changes the cover,
+    /// or issues a new share link. Only the fields passed are changed.
+    static func updateAlbum(
+        id: String,
+        title: String? = nil,
+        reportDate: String? = nil,
+        coverMediaId: String? = nil,
+        regenerateLink: Bool = false,
+        token: String
+    ) async throws -> PhotoAlbumDetail {
+        var json: [String: Any] = [:]
+        if let title { json["title"] = title }
+        if let reportDate { json["reportDate"] = reportDate }
+        if let coverMediaId { json["coverMediaId"] = coverMediaId }
+        if regenerateLink { json["regenerateLink"] = true }
+        return try await send(authorized(path: "albums/\(id)", token: token, json: json, method: "PATCH"))
+    }
+
+    /// Moves the album folder to the Drive trash (restorable for 30 days) and hides the album.
+    static func deleteAlbum(id: String, token: String) async throws {
+        var request = authorized(path: "albums/\(id)", token: token)
+        request.httpMethod = "DELETE"
+        let _: OkBody = try await send(request)
+    }
+
+    /// Moves the file to the Drive trash and removes it from its album.
+    static func deleteMedia(id: String, token: String) async throws {
+        var request = authorized(path: "media/\(id)", token: token)
+        request.httpMethod = "DELETE"
+        let _: OkBody = try await send(request)
+    }
+
+    private struct OkBody: Decodable {}
+
+    private static func authorized(path: String, token: String, json: [String: Any]? = nil, method: String = "POST") -> URLRequest {
         var request = URLRequest(url: apiURL.appendingPathComponent(path))
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         if let json {
-            request.httpMethod = "POST"
+            request.httpMethod = method
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try? JSONSerialization.data(withJSONObject: json)
         }

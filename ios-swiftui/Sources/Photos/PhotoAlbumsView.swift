@@ -164,15 +164,23 @@ private struct PhotoAlbumCard: View {
 // MARK: - Album detail
 
 struct PhotoAlbumDetailView: View {
-    let album: PhotoAlbumSummary
-
     @Environment(AuthService.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+    @State private var album: PhotoAlbumSummary
     @State private var media: [PhotoMediaItem] = []
     @State private var loading = false
     @State private var error: PhotoAlbumError?
     @State private var viewerStart: ViewerStart?
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var queue: PhotoUploadQueue
+    // SuperAdmin management
+    @State private var selecting = false
+    @State private var selected: Set<String> = []
+    @State private var showEdit = false
+    @State private var confirmDeleteSelected = false
+    @State private var confirmDeleteAlbum = false
+    @State private var working = false
+    @State private var actionError: String?
 
     private struct ViewerStart: Identifiable {
         let index: Int
@@ -181,8 +189,10 @@ struct PhotoAlbumDetailView: View {
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
 
+    private var canManage: Bool { auth.currentAdmin?.role == .superAdmin }
+
     init(album: PhotoAlbumSummary) {
-        self.album = album
+        _album = State(initialValue: album)
         _queue = State(initialValue: PhotoUploadQueue(albumId: album.id))
     }
 
@@ -217,9 +227,13 @@ struct PhotoAlbumDetailView: View {
                     LazyVGrid(columns: columns, spacing: 2) {
                         ForEach(Array(media.enumerated()), id: \.element.id) { index, item in
                             Button {
-                                viewerStart = ViewerStart(index: index)
+                                if selecting {
+                                    if selected.contains(item.id) { selected.remove(item.id) } else { selected.insert(item.id) }
+                                } else {
+                                    viewerStart = ViewerStart(index: index)
+                                }
                             } label: {
-                                PhotoGridCell(item: item)
+                                PhotoGridCell(item: item, selection: selecting ? selected.contains(item.id) : nil)
                             }
                             .buttonStyle(.plain)
                         }
@@ -233,27 +247,88 @@ struct PhotoAlbumDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if let drive = URL(string: album.driveFolderUrl) {
-                    Link(destination: drive) { Image(systemName: "folder") }
-                        .accessibilityLabel("เปิดโฟลเดอร์ใน Google Drive")
+                if selecting {
+                    Button(selected.count == media.count ? "ไม่เลือก" : "เลือกทั้งหมด") {
+                        selected = selected.count == media.count ? [] : Set(media.map(\.id))
+                    }
+                    Button("เสร็จ") {
+                        selecting = false
+                        selected = []
+                    }
+                    .fontWeight(.semibold)
+                } else {
+                    if let drive = URL(string: album.driveFolderUrl) {
+                        Link(destination: drive) { Image(systemName: "folder") }
+                            .accessibilityLabel("เปิดโฟลเดอร์ใน Google Drive")
+                    }
+                    ShareLink(item: "\(album.title)\n\(album.shareUrl)") {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("แชร์ชื่ออัลบั้มและลิงก์")
+                    addMediaPicker {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("เพิ่มรูปหรือวิดีโอ")
+                    if canManage {
+                        manageMenu
+                    }
                 }
-                ShareLink(item: "\(album.title)\n\(album.shareUrl)") {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .accessibilityLabel("แชร์ชื่ออัลบั้มและลิงก์")
-                addMediaPicker {
-                    Image(systemName: "plus")
-                }
-                .accessibilityLabel("เพิ่มรูปหรือวิดีโอ")
             }
         }
         .safeAreaInset(edge: .bottom) {
-            if !queue.jobs.isEmpty {
+            if selecting {
+                selectionBar
+            } else if !queue.jobs.isEmpty {
                 PhotoUploadTray(queue: queue)
                     .padding(.horizontal, AppTheme.spaceLG)
                     .padding(.bottom, AppTheme.spaceSM)
             }
         }
+        .sheet(isPresented: $showEdit) {
+            PhotoEditAlbumSheet(album: album) { detail in
+                album = detail.summary
+                media = detail.media
+            }
+            .environment(auth)
+        }
+        .confirmationDialog(
+            "ลบ \(selected.count) รายการที่เลือก?",
+            isPresented: $confirmDeleteSelected,
+            titleVisibility: .visible
+        ) {
+            Button("ลบ \(selected.count) รายการ", role: .destructive) {
+                Task { await deleteSelected() }
+            }
+        } message: {
+            Text("ไฟล์จะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)")
+        }
+        .confirmationDialog(
+            "ลบอัลบั้ม «\(album.title)»?",
+            isPresented: $confirmDeleteAlbum,
+            titleVisibility: .visible
+        ) {
+            Button("ลบอัลบั้ม", role: .destructive) {
+                Task { await deleteAlbum() }
+            }
+        } message: {
+            Text("อัลบั้มและไฟล์ทั้งหมด \(media.count) รายการจะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน) และลิงก์แชร์จะใช้ไม่ได้")
+        }
+        .alert(
+            "ทำรายการไม่สำเร็จ",
+            isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })
+        ) {
+            Button("ตกลง", role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
+        }
+        .overlay {
+            if working {
+                ProgressView()
+                    .padding(20)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
+            }
+        }
+        .disabled(working)
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty, let admin = auth.currentAdmin else { return }
             queue.enqueue(items, admin: admin)
@@ -267,7 +342,109 @@ struct PhotoAlbumDetailView: View {
             await load()
         }
         .fullScreenCover(item: $viewerStart) { start in
-            PhotoMediaViewer(items: media, startIndex: start.index)
+            PhotoMediaViewer(
+                items: media,
+                startIndex: start.index,
+                canManage: canManage,
+                onSetCover: { item in await setCover(item) },
+                onDelete: { item in await deleteMedia([item.id]) }
+            )
+        }
+    }
+
+    // MARK: SuperAdmin actions
+
+    private var manageMenu: some View {
+        Menu {
+            Button { showEdit = true } label: {
+                Label("แก้ไขอัลบั้ม", systemImage: "pencil")
+            }
+            if !media.isEmpty {
+                Button { selecting = true } label: {
+                    Label("เลือกรูปเพื่อลบ", systemImage: "checkmark.circle")
+                }
+            }
+            Divider()
+            Button(role: .destructive) { confirmDeleteAlbum = true } label: {
+                Label("ลบอัลบั้ม", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("จัดการอัลบั้ม")
+    }
+
+    private var selectionBar: some View {
+        HStack {
+            Text(selected.isEmpty ? "แตะรูปเพื่อเลือก" : "เลือกแล้ว \(selected.count) รายการ")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+            Spacer()
+            Button(role: .destructive) { confirmDeleteSelected = true } label: {
+                Label("ลบ", systemImage: "trash")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(AppTheme.expense)
+            .disabled(selected.isEmpty)
+        }
+        .padding(AppTheme.spaceMD)
+        .background(.regularMaterial)
+    }
+
+    private func deleteSelected() async {
+        let ids = media.map(\.id).filter(selected.contains)
+        if let message = await deleteMedia(ids) {
+            actionError = message
+        }
+        selected = []
+        if media.isEmpty { selecting = false }
+    }
+
+    /// Deletes one by one so a failure keeps the rest; returns an error message or nil.
+    private func deleteMedia(_ ids: [String]) async -> String? {
+        guard let admin = auth.currentAdmin else { return nil }
+        working = true
+        defer { working = false }
+        var failure: String?
+        for id in ids {
+            do {
+                try await PhotoAlbumSession.shared.withToken(admin: admin) {
+                    try await PhotoAlbumAPI.deleteMedia(id: id, token: $0)
+                }
+                media.removeAll { $0.id == id }
+            } catch {
+                failure = error.localizedDescription
+            }
+        }
+        if failure == nil { await load() }
+        return failure
+    }
+
+    private func setCover(_ item: PhotoMediaItem) async -> String? {
+        guard let admin = auth.currentAdmin else { return nil }
+        do {
+            let detail = try await PhotoAlbumSession.shared.withToken(admin: admin) {
+                try await PhotoAlbumAPI.updateAlbum(id: album.id, coverMediaId: item.id, token: $0)
+            }
+            album = detail.summary
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private func deleteAlbum() async {
+        guard let admin = auth.currentAdmin else { return }
+        working = true
+        defer { working = false }
+        do {
+            try await PhotoAlbumSession.shared.withToken(admin: admin) {
+                try await PhotoAlbumAPI.deleteAlbum(id: album.id, token: $0)
+            }
+            queue.cancelAll()
+            dismiss()
+        } catch {
+            actionError = error.localizedDescription
         }
     }
 
@@ -301,6 +478,7 @@ struct PhotoAlbumDetailView: View {
             let detail = try await PhotoAlbumSession.shared.withToken(admin: admin) {
                 try await PhotoAlbumAPI.album(id: album.id, token: $0)
             }
+            album = detail.summary
             media = detail.media
             error = nil
         } catch let err as PhotoAlbumError {
@@ -313,6 +491,8 @@ struct PhotoAlbumDetailView: View {
 
 private struct PhotoGridCell: View {
     let item: PhotoMediaItem
+    /// nil = not in select mode.
+    var selection: Bool? = nil
 
     var body: some View {
         Color.clear
@@ -329,21 +509,103 @@ private struct PhotoGridCell: View {
                         .padding(6)
                 }
             }
+            .overlay {
+                if selection == true {
+                    Color.black.opacity(0.25)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if let selection {
+                    Image(systemName: selection ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(selection ? AppTheme.brand : .white)
+                        .background(Circle().fill(selection ? Color.white : Color.black.opacity(0.2)))
+                        .shadow(radius: 2)
+                        .padding(6)
+                }
+            }
             .contentShape(Rectangle())
             .accessibilityLabel(item.isVideo ? "วิดีโอ \(item.name)" : "รูป \(item.name)")
+            .accessibilityAddTraits(selection == true ? .isSelected : [])
     }
 }
 
 // MARK: - Full-screen viewer
 
 private struct PhotoMediaViewer: View {
-    let items: [PhotoMediaItem]
+    @State private var items: [PhotoMediaItem]
     @State private var index: Int
-    @Environment(\.dismiss) private var dismiss
+    let canManage: Bool
+    /// Each returns an error message, or nil on success.
+    let onSetCover: (PhotoMediaItem) async -> String?
+    let onDelete: (PhotoMediaItem) async -> String?
 
-    init(items: [PhotoMediaItem], startIndex: Int) {
-        self.items = items
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmDelete = false
+    @State private var working = false
+    @State private var notice: String?
+
+    init(
+        items: [PhotoMediaItem],
+        startIndex: Int,
+        canManage: Bool,
+        onSetCover: @escaping (PhotoMediaItem) async -> String?,
+        onDelete: @escaping (PhotoMediaItem) async -> String?
+    ) {
+        _items = State(initialValue: items)
         _index = State(initialValue: startIndex)
+        self.canManage = canManage
+        self.onSetCover = onSetCover
+        self.onDelete = onDelete
+    }
+
+    private var currentItem: PhotoMediaItem? {
+        items.indices.contains(index) ? items[index] : nil
+    }
+
+    private var manageMenu: some View {
+        Menu {
+            if currentItem?.isVideo == false {
+                Button {
+                    Task { await setCover() }
+                } label: {
+                    Label("ตั้งเป็นรูปปกอัลบั้ม", systemImage: "photo.badge.checkmark")
+                }
+            }
+            Button(role: .destructive) { confirmDelete = true } label: {
+                Label("ลบรายการนี้", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: working ? "hourglass" : "ellipsis")
+                .font(.headline)
+                .frame(width: 40, height: 40)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .disabled(working)
+        .accessibilityLabel("จัดการรูป")
+    }
+
+    private func setCover() async {
+        guard let item = currentItem else { return }
+        working = true
+        defer { working = false }
+        notice = await onSetCover(item) ?? "ตั้งเป็นรูปปกแล้ว"
+    }
+
+    private func deleteCurrent() async {
+        guard let item = currentItem else { return }
+        working = true
+        defer { working = false }
+        if let message = await onDelete(item) {
+            notice = message
+            return
+        }
+        items.removeAll { $0.id == item.id }
+        if items.isEmpty {
+            dismiss()
+        } else {
+            index = min(index, items.count - 1)
+        }
     }
 
     var body: some View {
@@ -379,12 +641,26 @@ private struct PhotoMediaViewer: View {
                     }
                     .accessibilityLabel("แชร์ลิงก์ดาวน์โหลด")
                 }
+                if canManage {
+                    manageMenu
+                }
             }
             .foregroundStyle(.white)
             .padding(.horizontal, AppTheme.spaceLG)
             .padding(.top, AppTheme.spaceSM)
         }
         .preferredColorScheme(.dark)
+        .confirmationDialog("ลบรายการนี้?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("ลบ", role: .destructive) { Task { await deleteCurrent() } }
+        } message: {
+            Text("ไฟล์จะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)")
+        }
+        .alert(
+            notice ?? "",
+            isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })
+        ) {
+            Button("ตกลง", role: .cancel) {}
+        }
     }
 
     @ViewBuilder
@@ -607,6 +883,116 @@ private enum PhotoAlbumFormat {
 
     static func reportDateKey(_ date: Date) -> String {
         ymd.string(from: date)
+    }
+
+    static func date(fromReportKey key: String) -> Date? {
+        ymd.date(from: key)
+    }
+}
+
+// MARK: - Edit album (SuperAdmin)
+
+private struct PhotoEditAlbumSheet: View {
+    let album: PhotoAlbumSummary
+    let onSaved: (PhotoAlbumDetail) -> Void
+
+    @Environment(AuthService.self) private var auth
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var reportDate: Date
+    @State private var busy = false
+    @State private var message: String?
+    @State private var confirmNewLink = false
+
+    init(album: PhotoAlbumSummary, onSaved: @escaping (PhotoAlbumDetail) -> Void) {
+        self.album = album
+        self.onSaved = onSaved
+        _title = State(initialValue: album.title)
+        _reportDate = State(initialValue: PhotoAlbumFormat.date(fromReportKey: album.reportDate) ?? Date())
+    }
+
+    private var cleanTitle: String {
+        title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    private var reportKey: String { PhotoAlbumFormat.reportDateKey(reportDate) }
+    private var hasChanges: Bool { cleanTitle != album.title || reportKey != album.reportDate }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("ชื่อรายงาน", text: $title)
+                    DatePicker("วันที่รายงาน", selection: $reportDate, displayedComponents: .date)
+                        .environment(\.locale, Locale(identifier: "th_TH"))
+                        .environment(\.calendar, Calendar(identifier: .buddhist))
+                } footer: {
+                    Text(reportKey != album.reportDate
+                         ? "เปลี่ยนวันที่แล้ว — โฟลเดอร์ใน Google Drive จะย้ายไปปี/เดือนใหม่ให้อัตโนมัติ"
+                         : "เปลี่ยนชื่อได้ — โฟลเดอร์ใน Google Drive จะเปลี่ยนชื่อตามให้")
+                }
+                Section {
+                    Button { confirmNewLink = true } label: {
+                        Label("สร้างลิงก์แชร์ใหม่", systemImage: "link")
+                    }
+                } footer: {
+                    Text("ลิงก์เดิมที่แชร์ไปแล้วจะใช้ไม่ได้ทันที")
+                }
+                if let message {
+                    Section {
+                        Text(message)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(AppTheme.expense)
+                    }
+                }
+            }
+            .navigationTitle("แก้ไขอัลบั้ม")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("ยกเลิก") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(busy ? "กำลังบันทึก…" : "บันทึก") { Task { await save() } }
+                        .fontWeight(.semibold)
+                        .disabled(busy || !hasChanges || cleanTitle.isEmpty || cleanTitle.count > 200)
+                }
+            }
+            .confirmationDialog("สร้างลิงก์แชร์ใหม่?", isPresented: $confirmNewLink, titleVisibility: .visible) {
+                Button("สร้างลิงก์ใหม่", role: .destructive) { Task { await regenerateLink() } }
+            } message: {
+                Text("ลิงก์เดิมที่แชร์ไปแล้วจะใช้ไม่ได้ทันที — ต้องแชร์ลิงก์ใหม่อีกครั้ง")
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(busy)
+    }
+
+    private func save() async {
+        let title = cleanTitle == album.title ? nil : cleanTitle
+        let reportDate = reportKey == album.reportDate ? nil : reportKey
+        await patch { token in
+            try await PhotoAlbumAPI.updateAlbum(id: album.id, title: title, reportDate: reportDate, token: token)
+        }
+    }
+
+    private func regenerateLink() async {
+        await patch { token in
+            try await PhotoAlbumAPI.updateAlbum(id: album.id, regenerateLink: true, token: token)
+        }
+    }
+
+    private func patch(_ call: (String) async throws -> PhotoAlbumDetail) async {
+        guard let admin = auth.currentAdmin, !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            let detail = try await PhotoAlbumSession.shared.withToken(admin: admin, call)
+            onSaved(detail)
+            dismiss()
+        } catch {
+            message = error.localizedDescription
+        }
     }
 }
 
