@@ -74,8 +74,9 @@ export default function LoginPage() {
           />
         </div>
 
-        <div className="mt-10 flex justify-end">
-          <Button type="submit" disabled={busy} className="min-w-28">
+        <div className="mt-10 flex items-center justify-between gap-4">
+          <p className="text-xs text-muted">อุปกรณ์นี้จะจำการเข้าสู่ระบบไว้ ไม่ต้องเข้าใหม่บ่อย</p>
+          <Button type="submit" disabled={busy} className="min-w-28 shrink-0">
             {busy ? 'กำลังเข้าสู่ระบบ…' : 'ถัดไป'}
           </Button>
         </div>

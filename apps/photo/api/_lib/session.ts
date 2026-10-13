@@ -5,7 +5,11 @@ import { HttpError } from './http.js';
 import { db, must } from './supabaseAdmin.js';
 import { signToken, verifyToken } from './token.js';
 
-export const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+/**
+ * Renewed on every /api/auth/me call, so staff who open the site within this window stay signed in.
+ * Access is still checked against admin_users on each request, so removing an account cuts it off at once.
+ */
+export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 interface SessionPayload {
   typ: 'session';

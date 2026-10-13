@@ -7,14 +7,23 @@ export interface StoredSession {
 }
 
 const KEY = 'photo_session_v1';
-/** Matches the server's token lifetime. */
-const TTL_MS = 12 * 60 * 60 * 1000;
 
-export function readSession(): StoredSession | null {
+/** Expiry (epoch ms) from the server-signed `<payload>.<signature>` token, or 0 when unreadable. */
+export function tokenExpiresAt(token: string): number {
+  try {
+    const payload = token.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+    const exp = (JSON.parse(atob(payload)) as { exp?: unknown }).exp;
+    return typeof exp === 'number' ? exp : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function readSession(now = Date.now()): StoredSession | null {
   try {
     const parsed = JSON.parse(localStorage.getItem(KEY) ?? 'null') as StoredSession | null;
     if (!parsed?.token || !parsed.user?.id || !parsed.savedAt) return null;
-    if (Date.now() - Date.parse(parsed.savedAt) > TTL_MS) {
+    if (tokenExpiresAt(parsed.token) <= now) {
       clearSession();
       return null;
     }

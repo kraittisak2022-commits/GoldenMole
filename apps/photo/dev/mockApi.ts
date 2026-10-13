@@ -84,6 +84,8 @@ const albums: MockAlbum[] = [
 
 const uploads = new Map<string, { albumId: string; name: string; mime: string }>();
 
+/** Same `<payload>.<signature>` shape as real sessions so the client can read the expiry. */
+const mockToken = () => `${Buffer.from(JSON.stringify({ typ: 'session', exp: Date.now() + 30 * 86_400_000 })).toString('base64url')}.mock`;
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const summary = ({ media: _m, token: _t, ...rest }: MockAlbum) => ({ ...rest, mediaCount: _m.length, cover: rest.cover ?? _m[0]?.src ?? null });
 const detail = ({ token: _t, ...rest }: MockAlbum) => ({ ...rest, mediaCount: rest.media.length });
@@ -103,8 +105,7 @@ export async function handleMock(request: Request): Promise<Response> {
   const body = request.method === 'POST' || request.method === 'PATCH' ? ((await request.json().catch(() => ({}))) as Record<string, any>) : {};
   const [a, b] = parts;
 
-  if (a === 'auth' && b === 'login') return json({ token: 'mock', user });
-  if (a === 'auth' && b === 'me') return json({ user });
+  if (a === 'auth' && (b === 'login' || b === 'me')) return json({ token: mockToken(), user });
   if (a === 'google' && b === 'status') return json({ connected: true, email: 'goldenmole.photos@gmail.com', connectedAt: '2026-10-12T03:00:00Z' });
   if (a === 'google' && b === 'connect') return json({ url: `${ORIGIN}/settings?google=connected` });
 

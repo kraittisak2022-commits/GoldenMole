@@ -10,20 +10,35 @@ interface AuthValue {
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
+const RENEW_EVERY_MS = 6 * 60 * 60 * 1000;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<StaffUser | null>(() => readSession()?.user ?? null);
 
+  // Swap the token for a fresh one on open and whenever the app comes back to the screen, so people
+  // who use the site regularly never see the login page; network errors keep the current session.
   useEffect(() => {
-    if (!readSession()) return;
-    api<{ user: StaffUser }>('/api/auth/me')
-      .then(({ user: fresh }) => setUser(fresh))
-      .catch((err) => {
-        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-          clearSession();
-          setUser(null);
-        }
-      });
+    let renewedAt = 0;
+    const renew = () => {
+      if (document.visibilityState !== 'visible' || !readSession() || Date.now() - renewedAt < RENEW_EVERY_MS) return;
+      renewedAt = Date.now();
+      api<{ user: StaffUser; token?: string }>('/api/auth/me')
+        .then(({ user: fresh, token }) => {
+          if (token) saveSession(token, fresh);
+          setUser(fresh);
+        })
+        .catch((err) => {
+          if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+            clearSession();
+            setUser(null);
+          } else {
+            renewedAt = 0;
+          }
+        });
+    };
+    renew();
+    document.addEventListener('visibilitychange', renew);
+    return () => document.removeEventListener('visibilitychange', renew);
   }, []);
 
   useEffect(() => {
