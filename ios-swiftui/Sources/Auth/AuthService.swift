@@ -96,6 +96,15 @@ final class AuthService {
             profilesStore.save(from: matched, password: plainPassword)
         }
 
+        let photoUsername = matched.username
+        Task {
+            await PhotoAlbumSession.shared.prefetchToken(
+                adminId: matched.id,
+                username: photoUsername,
+                password: plainPassword
+            )
+        }
+
         await dataService.updateAdminLastLogin(id: matched.id)
     }
 
@@ -155,6 +164,9 @@ final class AuthService {
     }
 
     func logout() {
+        if let id = currentAdmin?.id {
+            PhotoAlbumSession.shared.signOut(adminId: id)
+        }
         currentAdmin = nil
         UserDefaults.standard.removeObject(forKey: sessionKey)
         // Keep saved profiles (Facebook-style). Wipe read-model disk cache for the next session.

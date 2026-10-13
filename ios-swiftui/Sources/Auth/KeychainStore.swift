@@ -2,9 +2,9 @@ import Foundation
 import Security
 
 enum KeychainStore {
-    private static let service = "com.goldenmole.dashboard.saved-login"
+    static let savedLoginService = "com.goldenmole.dashboard.saved-login"
 
-    static func setPassword(_ password: String, account: String) {
+    static func setPassword(_ password: String, account: String, service: String = savedLoginService) {
         let data = Data(password.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -19,7 +19,7 @@ enum KeychainStore {
         SecItemAdd(add as CFDictionary, nil)
     }
 
-    static func password(account: String) -> String? {
+    static func password(account: String, service: String = savedLoginService) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -33,7 +33,7 @@ enum KeychainStore {
         return String(data: data, encoding: .utf8)
     }
 
-    static func deletePassword(account: String) {
+    static func deletePassword(account: String, service: String = savedLoginService) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
