@@ -44,12 +44,12 @@ const post = (body: unknown, { pin = true } = {}) =>
     body: JSON.stringify(body),
   });
 
-function setup({ album = ALBUM, recentLinkUploads = 0, existingMedia = null as unknown } = {}) {
+/** `recentLinkUploads` = link upload starts in the past hour, this one included. */
+function setup({ album = ALBUM, recentLinkUploads = 1, existingMedia = null as unknown } = {}) {
   resetFake((q) => {
     if (q.table === 'ph_albums') return { data: q.filters.share_token === album.share_token ? album : null, error: null };
-    if (q.table === 'ph_media' && 'uploaded_by_staff_id' in q.filters) {
-      return { data: null, error: null, count: recentLinkUploads };
-    }
+    if (q.table === 'ph_auth_attempts' && q.op === 'insert') return { data: [{ id: 1, scope: 'link_upload', key_hash: 'k' }], error: null };
+    if (q.table === 'ph_auth_attempts' && q.op === 'select') return { data: null, error: null, count: recentLinkUploads };
     if (q.table === 'ph_media' && 'drive_file_id' in q.filters) return { data: existingMedia, error: null };
     return { data: null, error: null };
   });
@@ -97,10 +97,14 @@ describe('POST /api/uploads/start', () => {
     expect(startResumableUpload).not.toHaveBeenCalled();
   });
 
-  it('rate-limits link uploads per album', async () => {
+  it('rate-limits link uploads per album, counting uploads as they start', async () => {
     setup({ recentLinkUploads: 300 });
+    expect((await start(post(file))).status).toBe(200);
+    setup({ recentLinkUploads: 301 });
     const res = await start(post(file));
     expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: 'rate_limited' });
+    expect(startResumableUpload).toHaveBeenCalledTimes(1);
   });
 
   it('treats an unknown link as not found', async () => {

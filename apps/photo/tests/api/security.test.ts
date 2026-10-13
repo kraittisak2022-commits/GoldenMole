@@ -41,10 +41,16 @@ const USER = {
   allowed_apps: null,
 };
 
-/** `failures` = recorded failed attempts the lockout query sees, per scope. */
+/** `failures` = earlier failed attempts per scope; the lockout count also includes the attempt being made. */
 function setup(failures: Partial<Record<string, number>> = {}) {
+  let nextId = 1;
   resetFake((q: Query) => {
-    if (q.table === 'ph_auth_attempts' && q.op === 'select') return { data: null, error: null, count: failures[String(q.filters.scope)] ?? 0 };
+    if (q.table === 'ph_auth_attempts' && q.op === 'insert') {
+      return { data: (q.payload as { scope: string; key_hash: string }[]).map((r) => ({ id: nextId++, ...r })), error: null };
+    }
+    if (q.table === 'ph_auth_attempts' && q.op === 'select') {
+      return { data: null, error: null, count: (failures[String(q.filters.scope)] ?? 0) + 1 };
+    }
     if (q.table === 'ph_albums') return { data: q.filters.share_token === TOKEN ? ALBUM : null, error: null };
     if (q.table === 'ph_media') return { data: [], error: null };
     if (q.table === 'admin_users' && q.op === 'select') return { data: USER, error: null };
@@ -52,8 +58,17 @@ function setup(failures: Partial<Record<string, number>> = {}) {
   });
 }
 
-const failedAttempts = () =>
-  fake.queries.filter((q) => q.table === 'ph_auth_attempts' && q.op === 'insert').flatMap((q) => q.payload as { scope: string; success: boolean }[]).filter((r) => !r.success);
+const attemptQueries = () => fake.queries.filter((q) => q.table === 'ph_auth_attempts');
+const recordedScopes = () =>
+  attemptQueries()
+    .filter((q) => q.op === 'insert')
+    .flatMap((q) => (q.payload as { scope: string }[]).map((r) => r.scope))
+    .sort();
+const clearedScopes = () =>
+  attemptQueries()
+    .filter((q) => q.op === 'delete' && 'scope' in q.filters)
+    .map((q) => String(q.filters.scope))
+    .sort();
 
 const shareRequest = (method: 'GET' | 'POST', body?: unknown, headers: Record<string, string> = {}, token = TOKEN) =>
   new Request(`https://photo.goldenmole.pro/api/share/${token}`, {
@@ -88,11 +103,18 @@ describe('album PIN', () => {
     expect(await res.json()).toMatchObject({ title: 'เทปูน' });
   });
 
-  it('refuses a wrong PIN and records the failure', async () => {
+  it('refuses a wrong PIN and keeps the failure', async () => {
     const res = await unlockShare(shareRequest('POST', { pin: '1234' }));
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'bad_pin' });
-    expect(failedAttempts().map((r) => r.scope).sort()).toEqual(['pin_album', 'pin_ip']);
+    expect(recordedScopes()).toEqual(['pin_album', 'pin_ip']);
+    expect(clearedScopes()).toEqual([]);
+  });
+
+  it('clears earlier failures once the right PIN is entered', async () => {
+    setup({ pin_ip: 4 });
+    expect((await unlockShare(shareRequest('POST', { pin: '8888' }))).status).toBe(200);
+    expect(clearedScopes()).toEqual(['pin_album', 'pin_ip']);
   });
 
   it('locks PIN entry after too many wrong guesses, even for the right PIN', async () => {
@@ -100,12 +122,20 @@ describe('album PIN', () => {
     const res = await unlockShare(shareRequest('POST', { pin: '8888' }));
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ error: 'too_many_attempts' });
+    expect(attemptQueries().some((q) => q.op === 'delete' && 'id' in q.filters)).toBe(true);
+  });
+
+  it('writes the attempt before counting, so parallel guesses cannot all pass the check', async () => {
+    await unlockShare(shareRequest('POST', { pin: '1234' }));
+    const ops = attemptQueries().map((q) => q.op);
+    expect(ops.indexOf('insert')).toBeLessThan(ops.indexOf('select'));
   });
 
   it('counts guesses at unknown links against the address', async () => {
     const res = await unlockShare(shareRequest('POST', { pin: '8888' }, {}, 'zzzzzzzzzzzzzzzzzzzzzz'));
     expect(res.status).toBe(404);
-    expect(failedAttempts().map((r) => r.scope)).toEqual(['pin_ip']);
+    expect(recordedScopes()).toEqual(['pin_ip']);
+    expect(clearedScopes()).toEqual([]);
   });
 
   it('does not accept access issued for another album or a forged token', async () => {
@@ -130,7 +160,8 @@ describe('login lockout', () => {
   it('records a wrong password against the username and the address', async () => {
     const res = await login(loginRequest('wrong'));
     expect(res.status).toBe(401);
-    expect(failedAttempts().map((r) => r.scope).sort()).toEqual(['login_ip', 'login_user']);
+    expect(recordedScopes()).toEqual(['login_ip', 'login_user']);
+    expect(clearedScopes()).toEqual([]);
   });
 
   it('refuses even the right password while the account is locked', async () => {
@@ -140,9 +171,11 @@ describe('login lockout', () => {
     expect(await res.json()).toEqual({ error: 'too_many_attempts' });
   });
 
-  it('signs in with the right password when not locked', async () => {
+  it('signs in with the right password after a few typos and forgets them', async () => {
+    setup({ login_user: 4 });
     const res = await login(loginRequest('right-password'));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ token: expect.any(String), user: { username: 'somchai' } });
+    expect(clearedScopes()).toEqual(['login_ip', 'login_user']);
   });
 });

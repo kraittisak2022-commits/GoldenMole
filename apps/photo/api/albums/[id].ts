@@ -30,29 +30,28 @@ export const PATCH = route(async (request) => {
   const body = await readJson(request);
   const update: Partial<AlbumRow> = {};
 
-  if (body.title !== undefined) {
-    const title = normalizeTitle(body.title);
-    if (!title) throw new HttpError('bad_request', 400);
-    if (title !== album.title) {
-      await renameFile(album.drive_folder_id, title);
-      update.title = title;
-    }
-  }
-  if (body.reportDate !== undefined) {
-    if (!isValidReportDate(body.reportDate)) throw new HttpError('bad_request', 400);
-    if (body.reportDate !== album.report_date) {
-      await moveAlbumFolder(album.drive_folder_id, body.reportDate);
-      update.report_date = body.reportDate;
-    }
-  }
-  if (typeof body.allowLinkUpload === 'boolean') update.allow_link_upload = body.allowLinkUpload;
-  if (body.regenerateLink === true) update.share_token = newShareToken();
+  // Validate everything before touching Drive, so a bad field cannot leave Drive changed and the database not.
+  const title = body.title === undefined ? undefined : normalizeTitle(body.title);
+  if (title === null) throw new HttpError('bad_request', 400);
+  const reportDate = body.reportDate;
+  if (reportDate !== undefined && !isValidReportDate(reportDate)) throw new HttpError('bad_request', 400);
   if (typeof body.coverMediaId === 'string') {
     const owned = must(
       await db().from('ph_media').select('id').eq('id', body.coverMediaId).eq('album_id', album.id).maybeSingle(),
     );
     if (!owned) throw new HttpError('bad_request', 400);
     update.cover_media_id = body.coverMediaId;
+  }
+  if (typeof body.allowLinkUpload === 'boolean') update.allow_link_upload = body.allowLinkUpload;
+  if (body.regenerateLink === true) update.share_token = newShareToken();
+
+  if (title !== undefined && title !== album.title) {
+    await renameFile(album.drive_folder_id, title);
+    update.title = title;
+  }
+  if (typeof reportDate === 'string' && reportDate !== album.report_date) {
+    await moveAlbumFolder(album.drive_folder_id, reportDate);
+    update.report_date = reportDate;
   }
 
   if (!Object.keys(update).length) return json(await detail(album));

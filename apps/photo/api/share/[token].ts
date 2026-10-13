@@ -1,6 +1,6 @@
 import { createAlbumAccess, pinMatches, requireAlbumViewer } from '../_lib/albumAccess.js';
 import { loadAlbumByToken, loadMedia, toSharedAlbum } from '../_lib/albums.js';
-import { assertNotLocked, clientIp, failureDelay, pinLimits, recordAttempt } from '../_lib/attempts.js';
+import { attemptSucceeded, beginAttempt, clientIp, failureDelay, pinAlbumLimit, pinIpLimit } from '../_lib/attempts.js';
 import { HttpError, json, lastSegment, readJson, route } from '../_lib/http.js';
 
 /** GET → SharedAlbum for signed-in staff or a device that entered the PIN (403 pin_required otherwise). */
@@ -15,25 +15,15 @@ export const GET = route(async (request) => {
  * 5 wrong PINs from one address or 30 for one album lock entry for 15 / 60 minutes; unknown links count too.
  */
 export const POST = route(async (request) => {
-  const ip = clientIp(request);
-  await assertNotLocked(pinLimits(ip, null));
+  const byIp = await beginAttempt([pinIpLimit(clientIp(request))]);
+  const album = await loadAlbumByToken(lastSegment(request));
+  const byAlbum = await beginAttempt([pinAlbumLimit(album.id)]);
 
-  let album;
-  try {
-    album = await loadAlbumByToken(lastSegment(request));
-  } catch (err) {
-    if (err instanceof HttpError && err.status === 404) await recordAttempt(pinLimits(ip, null), false);
-    throw err;
-  }
-
-  const limits = pinLimits(ip, album.id);
-  await assertNotLocked(limits);
   const body = await readJson(request);
   if (!pinMatches(body.pin)) {
-    await recordAttempt(limits, false);
     await failureDelay();
     throw new HttpError('bad_pin', 400);
   }
-  await recordAttempt(limits, true);
+  await Promise.all([attemptSucceeded(byIp), attemptSucceeded(byAlbum)]);
   return json({ access: createAlbumAccess(album.id) });
 });

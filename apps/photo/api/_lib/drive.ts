@@ -43,11 +43,18 @@ export function forgetAccessToken(): void {
 }
 
 async function driveFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  const token = await getAccessToken();
-  const headers = new Headers(init.headers);
-  headers.set('Authorization', `Bearer ${token}`);
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  const res = await fetch(url, { ...init, headers });
+  const send = async () => {
+    const headers = new Headers(init.headers);
+    headers.set('Authorization', `Bearer ${await getAccessToken()}`);
+    if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    return fetch(url, { ...init, headers });
+  };
+  let res = await send();
+  // A cached access token can be revoked early; only a 401 with a freshly refreshed one means Drive is disconnected.
+  if (res.status === 401) {
+    forgetAccessToken();
+    res = await send();
+  }
   if (res.status === 401) {
     forgetAccessToken();
     throw new HttpError('drive_not_connected', 503);

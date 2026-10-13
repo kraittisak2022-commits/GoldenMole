@@ -51,7 +51,10 @@ Create a new project from `kraittisak2022-commits/GoldenMole`:
 Changing `PHOTO_SESSION_SECRET` signs everyone out; it does not affect share links.
 Changing `PHOTO_ALBUM_PIN` makes every device that opened an album enter the new PIN.
 5 wrong PINs from one address lock PIN entry for 15 minutes; 5 wrong passwords for one username (or 20 from one address)
-lock sign-in for 15 minutes. Attempts are kept in `ph_auth_attempts` (migration `20261013100000_ph_auth_attempts.sql`).
+lock sign-in for 15 minutes. Attempts are kept in `ph_auth_attempts` (migration `20261013100000_ph_auth_attempts.sql`);
+each attempt is written before it is checked, so parallel guesses cannot slip past the limit. Link uploads are capped
+per album per hour as they start. `20261013120000_ph_album_stats_and_upload_quota.sql` must be applied before deploying
+code that calls `ph_refresh_album_stats`.
 If a value contains spaces or non-ASCII characters (for example a pasted label with "→"), the API answers
 "ระบบยังตั้งค่าไม่ครบ" and the Vercel logs name the variable. Redeploy after editing env vars.
 

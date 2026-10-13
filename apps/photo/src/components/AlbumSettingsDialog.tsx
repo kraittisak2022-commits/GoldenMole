@@ -97,7 +97,7 @@ export default function AlbumSettingsDialog({ album, open, onClose, onSaved, onD
         <p className="text-sm text-muted">
           {isDelete
             ? `“${album.title}” และไฟล์ทั้งหมด ${album.media.length} รายการจะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)`
-            : 'ลิงก์เดิมที่แชร์ไปแล้วจะใช้ไม่ได้ทันที ใช้เมื่อลิงก์หลุดไปถึงคนที่ไม่ควรเห็น'}
+            : 'ลิงก์เดิมที่แชร์ไปแล้วจะใช้ไม่ได้ทันที แต่คนที่เคยเปิดอัลบั้มหรือบันทึกลิงก์ Google Drive ไว้แล้ว ยังเปิดรูปผ่าน Drive ได้ ถ้าต้องการปิดทั้งหมดให้ลบอัลบั้ม'}
         </p>
         {error ? (
           <p role="alert" className="mt-3 text-sm text-destructive">

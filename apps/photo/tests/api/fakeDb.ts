@@ -40,7 +40,10 @@ function builder(q: Query): unknown {
 }
 
 export const supabaseAdminMock = {
-  db: () => ({ from: (table: string) => builder({ table, op: 'select', filters: {} }) }),
+  db: () => ({
+    from: (table: string) => builder({ table, op: 'select', filters: {} }),
+    rpc: (fn: string, args: unknown) => builder({ table: `rpc:${fn}`, op: 'select', filters: {}, payload: args }),
+  }),
   must: (r: Result) => {
     if (r.error) throw new Error(r.error.message);
     return r.data;

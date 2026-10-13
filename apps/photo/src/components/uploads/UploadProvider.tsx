@@ -18,6 +18,8 @@ export interface UploadItem {
   status: UploadStatus;
   progress: number;
   error: string | null;
+  /** Set once Drive has the bytes; a retry then only repeats `complete` instead of uploading a second copy. */
+  driveFileId?: string;
 }
 
 interface UploadsValue {
@@ -47,32 +49,37 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const run = async (item: UploadItem) => {
     const ctrl = new AbortController();
     controllers.current.set(item.id, ctrl);
-    update(item.id, { status: 'uploading', progress: 0, error: null });
+    update(item.id, { status: 'uploading', progress: item.driveFileId ? 1 : 0, error: null });
     try {
       const meta = await readFileMeta(item.file, item.mimeType);
       const headers = albumAccessHeaders(item.target);
-      const { uploadUrl } = await api<{ uploadUrl: string }>('/api/uploads/start', {
-        method: 'POST',
-        body: { ...item.target, name: item.file.name, mimeType: item.mimeType, size: item.file.size },
-        signal: ctrl.signal,
-        headers,
-      });
-      let shown = 0;
-      const driveFile = await uploadResumable(item.file, uploadUrl, {
-        signal: ctrl.signal,
-        onProgress: (sent) => {
-          const progress = sent / item.file.size;
-          if (progress - shown >= 0.01 || progress === 1) {
-            shown = progress;
-            update(item.id, { progress });
-          }
-        },
-      });
+      let fileId = item.driveFileId;
+      if (!fileId) {
+        const { uploadUrl } = await api<{ uploadUrl: string }>('/api/uploads/start', {
+          method: 'POST',
+          body: { ...item.target, name: item.file.name, mimeType: item.mimeType, size: item.file.size },
+          signal: ctrl.signal,
+          headers,
+        });
+        let shown = 0;
+        const driveFile = await uploadResumable(item.file, uploadUrl, {
+          signal: ctrl.signal,
+          onProgress: (sent) => {
+            const progress = sent / item.file.size;
+            if (progress - shown >= 0.01 || progress === 1) {
+              shown = progress;
+              update(item.id, { progress });
+            }
+          },
+        });
+        fileId = driveFile.id;
+        update(item.id, { driveFileId: fileId });
+      }
       const media = await api<MediaItem>('/api/uploads/complete', {
         method: 'POST',
         body: {
           ...item.target,
-          fileId: driveFile.id,
+          fileId,
           width: meta.width,
           height: meta.height,
           takenAt: meta.takenAt,
@@ -158,7 +165,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     setItems((list) => [...list, ...added]);
   }, []);
 
-  const retry = useCallback((id: string) => update(id, { status: 'queued', progress: 0, error: null }), []);
+  const retry = useCallback((id: string) => update(id, { status: 'queued', error: null }), []);
   const cancel = useCallback((id: string) => {
     const ctrl = controllers.current.get(id);
     if (ctrl) ctrl.abort();

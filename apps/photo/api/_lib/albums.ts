@@ -136,26 +136,12 @@ export async function resolveUploadTarget(
   return { album, staff };
 }
 
-/** Recounts media and picks a cover (the first item) when the album has none. */
+/**
+ * Recounts media and picks a cover (the first item) when the album has none, in one locked statement
+ * (`ph_refresh_album_stats`) so parallel uploads and deletes cannot overwrite each other's result.
+ */
 export async function refreshAlbumStats(albumId: string): Promise<void> {
-  const { count, error } = await db().from('ph_media').select('id', { count: 'exact', head: true }).eq('album_id', albumId);
-  if (error) throw new HttpError('server_error', 500);
-  const album = must(await db().from('ph_albums').select('cover_media_id').eq('id', albumId).single()) as {
-    cover_media_id: string | null;
-  };
-  let cover = album.cover_media_id;
-  if (!cover && count) {
-    const first = must(
-      await db().from('ph_media').select('id').eq('album_id', albumId).order('created_at').limit(1),
-    ) as { id: string }[];
-    cover = first[0]?.id ?? null;
-  }
-  must(
-    await db()
-      .from('ph_albums')
-      .update({ media_count: count ?? 0, cover_media_id: cover, updated_at: new Date().toISOString() })
-      .eq('id', albumId),
-  );
+  must(await db().rpc('ph_refresh_album_stats', { p_album_id: albumId }));
 }
 
 export async function coversFor(rows: AlbumRow[]): Promise<Map<string, Pick<MediaRow, 'drive_file_id' | 'kind'>>> {
