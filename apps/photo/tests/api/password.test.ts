@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { verifyStoredPassword } from './password';
+import { verifyStoredPassword } from '../../api/_lib/password';
 
 const hex = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
 

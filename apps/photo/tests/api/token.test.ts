@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { newShareToken, signToken, verifyToken } from './token';
+import { newShareToken, signToken, verifyToken } from '../../api/_lib/token';
 
 describe('signed tokens', () => {
   const secret = 'test-secret';

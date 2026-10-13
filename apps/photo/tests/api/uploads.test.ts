@@ -28,7 +28,7 @@ const fake = vi.hoisted(() => {
   return { state, db: () => ({ from: (table: string) => builder({ table, filters: {} }) }) };
 });
 
-vi.mock('../_lib/supabaseAdmin.js', () => ({
+vi.mock('../../api/_lib/supabaseAdmin.js', () => ({
   db: fake.db,
   must: (r: Result) => {
     if (r.error) throw new Error(r.error.message);
@@ -36,14 +36,14 @@ vi.mock('../_lib/supabaseAdmin.js', () => ({
   },
 }));
 
-vi.mock('../_lib/drive.js', () => ({
+vi.mock('../../api/_lib/drive.js', () => ({
   startResumableUpload: vi.fn(async () => 'https://www.googleapis.com/upload/drive/v3/files?upload_id=xyz'),
   getFile: vi.fn(),
 }));
 
-const { startResumableUpload, getFile } = await import('../_lib/drive.js');
-const { POST: start } = await import('./start');
-const { POST: complete } = await import('./complete');
+const { startResumableUpload, getFile } = await import('../../api/_lib/drive.js');
+const { POST: start } = await import('../../api/uploads/start');
+const { POST: complete } = await import('../../api/uploads/complete');
 
 const TOKEN = 'abcDEF123_-xyz456789AB';
 const ALBUM = {
