@@ -109,6 +109,33 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', warn);
   }, [busy]);
 
+  // Phones suspend the page when the screen turns off, which stalls uploads; keep it awake meanwhile.
+  useEffect(() => {
+    if (!busy || !('wakeLock' in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    let stopped = false;
+    const acquire = () => {
+      if (document.visibilityState !== 'visible' || lock) return;
+      navigator.wakeLock
+        .request('screen')
+        .then((sentinel) => {
+          if (stopped) return void sentinel.release();
+          lock = sentinel;
+          sentinel.addEventListener('release', () => {
+            lock = null;
+          });
+        })
+        .catch(() => undefined);
+    };
+    acquire();
+    document.addEventListener('visibilitychange', acquire);
+    return () => {
+      stopped = true;
+      document.removeEventListener('visibilitychange', acquire);
+      void lock?.release();
+    };
+  }, [busy]);
+
   const enqueue = useCallback((files: File[], target: UploadTarget, uploaderName: string | null = null) => {
     const added = files.map<UploadItem>((file) => {
       const mimeType = guessMimeType(file.name, file.type);

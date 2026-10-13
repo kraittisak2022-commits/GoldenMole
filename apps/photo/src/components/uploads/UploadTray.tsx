@@ -62,6 +62,10 @@ export default function UploadTray() {
     : failed
       ? `อัปโหลดไม่สำเร็จ ${failed} รายการ`
       : `อัปโหลดแล้ว ${done} รายการ`;
+  const counted = items.filter((i) => i.status !== 'canceled' && i.status !== 'error');
+  const totalBytes = counted.reduce((sum, i) => sum + i.file.size, 0);
+  const sentBytes = counted.reduce((sum, i) => sum + i.file.size * (i.status === 'done' ? 1 : i.progress), 0);
+  const overall = totalBytes ? sentBytes / totalBytes : 0;
 
   return (
     <section
@@ -70,9 +74,12 @@ export default function UploadTray() {
     >
       <div className="flex items-center gap-1 bg-container py-1 pl-4 pr-1">
         {failed && !active ? <AlertCircle size={20} className="shrink-0 text-destructive" aria-hidden /> : null}
-        <h2 className="min-w-0 flex-1 truncate text-sm font-medium text-ink" aria-live="polite">
-          {title}
-        </h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-sm font-medium text-ink" aria-live="polite">
+            {title}
+          </h2>
+          {active ? <p className="truncate text-xs text-muted">เปิดหน้านี้ค้างไว้จนกว่าจะเสร็จ</p> : null}
+        </div>
         <IconButton label={collapsed ? 'แสดงรายการ' : 'ย่อรายการ'} aria-expanded={!collapsed} onClick={() => setCollapsed((v) => !v)}>
           {collapsed ? <ChevronUp size={20} aria-hidden /> : <ChevronDown size={20} aria-hidden />}
         </IconButton>
@@ -82,8 +89,13 @@ export default function UploadTray() {
           </IconButton>
         ) : null}
       </div>
+      {active ? (
+        <div className="h-1 bg-container-high" role="progressbar" aria-valuenow={Math.round(overall * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="ความคืบหน้ารวม">
+          <div className="h-full bg-primary transition-[width] duration-300" style={{ width: `${overall * 100}%` }} />
+        </div>
+      ) : null}
       {!collapsed ? (
-        <ul className="max-h-[min(50dvh,320px)] overflow-y-auto py-1">
+        <ul className="max-h-[min(40dvh,320px)] overflow-y-auto overscroll-contain py-1">
           {items.map((item) => (
             <Row key={item.id} item={item} />
           ))}

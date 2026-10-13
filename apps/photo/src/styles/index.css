@@ -103,6 +103,14 @@
     @apply bg-container;
     animation: pulse 1.4s ease-in-out infinite;
   }
+
+  /* Long-pressing a photo selects it; stop iOS from opening its image preview / save menu instead. */
+  .no-callout,
+  .no-callout img {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 
 @keyframes fade-in {

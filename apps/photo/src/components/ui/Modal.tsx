@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useId } from 'react';
 import { X } from 'lucide-react';
+import { useScrollLock } from '../../lib/useScrollLock';
 import IconButton from './IconButton';
 
 interface ModalProps {
@@ -12,6 +13,7 @@ interface ModalProps {
 
 export default function Modal({ open, title, onClose, children, footer }: ModalProps) {
   const titleId = useId();
+  useScrollLock(open);
 
   useEffect(() => {
     if (!open) return;
@@ -19,12 +21,7 @@ export default function Modal({ open, title, onClose, children, footer }: ModalP
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    const { overflow } = document.body.style;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = overflow;
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
   if (!open) return null;
@@ -41,7 +38,7 @@ export default function Modal({ open, title, onClose, children, footer }: ModalP
             <X size={20} aria-hidden />
           </IconButton>
         </div>
-        <div className="overflow-y-auto px-6 pb-4">{children}</div>
+        <div className={`overflow-y-auto overscroll-contain px-6 ${footer ? 'pb-4' : 'pb-[max(1rem,env(safe-area-inset-bottom))]'}`}>{children}</div>
         {footer ? (
           <div className="flex flex-wrap justify-end gap-2 px-6 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2">{footer}</div>
         ) : null}

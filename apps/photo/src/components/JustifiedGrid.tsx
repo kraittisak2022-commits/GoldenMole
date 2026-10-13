@@ -6,6 +6,8 @@ import { justifiedRows, targetRowHeight } from '../lib/justify';
 import MediaTile from './MediaTile';
 
 const GAP = 4;
+/** Day heading height (py-3 + text-sm line), used to reserve space for off-screen sections. */
+const HEADING = 44;
 
 interface Props {
   media: MediaItem[];
@@ -33,10 +35,11 @@ export default function JustifiedGrid({ media, selectable, selected, onOpen, onT
 
   const sections = useMemo(() => {
     const target = targetRowHeight(width);
-    return groupByDay(media).map((section) => ({
-      ...section,
-      rows: justifiedRows(section.items.map(({ item }) => aspectOf(item)), width, target, GAP),
-    }));
+    return groupByDay(media).map((section) => {
+      const rows = justifiedRows(section.items.map(({ item }) => aspectOf(item)), width, target, GAP);
+      const height = HEADING + rows.reduce((sum, row) => sum + Math.floor(row.height) + GAP, 0);
+      return { ...section, rows, height };
+    });
   }, [media, width]);
 
   const selectionMode = selected.size > 0;
@@ -45,7 +48,12 @@ export default function JustifiedGrid({ media, selectable, selected, onOpen, onT
     <div ref={ref}>
       {width > 0
         ? sections.map((section) => (
-            <section key={section.key} className="mb-6" aria-label={formatDayHeading(section.at)}>
+            <section
+              key={section.key}
+              className="mb-6"
+              aria-label={formatDayHeading(section.at)}
+              style={{ contentVisibility: 'auto', containIntrinsicSize: `auto ${section.height}px` }}
+            >
               <h2 className="py-3 text-sm font-medium text-ink">{formatDayHeading(section.at)}</h2>
               <div className="flex flex-col" style={{ gap: GAP }}>
                 {section.rows.map((row, r) => (
@@ -56,13 +64,14 @@ export default function JustifiedGrid({ media, selectable, selected, onOpen, onT
                         <MediaTile
                           key={item.id}
                           item={item}
+                          index={mediaIndex}
                           width={Math.floor(w)}
                           height={Math.floor(row.height)}
                           selectable={selectable}
                           selectionMode={selectionMode}
                           selected={selected.has(item.id)}
-                          onOpen={() => onOpen(mediaIndex)}
-                          onToggle={() => onToggle(item.id)}
+                          onOpen={onOpen}
+                          onToggle={onToggle}
                         />
                       );
                     })}

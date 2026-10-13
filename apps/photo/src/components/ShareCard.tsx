@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Copy, ExternalLink } from 'lucide-react';
+import { Check, Copy, ExternalLink, Share2 } from 'lucide-react';
 import { buildShareText } from '../../shared/shareText';
 import { copyText } from '../lib/clipboard';
 import { useManualCopy } from './ManualCopy';
@@ -18,9 +18,26 @@ export function useCopyShare() {
   };
 }
 
+/**
+ * Opens the phone's share sheet (LINE, Messages, …) with the same two lines as Copy.
+ * Null where the browser has no share sheet, so callers can hide the button.
+ */
+export function useNativeShare() {
+  const copyShare = useCopyShare();
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') return null;
+  return async (title: string, url: string) => {
+    try {
+      await navigator.share({ text: buildShareText(title, url) });
+    } catch (err) {
+      if ((err as Error)?.name !== 'AbortError') await copyShare(title, url);
+    }
+  };
+}
+
 /** Preview of exactly what will be pasted into the group, with Copy and Open-in-Drive. */
 export default function ShareCard({ title, shareUrl, driveFolderUrl }: { title: string; shareUrl: string; driveFolderUrl: string }) {
   const copyShare = useCopyShare();
+  const share = useNativeShare();
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
@@ -45,6 +62,11 @@ export default function ShareCard({ title, shareUrl, driveFolderUrl }: { title: 
           {copied ? <Check size={18} aria-hidden /> : <Copy size={18} aria-hidden />}
           {copied ? 'คัดลอกแล้ว' : 'คัดลอกชื่อรายงาน + ลิงก์'}
         </Button>
+        {share ? (
+          <Button variant="outlined" onClick={() => share(title, shareUrl)}>
+            <Share2 size={18} aria-hidden /> แชร์
+          </Button>
+        ) : null}
         <a
           href={driveFolderUrl}
           target="_blank"

@@ -1,10 +1,10 @@
-import { ChangeEvent, DragEvent, ReactNode, useRef, useState } from 'react';
-import { Copy, Download, ExternalLink, ImagePlus, GalleryVerticalEnd, Settings, Star, Trash2, UploadCloud, X } from 'lucide-react';
+import { ChangeEvent, DragEvent, ReactNode, useCallback, useRef, useState } from 'react';
+import { CheckCheck, Copy, Download, ExternalLink, ImagePlus, GalleryVerticalEnd, Settings, Share2, Star, Trash2, UploadCloud, X } from 'lucide-react';
 import type { MediaItem, UploadTarget } from '../../shared/types';
 import { formatCount, formatReportDateLong } from '../lib/format';
 import JustifiedGrid from './JustifiedGrid';
 import Lightbox from './Lightbox';
-import { useCopyShare } from './ShareCard';
+import { useCopyShare, useNativeShare } from './ShareCard';
 import Button from './ui/Button';
 import IconButton from './ui/IconButton';
 import Modal from './ui/Modal';
@@ -55,8 +55,9 @@ function downloadAll(items: MediaItem[]) {
 }
 
 export default function AlbumView({ title, reportDate, media, shareUrl, driveFolderUrl, uploadTarget, askUploaderName, staff, topBar }: Props) {
-  const { enqueue } = useUploads();
+  const { enqueue, items: uploads } = useUploads();
   const copyShare = useCopyShare();
+  const share = useNativeShare();
   const inputRef = useRef<HTMLInputElement>(null);
   const [viewing, setViewing] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -104,13 +105,16 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
     addFiles(Array.from(e.dataTransfer.files));
   };
 
-  const toggle = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const toggle = useCallback(
+    (id: string) =>
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      }),
+    [],
+  );
 
   const selectedItems = media.filter((m) => selected.has(m.id));
 
@@ -138,6 +142,11 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
             <p className="min-w-0 flex-1 text-base font-medium" aria-live="polite">
               เลือกแล้ว {selected.size}
             </p>
+            {selected.size < media.length ? (
+              <IconButton label="เลือกทั้งหมด" onClick={() => setSelected(new Set(media.map((m) => m.id)))} className="text-primary-soft-foreground">
+                <CheckCheck size={22} aria-hidden />
+              </IconButton>
+            ) : null}
             <IconButton label="ดาวน์โหลดที่เลือก" onClick={() => downloadAll(selectedItems)} className="text-primary-soft-foreground">
               <Download size={22} aria-hidden />
             </IconButton>
@@ -166,9 +175,17 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
             {formatReportDateLong(reportDate)} · {formatCount(media.length)}
           </p>
           <div className="mt-5 flex flex-wrap items-center gap-2">
-            <Button onClick={() => copyShare(title, shareUrl)}>
-              <Copy size={18} aria-hidden /> คัดลอกชื่อรายงาน + ลิงก์
-            </Button>
+            <div className="flex w-full gap-2 sm:w-auto">
+              <Button onClick={() => copyShare(title, shareUrl)} className="flex-1 sm:flex-none">
+                <Copy size={18} aria-hidden /> คัดลอกชื่อรายงาน + ลิงก์
+              </Button>
+              {share ? (
+                <Button variant="outlined" onClick={() => share(title, shareUrl)} aria-label="แชร์" title="แชร์" className="px-3 sm:px-5">
+                  <Share2 size={18} aria-hidden />
+                  <span className="hidden sm:inline">แชร์</span>
+                </Button>
+              ) : null}
+            </div>
             {uploadTarget ? (
               <Button variant="tonal" onClick={pick}>
                 <ImagePlus size={18} aria-hidden /> เพิ่มรูป
@@ -178,9 +195,9 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
               href={driveFolderUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-5 text-sm font-medium text-primary transition hover:bg-primary/[0.08]"
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border px-5 text-sm font-medium text-primary transition hover:bg-primary/[0.08] active:bg-primary/[0.12]"
             >
-              <ExternalLink size={18} aria-hidden /> เปิดใน Google Drive
+              <ExternalLink size={18} aria-hidden /> เปิดใน <span className="hidden sm:inline">Google</span> Drive
             </a>
             {staff ? (
               <IconButton label="ตั้งค่าอัลบั้ม" onClick={staff.onOpenSettings}>
@@ -188,6 +205,9 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
               </IconButton>
             ) : null}
           </div>
+          {staff && media.length > 1 ? (
+            <p className="mt-4 text-xs text-muted [@media(hover:hover)]:hidden">แตะค้างที่รูปเพื่อเลือกหลายรูป แล้วดาวน์โหลดหรือลบพร้อมกัน</p>
+          ) : null}
         </header>
 
         {media.length ? (
@@ -207,6 +227,16 @@ export default function AlbumView({ title, reportDate, media, shareUrl, driveFol
           />
         )}
       </main>
+
+      {uploadTarget && media.length > 0 && !uploads.length && selected.size === 0 ? (
+        <button
+          type="button"
+          onClick={pick}
+          className="fade-in fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-30 flex h-14 cursor-pointer items-center gap-2 rounded-2xl bg-primary-soft pl-4 pr-5 text-sm font-medium text-primary-soft-foreground shadow-e3 transition active:scale-95 sm:hidden"
+        >
+          <ImagePlus size={22} aria-hidden /> เพิ่มรูป
+        </button>
+      ) : null}
 
       <input ref={inputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={onInput} tabIndex={-1} aria-hidden />
 

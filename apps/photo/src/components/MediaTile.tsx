@@ -1,29 +1,76 @@
-import { memo } from 'react';
+import { memo, PointerEvent, useRef } from 'react';
 import { Check, Play } from 'lucide-react';
 import type { MediaItem } from '../../shared/types';
 import Thumb from './Thumb';
 
+const LONG_PRESS_MS = 450;
+const MOVE_TOLERANCE = 10;
+
 interface Props {
   item: MediaItem;
+  index: number;
   width: number;
   height: number;
   selectable: boolean;
   selectionMode: boolean;
   selected: boolean;
-  onOpen: () => void;
-  onToggle: () => void;
+  onOpen: (index: number) => void;
+  onToggle: (id: string) => void;
 }
 
-function MediaTile({ item, width, height, selectable, selectionMode, selected, onOpen, onToggle }: Props) {
+function MediaTile({ item, index, width, height, selectable, selectionMode, selected, onOpen, onToggle }: Props) {
   const label = `${item.kind === 'video' ? 'วิดีโอ' : 'รูป'} ${item.name}`;
+  const press = useRef<{ timer: number; x: number; y: number } | null>(null);
+  const longPressed = useRef(false);
+
+  const cancelPress = () => {
+    if (press.current) window.clearTimeout(press.current.timer);
+    press.current = null;
+  };
+
+  // Touch screens have no hover checkbox, so holding a photo starts selection (as in Google Photos).
+  const onPointerDown = (e: PointerEvent) => {
+    longPressed.current = false;
+    if (!selectable || selectionMode || e.pointerType === 'mouse') return;
+    const { clientX: x, clientY: y } = e;
+    press.current = {
+      x,
+      y,
+      timer: window.setTimeout(() => {
+        press.current = null;
+        longPressed.current = true;
+        navigator.vibrate?.(10);
+        onToggle(item.id);
+      }, LONG_PRESS_MS),
+    };
+  };
+  const onPointerMove = (e: PointerEvent) => {
+    const p = press.current;
+    if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > MOVE_TOLERANCE) cancelPress();
+  };
+  const onClick = () => {
+    if (longPressed.current) {
+      longPressed.current = false;
+      return;
+    }
+    if (selectionMode) onToggle(item.id);
+    else onOpen(index);
+  };
+
   return (
-    <div className="group relative shrink-0 overflow-hidden bg-container" style={{ width, height }}>
+    <div className="group no-callout relative shrink-0 overflow-hidden bg-container" style={{ width, height }}>
       <button
         type="button"
-        onClick={selectionMode ? onToggle : onOpen}
+        onClick={onClick}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={cancelPress}
+        onPointerCancel={cancelPress}
+        onPointerLeave={cancelPress}
+        onContextMenu={selectable ? (e) => e.preventDefault() : undefined}
         aria-label={selectionMode ? `${selected ? 'ยกเลิกเลือก' : 'เลือก'} ${label}` : `เปิด ${label}`}
         aria-pressed={selectionMode ? selected : undefined}
-        className="block h-full w-full cursor-pointer"
+        className="block h-full w-full cursor-pointer transition-opacity active:opacity-80"
       >
         <Thumb
           src={item.src}
@@ -44,7 +91,7 @@ function MediaTile({ item, width, height, selectable, selectionMode, selected, o
           />
           <button
             type="button"
-            onClick={onToggle}
+            onClick={() => onToggle(item.id)}
             aria-label={`${selected ? 'ยกเลิกเลือก' : 'เลือก'} ${label}`}
             aria-pressed={selected}
             className={[
