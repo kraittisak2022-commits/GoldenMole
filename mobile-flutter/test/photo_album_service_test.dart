@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_flutter/models/admin_user.dart';
-import 'package:mobile_flutter/screens/photo_albums_screen.dart';
 import 'package:mobile_flutter/services/photo_album_service.dart';
+import 'package:mobile_flutter/utils/photo_album_format.dart';
 
 void main() {
   test('PIN gate accepts only 8888', () {

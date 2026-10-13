@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/admin_user.dart';
+import '../utils/photo_album_format.dart';
 import 'session_service.dart';
 
 /// PIN ก่อนเข้าเมนูอัลบั้มในหน้าบันทึกประจำวัน
@@ -54,13 +55,19 @@ class PhotoMediaItem {
     required this.name,
     required this.createdAt,
     required this.src,
+    this.mime = '',
+    this.width = 0,
+    this.height = 0,
     this.takenAt,
     this.uploadedByName,
   });
 
   final String id;
   final String kind;
+  final String mime;
   final String name;
+  final int width;
+  final int height;
   final String? takenAt;
   final String createdAt;
   final String? uploadedByName;
@@ -68,11 +75,28 @@ class PhotoMediaItem {
 
   bool get isVideo => kind == 'video';
 
+  /// Drive file id, taken from the download URL.
+  String? get driveFileId => Uri.tryParse(src.download)?.queryParameters['id'];
+
+  /// Direct file download (follows Drive's large-file confirmation). Album folders are link-shared.
+  Uri? get directDownloadUrl {
+    final id = driveFileId;
+    if (id == null || id.isEmpty) return null;
+    return Uri.https('drive.usercontent.google.com', '/download', {
+      'id': id,
+      'export': 'download',
+      'confirm': 't',
+    });
+  }
+
   factory PhotoMediaItem.fromJson(Map<String, dynamic> json) {
     return PhotoMediaItem(
       id: (json['id'] ?? '').toString(),
       kind: (json['kind'] ?? 'image').toString(),
+      mime: (json['mime'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
+      width: (json['width'] as num?)?.toInt() ?? 0,
+      height: (json['height'] as num?)?.toInt() ?? 0,
       takenAt: json['takenAt']?.toString(),
       createdAt: (json['createdAt'] ?? '').toString(),
       uploadedByName: json['uploadedByName']?.toString(),
@@ -80,6 +104,9 @@ class PhotoMediaItem {
     );
   }
 }
+
+List<PhotoMediaItem> sortPhotoMediaItems(Iterable<PhotoMediaItem> media) =>
+    sortPhotoMedia(media, takenAt: (m) => m.takenAt, createdAt: (m) => m.createdAt);
 
 class PhotoAlbumSummary {
   const PhotoAlbumSummary({
@@ -181,7 +208,9 @@ String photoAlbumErrorMessage(String code, [String? detail]) {
     case 'bad_type':
       return 'รองรับเฉพาะรูปและวิดีโอ';
     case 'too_large':
-      return 'ไฟล์ใหญ่เกินไป (รูปไม่เกิน 50 MB)';
+      return 'ไฟล์ใหญ่เกินไป (รูปไม่เกิน 50 MB · วิดีโอไม่เกิน 2 GB)';
+    case 'upload_disabled':
+      return 'อัลบั้มนี้ปิดการเพิ่มรูปผ่านลิงก์';
     case 'empty_file':
       return 'ไฟล์ว่าง';
     case 'bad_request':
@@ -208,10 +237,17 @@ const Map<String, String> _kMimeByExtension = {
   'heic': 'image/heic',
   'heif': 'image/heif',
   'mp4': 'video/mp4',
+  'm4v': 'video/x-m4v',
   'mov': 'video/quicktime',
   '3gp': 'video/3gpp',
   'webm': 'video/webm',
+  'mkv': 'video/x-matroska',
 };
+
+const int kPhotoMaxImageBytes = 50 * 1024 * 1024;
+const int kPhotoMaxVideoBytes = 2 * 1024 * 1024 * 1024;
+
+bool photoPathIsVideo(String path) => photoMimeTypeForPath(path).startsWith('video/');
 
 /// MIME จากนามสกุลไฟล์ — ไม่รู้จักให้ถือเป็น JPEG (กล้อง/แกลเลอรีส่วนใหญ่)
 String photoMimeTypeForPath(String path) {
@@ -229,11 +265,11 @@ int driveNextOffset(String? range) {
   return last == null ? 0 : last + 1;
 }
 
-String photoUploadFileName(DateTime now, int index, String ext) {
+String photoUploadFileName(DateTime now, int index, String ext, {bool video = false}) {
   String two(int v) => v.toString().padLeft(2, '0');
   final stamp = '${now.year}${two(now.month)}${two(now.day)}_'
       '${two(now.hour)}${two(now.minute)}${two(now.second)}';
-  return 'IMG_${stamp}_${index + 1}.$ext';
+  return '${video ? 'VID' : 'IMG'}_${stamp}_${index + 1}.$ext';
 }
 
 // MARK: - API (photo.goldenmole.pro Vercel functions)
@@ -342,13 +378,29 @@ class PhotoAlbumApi {
     required String albumId,
     required String fileId,
     required String token,
+    String? takenAt,
   }) async {
     return PhotoMediaItem.fromJson(await _send('POST', 'uploads/complete', token: token, json: {
       'albumId': albumId,
       'fileId': fileId,
       'width': 0,
       'height': 0,
-      'takenAt': null,
+      'takenAt': takenAt,
+    }));
+  }
+
+  /// SuperAdmin only. Renames in Drive too (extension kept); null uploader name or date clears it.
+  Future<PhotoMediaItem> updateMedia(
+    String id,
+    String token, {
+    required String name,
+    required String? uploadedByName,
+    required String? takenAt,
+  }) async {
+    return PhotoMediaItem.fromJson(await _send('PATCH', 'media/$id', token: token, json: {
+      'name': name,
+      'uploadedByName': uploadedByName,
+      'takenAt': takenAt,
     }));
   }
 
