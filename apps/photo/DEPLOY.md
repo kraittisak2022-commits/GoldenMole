@@ -34,6 +34,8 @@ Create a new project from `kraittisak2022-commits/GoldenMole`:
 
 - **Project name:** `photo` · **Root Directory:** `apps/photo` · **Framework:** Vite
 - **Production branch:** `main`
+- **Function region:** `sin1` (Singapore), set in `vercel.json` to sit next to the Supabase project (`ap-southeast-1`).
+  Functions in the default US region made every database call cross the Pacific (PIN check ~8–15 s).
 - **Env vars** (Production and Preview, all server-only, never prefix with `VITE_`):
 
 | Name | Value |
