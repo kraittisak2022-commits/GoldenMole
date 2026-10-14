@@ -247,7 +247,7 @@ final class CountRecordSession {
             let vid = pick.vehicleId.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !vid.isEmpty else { continue }
             guard !tripUnits.contains(where: { $0.vehicleId == vid }) else { continue }
-            var unit = CountRecordTripDraft(
+            let unit = CountRecordTripDraft(
                 id: CountRecordWriter.newTransactionId(suffix: vid),
                 vehicleId: vid,
                 driverId: pick.driverId.trimmingCharacters(in: .whitespacesAndNewlines),

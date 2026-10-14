@@ -30,7 +30,7 @@ enum CountRecordStaleGuard {
     ) -> Bool {
         guard let existing else { return false }
         let sub = (payload.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let isSand = sub == "sand" || (payload.description ?? "").hasPrefix("ร่อนทราย:")
+        let isSand = sub == "sand" || payload.description.hasPrefix("ร่อนทราย:")
         guard isSand else { return false }
         return isStaleOverwrite(
             incomingLaps: payload.workAssignments?["lapTimes"] ?? [],

@@ -111,7 +111,7 @@ final class CountRecordOfflineSync {
     }
 
     func retryFailed() {
-        var failed = loadFailed()
+        let failed = loadFailed()
         var queue = loadQueue()
         for op in failed {
             queue.removeAll { $0.transactionId == op.transactionId }
@@ -231,7 +231,7 @@ final class CountRecordOfflineSync {
             return
         }
 
-        var queue = loadQueue()
+        let queue = loadQueue()
         guard !queue.isEmpty else {
             backoffSeconds = 2
             return

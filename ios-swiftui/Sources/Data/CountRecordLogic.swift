@@ -89,7 +89,7 @@ enum CountRecordLogic {
             let key = String(format: "%04d-%02d-%02d", year, month, d)
             let dayTx = byDay[key] ?? []
             guard !dayTx.isEmpty else {
-                out[key] = .none
+                out[key] = DayOpsMark.none
                 continue
             }
             let tripTotal = buildTripUnits(dayKey: key, transactions: dayTx, employees: employees)
@@ -101,7 +101,7 @@ enum CountRecordLogic {
             case (true, true): out[key] = .both
             case (true, false): out[key] = .tripOnly
             case (false, true): out[key] = .sandOnly
-            case (false, false): out[key] = .none
+            case (false, false): out[key] = DayOpsMark.none
             }
         }
         return out

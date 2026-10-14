@@ -66,7 +66,7 @@ struct LoginView: View {
             showForm = !hasSavedProfiles
             playEntrance()
         }
-        .onChange(of: profilesStore.profiles.count) { count in
+        .onChange(of: profilesStore.profiles.count) { _, count in
             if count == 0 {
                 showForm = true
             }

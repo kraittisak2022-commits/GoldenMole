@@ -186,7 +186,6 @@ enum AttendanceWriter {
     }
 
     @MainActor
-    @discardableResult
     static func deleteIfNeeded(id: String?) async {
         guard let id, !id.isEmpty else { return }
         _ = await CountRecordOfflineSync.shared.delete(id: id)
