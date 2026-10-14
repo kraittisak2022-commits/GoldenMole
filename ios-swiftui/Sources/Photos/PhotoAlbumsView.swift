@@ -1,24 +1,101 @@
-import AVFoundation
-import AVKit
-import Combine
-import PhotosUI
 import SwiftUI
+import UIKit
+
+enum PhotoAlbumSort: String, CaseIterable, Identifiable {
+    case newest, oldest, mostMedia, title
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .newest: return "วันที่ใหม่สุด"
+        case .oldest: return "วันที่เก่าสุด"
+        case .mostMedia: return "จำนวนรูปมากสุด"
+        case .title: return "ชื่อ ก–ฮ"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .newest: return "arrow.down"
+        case .oldest: return "arrow.up"
+        case .mostMedia: return "photo.stack"
+        case .title: return "textformat"
+        }
+    }
+
+    var groupsByMonth: Bool { self == .newest || self == .oldest }
+}
 
 /// «อัลบั้ม» tab — albums from GoldenMole Photos (photo.goldenmole.pro): browse, create, upload.
 struct PhotoAlbumsView: View {
     @Environment(AuthService.self) private var auth
+    @AppStorage("photoAlbums.sort") private var sortRaw = PhotoAlbumSort.newest.rawValue
+    @AppStorage("photoAlbums.listLayout") private var listLayout = false
 
     @State private var albums: [PhotoAlbumSummary] = []
     @State private var loading = false
+    @State private var loaded = false
     @State private var error: PhotoAlbumError?
     @State private var search = ""
     @State private var showCreate = false
     @State private var openedAlbum: PhotoAlbumSummary?
+    @State private var toast: String?
 
-    private var filtered: [PhotoAlbumSummary] {
-        let q = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return albums }
-        return albums.filter { $0.title.localizedCaseInsensitiveContains(q) }
+    private struct AlbumSection: Identifiable {
+        let id: String
+        let title: String?
+        var albums: [PhotoAlbumSummary]
+    }
+
+    private let gridColumns = [GridItem(.adaptive(minimum: 158), spacing: AppTheme.spaceMD)]
+
+    private var sort: PhotoAlbumSort { PhotoAlbumSort(rawValue: sortRaw) ?? .newest }
+    private var trimmedSearch: String { search.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var isSearching: Bool { !trimmedSearch.isEmpty }
+    private var totalMedia: Int { albums.reduce(0) { $0 + $1.mediaCount } }
+    private var thisMonthCount: Int {
+        let month = String(PhotoAlbumFormat.reportDateKey(Date()).prefix(7))
+        return albums.filter { $0.reportDate.hasPrefix(month) }.count
+    }
+
+    private var sortedAlbums: [PhotoAlbumSummary] {
+        let q = trimmedSearch
+        let base = q.isEmpty ? albums : albums.filter {
+            $0.title.localizedCaseInsensitiveContains(q) || PhotoAlbumFormat.shortDate($0.reportDate).contains(q)
+        }
+        switch sort {
+        case .newest:
+            return base.sorted { $0.reportDate != $1.reportDate ? $0.reportDate > $1.reportDate : $0.title < $1.title }
+        case .oldest:
+            return base.sorted { $0.reportDate != $1.reportDate ? $0.reportDate < $1.reportDate : $0.title < $1.title }
+        case .mostMedia:
+            return base.sorted { $0.mediaCount != $1.mediaCount ? $0.mediaCount > $1.mediaCount : $0.reportDate > $1.reportDate }
+        case .title:
+            return base.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        }
+    }
+
+    /// The latest album gets a hero card on the default view; the rest are grouped by report month.
+    private func arrangedAlbums() -> (hero: PhotoAlbumSummary?, sections: [AlbumSection]) {
+        var list = sortedAlbums
+        var hero: PhotoAlbumSummary?
+        if sort == .newest, !isSearching, list.count > 1 {
+            hero = list.removeFirst()
+        }
+        guard sort.groupsByMonth else {
+            return (hero, list.isEmpty ? [] : [AlbumSection(id: "all", title: nil, albums: list)])
+        }
+        var sections: [AlbumSection] = []
+        for album in list {
+            let key = String(album.reportDate.prefix(7))
+            if let last = sections.last, last.id == key {
+                sections[sections.count - 1].albums.append(album)
+            } else {
+                sections.append(AlbumSection(id: key, title: PhotoAlbumFormat.monthTitle(key), albums: [album]))
+            }
+        }
+        return (hero, sections)
     }
 
     var body: some View {
@@ -33,15 +110,17 @@ struct PhotoAlbumsView: View {
             }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Link(destination: PhotoAlbumAPI.webURL) {
-                        Image(systemName: "safari")
-                    }
-                    .accessibilityLabel("เปิด GoldenMole Photos บนเว็บ")
                     if error == nil {
+                        viewMenu
                         Button { showCreate = true } label: {
                             Image(systemName: "plus")
                         }
                         .accessibilityLabel("สร้างอัลบั้ม")
+                    } else {
+                        Link(destination: PhotoAlbumAPI.webURL) {
+                            Image(systemName: "safari")
+                        }
+                        .accessibilityLabel("เปิด GoldenMole Photos บนเว็บ")
                     }
                 }
             }
@@ -52,6 +131,7 @@ struct PhotoAlbumsView: View {
                 }
                 .environment(auth)
             }
+            .photoToast($toast)
             .task(id: auth.currentAdmin?.id) { await load() }
             .onAppear {
                 // Quiet refresh when coming back from an album (counts / covers after uploads).
@@ -63,55 +143,250 @@ struct PhotoAlbumsView: View {
     private var content: some View {
         if error == .needsPassword || error == .unauthorized {
             PhotoAlbumSignInCard { await load() }
-        } else if albums.isEmpty && loading {
-            ProgressView("กำลังโหลดอัลบั้ม…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if albums.isEmpty && error == nil && (loading || !loaded) {
+            skeleton
         } else if albums.isEmpty, let error {
             ScrollView {
-                EmptyStateView(
-                    title: "โหลดอัลบั้มไม่สำเร็จ",
-                    message: error.localizedDescription,
-                    systemImage: "exclamationmark.triangle"
-                )
-                if error != .forbidden {
-                    Button("ลองใหม่") { Task { await load() } }
-                        .buttonStyle(.borderedProminent)
-                        .tint(AppTheme.brand)
+                ContentUnavailableView {
+                    Label("โหลดอัลบั้มไม่สำเร็จ", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error.localizedDescription)
+                } actions: {
+                    if error != .forbidden {
+                        Button("ลองใหม่") { Task { await load() } }
+                            .buttonStyle(.borderedProminent)
+                            .tint(AppTheme.brand)
+                    }
                 }
+                .padding(.top, 60)
             }
             .refreshable { await load() }
         } else {
-            ScrollView {
-                if filtered.isEmpty {
-                    EmptyStateView(
-                        title: search.isEmpty ? "ยังไม่มีอัลบั้ม" : "ไม่พบอัลบั้ม «\(search)»",
-                        message: search.isEmpty ? "กดปุ่ม + มุมขวาบนเพื่อสร้างอัลบั้มแรก" : nil,
-                        systemImage: "photo.on.rectangle.angled"
-                    )
-                } else {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 160), spacing: AppTheme.spaceMD)],
-                        spacing: AppTheme.spaceMD
-                    ) {
-                        ForEach(filtered) { album in
-                            NavigationLink(value: album) {
-                                PhotoAlbumCard(album: album)
-                            }
-                            .buttonStyle(.plain)
+            albumScroll
+        }
+    }
+
+    private var albumScroll: some View {
+        let layout = arrangedAlbums()
+        return ScrollView {
+            LazyVStack(alignment: .leading, spacing: AppTheme.spaceLG) {
+                if !isSearching && !albums.isEmpty {
+                    statsHeader
+                }
+                if layout.hero == nil && layout.sections.isEmpty {
+                    emptyResults
+                }
+                if let hero = layout.hero {
+                    VStack(alignment: .leading, spacing: AppTheme.spaceSM) {
+                        sectionTitle("ล่าสุด", detail: nil)
+                        albumLink(hero) {
+                            PhotoAlbumCard(album: hero, style: .hero)
                         }
                     }
-                    .padding(AppTheme.spaceLG)
+                }
+                ForEach(layout.sections) { section in
+                    VStack(alignment: .leading, spacing: AppTheme.spaceSM) {
+                        if let title = section.title {
+                            sectionTitle(title, detail: "\(section.albums.count) อัลบั้ม")
+                        }
+                        if listLayout {
+                            VStack(spacing: AppTheme.spaceSM) {
+                                ForEach(section.albums) { album in
+                                    albumLink(album) { PhotoAlbumRow(album: album) }
+                                }
+                            }
+                        } else {
+                            LazyVGrid(columns: gridColumns, spacing: AppTheme.spaceMD) {
+                                ForEach(section.albums) { album in
+                                    albumLink(album) { PhotoAlbumCard(album: album, style: .regular) }
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            .searchable(text: $search, prompt: "ค้นหาอัลบั้ม")
-            .refreshable { await load() }
+            .padding(AppTheme.spaceLG)
+            .animation(.snappy, value: sortRaw)
+            .animation(.snappy, value: listLayout)
         }
+        .searchable(text: $search, prompt: "ค้นหาชื่อหรือวันที่")
+        .refreshable { await load() }
+    }
+
+    // MARK: Pieces
+
+    private var statsHeader: some View {
+        HStack(spacing: 0) {
+            statItem(value: albums.count, label: "อัลบั้ม", systemImage: "rectangle.stack.fill", tint: AppTheme.brand)
+            Divider().frame(height: 34)
+            statItem(value: totalMedia, label: "รูปและวิดีโอ", systemImage: "photo.fill", tint: AppTheme.info)
+            Divider().frame(height: 34)
+            statItem(value: thisMonthCount, label: "อัลบั้มเดือนนี้", systemImage: "calendar", tint: AppTheme.warning)
+        }
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .fill(AppTheme.surface)
+                .shadow(color: AppTheme.cardShadow, radius: 12, y: 4)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
+    }
+
+    private func statItem(value: Int, label: String, systemImage: String, tint: Color) -> some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tint)
+                Text(value.formatted())
+                    .font(.title3.weight(.bold).monospacedDigit())
+                    .foregroundStyle(AppTheme.ink)
+                    .contentTransition(.numericText())
+            }
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(AppTheme.inkMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func sectionTitle(_ title: String, detail: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(AppTheme.ink)
+            if let detail {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private func albumLink<Content: View>(
+        _ album: PhotoAlbumSummary,
+        @ViewBuilder label: () -> Content
+    ) -> some View {
+        NavigationLink(value: album) {
+            label()
+        }
+        .buttonStyle(PhotoPressableStyle())
+        .contextMenu { albumMenu(album) }
+    }
+
+    @ViewBuilder
+    private func albumMenu(_ album: PhotoAlbumSummary) -> some View {
+        Button { openedAlbum = album } label: {
+            Label("เปิดอัลบั้ม", systemImage: "photo.on.rectangle")
+        }
+        if let url = URL(string: album.shareUrl) {
+            ShareLink(item: url, subject: Text(album.title), message: Text(album.title)) {
+                Label("แชร์ลิงก์อัลบั้ม", systemImage: "square.and.arrow.up")
+            }
+            Button {
+                UIPasteboard.general.string = album.shareUrl
+                toast = "คัดลอกลิงก์แล้ว"
+            } label: {
+                Label("คัดลอกลิงก์", systemImage: "doc.on.doc")
+            }
+        }
+        if let drive = URL(string: album.driveFolderUrl) {
+            Link(destination: drive) {
+                Label("เปิดใน Google Drive", systemImage: "folder")
+            }
+        }
+    }
+
+    private var viewMenu: some View {
+        Menu {
+            Picker(selection: $sortRaw) {
+                ForEach(PhotoAlbumSort.allCases) { option in
+                    Label(option.label, systemImage: option.systemImage).tag(option.rawValue)
+                }
+            } label: {
+                Text("เรียงตาม")
+            }
+            .pickerStyle(.inline)
+            Picker(selection: $listLayout) {
+                Label("ตาราง", systemImage: "square.grid.2x2").tag(false)
+                Label("รายการ", systemImage: "list.bullet").tag(true)
+            } label: {
+                Text("มุมมอง")
+            }
+            .pickerStyle(.inline)
+            Divider()
+            Link(destination: PhotoAlbumAPI.webURL) {
+                Label("เปิด GoldenMole Photos บนเว็บ", systemImage: "safari")
+            }
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+        }
+        .accessibilityLabel("เรียงลำดับและมุมมอง")
+    }
+
+    @ViewBuilder
+    private var emptyResults: some View {
+        if isSearching {
+            ContentUnavailableView {
+                Label("ไม่พบอัลบั้ม", systemImage: "magnifyingglass")
+            } description: {
+                Text("ไม่มีอัลบั้มที่ตรงกับ «\(trimmedSearch)»")
+            }
+            .padding(.top, 40)
+        } else {
+            ContentUnavailableView {
+                Label("ยังไม่มีอัลบั้ม", systemImage: "photo.on.rectangle.angled")
+            } description: {
+                Text("สร้างอัลบั้มแรกเพื่อเก็บรูปหน้างานไว้ใน Google Drive")
+            } actions: {
+                Button { showCreate = true } label: {
+                    Label("สร้างอัลบั้ม", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(AppTheme.brand)
+            }
+            .padding(.top, 40)
+        }
+    }
+
+    private var skeleton: some View {
+        ScrollView {
+            VStack(spacing: AppTheme.spaceLG) {
+                PhotoShimmer()
+                    .frame(height: 76)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous))
+                PhotoShimmer()
+                    .aspectRatio(1.6, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusXL, style: .continuous))
+                LazyVGrid(columns: gridColumns, spacing: AppTheme.spaceMD) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        PhotoShimmer()
+                            .aspectRatio(0.8, contentMode: .fit)
+                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous))
+                    }
+                }
+            }
+            .padding(AppTheme.spaceLG)
+        }
+        .scrollDisabled(true)
+        .accessibilityLabel("กำลังโหลดอัลบั้ม")
     }
 
     private func load() async {
         guard let admin = auth.currentAdmin else { return }
         loading = true
-        defer { loading = false }
+        defer {
+            loading = false
+            loaded = true
+        }
         do {
             albums = try await PhotoAlbumSession.shared.withToken(admin: admin) {
                 try await PhotoAlbumAPI.albums(token: $0)
@@ -125,672 +400,136 @@ struct PhotoAlbumsView: View {
     }
 }
 
-// MARK: - Album card
+// MARK: - Album card (grid / hero)
 
-private struct PhotoAlbumCard: View {
+struct PhotoAlbumCard: View {
+    enum Style { case regular, hero }
+
+    let album: PhotoAlbumSummary
+    var style: Style = .regular
+
+    private var isHero: Bool { style == .hero }
+    private var radius: CGFloat { isHero ? AppTheme.radiusXL : AppTheme.radiusLG }
+
+    var body: some View {
+        Color.clear
+            .aspectRatio(isHero ? 1.6 : 0.8, contentMode: .fit)
+            .overlay { coverLayer }
+            .overlay {
+                LinearGradient(colors: [.clear, .clear, Color.black.opacity(0.75)], startPoint: .top, endPoint: .bottom)
+            }
+            .overlay(alignment: .bottomLeading) { caption }
+            .overlay(alignment: .topTrailing) {
+                countBadge
+                    .padding(isHero ? 12 : 8)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(AppTheme.hairline, lineWidth: 1)
+            )
+            .shadow(color: AppTheme.cardShadow, radius: isHero ? 14 : 8, y: isHero ? 6 : 3)
+            .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(album.title), \(PhotoAlbumFormat.shortDate(album.reportDate)), \(album.mediaCount) รายการ")
+    }
+
+    @ViewBuilder
+    private var coverLayer: some View {
+        if let cover = album.cover {
+            PhotoRemoteImage(sources: cover, large: isHero)
+        } else {
+            LinearGradient(
+                colors: [AppTheme.brandMid, AppTheme.brandDark],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .overlay {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: isHero ? 44 : 30, weight: .light))
+                    .foregroundStyle(Color.white.opacity(0.5))
+            }
+        }
+    }
+
+    private var caption: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(album.title)
+                .font(isHero ? Font.title3.bold() : Font.subheadline.weight(.semibold))
+                .foregroundStyle(Color.white)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            Text(isHero ? DashboardAggregations.thaiDateLong(album.reportDate) : PhotoAlbumFormat.shortDate(album.reportDate))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Color.white.opacity(0.85))
+                .lineLimit(1)
+        }
+        .padding(isHero ? AppTheme.spaceLG : AppTheme.spaceMD)
+    }
+
+    private var countBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "photo.on.rectangle")
+            Text("\(album.mediaCount)")
+        }
+        .font(.caption2.weight(.bold).monospacedDigit())
+        .foregroundStyle(Color.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.black.opacity(0.4), in: Capsule())
+    }
+}
+
+// MARK: - Album row (list layout)
+
+struct PhotoAlbumRow: View {
     let album: PhotoAlbumSummary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        HStack(spacing: AppTheme.spaceMD) {
             Color.clear
-                .aspectRatio(4 / 3, contentMode: .fit)
+                .frame(width: 68, height: 68)
                 .overlay {
                     if let cover = album.cover {
                         PhotoRemoteImage(sources: cover)
                     } else {
                         Image(systemName: "photo.on.rectangle.angled")
-                            .font(.system(size: 30, weight: .light))
+                            .font(.title3.weight(.light))
                             .foregroundStyle(AppTheme.inkMuted)
                     }
                 }
                 .background(AppTheme.surfaceSoft)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
-
-            Text(album.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AppTheme.ink)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-            Text("\(PhotoAlbumFormat.shortDate(album.reportDate)) · \(album.mediaCount) รายการ")
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(album.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                HStack(spacing: 10) {
+                    Label(PhotoAlbumFormat.shortDate(album.reportDate), systemImage: "calendar")
+                    Label("\(album.mediaCount)", systemImage: "photo")
+                }
                 .font(.caption)
                 .foregroundStyle(AppTheme.inkMuted)
-                .lineLimit(1)
-        }
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - Album detail
-
-struct PhotoAlbumDetailView: View {
-    @Environment(AuthService.self) private var auth
-    @Environment(\.dismiss) private var dismiss
-    @State private var album: PhotoAlbumSummary
-    @State private var media: [PhotoMediaItem] = []
-    @State private var loading = false
-    @State private var error: PhotoAlbumError?
-    @State private var viewerStart: ViewerStart?
-    @State private var pickerItems: [PhotosPickerItem] = []
-    @State private var queue: PhotoUploadQueue
-    // SuperAdmin management
-    @State private var selecting = false
-    @State private var selected: Set<String> = []
-    @State private var showEdit = false
-    @State private var confirmDeleteSelected = false
-    @State private var confirmDeleteAlbum = false
-    @State private var working = false
-    @State private var actionError: String?
-
-    private struct ViewerStart: Identifiable {
-        let index: Int
-        var id: Int { index }
-    }
-
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
-
-    private var canManage: Bool { auth.currentAdmin?.role == .superAdmin }
-
-    init(album: PhotoAlbumSummary) {
-        _album = State(initialValue: album)
-        _queue = State(initialValue: PhotoUploadQueue(albumId: album.id))
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-                header
-                if media.isEmpty && loading {
-                    ProgressView("กำลังโหลดรูป…")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 40)
-                } else if media.isEmpty, let error {
-                    EmptyStateView(
-                        title: "โหลดรูปไม่สำเร็จ",
-                        message: error.localizedDescription,
-                        systemImage: "exclamationmark.triangle"
-                    )
-                } else if media.isEmpty {
-                    VStack(spacing: AppTheme.spaceSM) {
-                        EmptyStateView(title: "อัลบั้มนี้ยังไม่มีรูป", systemImage: "photo")
-                        addMediaPicker {
-                            Label("เพิ่มรูป / วิดีโอ", systemImage: "plus")
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 10)
-                                .background(AppTheme.brand, in: Capsule())
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                } else {
-                    LazyVGrid(columns: columns, spacing: 2) {
-                        ForEach(Array(media.enumerated()), id: \.element.id) { index, item in
-                            Button {
-                                if selecting {
-                                    if selected.contains(item.id) { selected.remove(item.id) } else { selected.insert(item.id) }
-                                } else {
-                                    viewerStart = ViewerStart(index: index)
-                                }
-                            } label: {
-                                PhotoGridCell(item: item, selection: selecting ? selected.contains(item.id) : nil)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
             }
-            .padding(.vertical, AppTheme.spaceMD)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppTheme.inkMuted)
         }
-        .background(DashboardBackground())
-        .navigationTitle(album.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                if selecting {
-                    Button(selected.count == media.count ? "ไม่เลือก" : "เลือกทั้งหมด") {
-                        selected = selected.count == media.count ? [] : Set(media.map(\.id))
-                    }
-                    Button("เสร็จ") {
-                        selecting = false
-                        selected = []
-                    }
-                    .fontWeight(.semibold)
-                } else {
-                    if let drive = URL(string: album.driveFolderUrl) {
-                        Link(destination: drive) { Image(systemName: "folder") }
-                            .accessibilityLabel("เปิดโฟลเดอร์ใน Google Drive")
-                    }
-                    ShareLink(item: "\(album.title)\n\(album.shareUrl)") {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .accessibilityLabel("แชร์ชื่ออัลบั้มและลิงก์")
-                    addMediaPicker {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel("เพิ่มรูปหรือวิดีโอ")
-                    if canManage {
-                        manageMenu
-                    }
-                }
-            }
-        }
-        .safeAreaInset(edge: .bottom) {
-            if selecting {
-                selectionBar
-            } else if !queue.jobs.isEmpty {
-                PhotoUploadTray(queue: queue)
-                    .padding(.horizontal, AppTheme.spaceLG)
-                    .padding(.bottom, AppTheme.spaceSM)
-            }
-        }
-        .sheet(isPresented: $showEdit) {
-            PhotoEditAlbumSheet(album: album) { detail in
-                album = detail.summary
-                media = detail.media
-            }
-            .environment(auth)
-        }
-        .confirmationDialog(
-            "ลบ \(selected.count) รายการที่เลือก?",
-            isPresented: $confirmDeleteSelected,
-            titleVisibility: .visible
-        ) {
-            Button("ลบ \(selected.count) รายการ", role: .destructive) {
-                Task { await deleteSelected() }
-            }
-        } message: {
-            Text("ไฟล์จะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)")
-        }
-        .confirmationDialog(
-            "ลบอัลบั้ม «\(album.title)»?",
-            isPresented: $confirmDeleteAlbum,
-            titleVisibility: .visible
-        ) {
-            Button("ลบอัลบั้ม", role: .destructive) {
-                Task { await deleteAlbum() }
-            }
-        } message: {
-            Text("อัลบั้มและไฟล์ทั้งหมด \(media.count) รายการจะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน) และลิงก์แชร์จะใช้ไม่ได้")
-        }
-        .alert(
-            "ทำรายการไม่สำเร็จ",
-            isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })
-        ) {
-            Button("ตกลง", role: .cancel) {}
-        } message: {
-            Text(actionError ?? "")
-        }
-        .overlay {
-            if working {
-                ProgressView()
-                    .padding(20)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
-            }
-        }
-        .disabled(working)
-        .onChange(of: pickerItems) { _, items in
-            guard !items.isEmpty, let admin = auth.currentAdmin else { return }
-            queue.enqueue(items, admin: admin)
-            pickerItems = []
-        }
-        .refreshable { await load() }
-        .task {
-            queue.onUploaded = { item in
-                if !media.contains(where: { $0.id == item.id }) { media.append(item) }
-            }
-            await load()
-        }
-        .fullScreenCover(item: $viewerStart) { start in
-            PhotoMediaViewer(
-                items: media,
-                startIndex: start.index,
-                canManage: canManage,
-                onSetCover: { item in await setCover(item) },
-                onDelete: { item in await deleteMedia([item.id]) }
-            )
-        }
-    }
-
-    // MARK: SuperAdmin actions
-
-    private var manageMenu: some View {
-        Menu {
-            Button { showEdit = true } label: {
-                Label("แก้ไขอัลบั้ม", systemImage: "pencil")
-            }
-            if !media.isEmpty {
-                Button { selecting = true } label: {
-                    Label("เลือกรูปเพื่อลบ", systemImage: "checkmark.circle")
-                }
-            }
-            Divider()
-            Button(role: .destructive) { confirmDeleteAlbum = true } label: {
-                Label("ลบอัลบั้ม", systemImage: "trash")
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-        }
-        .accessibilityLabel("จัดการอัลบั้ม")
-    }
-
-    private var selectionBar: some View {
-        HStack {
-            Text(selected.isEmpty ? "แตะรูปเพื่อเลือก" : "เลือกแล้ว \(selected.count) รายการ")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AppTheme.ink)
-            Spacer()
-            Button(role: .destructive) { confirmDeleteSelected = true } label: {
-                Label("ลบ", systemImage: "trash")
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(AppTheme.expense)
-            .disabled(selected.isEmpty)
-        }
-        .padding(AppTheme.spaceMD)
-        .background(.regularMaterial)
-    }
-
-    private func deleteSelected() async {
-        let ids = media.map(\.id).filter(selected.contains)
-        if let message = await deleteMedia(ids) {
-            actionError = message
-        }
-        selected = []
-        if media.isEmpty { selecting = false }
-    }
-
-    /// Deletes one by one so a failure keeps the rest; returns an error message or nil.
-    private func deleteMedia(_ ids: [String]) async -> String? {
-        guard let admin = auth.currentAdmin else { return nil }
-        working = true
-        defer { working = false }
-        var failure: String?
-        for id in ids {
-            do {
-                try await PhotoAlbumSession.shared.withToken(admin: admin) {
-                    try await PhotoAlbumAPI.deleteMedia(id: id, token: $0)
-                }
-                media.removeAll { $0.id == id }
-            } catch {
-                failure = error.localizedDescription
-            }
-        }
-        if failure == nil { await load() }
-        return failure
-    }
-
-    private func setCover(_ item: PhotoMediaItem) async -> String? {
-        guard let admin = auth.currentAdmin else { return nil }
-        do {
-            let detail = try await PhotoAlbumSession.shared.withToken(admin: admin) {
-                try await PhotoAlbumAPI.updateAlbum(id: album.id, coverMediaId: item.id, token: $0)
-            }
-            album = detail.summary
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
-    }
-
-    private func deleteAlbum() async {
-        guard let admin = auth.currentAdmin else { return }
-        working = true
-        defer { working = false }
-        do {
-            try await PhotoAlbumSession.shared.withToken(admin: admin) {
-                try await PhotoAlbumAPI.deleteAlbum(id: album.id, token: $0)
-            }
-            queue.cancelAll()
-            dismiss()
-        } catch {
-            actionError = error.localizedDescription
-        }
-    }
-
-    private func addMediaPicker<Content: View>(@ViewBuilder label: () -> Content) -> some View {
-        PhotosPicker(
-            selection: $pickerItems,
-            maxSelectionCount: 100,
-            matching: .any(of: [.images, .videos]),
-            preferredItemEncoding: .current,
-            label: label
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(AppTheme.surface)
         )
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(DashboardAggregations.thaiDateLong(album.reportDate))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AppTheme.ink)
-            Text("\(media.isEmpty ? album.mediaCount : media.count) รายการ")
-                .font(.caption)
-                .foregroundStyle(AppTheme.inkMuted)
-        }
-        .padding(.horizontal, AppTheme.spaceLG)
-    }
-
-    private func load() async {
-        guard let admin = auth.currentAdmin else { return }
-        loading = true
-        defer { loading = false }
-        do {
-            let detail = try await PhotoAlbumSession.shared.withToken(admin: admin) {
-                try await PhotoAlbumAPI.album(id: album.id, token: $0)
-            }
-            album = detail.summary
-            media = detail.media
-            error = nil
-        } catch let err as PhotoAlbumError {
-            error = err
-        } catch {
-            self.error = .network(error.localizedDescription)
-        }
-    }
-}
-
-private struct PhotoGridCell: View {
-    let item: PhotoMediaItem
-    /// nil = not in select mode.
-    var selection: Bool? = nil
-
-    var body: some View {
-        Color.clear
-            .aspectRatio(1, contentMode: .fit)
-            .overlay { PhotoRemoteImage(sources: item.src) }
-            .background(AppTheme.surfaceSoft)
-            .clipped()
-            .overlay(alignment: .bottomTrailing) {
-                if item.isVideo {
-                    Image(systemName: "play.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.white)
-                        .shadow(radius: 3)
-                        .padding(6)
-                }
-            }
-            .overlay {
-                if selection == true {
-                    Color.black.opacity(0.25)
-                }
-            }
-            .overlay(alignment: .topTrailing) {
-                if let selection {
-                    Image(systemName: selection ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(selection ? AppTheme.brand : .white)
-                        .background(Circle().fill(selection ? Color.white : Color.black.opacity(0.2)))
-                        .shadow(radius: 2)
-                        .padding(6)
-                }
-            }
-            .contentShape(Rectangle())
-            .accessibilityLabel(item.isVideo ? "วิดีโอ \(item.name)" : "รูป \(item.name)")
-            .accessibilityAddTraits(selection == true ? .isSelected : [])
-    }
-}
-
-// MARK: - Full-screen viewer
-
-private struct PhotoMediaViewer: View {
-    @State private var items: [PhotoMediaItem]
-    @State private var index: Int
-    let canManage: Bool
-    /// Each returns an error message, or nil on success.
-    let onSetCover: (PhotoMediaItem) async -> String?
-    let onDelete: (PhotoMediaItem) async -> String?
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var confirmDelete = false
-    @State private var working = false
-    @State private var notice: String?
-
-    init(
-        items: [PhotoMediaItem],
-        startIndex: Int,
-        canManage: Bool,
-        onSetCover: @escaping (PhotoMediaItem) async -> String?,
-        onDelete: @escaping (PhotoMediaItem) async -> String?
-    ) {
-        _items = State(initialValue: items)
-        _index = State(initialValue: startIndex)
-        self.canManage = canManage
-        self.onSetCover = onSetCover
-        self.onDelete = onDelete
-    }
-
-    private var currentItem: PhotoMediaItem? {
-        items.indices.contains(index) ? items[index] : nil
-    }
-
-    private var manageMenu: some View {
-        Menu {
-            if currentItem?.isVideo == false {
-                Button {
-                    Task { await setCover() }
-                } label: {
-                    Label("ตั้งเป็นรูปปกอัลบั้ม", systemImage: "photo.badge.checkmark")
-                }
-            }
-            Button(role: .destructive) { confirmDelete = true } label: {
-                Label("ลบรายการนี้", systemImage: "trash")
-            }
-        } label: {
-            Image(systemName: working ? "hourglass" : "ellipsis")
-                .font(.headline)
-                .frame(width: 40, height: 40)
-                .background(.ultraThinMaterial, in: Circle())
-        }
-        .disabled(working)
-        .accessibilityLabel("จัดการรูป")
-    }
-
-    private func setCover() async {
-        guard let item = currentItem else { return }
-        working = true
-        defer { working = false }
-        notice = await onSetCover(item) ?? "ตั้งเป็นรูปปกแล้ว"
-    }
-
-    private func deleteCurrent() async {
-        guard let item = currentItem else { return }
-        working = true
-        defer { working = false }
-        if let message = await onDelete(item) {
-            notice = message
-            return
-        }
-        items.removeAll { $0.id == item.id }
-        if items.isEmpty {
-            dismiss()
-        } else {
-            index = min(index, items.count - 1)
-        }
-    }
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            Color.black.ignoresSafeArea()
-            TabView(selection: $index) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
-                    page(item, isActive: i == index)
-                        .tag(i)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .ignoresSafeArea()
-
-            HStack {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.headline)
-                        .frame(width: 40, height: 40)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .accessibilityLabel("ปิด")
-                Spacer()
-                Text("\(index + 1) / \(items.count)")
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                Spacer()
-                if items.indices.contains(index), let url = URL(string: items[index].src.download) {
-                    ShareLink(item: url) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.headline)
-                            .frame(width: 40, height: 40)
-                            .background(.ultraThinMaterial, in: Circle())
-                    }
-                    .accessibilityLabel("แชร์ลิงก์ดาวน์โหลด")
-                }
-                if canManage {
-                    manageMenu
-                }
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, AppTheme.spaceLG)
-            .padding(.top, AppTheme.spaceSM)
-        }
-        .preferredColorScheme(.dark)
-        .confirmationDialog("ลบรายการนี้?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("ลบ", role: .destructive) { Task { await deleteCurrent() } }
-        } message: {
-            Text("ไฟล์จะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)")
-        }
-        .alert(
-            notice ?? "",
-            isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })
-        ) {
-            Button("ตกลง", role: .cancel) {}
-        }
-    }
-
-    @ViewBuilder
-    private func page(_ item: PhotoMediaItem, isActive: Bool) -> some View {
-        if item.isVideo {
-            PhotoVideoPage(item: item, isActive: isActive)
-        } else {
-            ZoomablePhoto(sources: item.src)
-        }
-    }
-}
-
-/// Streams the Drive file with AVPlayer; Drive's web player is only a fallback for formats iOS can't play.
-private struct PhotoVideoPage: View {
-    let item: PhotoMediaItem
-    let isActive: Bool
-
-    @State private var player: AVPlayer?
-    @State private var failed = false
-    @Environment(\.openURL) private var openURL
-
-    var body: some View {
-        ZStack {
-            if let player {
-                VideoPlayer(player: player)
-            } else {
-                PhotoRemoteImage(sources: item.src, large: true, contentMode: .fit)
-                if !failed {
-                    Button(action: start) {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 64))
-                            .foregroundStyle(.white)
-                            .shadow(radius: 6)
-                    }
-                    .accessibilityLabel("เล่นวิดีโอ")
-                }
-            }
-            if failed {
-                VStack(spacing: 10) {
-                    Text("เล่นวิดีโอนี้ในแอปไม่ได้")
-                        .font(.subheadline.weight(.semibold))
-                    if let url = URL(string: item.src.preview ?? item.src.download) {
-                        Button("เปิดใน Google Drive") { openURL(url) }
-                            .buttonStyle(.borderedProminent)
-                            .tint(AppTheme.brand)
-                    }
-                }
-                .foregroundStyle(.white)
-                .padding(AppTheme.spaceLG)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
-            }
-        }
-        .onChange(of: isActive) { _, active in
-            if !active { player?.pause() }
-        }
-        .onDisappear { player?.pause() }
-    }
-
-    private func start() {
-        guard let url = item.streamURL else {
-            failed = true
-            return
-        }
-        try? AVAudioSession.sharedInstance().setCategory(.playback)
-        let asset = AVURLAsset(url: url, options: [AVURLAssetOverrideMIMETypeKey: item.mime])
-        let playerItem = AVPlayerItem(asset: asset)
-        let newPlayer = AVPlayer(playerItem: playerItem)
-        player = newPlayer
-        newPlayer.play()
-        Task {
-            for await status in playerItem.publisher(for: \.status).values {
-                if status == .failed {
-                    player = nil
-                    failed = true
-                    return
-                }
-                if status == .readyToPlay { return }
-            }
-        }
-    }
-}
-
-private struct ZoomablePhoto: View {
-    let sources: PhotoMediaSources
-    @State private var scale: CGFloat = 1
-    @State private var lastScale: CGFloat = 1
-
-    var body: some View {
-        PhotoRemoteImage(sources: sources, large: true, contentMode: .fit)
-            .scaleEffect(scale)
-            .gesture(
-                MagnifyGesture()
-                    .onChanged { scale = min(5, max(1, lastScale * $0.magnification)) }
-                    .onEnded { _ in lastScale = scale }
-            )
-            .onTapGesture(count: 2) {
-                withAnimation(.spring(response: 0.3)) {
-                    scale = scale > 1 ? 1 : 2.5
-                    lastScale = scale
-                }
-            }
-    }
-}
-
-// MARK: - Remote image (Drive thumbnail with fallback)
-
-private struct PhotoRemoteImage: View {
-    let sources: PhotoMediaSources
-    var large = false
-    var contentMode: ContentMode = .fill
-    @State private var useFallback = false
-
-    private var url: URL? {
-        URL(string: useFallback ? sources.thumbFallback : (large ? sources.large : sources.thumb))
-    }
-
-    var body: some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().aspectRatio(contentMode: contentMode)
-            case .failure:
-                Image(systemName: "photo")
-                    .font(.title2)
-                    .foregroundStyle(AppTheme.inkMuted)
-                    .onAppear { if !useFallback { useFallback = true } }
-            default:
-                ProgressView()
-            }
-        }
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(album.title), \(PhotoAlbumFormat.shortDate(album.reportDate)), \(album.mediaCount) รายการ")
     }
 }
 
@@ -857,7 +596,7 @@ private struct PhotoAlbumSignInCard: View {
 
 // MARK: - Formatting
 
-private enum PhotoAlbumFormat {
+enum PhotoAlbumFormat {
     private static let ymd: DateFormatter = {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
@@ -867,14 +606,26 @@ private enum PhotoAlbumFormat {
         return f
     }()
 
-    private static let display: DateFormatter = {
+    private static func thaiFormatter(_ format: String) -> DateFormatter {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .buddhist)
         f.locale = Locale(identifier: "th_TH")
         f.timeZone = TimeZone(identifier: "Asia/Bangkok")
-        f.dateFormat = "d MMM yy"
+        f.dateFormat = format
+        return f
+    }
+
+    private static let display = thaiFormatter("d MMM yy")
+    private static let monthDisplay = thaiFormatter("LLLL yyyy")
+    private static let dateTimeDisplay = thaiFormatter("d MMM yy · HH:mm 'น.'")
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
+
+    private static let isoPlain = ISO8601DateFormatter()
 
     static func shortDate(_ ymd: String) -> String {
         guard let date = Self.ymd.date(from: ymd) else { return ymd }
@@ -888,216 +639,37 @@ private enum PhotoAlbumFormat {
     static func date(fromReportKey key: String) -> Date? {
         ymd.date(from: key)
     }
-}
 
-// MARK: - Edit album (SuperAdmin)
-
-private struct PhotoEditAlbumSheet: View {
-    let album: PhotoAlbumSummary
-    let onSaved: (PhotoAlbumDetail) -> Void
-
-    @Environment(AuthService.self) private var auth
-    @Environment(\.dismiss) private var dismiss
-    @State private var title: String
-    @State private var reportDate: Date
-    @State private var busy = false
-    @State private var message: String?
-    @State private var confirmNewLink = false
-
-    init(album: PhotoAlbumSummary, onSaved: @escaping (PhotoAlbumDetail) -> Void) {
-        self.album = album
-        self.onSaved = onSaved
-        _title = State(initialValue: album.title)
-        _reportDate = State(initialValue: PhotoAlbumFormat.date(fromReportKey: album.reportDate) ?? Date())
+    /// "2026-10" → "ตุลาคม 2569"
+    static func monthTitle(_ yearMonth: String) -> String {
+        guard let date = ymd.date(from: "\(yearMonth)-01") else { return yearMonth }
+        return monthDisplay.string(from: date)
     }
 
-    private var cleanTitle: String {
-        title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    /// ISO timestamp → Bangkok calendar day "YYYY-MM-DD".
+    static func dayKey(_ iso: String) -> String {
+        guard let date = parseISO(iso) else { return String(iso.prefix(10)) }
+        return ymd.string(from: date)
     }
 
-    private var reportKey: String { PhotoAlbumFormat.reportDateKey(reportDate) }
-    private var hasChanges: Bool { cleanTitle != album.title || reportKey != album.reportDate }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("ชื่อรายงาน", text: $title)
-                    DatePicker("วันที่รายงาน", selection: $reportDate, displayedComponents: .date)
-                        .environment(\.locale, Locale(identifier: "th_TH"))
-                        .environment(\.calendar, Calendar(identifier: .buddhist))
-                } footer: {
-                    Text(reportKey != album.reportDate
-                         ? "เปลี่ยนวันที่แล้ว — โฟลเดอร์ใน Google Drive จะย้ายไปปี/เดือนใหม่ให้อัตโนมัติ"
-                         : "เปลี่ยนชื่อได้ — โฟลเดอร์ใน Google Drive จะเปลี่ยนชื่อตามให้")
-                }
-                Section {
-                    Button { confirmNewLink = true } label: {
-                        Label("สร้างลิงก์แชร์ใหม่", systemImage: "link")
-                    }
-                } footer: {
-                    Text("ลิงก์เดิมที่แชร์ไปแล้วจะใช้ไม่ได้ทันที")
-                }
-                if let message {
-                    Section {
-                        Text(message)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(AppTheme.expense)
-                    }
-                }
-            }
-            .navigationTitle("แก้ไขอัลบั้ม")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("ยกเลิก") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(busy ? "กำลังบันทึก…" : "บันทึก") { Task { await save() } }
-                        .fontWeight(.semibold)
-                        .disabled(busy || !hasChanges || cleanTitle.isEmpty || cleanTitle.count > 200)
-                }
-            }
-            .confirmationDialog("สร้างลิงก์แชร์ใหม่?", isPresented: $confirmNewLink, titleVisibility: .visible) {
-                Button("สร้างลิงก์ใหม่", role: .destructive) { Task { await regenerateLink() } }
-            } message: {
-                Text("ลิงก์เดิมที่แชร์ไปแล้วจะใช้ไม่ได้ทันที — ต้องแชร์ลิงก์ใหม่อีกครั้ง")
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .interactiveDismissDisabled(busy)
+    static func dayTitle(_ key: String) -> String {
+        DashboardAggregations.thaiDateLong(key)
     }
 
-    private func save() async {
-        let title = cleanTitle == album.title ? nil : cleanTitle
-        let reportDate = reportKey == album.reportDate ? nil : reportKey
-        await patch { token in
-            try await PhotoAlbumAPI.updateAlbum(id: album.id, title: title, reportDate: reportDate, token: token)
+    /// Capture time and uploader for the viewer caption.
+    static func mediaInfo(_ item: PhotoMediaItem) -> String? {
+        var parts: [String] = []
+        if let date = parseISO(item.takenAt ?? item.createdAt) {
+            parts.append(dateTimeDisplay.string(from: date))
         }
+        if let name = item.uploadedByName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            parts.append("อัปโหลดโดย \(name)")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    private func regenerateLink() async {
-        await patch { token in
-            try await PhotoAlbumAPI.updateAlbum(id: album.id, regenerateLink: true, token: token)
-        }
-    }
-
-    private func patch(_ call: (String) async throws -> PhotoAlbumDetail) async {
-        guard let admin = auth.currentAdmin, !busy else { return }
-        busy = true
-        defer { busy = false }
-        do {
-            let detail = try await PhotoAlbumSession.shared.withToken(admin: admin, call)
-            onSaved(detail)
-            dismiss()
-        } catch {
-            message = error.localizedDescription
-        }
-    }
-}
-
-// MARK: - Upload tray
-
-private struct PhotoUploadTray: View {
-    let queue: PhotoUploadQueue
-    @Environment(AuthService.self) private var auth
-    @State private var expanded = false
-
-    private var title: String {
-        if queue.hasActiveJobs {
-            return "กำลังอัปโหลด \(queue.doneCount + 1)/\(queue.jobs.count)"
-        }
-        if queue.failedCount > 0 {
-            return "อัปโหลดไม่สำเร็จ \(queue.failedCount) ไฟล์"
-        }
-        return "อัปโหลดเสร็จ \(queue.doneCount) ไฟล์"
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: queue.hasActiveJobs
-                      ? "arrow.up.circle.fill"
-                      : (queue.failedCount > 0 ? "exclamationmark.circle.fill" : "checkmark.circle.fill"))
-                    .font(.title3)
-                    .foregroundStyle(queue.hasActiveJobs ? AppTheme.brand : (queue.failedCount > 0 ? AppTheme.expense : AppTheme.income))
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-                Spacer(minLength: 0)
-                if queue.failedCount > 0 && !queue.hasActiveJobs, let admin = auth.currentAdmin {
-                    Button("ลองใหม่") { queue.retryFailed(admin: admin) }
-                        .font(.caption.weight(.bold))
-                }
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
-                } label: {
-                    Image(systemName: expanded ? "chevron.down" : "chevron.up")
-                }
-                .accessibilityLabel(expanded ? "ซ่อนรายการ" : "แสดงรายการ")
-                if queue.hasActiveJobs {
-                    Button { queue.cancelAll() } label: { Image(systemName: "xmark") }
-                        .accessibilityLabel("ยกเลิกการอัปโหลด")
-                } else {
-                    Button { queue.clearFinished() } label: { Image(systemName: "xmark") }
-                        .accessibilityLabel("ปิด")
-                }
-            }
-            .font(.subheadline)
-            .foregroundStyle(AppTheme.inkSecondary)
-
-            if queue.hasActiveJobs {
-                ProgressView(value: queue.progress)
-                    .tint(AppTheme.brand)
-            }
-
-            if expanded {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(queue.jobs) { job in
-                            HStack(spacing: 8) {
-                                Image(systemName: job.isVideo ? "video" : "photo")
-                                    .foregroundStyle(AppTheme.inkMuted)
-                                Text("ไฟล์ที่ \(job.index + 1)")
-                                    .font(.caption)
-                                    .foregroundStyle(AppTheme.ink)
-                                Spacer(minLength: 0)
-                                jobStatus(job.state)
-                            }
-                        }
-                    }
-                }
-                .frame(maxHeight: 180)
-            }
-        }
-        .padding(AppTheme.spaceMD)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(AppTheme.surface)
-                .shadow(color: AppTheme.cardShadow, radius: 12, y: 4)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .strokeBorder(AppTheme.hairline, lineWidth: 1)
-        )
-    }
-
-    @ViewBuilder
-    private func jobStatus(_ state: PhotoUploadQueue.JobState) -> some View {
-        switch state {
-        case .waiting:
-            Text("รอคิว").font(.caption2).foregroundStyle(AppTheme.inkMuted)
-        case .uploading(let p):
-            Text("\(Int((p * 100).rounded()))%").font(.caption2.monospacedDigit()).foregroundStyle(AppTheme.brand)
-        case .done:
-            Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(AppTheme.income)
-        case .failed(let message):
-            Text(message)
-                .font(.caption2)
-                .foregroundStyle(AppTheme.expense)
-                .lineLimit(2)
-                .multilineTextAlignment(.trailing)
-        }
+    private static func parseISO(_ value: String) -> Date? {
+        isoFractional.date(from: value) ?? isoPlain.date(from: value)
     }
 }
 
