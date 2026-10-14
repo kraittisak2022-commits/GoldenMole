@@ -281,9 +281,9 @@ final class PhotoAlbumSession {
 
     /// Runs `call` with a valid token; on 401 drops the stale token and retries once.
     func withToken<T>(admin: AdminUser, _ call: (String) async throws -> T) async throws -> T {
-        let token = try await token(for: admin)
+        let current = try await token(for: admin)
         do {
-            return try await call(token)
+            return try await call(current)
         } catch PhotoAlbumError.unauthorized {
             signOut(adminId: admin.id)
             return try await call(try await token(for: admin))
