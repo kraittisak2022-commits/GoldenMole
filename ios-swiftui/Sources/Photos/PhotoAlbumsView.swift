@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -40,7 +41,11 @@ struct PhotoAlbumsView: View {
     @State private var search = ""
     @State private var showCreate = false
     @State private var openedAlbum: PhotoAlbumSummary?
+    @State private var editingAlbum: PhotoAlbumSummary?
     @State private var toast: String?
+
+    private var canManage: Bool { auth.currentAdmin?.role == .superAdmin }
+    private var showsCreateButton: Bool { error == nil && loaded }
 
     private struct AlbumSection: Identifiable {
         let id: String
@@ -99,23 +104,7 @@ struct PhotoAlbumsView: View {
     }
 
     var body: some View {
-        content
-            .background(DashboardBackground())
-            .navigationTitle("อัลบั้ม")
-            .navigationDestination(for: PhotoAlbumSummary.self) { album in
-                PhotoAlbumDetailView(album: album)
-            }
-            .navigationDestination(item: $openedAlbum) { album in
-                PhotoAlbumDetailView(album: album)
-            }
-            .toolbar { toolbarContent }
-            .sheet(isPresented: $showCreate) {
-                PhotoCreateAlbumSheet { album in
-                    albums.insert(album, at: 0)
-                    openedAlbum = album
-                }
-                .environment(auth)
-            }
+        pageWithSheets
             .photoToast($toast)
             .task(id: auth.currentAdmin?.id) { await load() }
             .onAppear {
@@ -124,15 +113,56 @@ struct PhotoAlbumsView: View {
             }
     }
 
+    private var page: some View {
+        content
+            .background(DashboardBackground())
+            .navigationTitle("อัลบั้ม")
+            .navigationDestination(for: PhotoAlbumSummary.self) { (album: PhotoAlbumSummary) in
+                PhotoAlbumDetailView(album: album)
+            }
+            .navigationDestination(item: $openedAlbum) { (album: PhotoAlbumSummary) in
+                PhotoAlbumDetailView(album: album)
+            }
+            .toolbar { toolbarContent }
+            .overlay(alignment: .bottomTrailing) {
+                if showsCreateButton {
+                    createButton
+                }
+            }
+    }
+
+    private var pageWithSheets: some View {
+        page
+            .sheet(isPresented: $showCreate) { createSheet }
+            .sheet(item: $editingAlbum) { (album: PhotoAlbumSummary) in
+                settingsSheet(album)
+            }
+    }
+
+    private var createSheet: some View {
+        PhotoCreateAlbumSheet(
+            onCreated: { (album: PhotoAlbumSummary) in albums.insert(album, at: 0) },
+            onOpen: { (album: PhotoAlbumSummary, uploads: [PhotosPickerItem]) in
+                openAlbum(album, uploading: uploads)
+            }
+        )
+        .environment(auth)
+    }
+
+    private func settingsSheet(_ album: PhotoAlbumSummary) -> some View {
+        PhotoEditAlbumSheet(
+            album: album,
+            onSaved: { (detail: PhotoAlbumDetail) in replaceAlbum(detail.summary) },
+            onDeleted: { removeAlbum(album) }
+        )
+        .environment(auth)
+    }
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
             if error == nil {
                 viewMenu
-                Button { showCreate = true } label: {
-                    Image(systemName: "plus")
-                }
-                .accessibilityLabel("สร้างอัลบั้ม")
             } else {
                 Link(destination: PhotoAlbumAPI.webURL) {
                     Image(systemName: "safari")
@@ -140,6 +170,42 @@ struct PhotoAlbumsView: View {
                 .accessibilityLabel("เปิด GoldenMole Photos บนเว็บ")
             }
         }
+    }
+
+    private var createButton: some View {
+        Button { showCreate = true } label: {
+            Label("สร้างอัลบั้ม", systemImage: "plus")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 15)
+                .background(AppTheme.brand, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: AppTheme.brand.opacity(0.35), radius: 14, y: 6)
+        }
+        .buttonStyle(PhotoPressableStyle())
+        .padding(.trailing, AppTheme.spaceLG)
+        .padding(.bottom, AppTheme.spaceLG)
+        .transition(.scale.combined(with: .opacity))
+    }
+
+    /// Starts the picked uploads on the album's shared queue, then opens the album to show progress.
+    private func openAlbum(_ album: PhotoAlbumSummary, uploading uploads: [PhotosPickerItem]) {
+        if !uploads.isEmpty, let admin = auth.currentAdmin {
+            PhotoUploadCenter.shared.queue(for: album.id).enqueue(uploads, admin: admin)
+        }
+        openedAlbum = album
+    }
+
+    private func replaceAlbum(_ updated: PhotoAlbumSummary) {
+        if let i = albums.firstIndex(where: { $0.id == updated.id }) {
+            albums[i] = updated
+        }
+        toast = "บันทึกแล้ว"
+    }
+
+    private func removeAlbum(_ album: PhotoAlbumSummary) {
+        albums.removeAll { $0.id == album.id }
+        toast = "ลบอัลบั้มแล้ว โฟลเดอร์อยู่ในถังขยะของ Drive 30 วัน"
     }
 
     @ViewBuilder
@@ -209,6 +275,7 @@ struct PhotoAlbumsView: View {
                 }
             }
             .padding(AppTheme.spaceLG)
+            .padding(.bottom, 72)
             .animation(.snappy, value: sortRaw)
             .animation(.snappy, value: listLayout)
         }
@@ -290,20 +357,24 @@ struct PhotoAlbumsView: View {
         Button { openedAlbum = album } label: {
             Label("เปิดอัลบั้ม", systemImage: "photo.on.rectangle")
         }
-        if let url = URL(string: album.shareUrl) {
-            ShareLink(item: url, subject: Text(album.title), message: Text(album.title)) {
-                Label("แชร์ลิงก์อัลบั้ม", systemImage: "square.and.arrow.up")
-            }
-            Button {
-                UIPasteboard.general.string = album.shareUrl
-                toast = "คัดลอกลิงก์แล้ว"
-            } label: {
-                Label("คัดลอกลิงก์", systemImage: "doc.on.doc")
-            }
+        Button {
+            UIPasteboard.general.string = PhotoAlbumFormat.shareText(title: album.title, url: album.shareUrl)
+            toast = "คัดลอกชื่อรายงานและลิงก์แล้ว"
+        } label: {
+            Label("คัดลอกชื่อรายงาน + ลิงก์", systemImage: "doc.on.doc")
+        }
+        ShareLink(item: PhotoAlbumFormat.shareText(title: album.title, url: album.shareUrl)) {
+            Label("แชร์", systemImage: "square.and.arrow.up")
         }
         if let drive = URL(string: album.driveFolderUrl) {
             Link(destination: drive) {
                 Label("เปิดใน Google Drive", systemImage: "folder")
+            }
+        }
+        if canManage {
+            Divider()
+            Button { editingAlbum = album } label: {
+                Label("ตั้งค่าอัลบั้ม", systemImage: "gearshape")
             }
         }
     }
@@ -636,6 +707,35 @@ enum PhotoAlbumFormat {
 
     private static let isoPlain = ISO8601DateFormatter()
 
+    static let maxTitleLength = 200
+    static let rootFolderName = "GoldenMole Photos"
+    private static let thaiMonths = [
+        "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
+        "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม",
+    ]
+
+    /// Same rule as the server's normalizeTitle: NFC, whitespace collapsed, trimmed.
+    static func normalizedTitle(_ raw: String) -> String {
+        raw.precomposedStringWithCanonicalMapping
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
+    /// "2026-10-14" → "GoldenMole Photos / 2569 / 10-ตุลาคม" (where the album is filed in Drive).
+    static func drivePath(_ reportKey: String) -> String {
+        let parts = reportKey.split(separator: "-")
+        guard parts.count == 3, let year = Int(parts[0]), let month = Int(parts[1]), (1...12).contains(month) else {
+            return rootFolderName
+        }
+        let mm = month < 10 ? "0\(month)" : "\(month)"
+        return "\(rootFolderName) / \(year + 543) / \(mm)-\(thaiMonths[month - 1])"
+    }
+
+    /// What Copy / Share puts in the group chat: the report name, then the link.
+    static func shareText(title: String, url: String) -> String {
+        "\(title.trimmingCharacters(in: .whitespacesAndNewlines))\n\(url)"
+    }
+
     static func shortDate(_ ymd: String) -> String {
         guard let date = Self.ymd.date(from: ymd) else { return ymd }
         return display.string(from: date)
@@ -679,79 +779,5 @@ enum PhotoAlbumFormat {
 
     private static func parseISO(_ value: String) -> Date? {
         isoFractional.date(from: value) ?? isoPlain.date(from: value)
-    }
-}
-
-// MARK: - Create album
-
-private struct PhotoCreateAlbumSheet: View {
-    let onCreated: (PhotoAlbumSummary) -> Void
-
-    @Environment(AuthService.self) private var auth
-    @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var reportDate = Date()
-    @State private var busy = false
-    @State private var message: String?
-    @FocusState private var titleFocused: Bool
-
-    private var cleanTitle: String {
-        title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("ชื่อรายงาน เช่น เทปูนชั้น 2", text: $title)
-                        .focused($titleFocused)
-                        .submitLabel(.done)
-                    DatePicker("วันที่รายงาน", selection: $reportDate, displayedComponents: .date)
-                        .environment(\.locale, Locale(identifier: "th_TH"))
-                        .environment(\.calendar, Calendar(identifier: .buddhist))
-                } footer: {
-                    Text("เก็บรูปใน Google Drive ใต้โฟลเดอร์ ปี / เดือน ของวันที่รายงาน · ทุกคนที่มีลิงก์อัลบั้มเพิ่มรูปได้")
-                }
-                if let message {
-                    Section {
-                        Text(message)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(AppTheme.expense)
-                    }
-                }
-            }
-            .navigationTitle("สร้างอัลบั้ม")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("ยกเลิก") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(busy ? "กำลังสร้าง…" : "สร้าง") { Task { await submit() } }
-                        .fontWeight(.semibold)
-                        .disabled(busy || cleanTitle.isEmpty || cleanTitle.count > 200)
-                }
-            }
-            .onAppear { titleFocused = true }
-        }
-        .presentationDetents([.medium, .large])
-        .interactiveDismissDisabled(busy)
-    }
-
-    private func submit() async {
-        guard let admin = auth.currentAdmin, !busy else { return }
-        busy = true
-        defer { busy = false }
-        let title = cleanTitle
-        let reportDate = PhotoAlbumFormat.reportDateKey(reportDate)
-        do {
-            let album = try await PhotoAlbumSession.shared.withToken(admin: admin) {
-                try await PhotoAlbumAPI.createAlbum(title: title, reportDate: reportDate, token: $0)
-            }
-            dismiss()
-            onCreated(album)
-        } catch {
-            message = error.localizedDescription
-        }
     }
 }

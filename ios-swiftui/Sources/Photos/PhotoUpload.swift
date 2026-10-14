@@ -231,6 +231,27 @@ enum DriveResumableUploader {
     }
 }
 
+// MARK: - Upload center (queues outlive the album screen, like the web UploadProvider)
+
+@MainActor
+final class PhotoUploadCenter {
+    static let shared = PhotoUploadCenter()
+
+    private var queues: [String: PhotoUploadQueue] = [:]
+
+    func queue(for albumId: String) -> PhotoUploadQueue {
+        if let existing = queues[albumId] { return existing }
+        let queue = PhotoUploadQueue(albumId: albumId)
+        queues[albumId] = queue
+        return queue
+    }
+
+    func cancelAll() {
+        for queue in queues.values { queue.cancelAll() }
+        queues.removeAll()
+    }
+}
+
 // MARK: - Upload queue (one album, files sent one at a time)
 
 @MainActor

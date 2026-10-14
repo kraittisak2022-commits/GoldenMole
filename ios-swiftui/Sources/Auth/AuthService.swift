@@ -164,6 +164,7 @@ final class AuthService {
     }
 
     func logout() {
+        PhotoUploadCenter.shared.cancelAll()
         if let id = currentAdmin?.id {
             PhotoAlbumSession.shared.signOut(adminId: id)
         }

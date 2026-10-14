@@ -69,7 +69,7 @@ struct PhotoAlbumDetailView: View {
 
     init(album: PhotoAlbumSummary) {
         _album = State(initialValue: album)
-        _queue = State(initialValue: PhotoUploadQueue(albumId: album.id))
+        _queue = State(initialValue: PhotoUploadCenter.shared.queue(for: album.id))
     }
 
     private var hasSingleKind: Bool { videoCount == 0 || photoCount == 0 }
@@ -181,10 +181,14 @@ struct PhotoAlbumDetailView: View {
             .toolbar { toolbarContent }
             .safeAreaInset(edge: .bottom) { bottomInset }
             .sheet(isPresented: $showEdit) {
-                PhotoEditAlbumSheet(album: album) { detail in
-                    album = detail.summary
-                    media = detail.media
-                }
+                PhotoEditAlbumSheet(
+                    album: album,
+                    onSaved: { detail in
+                        album = detail.summary
+                        media = detail.media
+                    },
+                    onDeleted: { dismiss() }
+                )
                 .environment(auth)
             }
     }
@@ -305,10 +309,8 @@ struct PhotoAlbumDetailView: View {
                 addMediaPicker {
                     actionTile("เพิ่มรูป", systemImage: "plus", prominent: true)
                 }
-                if let url = URL(string: album.shareUrl) {
-                    ShareLink(item: url, subject: Text(album.title), message: Text(album.title)) {
-                        actionTile("แชร์อัลบั้ม", systemImage: "square.and.arrow.up")
-                    }
+                ShareLink(item: PhotoAlbumFormat.shareText(title: album.title, url: album.shareUrl)) {
+                    actionTile("แชร์อัลบั้ม", systemImage: "square.and.arrow.up")
                 }
                 if let drive = URL(string: album.driveFolderUrl) {
                     Link(destination: drive) {
@@ -758,11 +760,12 @@ private struct PhotoGridCell: View {
     }
 }
 
-// MARK: - Edit album (SuperAdmin)
+// MARK: - Album settings (SuperAdmin; mirrors the web AlbumSettingsDialog)
 
-private struct PhotoEditAlbumSheet: View {
+struct PhotoEditAlbumSheet: View {
     let album: PhotoAlbumSummary
     let onSaved: (PhotoAlbumDetail) -> Void
+    var onDeleted: (() -> Void)? = nil
 
     @Environment(AuthService.self) private var auth
     @Environment(\.dismiss) private var dismiss
@@ -771,40 +774,58 @@ private struct PhotoEditAlbumSheet: View {
     @State private var busy = false
     @State private var message: String?
     @State private var confirmNewLink = false
+    @State private var confirmDelete = false
 
-    init(album: PhotoAlbumSummary, onSaved: @escaping (PhotoAlbumDetail) -> Void) {
+    init(
+        album: PhotoAlbumSummary,
+        onSaved: @escaping (PhotoAlbumDetail) -> Void,
+        onDeleted: (() -> Void)? = nil
+    ) {
         self.album = album
         self.onSaved = onSaved
+        self.onDeleted = onDeleted
         _title = State(initialValue: album.title)
         _reportDate = State(initialValue: PhotoAlbumFormat.date(fromReportKey: album.reportDate) ?? Date())
     }
 
-    private var cleanTitle: String {
-        title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-    }
-
+    private var cleanTitle: String { PhotoAlbumFormat.normalizedTitle(title) }
     private var reportKey: String { PhotoAlbumFormat.reportDateKey(reportDate) }
     private var hasChanges: Bool { cleanTitle != album.title || reportKey != album.reportDate }
+    private var titleTooLong: Bool { cleanTitle.count > PhotoAlbumFormat.maxTitleLength }
+
+    private var dateHint: String {
+        let moved = reportKey != album.reportDate ? " (ย้ายโฟลเดอร์ให้อัตโนมัติ)" : ""
+        return "เก็บใน \(PhotoAlbumFormat.drivePath(reportKey))\(moved)"
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("ชื่อรายงาน", text: $title)
+                    TextField("ชื่อรายงาน", text: $title, axis: .vertical)
+                        .lineLimit(1...3)
+                } header: {
+                    Text("ชื่อรายงาน")
+                } footer: {
+                    Text("\(cleanTitle.count)/\(PhotoAlbumFormat.maxTitleLength)")
+                        .foregroundStyle(titleTooLong ? AppTheme.expense : AppTheme.inkMuted)
+                }
+                Section {
                     DatePicker("วันที่รายงาน", selection: $reportDate, displayedComponents: .date)
                         .environment(\.locale, Locale(identifier: "th_TH"))
                         .environment(\.calendar, Calendar(identifier: .buddhist))
                 } footer: {
-                    Text(reportKey != album.reportDate
-                         ? "เปลี่ยนวันที่แล้ว — โฟลเดอร์ใน Google Drive จะย้ายไปปี/เดือนใหม่ให้อัตโนมัติ"
-                         : "เปลี่ยนชื่อได้ — โฟลเดอร์ใน Google Drive จะเปลี่ยนชื่อตามให้")
+                    Text(dateHint)
                 }
                 Section {
                     Button { confirmNewLink = true } label: {
-                        Label("สร้างลิงก์แชร์ใหม่", systemImage: "link")
+                        Label("สร้างลิงก์แชร์ใหม่ (ลิงก์เดิมใช้ไม่ได้)", systemImage: "link")
                     }
-                } footer: {
-                    Text("ลิงก์เดิมที่แชร์ไปแล้วจะใช้ไม่ได้ทันที")
+                    if onDeleted != nil {
+                        Button(role: .destructive) { confirmDelete = true } label: {
+                            Label("ลบอัลบั้ม", systemImage: "trash")
+                        }
+                    }
                 }
                 if let message {
                     Section {
@@ -814,7 +835,7 @@ private struct PhotoEditAlbumSheet: View {
                     }
                 }
             }
-            .navigationTitle("แก้ไขอัลบั้ม")
+            .navigationTitle("ตั้งค่าอัลบั้ม")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -823,17 +844,38 @@ private struct PhotoEditAlbumSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(busy ? "กำลังบันทึก…" : "บันทึก") { Task { await save() } }
                         .fontWeight(.semibold)
-                        .disabled(busy || !hasChanges || cleanTitle.isEmpty || cleanTitle.count > 200)
+                        .disabled(busy || !hasChanges || cleanTitle.isEmpty || titleTooLong)
                 }
             }
-            .confirmationDialog("สร้างลิงก์แชร์ใหม่?", isPresented: $confirmNewLink, titleVisibility: .visible) {
+            .confirmationDialog("สร้างลิงก์ใหม่?", isPresented: $confirmNewLink, titleVisibility: .visible) {
                 Button("สร้างลิงก์ใหม่", role: .destructive) { Task { await regenerateLink() } }
             } message: {
-                Text("ลิงก์เดิมที่แชร์ไปแล้วจะใช้ไม่ได้ทันที — ต้องแชร์ลิงก์ใหม่อีกครั้ง")
+                Text("ลิงก์เดิมที่แชร์ไปแล้วจะใช้ไม่ได้ทันที แต่คนที่เคยเปิดอัลบั้มหรือบันทึกลิงก์ Google Drive ไว้แล้ว ยังเปิดรูปผ่าน Drive ได้ ถ้าต้องการปิดทั้งหมดให้ลบอัลบั้ม")
+            }
+            .confirmationDialog("ลบอัลบั้มนี้?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("ลบอัลบั้ม", role: .destructive) { Task { await deleteAlbum() } }
+            } message: {
+                Text("«\(album.title)» และไฟล์ทั้งหมด \(album.mediaCount) รายการจะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)")
             }
         }
         .presentationDetents([.medium, .large])
         .interactiveDismissDisabled(busy)
+    }
+
+    private func deleteAlbum() async {
+        guard let admin = auth.currentAdmin, !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            try await PhotoAlbumSession.shared.withToken(admin: admin) {
+                try await PhotoAlbumAPI.deleteAlbum(id: album.id, token: $0)
+            }
+            PhotoUploadCenter.shared.queue(for: album.id).cancelAll()
+            dismiss()
+            onDeleted?()
+        } catch {
+            message = error.localizedDescription
+        }
     }
 
     private func save() async {

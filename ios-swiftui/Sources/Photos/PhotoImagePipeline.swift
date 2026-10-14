@@ -55,7 +55,7 @@ final class PhotoImagePipeline: @unchecked Sendable {
         "\(Int(maxPixels))|\(url.absoluteString)" as NSString
     }
 
-    private static func downsample(_ data: Data, maxPixels: CGFloat) -> UIImage? {
+    static func downsample(_ data: Data, maxPixels: CGFloat) -> UIImage? {
         let sourceOptions: [CFString: Any] = [kCGImageSourceShouldCache: false]
         guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions as CFDictionary) else {
             return nil
