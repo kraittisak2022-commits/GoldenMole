@@ -72,140 +72,177 @@ struct PhotoAlbumDetailView: View {
         _queue = State(initialValue: PhotoUploadQueue(albumId: album.id))
     }
 
+    private var hasSingleKind: Bool { videoCount == 0 || photoCount == 0 }
+
     var body: some View {
+        pageWithDialogs
+            .overlay {
+                if working {
+                    ProgressView()
+                        .padding(20)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
+                }
+            }
+            .disabled(working)
+            .photoToast($toast)
+            .sensoryFeedback(.selection, trigger: selected)
+            .onChange(of: pickerItems) { _, items in
+                guard !items.isEmpty, let admin = auth.currentAdmin else { return }
+                queue.enqueue(items, admin: admin)
+                pickerItems = []
+            }
+            .onChange(of: hasSingleKind) { _, single in
+                if single { filter = .all }
+            }
+            .refreshable { await load() }
+            .task {
+                queue.onUploaded = { item in
+                    if !media.contains(where: { $0.id == item.id }) { media.append(item) }
+                }
+                await load()
+            }
+            .fullScreenCover(item: $viewerStart) { start in
+                PhotoMediaViewer(
+                    items: start.items,
+                    startIndex: start.index,
+                    canManage: canManage,
+                    onSetCover: { item in await setCover(item) },
+                    onDelete: { item in await deleteMedia([item.id]) }
+                )
+            }
+    }
+
+    // MARK: Body pieces (split so the type checker stays fast)
+
+    private var scrollContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppTheme.spaceLG) {
                 hero
                     .padding(.horizontal, AppTheme.spaceLG)
                 actionsPanel
                     .padding(.horizontal, AppTheme.spaceLG)
-                if photoCount > 0 && videoCount > 0 {
-                    Picker("แสดง", selection: $filter) {
-                        ForEach(MediaFilter.allCases) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, AppTheme.spaceLG)
+                if !hasSingleKind {
+                    filterPicker
                 }
                 mediaContent
             }
             .padding(.vertical, AppTheme.spaceMD)
         }
-        .background(DashboardBackground())
-        .navigationTitle(album.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                if selecting {
-                    Button(allVisibleSelected ? "ไม่เลือก" : "เลือกทั้งหมด") {
-                        selected = allVisibleSelected ? [] : Set(visibleMedia.map(\.id))
-                    }
-                    Button("เสร็จ") {
-                        selecting = false
-                        selected = []
-                    }
-                    .fontWeight(.semibold)
-                } else {
-                    addMediaPicker {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel("เพิ่มรูปหรือวิดีโอ")
-                    optionsMenu
-                }
+    }
+
+    private var filterPicker: some View {
+        Picker("แสดง", selection: $filter) {
+            ForEach(MediaFilter.allCases) { option in
+                Text(option.label).tag(option)
             }
         }
-        .safeAreaInset(edge: .bottom) {
+        .pickerStyle(.segmented)
+        .padding(.horizontal, AppTheme.spaceLG)
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
             if selecting {
-                selectionBar
-            } else if !queue.jobs.isEmpty {
-                PhotoUploadTray(queue: queue)
-                    .padding(.horizontal, AppTheme.spaceLG)
-                    .padding(.bottom, AppTheme.spaceSM)
-            }
-        }
-        .sheet(isPresented: $showEdit) {
-            PhotoEditAlbumSheet(album: album) { detail in
-                album = detail.summary
-                media = detail.media
-            }
-            .environment(auth)
-        }
-        .confirmationDialog(
-            "ลบ \(selected.count) รายการที่เลือก?",
-            isPresented: $confirmDeleteSelected,
-            titleVisibility: .visible
-        ) {
-            Button("ลบ \(selected.count) รายการ", role: .destructive) {
-                Task { await deleteSelected() }
-            }
-        } message: {
-            Text("ไฟล์จะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)")
-        }
-        .confirmationDialog(
-            "ลบรายการนี้?",
-            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
-            titleVisibility: .visible,
-            presenting: pendingDelete
-        ) { item in
-            Button("ลบ", role: .destructive) {
-                Task {
-                    if let message = await deleteMedia([item.id]) { actionError = message }
+                Button(allVisibleSelected ? "ไม่เลือก" : "เลือกทั้งหมด") {
+                    selected = allVisibleSelected ? [] : Set(visibleMedia.map(\.id))
                 }
-            }
-        } message: { _ in
-            Text("ไฟล์จะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)")
-        }
-        .confirmationDialog(
-            "ลบอัลบั้ม «\(album.title)»?",
-            isPresented: $confirmDeleteAlbum,
-            titleVisibility: .visible
-        ) {
-            Button("ลบอัลบั้ม", role: .destructive) {
-                Task { await deleteAlbum() }
-            }
-        } message: {
-            Text("อัลบั้มและไฟล์ทั้งหมด \(media.count) รายการจะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน) และลิงก์แชร์จะใช้ไม่ได้")
-        }
-        .alert(
-            "ทำรายการไม่สำเร็จ",
-            isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })
-        ) {
-            Button("ตกลง", role: .cancel) {}
-        } message: {
-            Text(actionError ?? "")
-        }
-        .overlay {
-            if working {
-                ProgressView()
-                    .padding(20)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
+                Button("เสร็จ") {
+                    selecting = false
+                    selected = []
+                }
+                .fontWeight(.semibold)
+            } else {
+                addMediaPicker {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("เพิ่มรูปหรือวิดีโอ")
+                optionsMenu
             }
         }
-        .disabled(working)
-        .photoToast($toast)
-        .sensoryFeedback(.selection, trigger: selected)
-        .onChange(of: pickerItems) { _, items in
-            guard !items.isEmpty, let admin = auth.currentAdmin else { return }
-            queue.enqueue(items, admin: admin)
-            pickerItems = []
+    }
+
+    @ViewBuilder
+    private var bottomInset: some View {
+        if selecting {
+            selectionBar
+        } else if !queue.jobs.isEmpty {
+            PhotoUploadTray(queue: queue)
+                .padding(.horizontal, AppTheme.spaceLG)
+                .padding(.bottom, AppTheme.spaceSM)
         }
-        .onChange(of: videoCount == 0 || photoCount == 0) { _, single in
-            if single { filter = .all }
-        }
-        .refreshable { await load() }
-        .task {
-            queue.onUploaded = { item in
-                if !media.contains(where: { $0.id == item.id }) { media.append(item) }
+    }
+
+    private var page: some View {
+        scrollContent
+            .background(DashboardBackground())
+            .navigationTitle(album.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { toolbarContent }
+            .safeAreaInset(edge: .bottom) { bottomInset }
+            .sheet(isPresented: $showEdit) {
+                PhotoEditAlbumSheet(album: album) { detail in
+                    album = detail.summary
+                    media = detail.media
+                }
+                .environment(auth)
             }
-            await load()
-        }
-        .fullScreenCover(item: $viewerStart) { start in
-            PhotoMediaViewer(
-                items: start.items,
-                startIndex: start.index,
-                canManage: canManage,
-                onSetCover: { item in await setCover(item) },
-                onDelete: { item in await deleteMedia([item.id]) }
-            )
+    }
+
+    private var pendingDeleteShown: Binding<Bool> {
+        Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })
+    }
+
+    private var actionErrorShown: Binding<Bool> {
+        Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })
+    }
+
+    private var pageWithDialogs: some View {
+        page
+            .confirmationDialog(
+                "ลบ \(selected.count) รายการที่เลือก?",
+                isPresented: $confirmDeleteSelected,
+                titleVisibility: .visible
+            ) {
+                Button("ลบ \(selected.count) รายการ", role: .destructive) {
+                    Task { await deleteSelected() }
+                }
+            } message: {
+                Text("ไฟล์จะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)")
+            }
+            .confirmationDialog(
+                "ลบรายการนี้?",
+                isPresented: pendingDeleteShown,
+                titleVisibility: .visible,
+                presenting: pendingDelete
+            ) { (item: PhotoMediaItem) in
+                Button("ลบ", role: .destructive) {
+                    Task { await deleteOne(item) }
+                }
+            } message: { (_: PhotoMediaItem) in
+                Text("ไฟล์จะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน)")
+            }
+            .confirmationDialog(
+                "ลบอัลบั้ม «\(album.title)»?",
+                isPresented: $confirmDeleteAlbum,
+                titleVisibility: .visible
+            ) {
+                Button("ลบอัลบั้ม", role: .destructive) {
+                    Task { await deleteAlbum() }
+                }
+            } message: {
+                Text("อัลบั้มและไฟล์ทั้งหมด \(media.count) รายการจะถูกย้ายไปถังขยะของ Google Drive (กู้คืนได้ใน 30 วัน) และลิงก์แชร์จะใช้ไม่ได้")
+            }
+            .alert("ทำรายการไม่สำเร็จ", isPresented: actionErrorShown) {
+                Button("ตกลง", role: .cancel) {}
+            } message: {
+                Text(actionError ?? "")
+            }
+    }
+
+    private func deleteOne(_ item: PhotoMediaItem) async {
+        if let message = await deleteMedia([item.id]) {
+            actionError = message
         }
     }
 

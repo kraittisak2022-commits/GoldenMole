@@ -45,22 +45,38 @@ struct PhotoMediaViewer: View {
         chromeVisible && currentItem?.isVideo != true
     }
 
+    private var backdropOpacity: Double {
+        let fade = Double(dragY) / 600
+        return 1 - min(fade, 0.6)
+    }
+
+    private var dragScale: CGFloat {
+        let shrink: CGFloat = dragY / 2000
+        return 1 - min(shrink, 0.12)
+    }
+
+    private var dismissMask: GestureMask { zoomed ? .subviews : .all }
+
+    private var pager: some View {
+        TabView(selection: $index) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
+                page(item, isActive: i == index)
+                    .tag(i)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .ignoresSafeArea()
+    }
+
     var body: some View {
         ZStack {
             Color.black
-                .opacity(1 - min(dragY / 600, 0.6))
+                .opacity(backdropOpacity)
                 .ignoresSafeArea()
-            TabView(selection: $index) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
-                    page(item, isActive: i == index)
-                        .tag(i)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .ignoresSafeArea()
-            .offset(y: dragY)
-            .scaleEffect(1 - min(dragY / 2000, 0.12))
-            .simultaneousGesture(dismissDrag, including: zoomed ? .subviews : .all)
+            pager
+                .offset(y: dragY)
+                .scaleEffect(dragScale)
+                .simultaneousGesture(dismissDrag, including: dismissMask)
         }
         .overlay(alignment: .top) {
             if chromeVisible {
@@ -182,22 +198,7 @@ struct PhotoMediaViewer: View {
                 LazyHStack(spacing: 4) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
                         Button { index = i } label: {
-                            PhotoRemoteImage(sources: item.src)
-                                .frame(width: i == index ? 52 : 38, height: 52)
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .strokeBorder(Color.white, lineWidth: i == index ? 2 : 0)
-                                }
-                                .overlay(alignment: .bottomTrailing) {
-                                    if item.isVideo {
-                                        Image(systemName: "play.fill")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundStyle(.white)
-                                            .padding(3)
-                                    }
-                                }
-                                .opacity(i == index ? 1 : 0.6)
+                            PhotoThumbChip(item: item, isCurrent: i == index)
                         }
                         .buttonStyle(.plain)
                         .id(i)
@@ -277,6 +278,34 @@ struct PhotoMediaViewer: View {
         } else {
             index = min(index, items.count - 1)
         }
+    }
+}
+
+private struct PhotoThumbChip: View {
+    let item: PhotoMediaItem
+    let isCurrent: Bool
+
+    private var width: CGFloat { isCurrent ? 52 : 38 }
+    private var borderWidth: CGFloat { isCurrent ? 2 : 0 }
+    private var dimming: Double { isCurrent ? 1 : 0.6 }
+
+    var body: some View {
+        PhotoRemoteImage(sources: item.src)
+            .frame(width: width, height: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(Color.white, lineWidth: borderWidth)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if item.isVideo {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .padding(3)
+                }
+            }
+            .opacity(dimming)
     }
 }
 

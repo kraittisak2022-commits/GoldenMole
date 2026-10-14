@@ -108,22 +108,7 @@ struct PhotoAlbumsView: View {
             .navigationDestination(item: $openedAlbum) { album in
                 PhotoAlbumDetailView(album: album)
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if error == nil {
-                        viewMenu
-                        Button { showCreate = true } label: {
-                            Image(systemName: "plus")
-                        }
-                        .accessibilityLabel("สร้างอัลบั้ม")
-                    } else {
-                        Link(destination: PhotoAlbumAPI.webURL) {
-                            Image(systemName: "safari")
-                        }
-                        .accessibilityLabel("เปิด GoldenMole Photos บนเว็บ")
-                    }
-                }
-            }
+            .toolbar { toolbarContent }
             .sheet(isPresented: $showCreate) {
                 PhotoCreateAlbumSheet { album in
                     albums.insert(album, at: 0)
@@ -137,6 +122,24 @@ struct PhotoAlbumsView: View {
                 // Quiet refresh when coming back from an album (counts / covers after uploads).
                 if !albums.isEmpty { Task { await load() } }
             }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if error == nil {
+                viewMenu
+                Button { showCreate = true } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("สร้างอัลบั้ม")
+            } else {
+                Link(destination: PhotoAlbumAPI.webURL) {
+                    Image(systemName: "safari")
+                }
+                .accessibilityLabel("เปิด GoldenMole Photos บนเว็บ")
+            }
+        }
     }
 
     @ViewBuilder
@@ -410,28 +413,34 @@ struct PhotoAlbumCard: View {
 
     private var isHero: Bool { style == .hero }
     private var radius: CGFloat { isHero ? AppTheme.radiusXL : AppTheme.radiusLG }
+    private var ratio: CGFloat { isHero ? 1.6 : 0.8 }
+    private var badgeInset: CGFloat { isHero ? 12 : 8 }
+    private var shadowRadius: CGFloat { isHero ? 14 : 8 }
+    private var shadowY: CGFloat { isHero ? 6 : 3 }
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: radius, style: .continuous) }
+    private var spokenLabel: String {
+        "\(album.title), \(PhotoAlbumFormat.shortDate(album.reportDate)), \(album.mediaCount) รายการ"
+    }
+
+    private var scrim: LinearGradient {
+        LinearGradient(colors: [.clear, .clear, Color.black.opacity(0.75)], startPoint: .top, endPoint: .bottom)
+    }
 
     var body: some View {
         Color.clear
-            .aspectRatio(isHero ? 1.6 : 0.8, contentMode: .fit)
+            .aspectRatio(ratio, contentMode: .fit)
             .overlay { coverLayer }
-            .overlay {
-                LinearGradient(colors: [.clear, .clear, Color.black.opacity(0.75)], startPoint: .top, endPoint: .bottom)
-            }
+            .overlay { scrim }
             .overlay(alignment: .bottomLeading) { caption }
             .overlay(alignment: .topTrailing) {
-                countBadge
-                    .padding(isHero ? 12 : 8)
+                countBadge.padding(badgeInset)
             }
-            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(AppTheme.hairline, lineWidth: 1)
-            )
-            .shadow(color: AppTheme.cardShadow, radius: isHero ? 14 : 8, y: isHero ? 6 : 3)
-            .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .clipShape(shape)
+            .overlay(shape.strokeBorder(AppTheme.hairline, lineWidth: 1))
+            .shadow(color: AppTheme.cardShadow, radius: shadowRadius, y: shadowY)
+            .contentShape(shape)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(album.title), \(PhotoAlbumFormat.shortDate(album.reportDate)), \(album.mediaCount) รายการ")
+            .accessibilityLabel(spokenLabel)
     }
 
     @ViewBuilder
