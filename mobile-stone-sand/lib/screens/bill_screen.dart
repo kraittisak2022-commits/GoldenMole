@@ -174,7 +174,7 @@ class _BillScreenState extends State<BillScreen> {
 
   Widget _scaffold(CatalogController catalog, BillData? bill, bool busy) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F5F9),
+      backgroundColor: Colors.white,
       appBar: AppBar(
         leading: BackButton(onPressed: _back),
         title: bill == null

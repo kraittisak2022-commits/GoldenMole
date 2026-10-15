@@ -84,7 +84,7 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-slate-100 print:min-h-0 print:bg-white">
+    <div className="min-h-[100dvh] bg-white print:min-h-0">
       <header className="no-print sticky top-0 z-30 border-b border-border bg-surface/95 pt-safe-top backdrop-blur">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-2 px-3 py-2">
           <Link
