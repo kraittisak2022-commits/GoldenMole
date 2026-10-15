@@ -197,6 +197,7 @@ describe('buildFuelUsageReport main tank out total', () => {
         ], { start: '2026-09-01', end: '2026-09-30' });
 
         expect(report.totals.mainOutLiters).toBe(600 + 120 + 20 + 1000);
+        expect(report.totals.withdrawLiters).toBe(600);
     });
 });
 

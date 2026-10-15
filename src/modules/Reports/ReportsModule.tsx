@@ -663,12 +663,12 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                         <SummaryTile
                             label="ถังหลัก (ใช้แล้ว)"
                             value={liters(fuelReport.totals.mainOutLiters)}
-                            hint="รวมทุกรายการที่ออกจากถังหลัก"
+                            hint={`รวมเบิกไปถังสำรอง ${formatDisplayNumber(fuelReport.totals.withdrawLiters)} ลิตร`}
                         />
                         <SummaryTile
                             label="เบิกไปถังสำรอง"
                             value={liters(fuelReport.totals.withdrawLiters)}
-                            hint="ยังไม่นับเป็นใช้"
+                            hint="เฉพาะโอนถังหลัก → ถังสำรอง"
                         />
                         <SummaryTile
                             label="ใช้แล้ว"
