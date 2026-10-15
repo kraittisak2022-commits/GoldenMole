@@ -404,6 +404,28 @@ export function filterFuelUsageReport(report: FuelUsageReport, group: FuelPrintG
     return { rows, ...aggregateFuelUsageRows(rows) };
 }
 
+export interface FuelUsedBreakdown {
+    macroLiters: number;
+    sieveGeneratorLiters: number;
+    /** รายงานเติมน้ำมันอื่นๆ ไม่รวมนายกเบิก */
+    otherFillLiters: number;
+    mayorLiters: number;
+}
+
+/** แยกยอด "ใช้แล้ว" ตามรายงาน — ไม่รวมรับเข้าและเบิกไปถังสำรอง */
+export function fuelUsedBreakdown(report: FuelUsageReport): FuelUsedBreakdown {
+    const out: FuelUsedBreakdown = { macroLiters: 0, sieveGeneratorLiters: 0, otherFillLiters: 0, mayorLiters: 0 };
+    for (const row of report.rows) {
+        if (!isUsageKind(row.kind)) continue;
+        const group = fuelPrintGroupOf(row);
+        if (group === 'macro') out.macroLiters += row.liters;
+        else if (group === 'sieve_generator') out.sieveGeneratorLiters += row.liters;
+        else if ((row.workType ?? '').trim().toLowerCase() === 'mayor') out.mayorLiters += row.liters;
+        else out.otherFillLiters += row.liters;
+    }
+    return out;
+}
+
 export type FuelDetailTypeId = Exclude<FuelPrintGroup, 'overview'> | 'machine_fill';
 
 export interface FuelDetailRow {

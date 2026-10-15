@@ -14,6 +14,7 @@ import {
     fuelReportVehicleLabel,
     filterFuelUsageReport,
     fuelDetailDays,
+    fuelUsedBreakdown,
     fuelPrintGroupOf,
     fuelPrintGroupTitle,
     fuelPrintOverviewItems,
@@ -198,6 +199,25 @@ describe('buildFuelUsageReport main tank out total', () => {
 
         expect(report.totals.mainOutLiters).toBe(600 + 120 + 20 + 1000);
         expect(report.totals.withdrawLiters).toBe(600);
+    });
+});
+
+describe('fuelUsedBreakdown', () => {
+    it('splits used liters into macro / sieve+generator / other / mayor and leaves out reserve transfers', () => {
+        const report = buildFuelUsageReport([
+            fuelTx({ id: 'in', date: '2026-09-10', subCategory: FUEL_STOCK_IN_SUB_CATEGORY, fuelMovement: 'stock_in', fuelTank: 'main', quantity: 12000 }),
+            fuelTx({ id: 'xfer-out', date: '2026-09-10', subCategory: FUEL_TRANSFER_SUB_CATEGORY, fuelMovement: 'stock_out', fuelTank: 'main', workType: 'machine', quantity: 600 }),
+            fuelTx({ id: 'macro', date: '2026-09-10', subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY, fuelMovement: 'stock_out', fuelTank: 'reserve', vehicleId: 'รถแม็คโคร SK200', quantity: 200 }),
+            fuelTx({ id: 'sieve', date: '2026-09-11', subCategory: FUEL_SAND_SIEVE_SUB_CATEGORY, fuelMovement: 'stock_out', fuelTank: 'reserve', quantity: 50 }),
+            fuelTx({ id: 'gen', date: '2026-09-11', subCategory: FUEL_WITHDRAW_SUB_CATEGORY, fuelMovement: 'stock_out', fuelTank: 'main', workType: 'generator', quantity: 10 }),
+            fuelTx({ id: 'car', date: '2026-09-11', subCategory: FUEL_WITHDRAW_SUB_CATEGORY, fuelMovement: 'stock_out', workType: 'car', vehicleId: 'ไมตี้', quantity: 20 }),
+            fuelTx({ id: 'mayor', date: '2026-09-11', subCategory: FUEL_WITHDRAW_SUB_CATEGORY, fuelMovement: 'stock_out', fuelTank: 'main', workType: 'mayor', quantity: 1000 }),
+        ], { start: '2026-09-01', end: '2026-09-30' });
+
+        const b = fuelUsedBreakdown(report);
+
+        expect(b).toEqual({ macroLiters: 200, sieveGeneratorLiters: 60, otherFillLiters: 20, mayorLiters: 1000 });
+        expect(b.macroLiters + b.sieveGeneratorLiters + b.otherFillLiters + b.mayorLiters).toBe(report.totals.usageLiters);
     });
 });
 

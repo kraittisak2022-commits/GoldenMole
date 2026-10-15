@@ -20,6 +20,7 @@ import {
     classifyFuelTx,
     filterFuelUsageReport,
     fuelDetailDays,
+    fuelUsedBreakdown,
     fuelPrintGroupTitle,
     fuelPrintOverviewSections,
     fuelReportVehicleLabel,
@@ -152,13 +153,13 @@ const SummaryTile = ({
 }: {
     label: string;
     value: string;
-    hint?: string;
+    hint?: ReactNode;
     className?: string;
 }) => (
     <div className={`rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-white/[0.03] px-3.5 py-3 min-w-0 ${className}`}>
         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 break-words">{label}</p>
         <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-50 break-words">{value}</p>
-        {hint ? <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 break-words">{hint}</p> : null}
+        {hint ? <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 break-words">{hint}</div> : null}
     </div>
 );
 
@@ -241,6 +242,8 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
         }),
         [transactions, range.start, range.end, vehicleId, fuelType, kind, estimatedSieveByDay, settings.vehicleCatalog]
     );
+
+    const usedBreakdown = useMemo(() => fuelUsedBreakdown(fuelReport), [fuelReport]);
 
     const vehicleReport = useMemo(
         () => buildVehicleUsageReport(transactions, employees, {
@@ -673,7 +676,15 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                         <SummaryTile
                             label="ใช้แล้ว"
                             value={liters(fuelReport.totals.usageLiters)}
-                            hint={`กระทบยอด ${formatDisplayNumber(fuelReport.totals.stockInLiters - fuelReport.totals.usageLiters)} ลิตร`}
+                            hint={(
+                                <ul aria-label="แยกยอดใช้แล้ว" className="space-y-0.5">
+                                    <li>แม็คโคร {formatDisplayNumber(usedBreakdown.macroLiters)} ลิตร</li>
+                                    <li>ร่อนทราย / ปั่นไฟ {formatDisplayNumber(usedBreakdown.sieveGeneratorLiters)} ลิตร</li>
+                                    <li>เติมน้ำมันอื่นๆ {formatDisplayNumber(usedBreakdown.otherFillLiters)} ลิตร</li>
+                                    <li>นายกเบิก {formatDisplayNumber(usedBreakdown.mayorLiters)} ลิตร</li>
+                                    <li className="text-slate-400">ไม่รวมเบิกไปถังสำรอง</li>
+                                </ul>
+                            )}
                         />
                         <SummaryTile
                             label="คงเหลือถังหลัก"

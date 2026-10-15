@@ -71,6 +71,9 @@ describe('ReportsModule', () => {
         expect(screen.getAllByRole('button', { name: '燃油报表总览' }).length).toBeGreaterThanOrEqual(1);
         expect(screen.getAllByText(/60 ลิตร/).length).toBeGreaterThan(0);
         expect(screen.getByText('ถังหลัก (ใช้แล้ว)')).toBeInTheDocument();
+        const used = screen.getByRole('list', { name: 'แยกยอดใช้แล้ว' });
+        expect(used).toHaveTextContent('เติมน้ำมันอื่นๆ 60 ลิตร');
+        expect(used).toHaveTextContent('ไม่รวมเบิกไปถังสำรอง');
         expect(screen.queryByText(/60 ล\./)).not.toBeInTheDocument();
         expect(screen.queryByRole('columnheader', { name: 'ประเภท' })).not.toBeInTheDocument();
         expect(screen.queryByRole('columnheader', { name: 'น้ำมัน' })).not.toBeInTheDocument();
