@@ -70,6 +70,7 @@ describe('ReportsModule', () => {
         expect(screen.getAllByRole('button', { name: 'พิมพ์收油报表' }).length).toBeGreaterThanOrEqual(1);
         expect(screen.getAllByRole('button', { name: '燃油报表总览' }).length).toBeGreaterThanOrEqual(1);
         expect(screen.getAllByText(/60 ลิตร/).length).toBeGreaterThan(0);
+        expect(screen.getByText('ถังหลัก (ใช้แล้ว)')).toBeInTheDocument();
         expect(screen.queryByText(/60 ล\./)).not.toBeInTheDocument();
         expect(screen.queryByRole('columnheader', { name: 'ประเภท' })).not.toBeInTheDocument();
         expect(screen.queryByRole('columnheader', { name: 'น้ำมัน' })).not.toBeInTheDocument();

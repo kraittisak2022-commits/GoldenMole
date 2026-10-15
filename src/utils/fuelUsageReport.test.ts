@@ -183,6 +183,23 @@ describe('fuelDetailDays', () => {
     });
 });
 
+describe('buildFuelUsageReport main tank out total', () => {
+    it('sums every row leaving the main tank (transfers + main-tagged usage), excluding reserve usage and stock-in', () => {
+        const report = buildFuelUsageReport([
+            fuelTx({ id: 'in', date: '2026-09-10', subCategory: FUEL_STOCK_IN_SUB_CATEGORY, fuelMovement: 'stock_in', fuelTank: 'main', quantity: 12000 }),
+            fuelTx({ id: 'xfer-out', date: '2026-09-10', subCategory: FUEL_TRANSFER_SUB_CATEGORY, fuelMovement: 'stock_out', fuelTank: 'main', workType: 'machine', quantity: 600 }),
+            fuelTx({ id: 'xfer-in', date: '2026-09-10', subCategory: FUEL_TRANSFER_SUB_CATEGORY, fuelMovement: 'stock_in', fuelTank: 'reserve', workType: 'machine', quantity: 600 }),
+            fuelTx({ id: 'macro-main', date: '2026-09-10', subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY, fuelMovement: 'stock_out', fuelTank: 'main', vehicleId: 'รถแม็คโคร SK200', quantity: 120 }),
+            fuelTx({ id: 'macro-res', date: '2026-09-10', subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY, fuelMovement: 'stock_out', fuelTank: 'reserve', vehicleId: 'รถแม็คโคร SK200', quantity: 200 }),
+            fuelTx({ id: 'car', date: '2026-09-11', subCategory: FUEL_WITHDRAW_SUB_CATEGORY, fuelMovement: 'stock_out', workType: 'car', vehicleId: 'ไมตี้', quantity: 20 }),
+            fuelTx({ id: 'mayor', date: '2026-09-11', subCategory: FUEL_WITHDRAW_SUB_CATEGORY, fuelMovement: 'stock_out', fuelTank: 'main', workType: 'mayor', quantity: 1000 }),
+            fuelTx({ id: 'sieve', date: '2026-09-11', subCategory: FUEL_SAND_SIEVE_SUB_CATEGORY, fuelMovement: 'stock_out', fuelTank: 'reserve', quantity: 50 }),
+        ], { start: '2026-09-01', end: '2026-09-30' });
+
+        expect(report.totals.mainOutLiters).toBe(600 + 120 + 20 + 1000);
+    });
+});
+
 describe('buildFuelUsageReport machine refuel duplicates', () => {
     it('skips a legacy Withdraw/machine row when a Transfer/machine exists the same day (matches stock balance)', () => {
         const report = buildFuelUsageReport([

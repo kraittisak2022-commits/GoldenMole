@@ -148,12 +148,14 @@ const SummaryTile = ({
     label,
     value,
     hint,
+    className = '',
 }: {
     label: string;
     value: string;
     hint?: string;
+    className?: string;
 }) => (
-    <div className="rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-white/[0.03] px-3.5 py-3 min-w-0">
+    <div className={`rounded-xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-white/[0.03] px-3.5 py-3 min-w-0 ${className}`}>
         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 break-words">{label}</p>
         <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-50 break-words">{value}</p>
         {hint ? <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 break-words">{hint}</p> : null}
@@ -656,8 +658,13 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                         </div>
                     </Card>
 
-                    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-5">
                         <SummaryTile label="รับเข้า (ถังหลัก)" value={liters(fuelReport.totals.stockInLiters)} />
+                        <SummaryTile
+                            label="ถังหลัก (ใช้แล้ว)"
+                            value={liters(fuelReport.totals.mainOutLiters)}
+                            hint="รวมทุกรายการที่ออกจากถังหลัก"
+                        />
                         <SummaryTile
                             label="เบิกไปถังสำรอง"
                             value={liters(fuelReport.totals.withdrawLiters)}
@@ -672,6 +679,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                             label="คงเหลือถังหลัก"
                             value={liters(remainingStock.Diesel)}
                             hint={`ถังสำรอง ${formatDisplayNumber(remainingStock.DieselReserve ?? 0)} ลิตร`}
+                            className="min-[420px]:col-span-2 lg:col-span-1"
                         />
                     </div>
                     {(remainingStock.DieselReserve ?? 0) < 0 || remainingStock.reserveShortfallLiters > 0 ? (

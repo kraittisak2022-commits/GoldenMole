@@ -58,6 +58,8 @@ export interface FuelUsageTotals {
     transferLiters: number;
     sandSieveLiters: number;
     otherOutLiters: number;
+    /** ทุกแถวที่ออกจากถังหลัก — โอนไปถังสำรอง + ใช้ที่ติดป้ายถังหลัก */
+    mainOutLiters: number;
     usageLiters: number;
     usageAmount: number;
     count: number;
@@ -321,6 +323,7 @@ const emptyTotals = (): FuelUsageTotals => ({
     transferLiters: 0,
     sandSieveLiters: 0,
     otherOutLiters: 0,
+    mainOutLiters: 0,
     usageLiters: 0,
     usageAmount: 0,
     count: 0,
@@ -352,6 +355,9 @@ function aggregateFuelUsageRows(rows: FuelUsageRow[]): Omit<FuelUsageReport, 'ro
         if (isUsageKind(row.kind)) {
             totals.usageLiters += row.liters;
             totals.usageAmount += row.amount;
+        }
+        if (row.kind !== 'stock_in' && row.tank === 'main') {
+            totals.mainOutLiters += row.liters;
         }
 
         if (row.vehicleId) {
