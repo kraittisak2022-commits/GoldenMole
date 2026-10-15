@@ -21,6 +21,10 @@ import 'order_detail_screen.dart';
 
 enum BillCopies { both, original }
 
+enum BillPaper { a4, a5 }
+
+const _paperKey = 'stone_sand_bill_paper';
+
 class BillScreen extends StatefulWidget {
   const BillScreen.order({super.key, required String this.orderId, this.created = false}) : statementId = null;
   const BillScreen.statement({super.key, required String this.statementId}) : orderId = null, created = false;
@@ -37,6 +41,7 @@ class BillScreen extends StatefulWidget {
 
 class _BillScreenState extends State<BillScreen> {
   final _sheetKey = GlobalKey();
+  final _copyKey = GlobalKey();
   Order? _order;
   Statement? _statement;
   List<Order> _orders = const [];
@@ -44,7 +49,34 @@ class _BillScreenState extends State<BillScreen> {
   bool _loading = true;
   DocKind? _kind;
   BillCopies _copies = BillCopies.both;
+  BillPaper _paper = _readPaper();
   String _busy = '';
+
+  static BillPaper _readPaper() {
+    try {
+      return Prefs.instance.getString(_paperKey) == 'a5' ? BillPaper.a5 : BillPaper.a4;
+    } catch (_) {
+      return BillPaper.a4;
+    }
+  }
+
+  void _setPaper(BillPaper p) {
+    setState(() => _paper = p);
+    try {
+      Prefs.instance.setString(_paperKey, p.name);
+    } catch (_) {}
+  }
+
+  bool get _a5 => _paper == BillPaper.a5;
+
+  /// On A5 the original and the copy are separate pages; on A4 one sheet holds whatever is shown.
+  List<GlobalKey> get _pageKeys => _a5 && _copies == BillCopies.both ? [_sheetKey, _copyKey] : [_sheetKey];
+
+  PdfPageFormat get _pageFormat => _a5
+      ? PdfPageFormat.a5
+      : _copies == BillCopies.both
+          ? PdfPageFormat.a4.landscape
+          : PdfPageFormat.a4;
 
   @override
   void initState() {
@@ -102,12 +134,12 @@ class _BillScreenState extends State<BillScreen> {
     return s == null ? null : billFromStatement(s, _orders);
   }
 
-  Future<void> _export(String key, Future<void> Function(Uint8List png) action) async {
+  Future<void> _export(String key, Future<void> Function(List<Uint8List> pages) action) async {
     setState(() => _busy = key);
     try {
       await WidgetsBinding.instance.endOfFrame;
-      final png = await captureBoundary(_sheetKey);
-      await action(png);
+      final pages = [for (final k in _pageKeys) await captureBoundary(k)];
+      await action(pages);
     } catch (e) {
       if (mounted) showSnack(context, errorText(e, 'สร้างไฟล์บิลไม่สำเร็จ'), error: true);
     } finally {
@@ -115,20 +147,15 @@ class _BillScreenState extends State<BillScreen> {
     }
   }
 
-  Future<Uint8List> _pdf(Uint8List png, String docNo) =>
-      billPdf(png, landscape: _copies == BillCopies.both, title: docNo);
+  Future<Uint8List> _pdf(List<Uint8List> pages, String docNo) => billPdf(pages, format: _pageFormat, title: docNo);
 
-  void _print(BillData b) => _export('print', (png) async {
-    final pdf = await _pdf(png, b.docNo);
-    await Printing.layoutPdf(
-      name: b.docNo,
-      format: _copies == BillCopies.both ? PdfPageFormat.a4.landscape : PdfPageFormat.a4,
-      onLayout: (_) async => pdf,
-    );
+  void _print(BillData b) => _export('print', (pages) async {
+    final pdf = await _pdf(pages, b.docNo);
+    await Printing.layoutPdf(name: b.docNo, format: _pageFormat, onLayout: (_) async => pdf);
   });
 
-  void _sharePdf(BillData b) => _export('pdf', (png) async {
-    final pdf = await _pdf(png, b.docNo);
+  void _sharePdf(BillData b) => _export('pdf', (pages) async {
+    final pdf = await _pdf(pages, b.docNo);
     await SharePlus.instance.share(
       ShareParams(
         files: [XFile.fromData(pdf, mimeType: 'application/pdf', name: '${b.docNo}.pdf')],
@@ -138,10 +165,10 @@ class _BillScreenState extends State<BillScreen> {
     );
   });
 
-  void _shareImage(BillData b) => _export('png', (png) async {
+  void _shareImage(BillData b) => _export('png', (pages) async {
     await SharePlus.instance.share(
       ShareParams(
-        files: [XFile.fromData(png, mimeType: 'image/png', name: '${b.docNo}.png')],
+        files: [XFile.fromData(pages.first, mimeType: 'image/png', name: '${b.docNo}.png')],
         fileNameOverrides: ['${b.docNo}.png'],
         subject: '${b.kind.th} ${b.docNo}',
       ),
@@ -234,10 +261,25 @@ class _BillScreenState extends State<BillScreen> {
     final settings = catalog.settings;
     Widget doc(BillCopy copy, BillSize size) =>
         BillDocument(bill: bill, copy: copy, company: settings.company, payment: settings.payment, size: size);
-    final sheet = _copies == BillCopies.both
-        ? BillSpread(left: doc(BillCopy.original, BillSize.a5), right: doc(BillCopy.copy, BillSize.a5))
-        : BillA4Page(child: doc(BillCopy.original, BillSize.a4));
-    final sheetSize = _copies == BillCopies.both ? BillSpread.size : BillA4Page.size;
+    final both = _copies == BillCopies.both;
+    final List<(Widget, Size, double)> sheets = _a5
+        ? [
+            for (final copy in [BillCopy.original, if (both) BillCopy.copy])
+              (BillA5Page(child: doc(copy, BillSize.a5)), BillA5Page.size, 559),
+          ]
+        : both
+            ? [
+                (
+                  BillSpread(left: doc(BillCopy.original, BillSize.a5), right: doc(BillCopy.copy, BillSize.a5)),
+                  BillSpread.size,
+                  1123,
+                ),
+              ]
+            : [(BillA4Page(child: doc(BillCopy.original, BillSize.a4)), BillA4Page.size, 794)];
+    final keys = _pageKeys;
+    final hint = _a5
+        ? (both ? 'กระดาษ A5 แนวตั้ง · 2 แผ่น ต้นฉบับแล้วตามด้วยสำเนา' : 'กระดาษ A5 แนวตั้ง · ต้นฉบับ 1 แผ่น')
+        : (both ? 'กระดาษ A4 แนวนอน · ต้นฉบับซ้าย สำเนาขวา (ขนาด A5) ตัดตามเส้นประ' : 'กระดาษ A4 แนวตั้ง · ต้นฉบับเต็มแผ่น');
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
@@ -264,6 +306,16 @@ class _BillScreenState extends State<BillScreen> {
                       const SizedBox(height: 8),
                     ],
                     Semantics(
+                      label: 'ขนาดกระดาษ',
+                      child: Segmented<BillPaper>(
+                        values: BillPaper.values,
+                        selected: _paper,
+                        labelOf: (p) => p == BillPaper.a4 ? 'กระดาษ A4' : 'กระดาษ A5',
+                        onChanged: _setPaper,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Semantics(
                       label: 'จำนวนชุดที่พิมพ์',
                       child: Segmented<BillCopies>(
                         values: BillCopies.values,
@@ -284,9 +336,7 @@ class _BillScreenState extends State<BillScreen> {
                 ],
                 const SizedBox(height: 12),
                 Text(
-                  _copies == BillCopies.both
-                      ? 'กระดาษ A4 แนวนอน · ต้นฉบับซ้าย สำเนาขวา (ขนาด A5) ตัดตามเส้นประ'
-                      : 'กระดาษ A4 แนวตั้ง · ต้นฉบับเต็มแผ่น',
+                  hint,
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
@@ -295,26 +345,29 @@ class _BillScreenState extends State<BillScreen> {
             ),
           ),
         ),
-        Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: _copies == BillCopies.both ? 1123 : 794),
-            child: AspectRatio(
-              aspectRatio: sheetSize.width / sheetSize.height,
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 12, offset: Offset(0, 4))],
-                ),
-                child: InteractiveViewer(
-                  maxScale: 5,
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: RepaintBoundary(key: _sheetKey, child: sheet),
+        for (final (i, (sheet, sheetSize, maxWidth)) in sheets.indexed) ...[
+          if (i > 0) const SizedBox(height: 16),
+          Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: AspectRatio(
+                aspectRatio: sheetSize.width / sheetSize.height,
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 12, offset: Offset(0, 4))],
+                  ),
+                  child: InteractiveViewer(
+                    maxScale: 5,
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: RepaintBoundary(key: keys[i], child: sheet),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
+        ],
         const SizedBox(height: 8),
         const Text(
           'แตะสองนิ้วเพื่อซูม · พิมพ์ผ่าน AirPrint / เครื่องพิมพ์ Android หรือแชร์ PDF / รูปทาง LINE',

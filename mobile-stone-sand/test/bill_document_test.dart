@@ -7,6 +7,7 @@ import 'package:mobile_stone_sand/bill/bill_document.dart';
 import 'package:mobile_stone_sand/bill/bill_export.dart';
 import 'package:mobile_stone_sand/logic/format.dart';
 import 'package:mobile_stone_sand/models/models.dart';
+import 'package:pdf/pdf.dart' show PdfPageFormat;
 
 const _order = Order(
   id: 'o1',
@@ -84,7 +85,7 @@ void main() {
     await tester.runAsync(() async {
       final png = await captureBoundary(key, pixelRatio: 0.5);
       expect(png.sublist(1, 4), utf8.encode('PNG'));
-      final pdf = await billPdf(png, landscape: true, title: bill.docNo);
+      final pdf = await billPdf([png], format: PdfPageFormat.a4.landscape, title: bill.docNo);
       expect(utf8.decode(pdf.sublist(0, 5)), '%PDF-');
     });
   });
@@ -118,6 +119,28 @@ void main() {
       expect(find.bySemanticsLabel('QR รับเงิน'), findsNothing);
     });
   }
+
+  testWidgets('A5 page holds one bill and exports a two-page A5 PDF for original + copy', (tester) async {
+    final key = GlobalKey();
+    final bill = billFromOrder(_order, DocKind.delivery);
+    await _pump(
+      tester,
+      BillA5Page(
+        child: BillDocument(bill: bill, copy: BillCopy.original, company: CompanySettings.defaults, payment: _payment),
+      ),
+      key,
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('ต้นฉบับ / ORIGINAL'), findsOneWidget);
+    expect(tester.getSize(find.byType(BillA5Page)), BillA5Page.size);
+
+    await tester.runAsync(() async {
+      final png = await captureBoundary(key, pixelRatio: 0.5);
+      final pdf = await billPdf([png, png], format: PdfPageFormat.a5, title: bill.docNo);
+      expect(utf8.decode(pdf.sublist(0, 5)), '%PDF-');
+      expect(RegExp(r'/Type\s*/Page[^s]').allMatches(latin1.decode(pdf)).length, 2);
+    });
+  });
 
   testWidgets('discount column shows only when an item has a discount', (tester) async {
     final key = GlobalKey();

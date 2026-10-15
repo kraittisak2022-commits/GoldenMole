@@ -1124,3 +1124,19 @@ class BillA4Page extends StatelessWidget {
         child: FittedBox(fit: BoxFit.contain, alignment: Alignment.topCenter, child: child),
       );
 }
+
+/// A5 portrait page holding one A5-layout bill, scaled to fit.
+class BillA5Page extends StatelessWidget {
+  const BillA5Page({super.key, required this.child});
+  final Widget child;
+
+  static const size = Size(148 * pxPerMm, 210 * pxPerMm);
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: size.width,
+        height: size.height,
+        color: Colors.white,
+        child: FittedBox(fit: BoxFit.contain, alignment: Alignment.topCenter, child: child),
+      );
+}

@@ -21,13 +21,15 @@ Future<Uint8List> captureBoundary(GlobalKey key, {double pixelRatio = exportPixe
   }
 }
 
-/// One A4 page (landscape for original + copy) with the bill image edge to edge.
-Future<Uint8List> billPdf(Uint8List png, {required bool landscape, String title = ''}) {
+/// One [format] page per image, each bill image edge to edge.
+Future<Uint8List> billPdf(List<Uint8List> pages, {required PdfPageFormat format, String title = ''}) {
   final doc = pw.Document(title: title, creator: 'ระบบจัดการออเดอร์ หิน-ทราย');
-  doc.addPage(pw.Page(
-    pageFormat: landscape ? PdfPageFormat.a4.landscape : PdfPageFormat.a4,
-    margin: pw.EdgeInsets.zero,
-    build: (_) => pw.Center(child: pw.Image(pw.MemoryImage(png), fit: pw.BoxFit.contain)),
-  ));
+  for (final png in pages) {
+    doc.addPage(pw.Page(
+      pageFormat: format,
+      margin: pw.EdgeInsets.zero,
+      build: (_) => pw.Center(child: pw.Image(pw.MemoryImage(png), fit: pw.BoxFit.contain)),
+    ));
+  }
   return doc.save();
 }

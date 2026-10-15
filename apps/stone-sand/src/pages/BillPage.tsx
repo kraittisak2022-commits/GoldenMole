@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Download, Plus, Printer } from 'lucide-react';
 import BillDocument from '../components/bill/BillDocument';
-import BillSpread from '../components/bill/BillSpread';
+import BillSpread, { BillA5Page } from '../components/bill/BillSpread';
 import ScaledSheet from '../components/bill/ScaledSheet';
 import { billFromOrder, billFromStatement, type BillData } from '../components/bill/billData';
 import Button from '../components/ui/Button';
@@ -14,10 +14,23 @@ import { useAsync } from '../hooks/useAsync';
 import { formatMoney } from '../lib/format';
 
 type CopyMode = 'original' | 'both';
+type Paper = 'a4' | 'a5';
 
 /** A4 sides at 96dpi */
 const A4_SHORT_PX = 794;
 const A4_LONG_PX = 1123;
+/** A5 short side (148mm) at 96dpi */
+const A5_SHORT_PX = 559;
+
+const PAPER_KEY = 'ss-bill-paper';
+
+function readPaper(): Paper {
+  try {
+    return localStorage.getItem(PAPER_KEY) === 'a5' ? 'a5' : 'a4';
+  } catch {
+    return 'a4';
+  }
+}
 
 export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
   const { id = '' } = useParams();
@@ -27,7 +40,17 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
   const { settings, zoneById, driverById } = useCatalog();
   const [docKind, setDocKind] = useState<'delivery' | 'receipt' | null>(null);
   const [copies, setCopies] = useState<CopyMode>('both');
+  const [paper, setPaperState] = useState<Paper>(readPaper);
   const [saving, setSaving] = useState(false);
+
+  const setPaper = (p: Paper) => {
+    setPaperState(p);
+    try {
+      localStorage.setItem(PAPER_KEY, p);
+    } catch {
+      // private mode: the choice just isn't remembered
+    }
+  };
   const sheetRef = useRef<HTMLDivElement>(null);
 
   const { data, error, loading } = useAsync(async () => {
@@ -120,6 +143,15 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
             />
           ) : null}
           <Segmented
+            label="ขนาดกระดาษ"
+            value={paper}
+            onChange={(v) => setPaper(v as Paper)}
+            options={[
+              { value: 'a4', label: 'กระดาษ A4' },
+              { value: 'a5', label: 'กระดาษ A5' },
+            ]}
+          />
+          <Segmented
             label="จำนวนชุดที่พิมพ์"
             value={copies}
             onChange={(v) => setCopies(v as CopyMode)}
@@ -143,9 +175,30 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
         </div>
       ) : null}
 
-      <style>{`@page { size: A4 ${copies === 'both' ? 'landscape' : 'portrait'}; }`}</style>
+      <style>{`@page { size: ${paper === 'a5' ? 'A5 portrait' : `A4 ${copies === 'both' ? 'landscape' : 'portrait'}`}; }`}</style>
       <main className="bill-print-root mx-auto max-w-6xl p-3 sm:p-6">
-        {copies === 'both' ? (
+        {paper === 'a5' ? (
+          <>
+            <p className="no-print mb-2 text-center text-xs text-muted">
+              {copies === 'both' ? 'กระดาษ A5 แนวตั้ง · 2 แผ่น ต้นฉบับแล้วตามด้วยสำเนา' : 'กระดาษ A5 แนวตั้ง · ต้นฉบับ 1 แผ่น'}
+            </p>
+            <div className="bill-a5-stack mx-auto flex flex-col gap-4 print:gap-0" style={{ maxWidth: A5_SHORT_PX }}>
+              {(copies === 'both' ? (['original', 'copy'] as const) : (['original'] as const)).map((c) => (
+                <ScaledSheet key={c} widthPx={A5_SHORT_PX}>
+                  <BillA5Page>
+                    <BillDocument
+                      ref={c === 'original' ? sheetRef : undefined}
+                      bill={bill}
+                      copy={c}
+                      company={settings.company}
+                      payment={settings.payment}
+                    />
+                  </BillA5Page>
+                </ScaledSheet>
+              ))}
+            </div>
+          </>
+        ) : copies === 'both' ? (
           <>
             <p className="no-print mb-2 text-center text-xs text-muted">กระดาษ A4 แนวนอน · ต้นฉบับซ้าย สำเนาขวา (ขนาด A5) ตัดตามเส้นประ</p>
             <ScaledSheet widthPx={A4_LONG_PX}>

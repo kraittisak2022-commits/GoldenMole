@@ -189,7 +189,7 @@
   }
 }
 
-/* Orientation is set by BillPage: landscape for original + copy, portrait for original only. */
+/* Size is set by BillPage: A4 landscape for original + copy, A4 portrait for original only, or A5 portrait. */
 @page {
   margin: 0;
 }
@@ -210,6 +210,17 @@
     /* a hair under 210mm so rounding never spills onto a second page */
     height: 209.5mm !important;
     break-inside: avoid;
+  }
+
+  .bill-a5-page {
+    box-shadow: none !important;
+    margin: 0 !important;
+    height: 209.5mm !important;
+    break-inside: avoid;
+  }
+
+  .bill-a5-stack > :not(:last-child) {
+    break-after: page;
   }
 
   .bill-sheet-a4 {
