@@ -435,7 +435,12 @@ class BillDocument extends StatelessWidget {
 
   bool get _headerQr => payment.qrPayload.isNotEmpty && !_directPay;
 
-  bool get _showPayChannel => !bill.paid && !bill.cancelled && (_headerQr || payment.bankAccountNo.isNotEmpty);
+  /// Cash is paid in hand, so the header lists no bank account or QR at all.
+  bool get _showPayChannel =>
+      !bill.paid &&
+      !bill.cancelled &&
+      !(bill.kind != DocKind.statement && bill.paymentMethod == 'cash') &&
+      (_headerQr || payment.bankAccountNo.isNotEmpty);
 
   bool get _partlyPaid => !bill.paid && bill.paidAmount > 0;
 

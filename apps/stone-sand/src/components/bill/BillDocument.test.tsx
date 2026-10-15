@@ -33,12 +33,18 @@ const renderBill = (method: PaymentMethod) =>
   render(<BillDocument bill={bill(method)} copy="original" company={company} payment={payment} />);
 
 describe('BillDocument payment', () => {
-  it.each([
-    ['cash', 'เงินสด'],
-    ['transfer', 'โอนเงิน'],
-  ] as const)('names %s outright and drops the header QR but keeps the bank account', (method, label) => {
-    renderBill(method);
-    expect(screen.getByText(label)).toBeInTheDocument();
+  it('names cash outright and drops the whole payment channel from the header', () => {
+    renderBill('cash');
+    expect(screen.getByText('เงินสด')).toBeInTheDocument();
+    expect(screen.queryByText('จ่ายปลายทาง')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('QR รับเงิน')).not.toBeInTheDocument();
+    expect(screen.queryByText('ช่องทางรับเงิน')).not.toBeInTheDocument();
+    expect(screen.queryByText('123-4-56789-0')).not.toBeInTheDocument();
+  });
+
+  it('names transfer outright and drops the header QR but keeps the bank account', () => {
+    renderBill('transfer');
+    expect(screen.getByText('โอนเงิน')).toBeInTheDocument();
     expect(screen.queryByText('จ่ายปลายทาง')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('QR รับเงิน')).not.toBeInTheDocument();
     expect(screen.getByText('123-4-56789-0')).toBeInTheDocument();

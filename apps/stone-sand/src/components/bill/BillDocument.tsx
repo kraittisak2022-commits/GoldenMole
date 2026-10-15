@@ -80,7 +80,9 @@ const BillDocument = forwardRef<HTMLDivElement, Props>(function BillDocument({ b
   const billQr = payment.qrPayload && !directPay
     ? billQrPayload(payment.qrPayload, { ref: b.docNo, amount: payNow ? due : undefined })
     : '';
-  const showPayChannel = !b.paid && !b.cancelled && !!(billQr || payment.bankAccountNo);
+  // Cash is paid in hand, so the header lists no bank account or QR at all.
+  const cashBill = !statement && b.paymentMethod === 'cash';
+  const showPayChannel = !b.paid && !b.cancelled && !cashBill && !!(billQr || payment.bankAccountNo);
   const qrIsBill = !!billQr && billQr !== payment.qrPayload.trim();
   const billRef = qrIsBill ? qrReference(b.docNo) : '';
   const qrAmount = qrIsBill && payNow ? due : 0;

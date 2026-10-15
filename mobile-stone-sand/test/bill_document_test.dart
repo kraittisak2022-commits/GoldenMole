@@ -89,8 +89,11 @@ void main() {
     });
   });
 
-  for (final (method, label) in [(PaymentMethod.cash, 'เงินสด'), (PaymentMethod.transfer, 'โอนเงิน')]) {
-    testWidgets('${method.name} bill names the method and has no header QR, but keeps the bank account', (tester) async {
+  for (final (method, label, bank) in [
+    (PaymentMethod.cash, 'เงินสด', false),
+    (PaymentMethod.transfer, 'โอนเงิน', true),
+  ]) {
+    testWidgets('${method.name} bill names the method and has no header QR; bank account shown: $bank', (tester) async {
       final key = GlobalKey();
       await _pump(
         tester,
@@ -109,8 +112,8 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('จ่ายปลายทาง'), findsNothing);
-      expect(find.text('ช่องทางรับเงิน'), findsOneWidget);
-      expect(find.text('123-4-56789-0'), findsOneWidget);
+      expect(find.text('ช่องทางรับเงิน'), bank ? findsOneWidget : findsNothing);
+      expect(find.text('123-4-56789-0'), bank ? findsOneWidget : findsNothing);
       expect(find.text('สแกน QR เพื่อชำระ'), findsNothing);
       expect(find.bySemanticsLabel('QR รับเงิน'), findsNothing);
     });
