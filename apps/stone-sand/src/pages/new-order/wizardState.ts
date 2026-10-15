@@ -46,20 +46,32 @@ export interface WizardState {
 }
 
 /** sessionStorage key of the in-progress wizard. */
-export const DRAFT_KEY = 'stone_sand_new_order_v6';
+export const DRAFT_KEY = 'stone_sand_new_order_v7';
 
-export const STEPS = [
+/**
+ * มารับเอง / จัดส่ง is chosen before the products so they show the right price. The delivery details
+ * need the loads and the customer, so they get their own step after both.
+ */
+export const ALL_STEPS = [
   { key: 'source', label: 'ประเภท' },
+  { key: 'fulfillment', label: 'รับสินค้า' },
   { key: 'products', label: 'สินค้า' },
   { key: 'customer', label: 'ลูกค้า' },
-  { key: 'fulfillment', label: 'รับสินค้า' },
+  { key: 'delivery', label: 'จัดส่ง' },
   { key: 'summary', label: 'สรุป' },
   { key: 'confirm', label: 'ยืนยัน' },
 ] as const;
 
-export type StepKey = (typeof STEPS)[number]['key'];
+export type WizardStep = (typeof ALL_STEPS)[number];
+export type StepKey = WizardStep['key'];
 
-export const stepIndex = (key: StepKey): number => STEPS.findIndex((s) => s.key === key);
+/** Pickup orders skip the delivery step. Steps before it keep their index either way. */
+export function wizardSteps(fulfillment: Fulfillment | null): readonly WizardStep[] {
+  return fulfillment === 'pickup' ? ALL_STEPS.filter((s) => s.key !== 'delivery') : ALL_STEPS;
+}
+
+export const stepIndex = (key: StepKey, fulfillment: Fulfillment | null): number =>
+  wizardSteps(fulfillment).findIndex((s) => s.key === key);
 
 export const initialWizardState: WizardState = {
   source: null,
@@ -150,21 +162,20 @@ export function withDeliveryPlan(s: WizardState): WizardState {
 
 /** Error message for the step, or '' when the step is complete. */
 export function validateStep(step: number, s: WizardState): string {
-  switch (STEPS[step]?.key) {
+  switch (wizardSteps(s.fulfillment)[step]?.key) {
     case 'source':
       return s.source ? '' : 'เลือกประเภทออเดอร์';
+    case 'fulfillment':
+      return s.fulfillment ? '' : 'เลือกว่ามารับเองหรือจัดส่ง';
     case 'products':
       return totalQuantity(quantitiesOf(s.loads)) > 0 ? '' : 'เลือกสินค้าอย่างน้อย 1 รายการ';
     case 'customer':
       return s.customer ? '' : 'เลือกหรือเพิ่มลูกค้าก่อน';
-    case 'fulfillment':
-      if (!s.fulfillment) return 'เลือกว่ามารับเองหรือจัดส่ง';
-      if (s.fulfillment === 'delivery') {
-        if (!s.pin && !s.deliveryAddress.trim()) return 'ปักหมุดหรือใส่ที่อยู่จัดส่ง';
-        if (!s.zoneId) return 'เลือกตำบลที่จัดส่ง';
-        if (!s.driverId) return 'เลือกคนขับ';
-        if (!s.driverConfirmed) return 'ยืนยันว่ารถเข้าหน้างานได้และมีคิวว่าง';
-      }
+    case 'delivery':
+      if (!s.pin && !s.deliveryAddress.trim()) return 'ปักหมุดหรือใส่ที่อยู่จัดส่ง';
+      if (!s.zoneId) return 'เลือกตำบลที่จัดส่ง';
+      if (!s.driverId) return 'เลือกคนขับ';
+      if (!s.driverConfirmed) return 'ยืนยันว่ารถเข้าหน้างานได้และมีคิวว่าง';
       return '';
     case 'summary':
       return s.paymentMethod ? '' : 'เลือกวิธีชำระเงิน';

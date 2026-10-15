@@ -10,18 +10,18 @@ import { getCustomer } from '../../data/customers';
 import { createOrder, draftTotals } from '../../data/orders';
 import { driverTripRate } from '../../lib/driverPay';
 import { formatDateShort, formatMoney } from '../../lib/format';
-import { ORDER_SOURCE_LABEL, type Customer, type Order, type OrderSource } from '../../types';
+import { ORDER_SOURCE_LABEL, type Customer, type Fulfillment, type Order, type OrderSource } from '../../types';
 import OrderCreatedModal from './OrderCreatedModal';
 import StepConfirm from './StepConfirm';
 import StepCustomer from './StepCustomer';
-import StepFulfillment from './StepFulfillment';
+import StepDelivery from './StepDelivery';
+import StepFulfillmentChoice from './StepFulfillmentChoice';
 import StepProducts from './StepProducts';
 import StepSource from './StepSource';
 import StepSummary from './StepSummary';
 import {
   DRAFT_KEY,
   editedDriverFee,
-  STEPS,
   buildItems,
   initialWizardState,
   quantitiesOf,
@@ -30,6 +30,7 @@ import {
   totalQuantity,
   validateStep,
   withDeliveryPlan,
+  wizardSteps,
   type WizardState,
 } from './wizardState';
 
@@ -43,7 +44,8 @@ function readDraft(): StoredDraft | null {
     const raw = sessionStorage.getItem(DRAFT_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredDraft;
-    return { step: Math.min(Math.max(0, parsed.step || 0), STEPS.length - 1), state: withDeliveryPlan({ ...initialWizardState, ...parsed.state }) };
+    const state = withDeliveryPlan({ ...initialWizardState, ...parsed.state });
+    return { step: Math.min(Math.max(0, parsed.step || 0), wizardSteps(state.fulfillment).length - 1), state };
   } catch {
     return null;
   }
@@ -83,12 +85,18 @@ export default function NewOrderPage() {
       customer: c,
       ...(c?.isCredit && !prev.paymentMethod ? { paymentMethod: 'credit' as const, paidNow: false } : {}),
     }));
-    if (c) setStep((s) => (s === stepIndex('customer') ? s + 1 : s));
+    // Steps up to the customer sit at the same index with or without the delivery step.
+    if (c) setStep((s) => (s === stepIndex('customer', null) ? s + 1 : s));
   }, []);
 
   const selectSource = useCallback((source: OrderSource) => {
     setState((prev) => ({ ...prev, source }));
-    setStep((s) => (s === stepIndex('source') ? s + 1 : s));
+    setStep((s) => (s === stepIndex('source', null) ? s + 1 : s));
+  }, []);
+
+  const selectFulfillment = useCallback((fulfillment: Fulfillment) => {
+    setState((prev) => withDeliveryPlan({ ...prev, fulfillment }));
+    setStep((s) => (s === stepIndex('fulfillment', null) ? s + 1 : s));
   }, []);
 
   useEffect(() => {
@@ -129,12 +137,13 @@ export default function NewOrderPage() {
   const totals = draftTotals({ ...state, fulfillment: state.fulfillment ?? 'pickup', items });
   const zone = zoneById(state.zoneId);
   const driver = driverById(state.driverId);
-  const stepKey = STEPS[step].key;
+  const steps = wizardSteps(state.fulfillment);
+  const stepKey = steps[Math.min(step, steps.length - 1)].key;
 
   const next = () => {
     const err = validateStep(step, state);
     if (err) return setStepError(err);
-    setStep((s) => Math.min(STEPS.length - 1, s + 1));
+    setStep((s) => Math.min(steps.length - 1, s + 1));
   };
 
   const back = () => {
@@ -164,7 +173,7 @@ export default function NewOrderPage() {
   const openBill = (order: Order) => navigate(`/bill/order/${order.id}?created=1`, { replace: true });
 
   const submit = async () => {
-    for (let i = 0; i < STEPS.length - 1; i += 1) {
+    for (let i = 0; i < steps.length - 1; i += 1) {
       const err = validateStep(i, state);
       if (err) {
         setStep(i);
@@ -210,11 +219,11 @@ export default function NewOrderPage() {
             ) : null}
           </div>
           <span className="pr-3 text-sm tabular-nums text-muted">
-            {step + 1} / {STEPS.length}
+            {step + 1} / {steps.length}
           </span>
         </div>
         <ol className="mx-auto flex max-w-2xl gap-1.5 px-4 pb-3 pt-1 short:pb-1" aria-label="ขั้นตอน">
-          {STEPS.map((s, i) => {
+          {steps.map((s, i) => {
             const done = i < step;
             const current = i === step;
             return (
@@ -262,12 +271,13 @@ export default function NewOrderPage() {
             onDateChange={(orderDate) => patch({ orderDate })}
           />
         ) : null}
+        {stepKey === 'fulfillment' ? <StepFulfillmentChoice fulfillment={state.fulfillment} onSelect={selectFulfillment} /> : null}
         {stepKey === 'products' ? (
           <StepProducts products={products} loads={state.loads} fulfillment={state.fulfillment} onChange={(l) => patch({ loads: l })} />
         ) : null}
         {stepKey === 'customer' ? <StepCustomer customer={state.customer} onSelect={selectCustomer} /> : null}
-        {stepKey === 'fulfillment' ? (
-          <StepFulfillment
+        {stepKey === 'delivery' ? (
+          <StepDelivery
             state={state}
             patch={patch}
             customer={state.customer}
@@ -275,7 +285,7 @@ export default function NewOrderPage() {
             drivers={drivers}
             settings={settings}
             loadLines={loadLines}
-            onEditProducts={() => setStep(stepIndex('products'))}
+            onEditProducts={() => setStep(stepIndex('products', state.fulfillment))}
           />
         ) : null}
         {stepKey === 'summary' ? <StepSummary state={state} patch={patch} items={items} /> : null}
@@ -305,7 +315,7 @@ export default function NewOrderPage() {
               <p className="text-xs text-muted">ยอดสุทธิ</p>
               <p className="truncate text-xl font-semibold tabular-nums text-ink">{formatMoney(totals.total)}</p>
             </div>
-            {step < STEPS.length - 1 ? (
+            {step < steps.length - 1 ? (
               <Button size="lg" onClick={next}>
                 ถัดไป <ArrowRight size={18} aria-hidden />
               </Button>

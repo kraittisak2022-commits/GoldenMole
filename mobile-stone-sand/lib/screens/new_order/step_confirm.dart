@@ -43,7 +43,7 @@ class StepConfirm extends StatelessWidget {
     final blocks = <Widget>[
       _Block(
         title: 'วันที่ออเดอร์',
-        onEdit: () => onEdit(stepIndex(StepKey.source)),
+        onEdit: () => onEdit(stepIndex(StepKey.source, s.fulfillment)),
         children: [
           Text(
             '${formatDateLongTh(s.orderDate.isEmpty ? toIsoDate() : s.orderDate)}'
@@ -56,7 +56,7 @@ class StepConfirm extends StatelessWidget {
       ),
       _Block(
         title: 'สินค้า',
-        onEdit: () => onEdit(stepIndex(StepKey.products)),
+        onEdit: () => onEdit(stepIndex(StepKey.products, s.fulfillment)),
         children: [
           for (final it in items)
             Padding(
@@ -108,7 +108,7 @@ class StepConfirm extends StatelessWidget {
       ),
       _Block(
         title: 'ลูกค้า',
-        onEdit: () => onEdit(stepIndex(StepKey.customer)),
+        onEdit: () => onEdit(stepIndex(StepKey.customer, s.fulfillment)),
         children: [
           Text(c?.name ?? '—', style: strong),
           Text(customerLine.isEmpty ? '—' : customerLine, style: muted),
@@ -116,7 +116,7 @@ class StepConfirm extends StatelessWidget {
       ),
       _Block(
         title: 'การรับสินค้า',
-        onEdit: () => onEdit(stepIndex(StepKey.fulfillment)),
+        onEdit: () => onEdit(stepIndex(delivery ? StepKey.delivery : StepKey.fulfillment, s.fulfillment)),
         children: delivery
             ? [
                 Text('จัดส่ง · ต.${zone?.name ?? '—'} · รถ ${s.truckSize} คิว × ${s.trips} เที่ยว', style: strong),
@@ -134,7 +134,7 @@ class StepConfirm extends StatelessWidget {
       ),
       _Block(
         title: 'ชำระเงิน',
-        onEdit: () => onEdit(stepIndex(StepKey.summary)),
+        onEdit: () => onEdit(stepIndex(StepKey.summary, s.fulfillment)),
         children: [
           Text(s.paymentMethod?.label ?? '—', style: strong),
           Text(paidLabel, style: muted),

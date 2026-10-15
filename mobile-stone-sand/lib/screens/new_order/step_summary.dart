@@ -7,7 +7,7 @@ import '../../logic/wizard_state.dart';
 import '../../models/models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/ui.dart';
-import 'step_fulfillment.dart' show WizardPatch;
+import 'step_delivery.dart' show WizardPatch;
 import 'wizard_widgets.dart';
 
 Totals wizardTotals(WizardState s, List<OrderItem> items) => draftTotals(

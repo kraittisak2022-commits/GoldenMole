@@ -6,13 +6,16 @@ import '../models/models.dart';
 import 'order_draft.dart';
 
 /// SharedPreferences key of the in-progress wizard.
-const draftKey = 'stone_sand_new_order_v6';
+const draftKey = 'stone_sand_new_order_v7';
 
+/// มารับเอง / จัดส่ง is chosen before the products so they show the right price. The delivery details
+/// need the loads and the customer, so they get their own step after both.
 enum StepKey {
   source('ประเภท'),
+  fulfillment('รับสินค้า'),
   products('สินค้า'),
   customer('ลูกค้า'),
-  fulfillment('รับสินค้า'),
+  delivery('จัดส่ง'),
   summary('สรุป'),
   confirm('ยืนยัน');
 
@@ -20,9 +23,12 @@ enum StepKey {
   final String label;
 }
 
-const steps = StepKey.values;
+/// Pickup orders skip the delivery step. Steps before it keep their index either way.
+List<StepKey> wizardSteps(Fulfillment? fulfillment) => fulfillment == Fulfillment.pickup
+    ? StepKey.values.where((k) => k != StepKey.delivery).toList()
+    : StepKey.values;
 
-int stepIndex(StepKey key) => steps.indexOf(key);
+int stepIndex(StepKey key, Fulfillment? fulfillment) => wizardSteps(fulfillment).indexOf(key);
 
 const _unset = Object();
 
@@ -325,22 +331,22 @@ WizardState withDeliveryPlan(WizardState s) {
 
 /// Error message for the step, or '' when the step is complete.
 String validateStep(int step, WizardState s) {
+  final steps = wizardSteps(s.fulfillment);
   if (step < 0 || step >= steps.length) return '';
   switch (steps[step]) {
     case StepKey.source:
       return s.source != null ? '' : 'เลือกประเภทออเดอร์';
+    case StepKey.fulfillment:
+      return s.fulfillment != null ? '' : 'เลือกว่ามารับเองหรือจัดส่ง';
     case StepKey.products:
       return totalQuantity(quantitiesOf(s.loads)) > 0 ? '' : 'เลือกสินค้าอย่างน้อย 1 รายการ';
     case StepKey.customer:
       return s.customer != null ? '' : 'เลือกหรือเพิ่มลูกค้าก่อน';
-    case StepKey.fulfillment:
-      if (s.fulfillment == null) return 'เลือกว่ามารับเองหรือจัดส่ง';
-      if (s.fulfillment == Fulfillment.delivery) {
-        if (!s.hasPin && s.deliveryAddress.trim().isEmpty) return 'ปักหมุดหรือใส่ที่อยู่จัดส่ง';
-        if (s.zoneId == null) return 'เลือกตำบลที่จัดส่ง';
-        if (s.driverId == null) return 'เลือกคนขับ';
-        if (!s.driverConfirmed) return 'ยืนยันว่ารถเข้าหน้างานได้และมีคิวว่าง';
-      }
+    case StepKey.delivery:
+      if (!s.hasPin && s.deliveryAddress.trim().isEmpty) return 'ปักหมุดหรือใส่ที่อยู่จัดส่ง';
+      if (s.zoneId == null) return 'เลือกตำบลที่จัดส่ง';
+      if (s.driverId == null) return 'เลือกคนขับ';
+      if (!s.driverConfirmed) return 'ยืนยันว่ารถเข้าหน้างานได้และมีคิวว่าง';
       return '';
     case StepKey.summary:
       return s.paymentMethod != null ? '' : 'เลือกวิธีชำระเงิน';

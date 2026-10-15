@@ -28,18 +28,27 @@ const products = [
 
 const customer = Customer(id: 'cus-1', name: 'สมชาย', phone: '0931234567', address: 'บ้านทุ่งฮั้ว');
 
-final sourceStep = stepIndex(StepKey.source);
-final productsStep = stepIndex(StepKey.products);
-final customerStep = stepIndex(StepKey.customer);
-final fulfillmentStep = stepIndex(StepKey.fulfillment);
+final sourceStep = stepIndex(StepKey.source, null);
+final fulfillmentStep = stepIndex(StepKey.fulfillment, null);
+final productsStep = stepIndex(StepKey.products, null);
+final customerStep = stepIndex(StepKey.customer, null);
+final deliveryStep = stepIndex(StepKey.delivery, Fulfillment.delivery);
 
 void main() {
   group('validateStep', () {
-    test('asks for the order source first, then products, then the customer', () {
-      expect(steps.map((s) => s.name).toList(),
-          ['source', 'products', 'customer', 'fulfillment', 'summary', 'confirm']);
+    test('asks for the source, then pickup or delivery, then products and the customer', () {
+      List<String> keys(Fulfillment? f) => wizardSteps(f).map((s) => s.name).toList();
+      expect(keys(Fulfillment.delivery),
+          ['source', 'fulfillment', 'products', 'customer', 'delivery', 'summary', 'confirm']);
+      expect(keys(null), keys(Fulfillment.delivery));
+      expect(keys(Fulfillment.pickup), ['source', 'fulfillment', 'products', 'customer', 'summary', 'confirm']);
+      for (final k in [StepKey.source, StepKey.fulfillment, StepKey.products, StepKey.customer]) {
+        expect(stepIndex(k, Fulfillment.pickup), stepIndex(k, Fulfillment.delivery));
+      }
       expect(validateStep(sourceStep, const WizardState()), contains('ประเภท'));
       expect(validateStep(sourceStep, const WizardState(source: OrderSource.pit)), '');
+      expect(validateStep(fulfillmentStep, const WizardState()), contains('มารับเองหรือจัดส่ง'));
+      expect(validateStep(fulfillmentStep, const WizardState(fulfillment: Fulfillment.delivery)), '');
       expect(
         validateStep(productsStep, const WizardState(loads: {'small-stone': Load(perTrip: 3, trips: 0)})),
         contains('สินค้า'),
@@ -49,17 +58,21 @@ void main() {
       expect(validateStep(customerStep, const WizardState(customer: customer)), '');
     });
 
-    test('pickup needs nothing else; delivery needs location, tambon and driver', () {
-      expect(validateStep(fulfillmentStep, const WizardState(fulfillment: Fulfillment.pickup)), '');
-      expect(validateStep(fulfillmentStep, const WizardState(fulfillment: Fulfillment.delivery)), contains('ปักหมุด'));
+    test('pickup goes from the customer straight to the summary', () {
+      expect(wizardSteps(Fulfillment.pickup)[customerStep + 1], StepKey.summary);
+      expect(validateStep(customerStep + 1, const WizardState(fulfillment: Fulfillment.pickup)), contains('ชำระเงิน'));
+    });
+
+    test('delivery needs location, tambon and driver', () {
+      expect(validateStep(deliveryStep, const WizardState(fulfillment: Fulfillment.delivery)), contains('ปักหมุด'));
       expect(
-        validateStep(fulfillmentStep,
+        validateStep(deliveryStep,
             const WizardState(fulfillment: Fulfillment.delivery, pinLat: 19.2, pinLng: 99.6)),
         contains('ตำบล'),
       );
       expect(
         validateStep(
-          fulfillmentStep,
+          deliveryStep,
           const WizardState(fulfillment: Fulfillment.delivery, pinLat: 19.2, pinLng: 99.6, zoneId: 'thung-hua'),
         ),
         'เลือกคนขับ',
@@ -73,8 +86,8 @@ void main() {
         zoneId: 'thung-hua',
         driverId: 'drv-ko',
       );
-      expect(validateStep(fulfillmentStep, s), contains('คิวว่าง'));
-      expect(validateStep(fulfillmentStep, s.copyWith(driverConfirmed: true)), '');
+      expect(validateStep(deliveryStep, s), contains('คิวว่าง'));
+      expect(validateStep(deliveryStep, s.copyWith(driverConfirmed: true)), '');
     });
   });
 

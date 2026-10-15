@@ -51,8 +51,8 @@ Future<(LatLngValue?, String)> currentPosition() async {
   }
 }
 
-class StepFulfillment extends StatefulWidget {
-  const StepFulfillment({
+class StepDelivery extends StatefulWidget {
+  const StepDelivery({
     super.key,
     required this.state,
     required this.patch,
@@ -71,10 +71,10 @@ class StepFulfillment extends StatefulWidget {
   final VoidCallback onEditProducts;
 
   @override
-  State<StepFulfillment> createState() => _StepFulfillmentState();
+  State<StepDelivery> createState() => _StepDeliveryState();
 }
 
-class _StepFulfillmentState extends State<StepFulfillment> {
+class _StepDeliveryState extends State<StepDelivery> {
   LatLngValue? _flyTarget;
   bool _locating = false;
   String _geoError = '';
@@ -105,10 +105,13 @@ class _StepFulfillmentState extends State<StepFulfillment> {
       });
     }
     _maybeMeasureRoad();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _prefillFromCustomer();
+    });
   }
 
   @override
-  void didUpdateWidget(covariant StepFulfillment old) {
+  void didUpdateWidget(covariant StepDelivery old) {
     super.didUpdateWidget(old);
     if (s.deliveryAddress != _address.text) _address.text = s.deliveryAddress;
     _maybeMeasureRoad();
@@ -186,19 +189,22 @@ class _StepFulfillmentState extends State<StepFulfillment> {
     widget.patch(update);
   }
 
-  Future<void> _chooseFulfillment(Fulfillment f, Customer? customer) async {
+  /// The customer is picked on the step before; start from their saved address and pin.
+  Future<void> _prefillFromCustomer() async {
+    final c = s.customer;
+    if (c == null) return;
     WizardState Function(WizardState)? pin;
-    if (f == Fulfillment.delivery && !s.hasPin && customer?.lat != null && customer?.lng != null) {
-      final p = LatLngValue(customer!.lat!, customer.lng!);
+    if (!s.hasPin && c.lat != null && c.lng != null) {
+      final p = LatLngValue(c.lat!, c.lng!);
       pin = await _pinUpdate(p);
+      if (!mounted) return;
       setState(() => _flyTarget = p);
     }
+    if (pin == null && (s.deliveryAddress.trim().isNotEmpty || c.address.isEmpty)) return;
     widget.patch((st) {
-      var next = st.copyWith(fulfillment: f);
-      if (f == Fulfillment.delivery && st.deliveryAddress.trim().isEmpty && (customer?.address ?? '').isNotEmpty) {
-        next = next.copyWith(deliveryAddress: customer!.address);
-      }
-      return pin == null ? next : pin(next);
+      var next = st;
+      if (st.deliveryAddress.trim().isEmpty && c.address.isNotEmpty) next = next.copyWith(deliveryAddress: c.address);
+      return pin == null || next.hasPin ? next : pin(next);
     });
   }
 
@@ -273,62 +279,16 @@ class _StepFulfillmentState extends State<StepFulfillment> {
 
   @override
   Widget build(BuildContext context) {
-    final customer = s.customer;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const StepTitle('การรับสินค้า', subtitle: 'ลูกค้ามารับเองที่ท่าทราย หรือให้รถไปส่ง'),
+        const StepTitle('การจัดส่ง', subtitle: 'ปักหมุดหน้างาน เลือกตำบล ขนาดรถ และคนขับ'),
         const SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(
-              child: ChoiceCard(
-                active: s.fulfillment == Fulfillment.pickup,
-                onTap: () => _chooseFulfillment(Fulfillment.pickup, customer),
-                icon: Icons.storefront_outlined,
-                title: 'มารับเอง',
-                hint: 'ไม่มีค่าส่ง',
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ChoiceCard(
-                active: s.fulfillment == Fulfillment.delivery,
-                onTap: () => _chooseFulfillment(Fulfillment.delivery, customer),
-                icon: Icons.local_shipping_outlined,
-                title: 'จัดส่ง',
-                hint: 'ในเขต อ.วังเหนือ',
-              ),
-            ),
-          ],
-        ),
-        if (s.fulfillment == Fulfillment.delivery) ...[
-          const SizedBox(height: 20),
-          ..._pinSection(),
-          const SizedBox(height: 20),
-          _deliveryCard(),
-          const SizedBox(height: 20),
-          ..._driverSection(),
-        ],
-        if (s.fulfillment == Fulfillment.pickup) ...[
-          const SizedBox(height: 20),
-          const AppCard(
-            padding: EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.place_outlined, size: 18, color: AppColors.primary),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'ลูกค้ามารับที่ท่าทราย ไม่มีค่าส่ง ระบบจะบันทึกสถานะการส่งเป็น "มารับเอง"',
-                    style: TextStyle(fontSize: 14, color: AppColors.muted),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ..._pinSection(),
+        const SizedBox(height: 20),
+        _deliveryCard(),
+        const SizedBox(height: 20),
+        ..._driverSection(),
       ],
     );
   }

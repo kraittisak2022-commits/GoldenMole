@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_stone_sand/logic/wizard_state.dart';
 import 'package:mobile_stone_sand/models/models.dart';
-import 'package:mobile_stone_sand/screens/new_order/step_fulfillment.dart';
+import 'package:mobile_stone_sand/screens/new_order/step_delivery.dart';
 
 const _delivery = DeliverySettings(nearKm: 5, customerPerKm: 50, driverPerKm5: 50, driverPerKm3: 30);
 const _zone = Zone(id: 'z1', name: 'วังเหนือ', feePerCubic: 40, driverFee: 350, driverFee3: 250, sortOrder: 1);

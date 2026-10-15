@@ -11,6 +11,7 @@ import 'package:mobile_stone_sand/logic/format.dart';
 import 'package:mobile_stone_sand/logic/wizard_state.dart';
 import 'package:mobile_stone_sand/models/models.dart';
 import 'package:mobile_stone_sand/screens/new_order/new_order_screen.dart';
+import 'package:mobile_stone_sand/screens/new_order/wizard_widgets.dart' show ChoiceCard;
 import 'package:mobile_stone_sand/widgets/ui.dart' show FieldLabel;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -27,6 +28,7 @@ Future<void> _pump(WidgetTester tester) async {
         category: ProductCategory.stone,
         unit: 'คิว',
         pricePerUnit: 400,
+        pickupPricePerUnit: 300,
         sortOrder: 1,
         active: true,
       ),
@@ -46,13 +48,22 @@ void main() {
     Prefs.setForTest(await SharedPreferences.getInstance());
   });
 
-  testWidgets('source then products, with validation and running total', (tester) async {
+  testWidgets('source, then pickup or delivery, then products at that price', (tester) async {
     await _pump(tester);
     expect(find.text('ประเภทออเดอร์'), findsOneWidget);
 
     await tester.tap(find.text('ออเดอร์ร้านวัสดุก่อสร้าง'));
     await tester.pumpAndSettle();
+    expect(find.text('การรับสินค้า'), findsOneWidget);
+    await tester.tap(find.text('ถัดไป'));
+    await tester.pumpAndSettle();
+    expect(find.text('เลือกว่ามารับเองหรือจัดส่ง'), findsOneWidget);
+
+    await tester.tap(find.text('มารับเอง'));
+    await tester.pumpAndSettle();
     expect(find.text('เลือกสินค้า'), findsOneWidget);
+    expect(find.text('1 / 6'), findsNothing);
+    expect(find.text('3 / 6'), findsOneWidget);
 
     await tester.tap(find.text('ถัดไป'));
     await tester.pumpAndSettle();
@@ -62,10 +73,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('3 คิว'));
     await tester.pumpAndSettle();
-    expect(find.text('1,200.00'), findsWidgets);
+    expect(find.text('มารับเอง 300 บาท / คิว'), findsOneWidget);
+    expect(find.text('900.00'), findsWidgets);
 
     final saved = jsonDecode(Prefs.instance.getString(draftKey)!) as Map<String, dynamic>;
-    expect(saved['step'], 1);
+    expect(saved['step'], 2);
     expect((saved['state'] as Map)['source'], 'shop');
   });
 
@@ -73,6 +85,9 @@ void main() {
     await _pump(tester);
     await tester.tap(find.text('ออเดอร์ร้านวัสดุก่อสร้าง'));
     await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceCard, 'จัดส่ง'));
+    await tester.pumpAndSettle();
+    expect(find.text('3 / 7'), findsOneWidget);
     await tester.tap(find.text('หิน'));
     await tester.pumpAndSettle();
 
@@ -113,7 +128,7 @@ void main() {
     Prefs.instance.setString(
       draftKey,
       jsonEncode({
-        'step': stepIndex(StepKey.customer),
+        'step': stepIndex(StepKey.customer, null),
         'state': const WizardState(source: OrderSource.shop).toJson(),
       }),
     );
@@ -137,7 +152,7 @@ void main() {
     Prefs.instance.setString(
       draftKey,
       jsonEncode({
-        'step': stepIndex(StepKey.confirm),
+        'step': stepIndex(StepKey.confirm, null),
         'state': const WizardState(source: OrderSource.shop, orderDate: '2026-10-05').toJson(),
       }),
     );
@@ -151,8 +166,8 @@ void main() {
     Prefs.instance.setString(
       draftKey,
       jsonEncode({
-        'step': 1,
-        'state': const WizardState(source: OrderSource.pit).toJson(),
+        'step': 2,
+        'state': const WizardState(source: OrderSource.pit, fulfillment: Fulfillment.pickup).toJson(),
       }),
     );
     await _pump(tester);

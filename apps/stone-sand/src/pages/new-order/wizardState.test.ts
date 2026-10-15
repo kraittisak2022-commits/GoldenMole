@@ -1,6 +1,5 @@
 import type { Customer, Product } from '../../types';
 import {
-  STEPS,
   buildItems,
   driverFeeKey,
   editedDriverFee,
@@ -10,6 +9,7 @@ import {
   toDraft,
   validateStep,
   withDeliveryPlan,
+  wizardSteps,
   type WizardState,
 } from './wizardState';
 
@@ -35,35 +35,49 @@ const customer: Customer = {
 
 const state = (patch: Partial<WizardState>): WizardState => ({ ...initialWizardState, ...patch });
 
-const SOURCE = stepIndex('source');
-const PRODUCTS = stepIndex('products');
-const CUSTOMER = stepIndex('customer');
-const FULFILLMENT = stepIndex('fulfillment');
+const SOURCE = stepIndex('source', null);
+const FULFILLMENT = stepIndex('fulfillment', null);
+const PRODUCTS = stepIndex('products', null);
+const CUSTOMER = stepIndex('customer', null);
+const DELIVERY = stepIndex('delivery', 'delivery');
 
 describe('validateStep', () => {
-  it('asks for the order source first, then products, then the customer', () => {
-    expect(STEPS.map((s) => s.key)).toEqual(['source', 'products', 'customer', 'fulfillment', 'summary', 'confirm']);
+  it('asks for the source, then pickup or delivery, then products and the customer', () => {
+    const keys = (f: WizardState['fulfillment']) => wizardSteps(f).map((s) => s.key);
+    expect(keys('delivery')).toEqual(['source', 'fulfillment', 'products', 'customer', 'delivery', 'summary', 'confirm']);
+    expect(keys(null)).toEqual(keys('delivery'));
+    expect(keys('pickup')).toEqual(['source', 'fulfillment', 'products', 'customer', 'summary', 'confirm']);
+    for (const key of ['source', 'fulfillment', 'products', 'customer'] as const) {
+      expect(stepIndex(key, 'pickup')).toBe(stepIndex(key, 'delivery'));
+    }
+
     expect(validateStep(SOURCE, state({}))).toMatch(/ประเภท/);
     expect(validateStep(SOURCE, state({ source: 'pit' }))).toBe('');
+    expect(validateStep(FULFILLMENT, state({}))).toMatch(/มารับเองหรือจัดส่ง/);
+    expect(validateStep(FULFILLMENT, state({ fulfillment: 'delivery' }))).toBe('');
     expect(validateStep(PRODUCTS, state({ loads: { 'small-stone': { perTrip: 3, trips: 0 } } }))).toMatch(/สินค้า/);
     expect(validateStep(PRODUCTS, state({ loads: { 'small-stone': { perTrip: 3, trips: 1 } } }))).toBe('');
     expect(validateStep(CUSTOMER, state({}))).toMatch(/ลูกค้า/);
     expect(validateStep(CUSTOMER, state({ customer }))).toBe('');
   });
 
-  it('pickup needs nothing else; delivery needs location, tambon and driver', () => {
-    expect(validateStep(FULFILLMENT, state({ fulfillment: 'pickup' }))).toBe('');
-    expect(validateStep(FULFILLMENT, state({ fulfillment: 'delivery' }))).toMatch(/ปักหมุด/);
-    expect(validateStep(FULFILLMENT, state({ fulfillment: 'delivery', pin: { lat: 19.2, lng: 99.6 } }))).toMatch(/ตำบล/);
+  it('pickup goes from the customer straight to the summary', () => {
+    expect(wizardSteps('pickup')[CUSTOMER + 1].key).toBe('summary');
+    expect(validateStep(CUSTOMER + 1, state({ fulfillment: 'pickup' }))).toMatch(/ชำระเงิน/);
+  });
+
+  it('delivery needs location, tambon and driver', () => {
+    expect(validateStep(DELIVERY, state({ fulfillment: 'delivery' }))).toMatch(/ปักหมุด/);
+    expect(validateStep(DELIVERY, state({ fulfillment: 'delivery', pin: { lat: 19.2, lng: 99.6 } }))).toMatch(/ตำบล/);
     expect(
-      validateStep(FULFILLMENT, state({ fulfillment: 'delivery', pin: { lat: 19.2, lng: 99.6 }, zoneId: 'thung-hua' })),
+      validateStep(DELIVERY, state({ fulfillment: 'delivery', pin: { lat: 19.2, lng: 99.6 }, zoneId: 'thung-hua' })),
     ).toBe('เลือกคนขับ');
   });
 
   it('asks to confirm the driver is available', () => {
     const s = state({ fulfillment: 'delivery', deliveryAddress: 'x', zoneId: 'thung-hua', driverId: 'drv-ko' });
-    expect(validateStep(FULFILLMENT, s)).toMatch(/คิวว่าง/);
-    expect(validateStep(FULFILLMENT, { ...s, driverConfirmed: true })).toBe('');
+    expect(validateStep(DELIVERY, s)).toMatch(/คิวว่าง/);
+    expect(validateStep(DELIVERY, { ...s, driverConfirmed: true })).toBe('');
   });
 });
 

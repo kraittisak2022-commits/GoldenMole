@@ -17,7 +17,8 @@ import '../../widgets/ui.dart';
 import 'order_created_dialog.dart';
 import 'step_confirm.dart';
 import 'step_customer.dart';
-import 'step_fulfillment.dart';
+import 'step_delivery.dart';
+import 'step_fulfillment_choice.dart';
 import 'step_products.dart';
 import 'step_source.dart';
 import 'step_summary.dart';
@@ -27,9 +28,9 @@ import 'step_summary.dart';
     final raw = Prefs.instance.getString(draftKey);
     if (raw == null) return null;
     final j = jsonDecode(raw) as Map<String, dynamic>;
-    final step = ((j['step'] as num?)?.toInt() ?? 0).clamp(0, steps.length - 1);
-    final state = WizardState.fromJson(Map<String, dynamic>.from(j['state'] as Map));
-    return (step: step, state: withDeliveryPlan(state));
+    final state = withDeliveryPlan(WizardState.fromJson(Map<String, dynamic>.from(j['state'] as Map)));
+    final step = ((j['step'] as num?)?.toInt() ?? 0).clamp(0, wizardSteps(state.fulfillment).length - 1);
+    return (step: step, state: state);
   } catch (_) {
     return null;
   }
@@ -97,6 +98,8 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
 
   void _patch(WizardState Function(WizardState s) update) => _update(withDeliveryPlan(update(_state)));
 
+  List<StepKey> get _steps => wizardSteps(_state.fulfillment);
+
   void _setStep(int step) => _update(_state, step: step);
 
   void _selectCustomer(Customer? c) {
@@ -104,19 +107,25 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     if (c != null && c.isCredit && _state.paymentMethod == null) {
       next = next.copyWith(paymentMethod: PaymentMethod.credit, paidNow: false);
     }
-    final onCustomer = _step == stepIndex(StepKey.customer);
+    final onCustomer = _step == stepIndex(StepKey.customer, _state.fulfillment);
     _update(next, step: c != null && onCustomer ? _step + 1 : null);
   }
 
   void _selectSource(OrderSource source) {
-    final onSource = _step == stepIndex(StepKey.source);
+    final onSource = _step == stepIndex(StepKey.source, _state.fulfillment);
     _update(_state.copyWith(source: source), step: onSource ? _step + 1 : null);
+  }
+
+  /// Steps up to the customer sit at the same index with or without the delivery step.
+  void _selectFulfillment(Fulfillment f) {
+    final onStep = _step == stepIndex(StepKey.fulfillment, _state.fulfillment);
+    _update(withDeliveryPlan(_state.copyWith(fulfillment: f)), step: onStep ? _step + 1 : null);
   }
 
   void _next() {
     final err = validateStep(_step, _state);
     if (err.isNotEmpty) return setState(() => _stepError = err);
-    _setStep(_step + 1 < steps.length ? _step + 1 : _step);
+    _setStep(_step + 1 < _steps.length ? _step + 1 : _step);
   }
 
   void _back() {
@@ -157,7 +166,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
   }
 
   Future<void> _submit(List<Product> products, double driverFeePerTrip) async {
-    for (var i = 0; i < steps.length - 1; i++) {
+    for (var i = 0; i < _steps.length - 1; i++) {
       final err = validateStep(i, _state);
       if (err.isNotEmpty) {
         _setStep(i);
@@ -207,8 +216,9 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
     final totals = wizardTotals(s, items);
     final zone = catalog.zoneById(s.zoneId);
     final driver = catalog.driverById(s.driverId);
-    final stepKey = steps[_step];
-    final last = _step == steps.length - 1;
+    final steps = _steps;
+    final stepKey = steps[_step.clamp(0, steps.length - 1)];
+    final last = _step >= steps.length - 1;
 
     final body = switch (stepKey) {
       StepKey.source => StepSource(
@@ -218,6 +228,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
         orderDate: s.orderDate,
         onDateChange: (d) => _patch((st) => st.copyWith(orderDate: d)),
       ),
+      StepKey.fulfillment => StepFulfillmentChoice(fulfillment: s.fulfillment, onSelect: _selectFulfillment),
       StepKey.products => StepProducts(
         products: products,
         loads: s.loads,
@@ -225,14 +236,14 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
         onChange: (l) => _patch((st) => st.copyWith(loads: l)),
       ),
       StepKey.customer => StepCustomer(customer: s.customer, onSelect: _selectCustomer),
-      StepKey.fulfillment => StepFulfillment(
+      StepKey.delivery => StepDelivery(
         state: s,
         patch: _patch,
         zones: catalog.zones,
         drivers: catalog.drivers,
         settings: catalog.settings,
         loadLines: loadLines,
-        onEditProducts: () => _setStep(stepIndex(StepKey.products)),
+        onEditProducts: () => _setStep(stepIndex(StepKey.products, s.fulfillment)),
       ),
       StepKey.summary => StepSummary(state: s, patch: _patch, items: items),
       StepKey.confirm => StepConfirm(state: s, items: items, zone: zone, driver: driver, onEdit: _setStep),
@@ -272,7 +283,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
           ],
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(40),
-            child: _Progress(step: _step, onTap: _goTo),
+            child: _Progress(steps: steps, step: _step, onTap: _goTo),
           ),
         ),
         body: Center(
@@ -376,7 +387,8 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
 }
 
 class _Progress extends StatelessWidget {
-  const _Progress({required this.step, required this.onTap});
+  const _Progress({required this.steps, required this.step, required this.onTap});
+  final List<StepKey> steps;
   final int step;
   final ValueChanged<int> onTap;
 

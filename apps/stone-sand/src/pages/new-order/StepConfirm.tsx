@@ -20,7 +20,7 @@ export default function StepConfirm({ state: s, items, zone, driver, onEdit }: P
   const delivery = s.fulfillment === 'delivery';
   const paidLabel =
     s.paymentMethod === 'credit' ? 'ค้างเครดิต (เคลียร์รายเดือน)' : s.paidNow ? 'จ่ายแล้ว — ออกใบเสร็จ' : 'ยังไม่จ่าย';
-  const edit = (key: StepKey) => () => onEdit(stepIndex(key));
+  const edit = (key: StepKey) => () => onEdit(stepIndex(key, s.fulfillment));
 
   return (
     <div className="step-enter flex flex-col gap-6">
@@ -60,7 +60,7 @@ export default function StepConfirm({ state: s, items, zone, driver, onEdit }: P
           <p className="text-muted">{[c?.phone && formatPhone(c.phone), c?.address].filter(Boolean).join(' · ') || '—'}</p>
         </Block>
 
-        <Block title="การรับสินค้า" onEdit={edit('fulfillment')}>
+        <Block title="การรับสินค้า" onEdit={edit(delivery ? 'delivery' : 'fulfillment')}>
           {delivery ? (
             <div className="flex flex-col gap-0.5">
               <p className="font-medium">
