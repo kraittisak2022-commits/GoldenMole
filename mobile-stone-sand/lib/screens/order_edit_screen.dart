@@ -108,7 +108,14 @@ class _OrderEditScreenState extends State<OrderEditScreen> {
     setState(() {
       _items.add(
         _Item(
-          OrderItem(productId: p.id, name: p.name, unit: p.unit, unitPrice: p.pricePerUnit, quantity: 1, amount: 0),
+          OrderItem(
+            productId: p.id,
+            name: p.name,
+            unit: p.unit,
+            unitPrice: p.priceFor(o.fulfillment),
+            quantity: 1,
+            amount: 0,
+          ),
         ),
       );
       _addKey++;
@@ -233,7 +240,7 @@ class _OrderEditScreenState extends State<OrderEditScreen> {
                 DropdownMenuItem(
                   value: p.id,
                   child: Text(
-                    '${p.name} (${formatMoney(p.pricePerUnit)}/${p.unit})',
+                    '${p.name} (${formatMoney(p.priceFor(o.fulfillment))}/${p.unit})',
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),

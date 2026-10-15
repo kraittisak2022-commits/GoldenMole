@@ -12,12 +12,14 @@ Future<void> saveProduct({
   required String name,
   required ProductCategory category,
   required double pricePerUnit,
+  required double pickupPricePerUnit,
   required bool active,
 }) =>
     guard(() => db.from('ss_products').update({
           'name': name.trim(),
           'category': category.name,
           'price_per_unit': pricePerUnit,
+          'pickup_price_per_unit': pickupPricePerUnit,
           'active': active,
         }).eq('id', id));
 
@@ -26,6 +28,7 @@ Future<void> createProduct({
   required ProductCategory category,
   required String unit,
   required double pricePerUnit,
+  required double pickupPricePerUnit,
   required int sortOrder,
 }) =>
     guard(() => db.from('ss_products').insert({
@@ -34,6 +37,7 @@ Future<void> createProduct({
           'category': category.name,
           'unit': unit.trim().isEmpty ? 'คิว' : unit.trim(),
           'price_per_unit': pricePerUnit,
+          'pickup_price_per_unit': pickupPricePerUnit,
           'sort_order': sortOrder,
           'active': true,
         }));

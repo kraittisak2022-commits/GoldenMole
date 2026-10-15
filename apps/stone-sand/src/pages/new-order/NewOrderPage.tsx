@@ -122,7 +122,10 @@ export default function NewOrderPage() {
         .map((p) => ({ id: p.id, name: p.name, ...state.loads[p.id] })),
     [products, state.loads],
   );
-  const items = useMemo(() => buildItems(products, quantities, state.unitDiscounts), [products, quantities, state.unitDiscounts]);
+  const items = useMemo(
+    () => buildItems(products, quantities, state.unitDiscounts, state.fulfillment),
+    [products, quantities, state.unitDiscounts, state.fulfillment],
+  );
   const totals = draftTotals({ ...state, fulfillment: state.fulfillment ?? 'pickup', items });
   const zone = zoneById(state.zoneId);
   const driver = driverById(state.driverId);
@@ -260,7 +263,7 @@ export default function NewOrderPage() {
           />
         ) : null}
         {stepKey === 'products' ? (
-          <StepProducts products={products} loads={state.loads} onChange={(l) => patch({ loads: l })} />
+          <StepProducts products={products} loads={state.loads} fulfillment={state.fulfillment} onChange={(l) => patch({ loads: l })} />
         ) : null}
         {stepKey === 'customer' ? <StepCustomer customer={state.customer} onSelect={selectCustomer} /> : null}
         {stepKey === 'fulfillment' ? (

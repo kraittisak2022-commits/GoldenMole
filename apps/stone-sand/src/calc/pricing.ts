@@ -1,6 +1,11 @@
-import type { DiscountType } from '../types';
+import type { DiscountType, Fulfillment, Product } from '../types';
 
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/** มารับเอง orders get the pickup price; delivery, or no choice yet, gets the delivery price. */
+export function unitPriceFor(p: Pick<Product, 'pricePerUnit' | 'pickupPricePerUnit'>, fulfillment: Fulfillment | null | undefined): number {
+  return fulfillment === 'pickup' ? p.pickupPricePerUnit : p.pricePerUnit;
+}
 
 export function lineAmount(unitPrice: number, quantity: number): number {
   if (!(unitPrice > 0) || !(quantity > 0)) return 0;

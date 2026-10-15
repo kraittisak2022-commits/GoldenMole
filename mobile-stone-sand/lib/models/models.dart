@@ -104,17 +104,27 @@ class Product {
     required this.category,
     required this.unit,
     required this.pricePerUnit,
+    double? pickupPricePerUnit,
     required this.sortOrder,
     required this.active,
-  });
+  }) : _pickupPrice = pickupPricePerUnit;
 
   final String id;
   final String name;
   final ProductCategory category;
   final String unit;
+
+  /// Delivery price.
   final double pricePerUnit;
+  final double? _pickupPrice;
   final int sortOrder;
   final bool active;
+
+  /// มารับเอง price; the delivery price when none is set.
+  double get pickupPricePerUnit => _pickupPrice ?? pricePerUnit;
+
+  /// มารับเอง orders get the pickup price; delivery, or no choice yet, gets the delivery price.
+  double priceFor(Fulfillment? fulfillment) => fulfillment == Fulfillment.pickup ? pickupPricePerUnit : pricePerUnit;
 
   factory Product.fromRow(Map<String, dynamic> r) => Product(
         id: _str(r['id']),
@@ -122,6 +132,7 @@ class Product {
         category: ProductCategory.parse(r['category']),
         unit: _str(r['unit']),
         pricePerUnit: _num(r['price_per_unit']),
+        pickupPricePerUnit: r['pickup_price_per_unit'] == null ? null : _num(r['pickup_price_per_unit']),
         sortOrder: _int(r['sort_order']),
         active: r['active'] == true,
       );

@@ -1,4 +1,4 @@
-import { lineAmount } from '../../calc/pricing';
+import { lineAmount, unitPriceFor } from '../../calc/pricing';
 import { totalTrips, truckFits, truckForLoads, type Load } from '../../calc/trips';
 import type { OrderDraft } from '../../data/orders';
 import type { Customer, DiscountType, Fulfillment, OrderItem, OrderSource, PaymentMethod, Product, TruckSize } from '../../types';
@@ -99,18 +99,22 @@ export function buildItems(
   products: Product[],
   quantities: Record<string, number>,
   unitDiscounts: Record<string, number> = {},
+  fulfillment: Fulfillment | null = null,
 ): OrderItem[] {
   return products
     .filter((p) => (quantities[p.id] || 0) > 0)
-    .map((p) => ({
-      productId: p.id,
-      name: p.name,
-      unit: p.unit,
-      unitPrice: p.pricePerUnit,
-      quantity: quantities[p.id],
-      amount: lineAmount(p.pricePerUnit, quantities[p.id]),
-      discountPerUnit: Math.min(Math.max(0, unitDiscounts[p.id] || 0), p.pricePerUnit),
-    }));
+    .map((p) => {
+      const unitPrice = unitPriceFor(p, fulfillment);
+      return {
+        productId: p.id,
+        name: p.name,
+        unit: p.unit,
+        unitPrice,
+        quantity: quantities[p.id],
+        amount: lineAmount(unitPrice, quantities[p.id]),
+        discountPerUnit: Math.min(Math.max(0, unitDiscounts[p.id] || 0), unitPrice),
+      };
+    });
 }
 
 export function totalQuantity(quantities: Record<string, number>): number {
@@ -187,7 +191,7 @@ export function toDraft(s: WizardState, products: Product[], driverFeePerTrip: n
     source: s.source,
     orderDate: s.orderDate || null,
     customer: s.customer,
-    items: buildItems(products, quantitiesOf(s.loads), s.unitDiscounts),
+    items: buildItems(products, quantitiesOf(s.loads), s.unitDiscounts, s.fulfillment),
     fulfillment: s.fulfillment,
     deliveryAddress: s.deliveryAddress,
     pinLat: s.pin?.lat ?? null,

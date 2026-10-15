@@ -14,8 +14,8 @@ import {
 } from './wizardState';
 
 const products: Product[] = [
-  { id: 'small-stone', name: 'หินเล็กคละ เบอร์ 1-3', category: 'stone', unit: 'คิว', pricePerUnit: 400, sortOrder: 1, active: true },
-  { id: 'fill-sand', name: 'ทรายถม (ทรายขี้เป็ด)', category: 'sand', unit: 'คิว', pricePerUnit: 220, sortOrder: 3, active: true },
+  { id: 'small-stone', name: 'หินเล็กคละ เบอร์ 1-3', category: 'stone', unit: 'คิว', pricePerUnit: 400, pickupPricePerUnit: 300, sortOrder: 1, active: true },
+  { id: 'fill-sand', name: 'ทรายถม (ทรายขี้เป็ด)', category: 'sand', unit: 'คิว', pricePerUnit: 220, pickupPricePerUnit: 200, sortOrder: 3, active: true },
 ];
 
 const customer: Customer = {
@@ -133,6 +133,20 @@ describe('toDraft', () => {
 
   it('skips products with zero quantity', () => {
     expect(buildItems(products, { 'small-stone': 0, 'fill-sand': 1 })).toHaveLength(1);
+  });
+
+  it('prices pickup orders at the pickup price and delivery (or undecided) at the delivery price', () => {
+    const qty = { 'small-stone': 5 };
+    const price = (f: WizardState['fulfillment']) => buildItems(products, qty, { 'small-stone': 350 }, f)[0];
+    expect(price('pickup')).toMatchObject({ unitPrice: 300, amount: 1500, discountPerUnit: 300 });
+    expect(price('delivery')).toMatchObject({ unitPrice: 400, amount: 2000, discountPerUnit: 350 });
+    expect(price(null).unitPrice).toBe(400);
+
+    const loads = { 'small-stone': { perTrip: 5, trips: 1 } };
+    const draft = (f: 'pickup' | 'delivery') =>
+      toDraft(state({ source: 'shop', customer, loads, fulfillment: f, paymentMethod: 'cash' }), products, 0);
+    expect(draft('pickup').items[0].unitPrice).toBe(300);
+    expect(draft('delivery').items[0].unitPrice).toBe(400);
   });
 });
 

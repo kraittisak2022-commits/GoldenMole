@@ -155,6 +155,32 @@ void main() {
     test('skips products with zero quantity', () {
       expect(buildItems(products, {'small-stone': 0, 'fill-sand': 1}), hasLength(1));
     });
+
+    test('pickup orders use the pickup price; delivery or undecided use the delivery price', () {
+      const p = Product(
+        id: 'small-stone',
+        name: 'หินเล็กคละ เบอร์ 1-3',
+        category: ProductCategory.stone,
+        unit: 'คิว',
+        pricePerUnit: 560,
+        pickupPricePerUnit: 300,
+        sortOrder: 1,
+        active: true,
+      );
+      OrderItem item(Fulfillment? f) => buildItems([p], {'small-stone': 5}, {'small-stone': 350}, f).single;
+      expect(item(Fulfillment.pickup).unitPrice, 300);
+      expect(item(Fulfillment.pickup).amount, 1500);
+      expect(item(Fulfillment.pickup).discountPerUnit, 300);
+      expect(item(Fulfillment.delivery).unitPrice, 560);
+      expect(item(null).unitPrice, 560);
+      // No pickup price set: pickup falls back to the delivery price.
+      expect(products.first.pickupPricePerUnit, products.first.pricePerUnit);
+      expect(
+        Product.fromRow({'id': 'x', 'price_per_unit': 450, 'pickup_price_per_unit': 200}).priceFor(Fulfillment.pickup),
+        200,
+      );
+      expect(Product.fromRow({'id': 'x', 'price_per_unit': 450}).priceFor(Fulfillment.pickup), 450);
+    });
   });
 
   group('withDeliveryPlan', () {

@@ -146,6 +146,7 @@ class _ProductRow {
         name = TextEditingController(text: p.name),
         category = p.category,
         price = p.pricePerUnit,
+        pickupPrice = p.pickupPricePerUnit,
         active = p.active,
         sortOrder = p.sortOrder;
   _ProductRow.blank(this.sortOrder)
@@ -153,11 +154,13 @@ class _ProductRow {
         name = TextEditingController(),
         category = ProductCategory.stone,
         price = 0,
+        pickupPrice = 0,
         active = true;
   final String id;
   final TextEditingController name;
   ProductCategory category;
   double price;
+  double pickupPrice;
   bool active;
   final int sortOrder;
 }
@@ -232,14 +235,26 @@ class _ProductsSectionState extends State<ProductsSection> with _Saver {
               category: r.category,
               unit: 'คิว',
               pricePerUnit: r.price,
+              pickupPricePerUnit: r.pickupPrice,
               sortOrder: r.sortOrder,
             );
             continue;
           }
           final b = before[r.id];
           if (b != null &&
-              (b.pricePerUnit != r.price || b.name != r.name.text || b.category != r.category || b.active != r.active)) {
-            await saveProduct(id: r.id, name: r.name.text, category: r.category, pricePerUnit: r.price, active: r.active);
+              (b.pricePerUnit != r.price ||
+                  b.pickupPricePerUnit != r.pickupPrice ||
+                  b.name != r.name.text ||
+                  b.category != r.category ||
+                  b.active != r.active)) {
+            await saveProduct(
+              id: r.id,
+              name: r.name.text,
+              category: r.category,
+              pricePerUnit: r.price,
+              pickupPricePerUnit: r.pickupPrice,
+              active: r.active,
+            );
           }
         }
       });
@@ -249,7 +264,7 @@ class _ProductsSectionState extends State<ProductsSection> with _Saver {
     final superAdmin = AuthScope.of(context).isSuperAdmin;
     return _SettingsCard(
       title: 'ราคาสินค้า (ต่อคิว)',
-      subtitle: 'ราคา 3 คิว / 5 คิว คิดจากราคาต่อคิว × จำนวน',
+      subtitle: 'ราคาจัดส่งใช้กับออเดอร์ที่จัดส่ง ราคามารับเองใช้กับออเดอร์ที่ลูกค้ามารับเอง · ราคา 3 คิว / 5 คิว คิดจากราคาต่อคิว × จำนวน',
       saving: saving,
       error: saveError,
       saved: saved,
@@ -280,10 +295,21 @@ class _ProductsSectionState extends State<ProductsSection> with _Saver {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    if (superAdmin)
+                      IconButton(
+                        tooltip: 'ลบสินค้า ${r.name.text}',
+                        onPressed: () => _remove(r),
+                        icon: const Icon(Icons.delete_outline, color: AppColors.muted),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
                     Expanded(
                       child: FieldLabel(
-                        'บาท/คิว',
+                        'จัดส่ง บาท/คิว',
                         child: NumberField(
                           value: r.price,
                           decimal: false,
@@ -291,12 +317,17 @@ class _ProductsSectionState extends State<ProductsSection> with _Saver {
                         ),
                       ),
                     ),
-                    if (superAdmin)
-                      IconButton(
-                        tooltip: 'ลบสินค้า ${r.name.text}',
-                        onPressed: () => _remove(r),
-                        icon: const Icon(Icons.delete_outline, color: AppColors.muted),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FieldLabel(
+                        'มารับเอง บาท/คิว',
+                        child: NumberField(
+                          value: r.pickupPrice,
+                          decimal: false,
+                          onChanged: (v) => setState(() => r.pickupPrice = math.max(0, v)),
+                        ),
                       ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),

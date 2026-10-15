@@ -203,7 +203,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
         if ((s.loads[p.id]?.perTrip ?? 0) > 0 && (s.loads[p.id]?.trips ?? 0) > 0)
           LoadLine(id: p.id, name: p.name, load: s.loads[p.id]!),
     ];
-    final items = buildItems(products, quantities, s.unitDiscounts);
+    final items = buildItems(products, quantities, s.unitDiscounts, s.fulfillment);
     final totals = wizardTotals(s, items);
     final zone = catalog.zoneById(s.zoneId);
     final driver = catalog.driverById(s.driverId);
@@ -221,6 +221,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
       StepKey.products => StepProducts(
         products: products,
         loads: s.loads,
+        fulfillment: s.fulfillment,
         onChange: (l) => _patch((st) => st.copyWith(loads: l)),
       ),
       StepKey.customer => StepCustomer(customer: s.customer, onSelect: _selectCustomer),

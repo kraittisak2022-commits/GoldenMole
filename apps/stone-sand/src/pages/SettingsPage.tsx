@@ -128,7 +128,16 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
   const add = () =>
     setRows([
       ...rows,
-      { id: `${NEW_PREFIX}${Date.now()}`, name: '', category: 'stone', unit: 'คิว', pricePerUnit: 0, sortOrder: nextSort(rows), active: true },
+      {
+        id: `${NEW_PREFIX}${Date.now()}`,
+        name: '',
+        category: 'stone',
+        unit: 'คิว',
+        pricePerUnit: 0,
+        pickupPricePerUnit: 0,
+        sortOrder: nextSort(rows),
+        active: true,
+      },
     ]);
   const remove = (p: Product) => {
     if (isNew(p.id) || window.confirm(`ลบสินค้า "${p.name}"? (ออเดอร์เก่ายังแสดงชื่อเดิม) กดบันทึกเพื่อยืนยัน`)) {
@@ -139,7 +148,7 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
   return (
     <Section
       title="ราคาสินค้า (ต่อคิว)"
-      subtitle="ราคา 3 คิว / 5 คิว คิดจากราคาต่อคิว × จำนวน"
+      subtitle="ราคาจัดส่งใช้กับออเดอร์ที่จัดส่ง ราคามารับเองใช้กับออเดอร์ที่ลูกค้ามารับเอง · ราคา 3 คิว / 5 คิว คิดจากราคาต่อคิว × จำนวน"
       saver={saver}
       onSave={() =>
         saver.run(async () => {
@@ -157,6 +166,7 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
             if (
               before &&
               (before.pricePerUnit !== r.pricePerUnit ||
+                before.pickupPricePerUnit !== r.pickupPricePerUnit ||
                 before.name !== r.name ||
                 before.category !== r.category ||
                 before.active !== r.active)
@@ -174,8 +184,8 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
             className={[
               'grid items-end gap-3 border-b border-border pb-3 last:border-0 last:pb-0 sm:border-0 sm:pb-0',
               isSuperAdmin
-                ? 'grid-cols-[1fr_7rem_auto] sm:grid-cols-[1fr_6rem_7rem_auto_auto]'
-                : 'grid-cols-[1fr_7rem] sm:grid-cols-[1fr_6rem_7rem_auto]',
+                ? 'grid-cols-[1fr_1fr_1fr_auto] sm:grid-cols-[1fr_6rem_7rem_7rem_auto_auto]'
+                : 'grid-cols-3 sm:grid-cols-[1fr_6rem_7rem_7rem_auto]',
             ].join(' ')}
           >
             <div className="col-span-full sm:col-span-1">
@@ -196,7 +206,7 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
                 ))}
               </Select>
             </Field>
-            <Field id={`p-price-${p.id}`} label="บาท/คิว">
+            <Field id={`p-price-${p.id}`} label="จัดส่ง บาท/คิว">
               <Input
                 id={`p-price-${p.id}`}
                 type="number"
@@ -204,6 +214,16 @@ function ProductsSection({ products, onSaved }: { products: Product[]; onSaved: 
                 min={0}
                 value={p.pricePerUnit}
                 onChange={(e) => update(p.id, { pricePerUnit: num(e.target.value) })}
+              />
+            </Field>
+            <Field id={`p-pickup-${p.id}`} label="มารับเอง บาท/คิว">
+              <Input
+                id={`p-pickup-${p.id}`}
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={p.pickupPricePerUnit}
+                onChange={(e) => update(p.id, { pickupPricePerUnit: num(e.target.value) })}
               />
             </Field>
             {isSuperAdmin ? (

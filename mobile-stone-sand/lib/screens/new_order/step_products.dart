@@ -16,10 +16,27 @@ const _perTripOptions = [3, 5];
 const _maxPerTrip = 5;
 const _categories = [ProductCategory.sand, ProductCategory.stone];
 
+String _priceLabel(Product p, Fulfillment? fulfillment) {
+  final unit = 'บาท / ${p.unit}';
+  if (fulfillment == Fulfillment.pickup) return 'มารับเอง ${formatNumber(p.pickupPricePerUnit)} $unit';
+  if (p.pickupPricePerUnit == p.pricePerUnit) return '${formatNumber(p.pricePerUnit)} $unit';
+  if (fulfillment == Fulfillment.delivery) return 'จัดส่ง ${formatNumber(p.pricePerUnit)} $unit';
+  return 'จัดส่ง ${formatNumber(p.pricePerUnit)} · มารับเอง ${formatNumber(p.pickupPricePerUnit)} $unit';
+}
+
 class StepProducts extends StatefulWidget {
-  const StepProducts({super.key, required this.products, required this.loads, required this.onChange});
+  const StepProducts({
+    super.key,
+    required this.products,
+    required this.loads,
+    required this.fulfillment,
+    required this.onChange,
+  });
   final List<Product> products;
   final Map<String, Load> loads;
+
+  /// Chosen on a later step; until then the delivery price is used.
+  final Fulfillment? fulfillment;
   final ValueChanged<Map<String, Load>> onChange;
 
   @override
@@ -60,7 +77,8 @@ class _StepProductsState extends State<StepProducts> {
     final active = widget.products.where((p) => p.active).toList();
     final quantities = quantitiesOf(widget.loads);
     final loads = widget.loads.values.toList();
-    final sum = active.fold<double>(0, (s, p) => s + lineAmount(p.pricePerUnit, quantities[p.id] ?? 0));
+    final f = widget.fulfillment;
+    final sum = active.fold<double>(0, (s, p) => s + lineAmount(p.priceFor(f), quantities[p.id] ?? 0));
     final count = totalQuantity(quantities);
 
     return Column(
@@ -101,7 +119,8 @@ class _StepProductsState extends State<StepProducts> {
     final isOpen = _open.contains(c);
     final picked = list.where((p) => (quantities[p.id] ?? 0) > 0).toList();
     final pickedQty = picked.fold<double>(0, (s, p) => s + quantities[p.id]!);
-    final pickedSum = picked.fold<double>(0, (s, p) => s + lineAmount(p.pricePerUnit, quantities[p.id]!));
+    final pickedSum =
+        picked.fold<double>(0, (s, p) => s + lineAmount(p.priceFor(widget.fulfillment), quantities[p.id]!));
     return AppCard(
       borderColor: picked.isNotEmpty ? AppColors.ink : null,
       child: Column(
@@ -152,6 +171,7 @@ class _StepProductsState extends State<StepProducts> {
               const Divider(height: 1),
               _ProductCard(
                 product: p,
+                fulfillment: widget.fulfillment,
                 load: widget.loads[p.id],
                 qty: quantities[p.id] ?? 0,
                 onPerTrip: (n) => _setPerTrip(p.id, n),
@@ -167,12 +187,14 @@ class _StepProductsState extends State<StepProducts> {
 class _ProductCard extends StatefulWidget {
   const _ProductCard({
     required this.product,
+    required this.fulfillment,
     required this.load,
     required this.qty,
     required this.onPerTrip,
     required this.onTrips,
   });
   final Product product;
+  final Fulfillment? fulfillment;
   final Load? load;
   final double qty;
 
@@ -304,7 +326,7 @@ class _ProductCardState extends State<_ProductCard> {
                   children: [
                     Text(p.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                     Text(
-                      '${formatNumber(p.pricePerUnit)} บาท / ${p.unit}',
+                      _priceLabel(p, widget.fulfillment),
                       style: const TextStyle(fontSize: 14, color: AppColors.muted),
                     ),
                     const SizedBox(height: 4),
@@ -314,7 +336,7 @@ class _ProductCardState extends State<_ProductCard> {
                           TextSpan(text: 'รวม ${formatNumber(qty)} คิว'),
                           if (qty > 0)
                             TextSpan(
-                              text: ' · ${formatMoney(lineAmount(p.pricePerUnit, qty))}',
+                              text: ' · ${formatMoney(lineAmount(p.priceFor(widget.fulfillment), qty))}',
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                         ]),

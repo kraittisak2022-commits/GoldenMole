@@ -36,7 +36,10 @@ export interface Product {
   name: string;
   category: ProductCategory;
   unit: string;
+  /** Delivery price. */
   pricePerUnit: number;
+  /** มารับเอง price. */
+  pickupPricePerUnit: number;
   sortOrder: number;
   active: boolean;
 }

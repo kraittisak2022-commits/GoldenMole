@@ -287,17 +287,19 @@ List<OrderItem> buildItems(
   List<Product> products,
   Map<String, num> quantities, [
   Map<String, double> unitDiscounts = const {},
+  Fulfillment? fulfillment,
 ]) {
   return products.where((p) => (quantities[p.id] ?? 0) > 0).map((p) {
     final q = quantities[p.id]!.toDouble();
+    final unitPrice = p.priceFor(fulfillment);
     return OrderItem(
       productId: p.id,
       name: p.name,
       unit: p.unit,
-      unitPrice: p.pricePerUnit,
+      unitPrice: unitPrice,
       quantity: q,
-      amount: lineAmount(p.pricePerUnit, q),
-      discountPerUnit: math.min(math.max(0, unitDiscounts[p.id] ?? 0), p.pricePerUnit).toDouble(),
+      amount: lineAmount(unitPrice, q),
+      discountPerUnit: math.min(math.max(0, unitDiscounts[p.id] ?? 0), unitPrice).toDouble(),
     );
   }).toList();
 }
@@ -358,7 +360,7 @@ OrderDraft toDraft(WizardState s, List<Product> products, double driverWagePerTr
     source: s.source!,
     orderDate: s.orderDate.isEmpty ? null : s.orderDate,
     customer: s.customer!,
-    items: buildItems(products, quantitiesOf(s.loads), s.unitDiscounts),
+    items: buildItems(products, quantitiesOf(s.loads), s.unitDiscounts, s.fulfillment),
     fulfillment: s.fulfillment!,
     deliveryAddress: s.deliveryAddress,
     pinLat: s.pinLat,

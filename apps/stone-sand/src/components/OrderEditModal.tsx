@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { lineAmount, lineDiscount } from '../calc/pricing';
+import { lineAmount, lineDiscount, unitPriceFor } from '../calc/pricing';
 import { useCatalog } from '../context/CatalogProvider';
 import { draftTotals, updateOrder, type OrderEdit } from '../data/orders';
 import { deliveryFeeFormula, formatMoney } from '../lib/format';
@@ -52,7 +52,10 @@ export default function OrderEditModal({
     set({ items: form.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) });
   const addProduct = (id: string) => {
     const p = products.find((x) => x.id === id);
-    if (p) set({ items: [...form.items, { productId: p.id, name: p.name, unit: p.unit, unitPrice: p.pricePerUnit, quantity: 1, amount: 0 }] });
+    if (p) {
+      const unitPrice = unitPriceFor(p, o.fulfillment);
+      set({ items: [...form.items, { productId: p.id, name: p.name, unit: p.unit, unitPrice, quantity: 1, amount: 0 }] });
+    }
   };
 
   const totals = draftTotals({ ...form, fulfillment: o.fulfillment });
@@ -167,7 +170,7 @@ export default function OrderEditModal({
               .filter((p) => p.active)
               .map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} ({formatMoney(p.pricePerUnit)}/{p.unit})
+                  {p.name} ({formatMoney(unitPriceFor(p, o.fulfillment))}/{p.unit})
                 </option>
               ))}
           </Select>

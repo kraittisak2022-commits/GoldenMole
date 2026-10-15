@@ -1,15 +1,17 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, Minus, Plus } from 'lucide-react';
-import { lineAmount } from '../../calc/pricing';
+import { lineAmount, unitPriceFor } from '../../calc/pricing';
 import { totalTrips, truckForLoads, type Load } from '../../calc/trips';
 import { formatMoney, formatNumber } from '../../lib/format';
-import { PRODUCT_CATEGORY_LABEL, type Product, type ProductCategory } from '../../types';
+import { PRODUCT_CATEGORY_LABEL, type Fulfillment, type Product, type ProductCategory } from '../../types';
 import StepTitle from './StepTitle';
 import { quantitiesOf, totalQuantity } from './wizardState';
 
 interface Props {
   products: Product[];
   loads: Record<string, Load>;
+  /** Chosen on a later step; until then the delivery price is used. */
+  fulfillment: Fulfillment | null;
   onChange: (loads: Record<string, Load>) => void;
 }
 
@@ -18,8 +20,9 @@ const PER_TRIP = [3, 5];
 const MAX_PER_TRIP = 5;
 const CATEGORIES: ProductCategory[] = ['sand', 'stone'];
 
-export default function StepProducts({ products, loads, onChange }: Props) {
+export default function StepProducts({ products, loads, fulfillment, onChange }: Props) {
   const active = products.filter((p) => p.active);
+  const price = (p: Product) => unitPriceFor(p, fulfillment);
   const quantities = quantitiesOf(loads);
   const [open, setOpen] = useState<Set<ProductCategory>>(
     () => new Set(active.filter((p) => quantities[p.id] > 0).map((p) => p.category)),
@@ -50,7 +53,7 @@ export default function StepProducts({ products, loads, onChange }: Props) {
     setOpen(next);
   };
 
-  const sum = active.reduce((s, p) => s + lineAmount(p.pricePerUnit, quantities[p.id] || 0), 0);
+  const sum = active.reduce((s, p) => s + lineAmount(price(p), quantities[p.id] || 0), 0);
   const count = totalQuantity(quantities);
   const tripCount = totalTrips(Object.values(loads));
   const truck = truckForLoads(Object.values(loads));
@@ -65,7 +68,7 @@ export default function StepProducts({ products, loads, onChange }: Props) {
           const isOpen = open.has(c);
           const picked = list.filter((p) => quantities[p.id] > 0);
           const pickedQty = picked.reduce((s, p) => s + quantities[p.id], 0);
-          const pickedSum = picked.reduce((s, p) => s + lineAmount(p.pricePerUnit, quantities[p.id]), 0);
+          const pickedSum = picked.reduce((s, p) => s + lineAmount(price(p), quantities[p.id]), 0);
           return (
             <section
               key={c}
@@ -99,6 +102,7 @@ export default function StepProducts({ products, loads, onChange }: Props) {
                     <ProductCard
                       key={p.id}
                       product={p}
+                      fulfillment={fulfillment}
                       load={loads[p.id]}
                       qty={quantities[p.id] || 0}
                       onPerTrip={(n) => setPerTrip(p.id, n)}
@@ -125,12 +129,14 @@ export default function StepProducts({ products, loads, onChange }: Props) {
 
 function ProductCard({
   product: p,
+  fulfillment,
   load,
   qty,
   onPerTrip,
   onTrips,
 }: {
   product: Product;
+  fulfillment: Fulfillment | null;
   load: Load | undefined;
   qty: number;
   onPerTrip: (perTrip: number | null) => void;
@@ -170,13 +176,13 @@ function ProductCard({
         <div className="min-w-0">
           <p className="text-base font-medium leading-snug sm:text-lg">{p.name}</p>
           <p className="text-sm text-muted">
-            {formatNumber(p.pricePerUnit)} บาท / {p.unit}
+            {priceLabel(p, fulfillment)}
           </p>
           <p className="mt-1 text-sm tabular-nums" aria-live="polite">
             {load ? (
               <>
                 รวม {formatNumber(qty)} คิว
-                {qty > 0 ? <span className="font-semibold"> · {formatMoney(lineAmount(p.pricePerUnit, qty))}</span> : null}
+                {qty > 0 ? <span className="font-semibold"> · {formatMoney(lineAmount(unitPriceFor(p, fulfillment), qty))}</span> : null}
               </>
             ) : (
               <span className="text-muted">เลือกคิวต่อเที่ยวก่อน</span>
@@ -260,6 +266,14 @@ function ProductCard({
       ) : null}
     </div>
   );
+}
+
+function priceLabel(p: Product, fulfillment: Fulfillment | null): string {
+  const unit = `บาท / ${p.unit}`;
+  if (fulfillment === 'pickup') return `มารับเอง ${formatNumber(p.pickupPricePerUnit)} ${unit}`;
+  if (p.pickupPricePerUnit === p.pricePerUnit) return `${formatNumber(p.pricePerUnit)} ${unit}`;
+  if (fulfillment === 'delivery') return `จัดส่ง ${formatNumber(p.pricePerUnit)} ${unit}`;
+  return `จัดส่ง ${formatNumber(p.pricePerUnit)} · มารับเอง ${formatNumber(p.pickupPricePerUnit)} ${unit}`;
 }
 
 function PerTripChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
