@@ -20,6 +20,7 @@ struct DashboardShell: View {
     @Environment(AuthService.self) private var auth
     @Environment(AppState.self) private var appState
     @Environment(TaskStore.self) private var taskStore
+    @Environment(FeedStore.self) private var feedStore
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
@@ -82,8 +83,8 @@ struct DashboardShell: View {
                 NavigationStack {
                     tasksTab
                 }
-                .tabItem { Label("งาน", systemImage: "bubble.left.and.bubble.right.fill") }
-                .badge(taskStore.inboxCount)
+                .tabItem { Label("อัพเดตงาน", systemImage: "newspaper.fill") }
+                .badge(feedBadge)
                 .tag(AppMainTab.tasks)
             }
             .tint(AppTheme.brand)
@@ -420,10 +421,14 @@ struct DashboardShell: View {
         }
     }
 
-    // MARK: - Tasks
+    // MARK: - อัพเดตงาน (feed + tasks)
+
+    private var feedBadge: Int {
+        feedStore.unreadCount + taskStore.inboxCount
+    }
 
     private var tasksTab: some View {
-        TasksHubView()
+        FeedHubView()
             .toolbar { headerToolbar }
     }
 

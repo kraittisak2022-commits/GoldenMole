@@ -22,6 +22,8 @@ final class TaskStore {
     private(set) var lastLoadedAt: Date?
 
     @ObservationIgnored private var dataService: SupabaseService?
+    /// Optional hook so creating/closing shared tasks also posts to the อัพเดตงาน feed.
+    @ObservationIgnored var feedHook: FeedStore?
 
     func configure(dataService: SupabaseService) {
         self.dataService = dataService
@@ -137,6 +139,9 @@ final class TaskStore {
     // MARK: - Mutations
 
     func save(_ task: WorkTask) async {
+        let isNew = tasks.first(where: { $0.id == task.id }) == nil
+        let wasDone = tasks.first(where: { $0.id == task.id })?.status == .done
+
         var updated = task
         updated.title = task.title.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.updatedAt = TaskDates.nowISO()
@@ -148,6 +153,7 @@ final class TaskStore {
         applyLocally(updated)
         await TaskReminderScheduler.shared.sync(updated)
         await write(updated)
+        await publishFeedEvents(updated, isNew: isNew, wasDone: wasDone)
     }
 
     /// Saves many tasks, respecting the per-day focus quota. Surplus focus pins become normal tasks
@@ -210,14 +216,18 @@ final class TaskStore {
         }
 
         for task in prepared {
+            let isNew = tasks.first(where: { $0.id == task.id }) == nil
+            let wasDone = tasks.first(where: { $0.id == task.id })?.status == .done
             applyLocally(task)
             await TaskReminderScheduler.shared.sync(task)
             await write(task)
+            await publishFeedEvents(task, isNew: isNew, wasDone: wasDone)
         }
     }
 
     func setStatus(_ task: WorkTask, to status: TaskStatus) async {
         guard task.status != status else { return }
+        let wasDone = task.status == .done
         var updated = task
         updated.status = status
         updated.completedAt = status == .done ? (task.completedAt ?? TaskDates.nowISO()) : nil
@@ -226,6 +236,7 @@ final class TaskStore {
         applyLocally(updated)
         await TaskReminderScheduler.shared.sync(updated)
         await write(updated)
+        await publishFeedEvents(updated, isNew: false, wasDone: wasDone)
     }
 
     /// Pins or unpins a task on its own due date's focus list, capped at `focusLimit`.
@@ -305,6 +316,18 @@ final class TaskStore {
         } catch {
             errorMessage = error.localizedDescription
             await load()
+        }
+    }
+
+    private func publishFeedEvents(_ task: WorkTask, isNew: Bool, wasDone: Bool) async {
+        guard let feedHook else { return }
+        if isNew {
+            await feedHook.postTaskCreated(task)
+        }
+        if task.status == .done && !wasDone {
+            let name = task.assigneeName ?? task.ownerName ?? "แอดมิน"
+            let adminId = currentAdminId.isEmpty ? task.ownerAdminId : currentAdminId
+            await feedHook.postTaskDone(task, byAdminId: adminId, byName: name)
         }
     }
 }

@@ -13,6 +13,14 @@ struct PhotoMediaSources: Decodable, Hashable, Sendable {
     let download: String
     /// Embeddable Drive player, videos only.
     let preview: String?
+
+    init(thumb: String, thumbFallback: String, large: String, download: String, preview: String?) {
+        self.thumb = thumb
+        self.thumbFallback = thumbFallback
+        self.large = large
+        self.download = download
+        self.preview = preview
+    }
 }
 
 struct PhotoMediaItem: Decodable, Identifiable, Hashable, Sendable {
@@ -159,6 +167,43 @@ enum PhotoAlbumAPI {
         ))
         guard let url = URL(string: body.uploadUrl) else { throw PhotoAlbumError.server("upload_failed") }
         return url
+    }
+
+    /// Staff-only feed media: starts a resumable session into `GoldenMole Feed / year / month`.
+    static func startFeedUpload(name: String, mimeType: String, size: Int64, date: String?, token: String) async throws -> URL {
+        struct Body: Decodable { let uploadUrl: String }
+        var json: [String: Any] = ["name": name, "mimeType": mimeType, "size": size]
+        if let date { json["date"] = date }
+        let body: Body = try await send(authorized(path: "feed/uploads/start", token: token, json: json))
+        guard let url = URL(string: body.uploadUrl) else { throw PhotoAlbumError.server("upload_failed") }
+        return url
+    }
+
+    /// Completes a feed upload after the client finished the Drive resumable PUT.
+    static func completeFeedUpload(
+        fileId: String,
+        width: Int,
+        height: Int,
+        date: String?,
+        token: String
+    ) async throws -> FeedMedia {
+        var json: [String: Any] = ["fileId": fileId, "width": width, "height": height]
+        if let date { json["date"] = date }
+        struct Body: Decodable {
+            let driveFileId: String
+            let kind: String
+            let mimeType: String
+            let width: Int
+            let height: Int
+        }
+        let body: Body = try await send(authorized(path: "feed/uploads/complete", token: token, json: json))
+        return FeedMedia(
+            driveFileId: body.driveFileId,
+            kind: body.kind,
+            mimeType: body.mimeType,
+            width: body.width,
+            height: body.height
+        )
     }
 
     static func completeUpload(

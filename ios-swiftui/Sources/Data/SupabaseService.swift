@@ -372,6 +372,189 @@ final class SupabaseService: ObservableObject {
         }
     }
 
+    // MARK: - Feed (อัพเดตงาน)
+
+    /// Newest posts first. Pass `before` (ISO created_at) to page older items.
+    func fetchFeedPosts(before: String? = nil, limit: Int = 20) async throws -> [FeedPost] {
+        do {
+            var query = client.from("feed_posts")
+                .select()
+                .is("deleted_at", value: nil)
+                .order("created_at", ascending: false)
+                .limit(limit)
+            if let before, !before.isEmpty {
+                query = query.lt("created_at", value: before)
+            }
+            return try await query.execute().value
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func fetchFeedReactions(postIds: [String]) async throws -> [FeedReaction] {
+        guard !postIds.isEmpty else { return [] }
+        do {
+            return try await client.from("feed_reactions")
+                .select()
+                .in("post_id", values: postIds)
+                .execute()
+                .value
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func fetchFeedCommentCounts(postIds: [String]) async throws -> [String: Int] {
+        guard !postIds.isEmpty else { return [:] }
+        do {
+            struct Row: Decodable { let postId: String; enum CodingKeys: String, CodingKey { case postId = "post_id" } }
+            let rows: [Row] = try await client.from("feed_comments")
+                .select("post_id")
+                .in("post_id", values: postIds)
+                .is("deleted_at", value: nil)
+                .execute()
+                .value
+            var counts: [String: Int] = [:]
+            for row in rows {
+                counts[row.postId, default: 0] += 1
+            }
+            return counts
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func insertFeedPost(_ post: FeedPost) async throws -> FeedPost {
+        do {
+            return try await client.from("feed_posts")
+                .insert(FeedPostInsert(from: post))
+                .select()
+                .single()
+                .execute()
+                .value
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func updateFeedPostBody(id: String, body: String) async throws -> FeedPost {
+        struct Patch: Encodable {
+            let body: String
+            let updatedAt: String
+            enum CodingKeys: String, CodingKey {
+                case body
+                case updatedAt = "updated_at"
+            }
+        }
+        do {
+            return try await client.from("feed_posts")
+                .update(Patch(body: body, updatedAt: TaskDates.nowISO()))
+                .eq("id", value: id)
+                .select()
+                .single()
+                .execute()
+                .value
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func setFeedPostPinned(id: String, pinned: Bool) async throws -> FeedPost {
+        struct Patch: Encodable {
+            let pinned: Bool
+            let updatedAt: String
+            enum CodingKeys: String, CodingKey {
+                case pinned
+                case updatedAt = "updated_at"
+            }
+        }
+        do {
+            return try await client.from("feed_posts")
+                .update(Patch(pinned: pinned, updatedAt: TaskDates.nowISO()))
+                .eq("id", value: id)
+                .select()
+                .single()
+                .execute()
+                .value
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func softDeleteFeedPost(id: String) async throws {
+        struct Patch: Encodable {
+            let deletedAt: String
+            enum CodingKeys: String, CodingKey { case deletedAt = "deleted_at" }
+        }
+        do {
+            _ = try await client.from("feed_posts")
+                .update(Patch(deletedAt: TaskDates.nowISO()))
+                .eq("id", value: id)
+                .execute()
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func upsertFeedReaction(postId: String, adminId: String, type: FeedReactionType) async throws {
+        do {
+            _ = try await client.from("feed_reactions")
+                .upsert(
+                    FeedReactionInsert(postId: postId, adminId: adminId, type: type.rawValue),
+                    onConflict: "post_id,admin_id"
+                )
+                .execute()
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func deleteFeedReaction(postId: String, adminId: String) async throws {
+        do {
+            _ = try await client.from("feed_reactions")
+                .delete()
+                .eq("post_id", value: postId)
+                .eq("admin_id", value: adminId)
+                .execute()
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func fetchFeedComments(postId: String) async throws -> [FeedComment] {
+        do {
+            return try await client.from("feed_comments")
+                .select()
+                .eq("post_id", value: postId)
+                .is("deleted_at", value: nil)
+                .order("created_at", ascending: true)
+                .limit(200)
+                .execute()
+                .value
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
+    func insertFeedComment(_ comment: FeedComment) async throws -> FeedComment {
+        do {
+            return try await client.from("feed_comments")
+                .insert(FeedCommentInsert(
+                    id: comment.id,
+                    postId: comment.postId,
+                    authorAdminId: comment.authorAdminId,
+                    authorName: comment.authorName,
+                    body: comment.body
+                ))
+                .select()
+                .single()
+                .execute()
+                .value
+        } catch {
+            throw DataServiceError.fetchFailed(error.localizedDescription)
+        }
+    }
+
     // MARK: - Transactions (count-record writes)
 
     /// Upserts a DailyLog trip/sand row and returns the stored transaction.
