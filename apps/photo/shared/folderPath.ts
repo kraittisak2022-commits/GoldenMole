@@ -1,4 +1,8 @@
 export const ROOT_FOLDER_NAME = 'GoldenMole Photos';
+/** Root Drive folder for อัพเดตงาน feed media (separate from photo albums). */
+export const FEED_ROOT_FOLDER_NAME = 'GoldenMole Feed';
+/** Cache key prefix in ph_drive_folders so feed paths never collide with album paths. */
+export const FEED_PATH_PREFIX = 'feed';
 
 export const THAI_MONTHS = [
   'มกราคม',

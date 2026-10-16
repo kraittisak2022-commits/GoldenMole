@@ -1,4 +1,9 @@
-import { folderPath, ROOT_FOLDER_NAME } from '../../shared/folderPath.js';
+import {
+  FEED_PATH_PREFIX,
+  FEED_ROOT_FOLDER_NAME,
+  folderPath,
+  ROOT_FOLDER_NAME,
+} from '../../shared/folderPath.js';
 import { refreshAccessToken } from './google.js';
 import { HttpError } from './http.js';
 import { db, must } from './supabaseAdmin.js';
@@ -96,11 +101,18 @@ async function ensureFolder(key: string, name: string, parentId?: string): Promi
   return winner.folder_id;
 }
 
-async function ensureMonthFolder(reportDate: string): Promise<string> {
+async function ensureMonthFolder(
+  reportDate: string,
+  rootName: string,
+  pathPrefix: string | null,
+): Promise<string> {
   const [year, month] = folderPath(reportDate);
-  const root = await ensureFolder('root', ROOT_FOLDER_NAME);
-  const yearId = await ensureFolder(year.key, year.name, root);
-  return ensureFolder(month.key, month.name, yearId);
+  const rootKey = pathPrefix ? `${pathPrefix}/root` : 'root';
+  const yearKey = pathPrefix ? `${pathPrefix}/${year.key}` : year.key;
+  const monthKey = pathPrefix ? `${pathPrefix}/${month.key}` : month.key;
+  const root = await ensureFolder(rootKey, rootName);
+  const yearId = await ensureFolder(yearKey, year.name, root);
+  return ensureFolder(monthKey, month.name, yearId);
 }
 
 const isNotFound = (err: unknown) => err instanceof HttpError && err.code === 'not_found';
@@ -109,22 +121,52 @@ const isNotFound = (err: unknown) => err instanceof HttpError && err.code === 'n
  * Runs `withFolder` with the month folder for a report date. When a cached folder was deleted in Drive,
  * the year/month cache is dropped and rebuilt; if that still fails, the root is rebuilt too.
  */
-export async function monthFolderFor(reportDate: string, withFolder: (folderId: string) => Promise<string>): Promise<string> {
+async function monthFolderForRoot(
+  reportDate: string,
+  rootName: string,
+  pathPrefix: string | null,
+  withFolder: (folderId: string) => Promise<string>,
+): Promise<string> {
   const [year, month] = folderPath(reportDate);
+  const rootKey = pathPrefix ? `${pathPrefix}/root` : 'root';
+  const yearKey = pathPrefix ? `${pathPrefix}/${year.key}` : year.key;
+  const monthKey = pathPrefix ? `${pathPrefix}/${month.key}` : month.key;
+  const yearLike = pathPrefix ? `${pathPrefix}/${year.key}%` : `${year.key}%`;
+
   try {
-    return await withFolder(await ensureMonthFolder(reportDate));
+    return await withFolder(await ensureMonthFolder(reportDate, rootName, pathPrefix));
   } catch (err) {
     if (!isNotFound(err)) throw err;
   }
-  must(await db().from('ph_drive_folders').delete().in('path_key', [year.key, month.key]));
+  must(await db().from('ph_drive_folders').delete().in('path_key', [yearKey, monthKey]));
   try {
-    return await withFolder(await ensureMonthFolder(reportDate));
+    return await withFolder(await ensureMonthFolder(reportDate, rootName, pathPrefix));
   } catch (err) {
     if (!isNotFound(err)) throw err;
   }
-  must(await db().from('ph_drive_folders').delete().like('path_key', `${year.key}%`));
-  must(await db().from('ph_drive_folders').delete().eq('path_key', 'root'));
-  return withFolder(await ensureMonthFolder(reportDate));
+  must(await db().from('ph_drive_folders').delete().like('path_key', yearLike));
+  must(await db().from('ph_drive_folders').delete().eq('path_key', rootKey));
+  return withFolder(await ensureMonthFolder(reportDate, rootName, pathPrefix));
+}
+
+export async function monthFolderFor(
+  reportDate: string,
+  withFolder: (folderId: string) => Promise<string>,
+): Promise<string> {
+  return monthFolderForRoot(reportDate, ROOT_FOLDER_NAME, null, withFolder);
+}
+
+/** Month folder under `GoldenMole Feed / <พ.ศ.> / <MM-เดือน>`. */
+export async function feedMonthFolderFor(
+  reportDate: string,
+  withFolder: (folderId: string) => Promise<string>,
+): Promise<string> {
+  return monthFolderForRoot(reportDate, FEED_ROOT_FOLDER_NAME, FEED_PATH_PREFIX, withFolder);
+}
+
+/** Resolves (and caches) today's feed month folder id. */
+export async function ensureFeedMonthFolder(reportDate: string): Promise<string> {
+  return feedMonthFolderFor(reportDate, async (id) => id);
 }
 
 export async function shareWithAnyoneReader(fileId: string): Promise<void> {
