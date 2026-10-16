@@ -120,7 +120,7 @@ void main() {
     });
   }
 
-  testWidgets('A5 page holds one bill and exports a two-page A5 PDF for original + copy', (tester) async {
+  testWidgets('A5 mode uses A4 landscape pages and exports two pages for original + copy', (tester) async {
     final key = GlobalKey();
     final bill = billFromOrder(_order, DocKind.delivery);
     await _pump(
@@ -133,10 +133,11 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('ต้นฉบับ / ORIGINAL'), findsOneWidget);
     expect(tester.getSize(find.byType(BillA5Page)), BillA5Page.size);
+    expect(BillA5Page.size, BillSpread.size);
 
     await tester.runAsync(() async {
       final png = await captureBoundary(key, pixelRatio: 0.5);
-      final pdf = await billPdf([png, png], format: PdfPageFormat.a5, title: bill.docNo);
+      final pdf = await billPdf([png, png], format: PdfPageFormat.a4.landscape, title: bill.docNo);
       expect(utf8.decode(pdf.sublist(0, 5)), '%PDF-');
       expect(RegExp(r'/Type\s*/Page[^s]').allMatches(latin1.decode(pdf)).length, 2);
     });

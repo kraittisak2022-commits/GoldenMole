@@ -14,11 +14,14 @@ export default function BillSpread({ left, right }: { left: ReactNode; right?: R
   );
 }
 
-/** One A5 portrait sheet holding a single bill, scaled to fit. */
+/**
+ * One A4 landscape page holding a single bill.
+ * Used when feeding A5 landscape paper into the printer (page size stays A4 landscape).
+ */
 export function BillA5Page({ children }: { children: ReactNode }) {
   return (
-    <div className="bill-a5-page relative flex bg-white shadow-lg" style={{ width: '148mm', height: '210mm' }}>
-      <Half widthMm={148}>{children}</Half>
+    <div className="bill-a5-page relative flex bg-white shadow-lg" style={{ width: '297mm', height: '210mm' }}>
+      <Half widthMm={297}>{children}</Half>
     </div>
   );
 }

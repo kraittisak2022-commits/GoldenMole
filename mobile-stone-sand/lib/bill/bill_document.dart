@@ -1125,12 +1125,12 @@ class BillA4Page extends StatelessWidget {
       );
 }
 
-/// A5 portrait page holding one A5-layout bill, scaled to fit.
+/// A4 landscape page holding one A5-layout bill (for A5 landscape paper in the tray).
 class BillA5Page extends StatelessWidget {
   const BillA5Page({super.key, required this.child});
   final Widget child;
 
-  static const size = Size(148 * pxPerMm, 210 * pxPerMm);
+  static const size = Size(297 * pxPerMm, 210 * pxPerMm);
 
   @override
   Widget build(BuildContext context) => Container(

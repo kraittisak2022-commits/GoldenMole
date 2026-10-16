@@ -72,11 +72,9 @@ class _BillScreenState extends State<BillScreen> {
   /// On A5 the original and the copy are separate pages; on A4 one sheet holds whatever is shown.
   List<GlobalKey> get _pageKeys => _a5 && _copies == BillCopies.both ? [_sheetKey, _copyKey] : [_sheetKey];
 
-  PdfPageFormat get _pageFormat => _a5
-      ? PdfPageFormat.a5
-      : _copies == BillCopies.both
-          ? PdfPageFormat.a4.landscape
-          : PdfPageFormat.a4;
+  PdfPageFormat get _pageFormat => _a5 || _copies == BillCopies.both
+      ? PdfPageFormat.a4.landscape
+      : PdfPageFormat.a4;
 
   @override
   void initState() {
@@ -265,7 +263,7 @@ class _BillScreenState extends State<BillScreen> {
     final List<(Widget, Size, double)> sheets = _a5
         ? [
             for (final copy in [BillCopy.original, if (both) BillCopy.copy])
-              (BillA5Page(child: doc(copy, BillSize.a5)), BillA5Page.size, 559),
+              (BillA5Page(child: doc(copy, BillSize.a5)), BillA5Page.size, 1123),
           ]
         : both
             ? [
@@ -278,7 +276,9 @@ class _BillScreenState extends State<BillScreen> {
             : [(BillA4Page(child: doc(BillCopy.original, BillSize.a4)), BillA4Page.size, 794)];
     final keys = _pageKeys;
     final hint = _a5
-        ? (both ? 'กระดาษ A5 แนวตั้ง · 2 แผ่น ต้นฉบับแล้วตามด้วยสำเนา' : 'กระดาษ A5 แนวตั้ง · ต้นฉบับ 1 แผ่น')
+        ? (both
+            ? 'หน้าพิมพ์ A4 แนวนอน · ใส่กระดาษ A5 แนวนอน · 2 แผ่น ต้นฉบับแล้วตามด้วยสำเนา'
+            : 'หน้าพิมพ์ A4 แนวนอน · ใส่กระดาษ A5 แนวนอน · ต้นฉบับ 1 แผ่น')
         : (both ? 'กระดาษ A4 แนวนอน · ต้นฉบับซ้าย สำเนาขวา (ขนาด A5) ตัดตามเส้นประ' : 'กระดาษ A4 แนวตั้ง · ต้นฉบับเต็มแผ่น');
 
     return ListView(

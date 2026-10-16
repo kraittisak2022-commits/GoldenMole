@@ -19,8 +19,6 @@ type Paper = 'a4' | 'a5';
 /** A4 sides at 96dpi */
 const A4_SHORT_PX = 794;
 const A4_LONG_PX = 1123;
-/** A5 short side (148mm) at 96dpi */
-const A5_SHORT_PX = 559;
 
 const PAPER_KEY = 'ss-bill-paper';
 
@@ -175,16 +173,18 @@ export default function BillPage({ mode }: { mode: 'order' | 'statement' }) {
         </div>
       ) : null}
 
-      <style>{`@page { size: ${paper === 'a5' ? 'A5 portrait' : `A4 ${copies === 'both' ? 'landscape' : 'portrait'}`}; }`}</style>
+      <style>{`@page { size: ${paper === 'a5' || copies === 'both' ? 'A4 landscape' : 'A4 portrait'}; }`}</style>
       <main className="bill-print-root mx-auto max-w-6xl p-3 sm:p-6">
         {paper === 'a5' ? (
           <>
             <p className="no-print mb-2 text-center text-xs text-muted">
-              {copies === 'both' ? 'กระดาษ A5 แนวตั้ง · 2 แผ่น ต้นฉบับแล้วตามด้วยสำเนา' : 'กระดาษ A5 แนวตั้ง · ต้นฉบับ 1 แผ่น'}
+              {copies === 'both'
+                ? 'หน้าพิมพ์ A4 แนวนอน · ใส่กระดาษ A5 แนวนอน · 2 แผ่น ต้นฉบับแล้วตามด้วยสำเนา'
+                : 'หน้าพิมพ์ A4 แนวนอน · ใส่กระดาษ A5 แนวนอน · ต้นฉบับ 1 แผ่น'}
             </p>
-            <div className="bill-a5-stack mx-auto flex flex-col gap-4 print:gap-0" style={{ maxWidth: A5_SHORT_PX }}>
+            <div className="bill-a5-stack mx-auto flex flex-col gap-4 print:gap-0" style={{ maxWidth: A4_LONG_PX }}>
               {(copies === 'both' ? (['original', 'copy'] as const) : (['original'] as const)).map((c) => (
-                <ScaledSheet key={c} widthPx={A5_SHORT_PX}>
+                <ScaledSheet key={c} widthPx={A4_LONG_PX}>
                   <BillA5Page>
                     <BillDocument
                       ref={c === 'original' ? sheetRef : undefined}

@@ -189,7 +189,7 @@
   }
 }
 
-/* Size is set by BillPage: A4 landscape for original + copy, A4 portrait for original only, or A5 portrait. */
+/* Size is set by BillPage: A4 landscape (A4 both-copies, or A5 paper mode), else A4 portrait. */
 @page {
   margin: 0;
 }
