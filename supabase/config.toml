@@ -23,3 +23,7 @@ verify_jwt = false
 [functions.market-insights]
 # รองรับทั้ง JWT และ header x-cm-market-secret (MARKET_INSIGHTS_INVOKER_SECRET) สำหรับ cron รายวัน
 verify_jwt = false
+
+[functions.feed-daily-posts]
+# cron 07:30 / 13:00 Asia/Bangkok — โพสลาประจำวัน + ทวงงานค้างในฟีดอัพเดตงาน
+verify_jwt = false
