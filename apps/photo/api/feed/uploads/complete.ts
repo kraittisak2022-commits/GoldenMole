@@ -1,7 +1,7 @@
 import { mediaKindOf } from '../../../shared/limits.js';
 import { mediaSources } from '../../../shared/mediaUrls.js';
 import { todayInBangkok } from '../../../shared/folderPath.js';
-import { type DriveFile, ensureFeedMonthFolder, getFile, shareWithAnyoneReader } from '../../_lib/drive.js';
+import { ensureFeedMonthFolder, getFile, shareWithAnyoneReader } from '../../_lib/drive.js';
 import { HttpError, json, readJson, route } from '../../_lib/http.js';
 import { requireStaff } from '../../_lib/session.js';
 import { resolveSize } from '../../uploads/complete.js';
