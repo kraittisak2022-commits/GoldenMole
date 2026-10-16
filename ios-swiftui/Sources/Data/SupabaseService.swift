@@ -377,15 +377,19 @@ final class SupabaseService: ObservableObject {
     /// Newest posts first. Pass `before` (ISO created_at) to page older items.
     func fetchFeedPosts(before: String? = nil, limit: Int = 20) async throws -> [FeedPost] {
         do {
-            var query = client.from("feed_posts")
+            // Filters must come before order/limit — after those the builder is
+            // PostgrestTransformBuilder and no longer has `.lt`.
+            var filtered = client.from("feed_posts")
                 .select()
                 .is("deleted_at", value: nil)
+            if let before, !before.isEmpty {
+                filtered = filtered.lt("created_at", value: before)
+            }
+            return try await filtered
                 .order("created_at", ascending: false)
                 .limit(limit)
-            if let before, !before.isEmpty {
-                query = query.lt("created_at", value: before)
-            }
-            return try await query.execute().value
+                .execute()
+                .value
         } catch {
             throw DataServiceError.fetchFailed(error.localizedDescription)
         }
