@@ -1,9 +1,11 @@
-# Keep Vercel uploads small — web root is apps/stone-sand only.
+# Shared ignores for monorepo Vercel projects (Git + CLI uploads).
+# Do NOT list apps/photo or apps/flowaccount here — those have their own
+# Vercel projects with Root Directory under apps/*, and ignoring them
+# strips their source from the build (vite exit 127 / ENOENT).
+
 mobile-flutter/
 mobile-stone-sand/
 ios-swiftui/
-apps/photo/
-apps/flowaccount/
 .cursor/
 .claude/
 .agent/

@@ -1,0 +1,15 @@
+# Used when deploying this app via Vercel CLI from the monorepo.
+# Keep sibling apps and mobile trees out of the upload payload.
+../photo/
+../flowaccount/
+../../mobile-flutter/
+../../mobile-stone-sand/
+../../ios-swiftui/
+../../.cursor/
+../../.claude/
+**/node_modules/
+**/dist/
+**/.dart_tool/
+**/build/
+.env
+.env.*
