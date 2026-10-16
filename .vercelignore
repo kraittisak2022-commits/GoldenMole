@@ -1,0 +1,27 @@
+# Keep Vercel uploads small — web root is apps/stone-sand only.
+mobile-flutter/
+mobile-stone-sand/
+ios-swiftui/
+apps/photo/
+apps/flowaccount/
+.cursor/
+.claude/
+.agent/
+awesome-claude-code-subagents/
+testsprite_tests/
+test-results/
+playwright-report/
+blob-report/
+evals/results/
+**/node_modules/
+**/dist/
+**/.dart_tool/
+**/build/
+**/.gradle/
+**/.cxx/
+**/Pods/
+**/.venv/
+**/__pycache__/
+**/*.tsbuildinfo
+.env
+.env.*
