@@ -189,7 +189,7 @@
   }
 }
 
-/* Size is set by BillPage: A4 landscape (A4 both-copies, or A5 paper mode), else A4 portrait. */
+/* Size is set by BillPage: A4 landscape only for A4 paper with original + copy; otherwise A4 portrait. */
 @page {
   margin: 0;
 }
@@ -215,7 +215,9 @@
   .bill-a5-page {
     box-shadow: none !important;
     margin: 0 !important;
-    height: 209.5mm !important;
+    /* a hair under 297mm so the blank half never spills onto a second page */
+    height: 296.5mm !important;
+    overflow: hidden !important;
     break-inside: avoid;
   }
 

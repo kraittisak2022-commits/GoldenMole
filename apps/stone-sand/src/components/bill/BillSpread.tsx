@@ -15,13 +15,27 @@ export default function BillSpread({ left, right }: { left: ReactNode; right?: R
 }
 
 /**
- * One A4 landscape page holding a single bill.
- * Used when feeding A5 landscape paper into the printer (page size stays A4 landscape).
+ * A4 portrait page with one bill turned sideways on the top half (the bottom half stays blank).
+ * Reading the bill means turning the sheet; the printable area is half an A4.
  */
 export function BillA5Page({ children }: { children: ReactNode }) {
   return (
-    <div className="bill-a5-page relative flex bg-white shadow-lg" style={{ width: '297mm', height: '210mm' }}>
-      <Half widthMm={297}>{children}</Half>
+    <div className="bill-a5-page relative overflow-hidden bg-white shadow-lg" style={{ width: '210mm', height: '297mm' }}>
+      <div className="relative overflow-hidden" style={{ width: '210mm', height: '148.5mm' }}>
+        <div
+          className="absolute"
+          style={{
+            top: 0,
+            left: '210mm',
+            width: '148.5mm',
+            height: '210mm',
+            transform: 'rotate(90deg)',
+            transformOrigin: 'top left',
+          }}
+        >
+          <Half widthMm={148.5}>{children}</Half>
+        </div>
+      </div>
     </div>
   );
 }
