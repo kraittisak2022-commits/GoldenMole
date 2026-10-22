@@ -19,22 +19,23 @@ export default function BillSpread({ left, right }: { left: ReactNode; right?: R
  * Reading the bill means turning the sheet; the printable area is half an A4.
  */
 export function BillA5Page({ children }: { children: ReactNode }) {
+  // The unrotated box stays inside the A4 page. Rotating it around its center
+  // and shifting by half the difference fills the top half without sticking
+  // out, so the browser does not shrink the sheet when printing.
   return (
     <div className="bill-a5-page relative overflow-hidden bg-white shadow-lg" style={{ width: '210mm', height: '297mm' }}>
-      <div className="relative overflow-hidden" style={{ width: '210mm', height: '148.5mm' }}>
-        <div
-          className="absolute"
-          style={{
-            top: 0,
-            left: '210mm',
-            width: '148.5mm',
-            height: '210mm',
-            transform: 'rotate(90deg)',
-            transformOrigin: 'top left',
-          }}
-        >
-          <Half widthMm={148.5}>{children}</Half>
-        </div>
+      <div
+        className="absolute"
+        style={{
+          top: 0,
+          left: 0,
+          width: '148.5mm',
+          height: '210mm',
+          transform: 'translate(30.75mm, -30.75mm) rotate(90deg)',
+          transformOrigin: 'center center',
+        }}
+      >
+        <Half widthMm={148.5}>{children}</Half>
       </div>
     </div>
   );

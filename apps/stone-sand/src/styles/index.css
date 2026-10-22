@@ -215,6 +215,7 @@
   .bill-a5-page {
     box-shadow: none !important;
     margin: 0 !important;
+    width: 210mm !important;
     /* a hair under 297mm so the blank half never spills onto a second page */
     height: 296.5mm !important;
     overflow: hidden !important;
