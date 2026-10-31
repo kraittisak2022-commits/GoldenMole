@@ -796,6 +796,107 @@ void main() {
       expect(summaries.macroUsage, contains('1 คัน'));
       expect(summaries.withdraw, '');
       expect(summaries.carFill, '');
+      expect(summaries.loss, '');
+    });
+
+    test('buildFuelSubModeDaySummaries shows loss when Adjust exists', () {
+      final loss = _fuel(
+        id: 'adj',
+        sub: kFuelAdjustSubCategory,
+        movement: 'stock_out',
+        liters: 500,
+        tank: kFuelTankMain,
+        workDetails: '',
+        createdAt: DateTime.utc(2026, 8, 10, 12),
+      );
+      final summaries = buildFuelSubModeDaySummaries(
+        dayYmd: _day,
+        transactions: [loss],
+      );
+      expect(summaries.loss, contains('มีข้อมูลแล้ว'));
+      expect(summaries.loss, contains('500'));
+    });
+  });
+
+  group('fuel Adjust (น้ำมันหาย)', () {
+    test('500 liters reduces main diesel only', () {
+      final b = computeFuelStockBalance([
+        _fuel(
+          id: 'in',
+          sub: kFuelStockInSubCategory,
+          movement: 'stock_in',
+          liters: 3000,
+          tank: kFuelTankMain,
+          date: '2026-08-05',
+        ),
+        _fuel(
+          id: 'loss',
+          sub: kFuelAdjustSubCategory,
+          movement: 'stock_out',
+          liters: 500,
+          tank: kFuelTankMain,
+        ),
+      ], openingReserveDiesel: 100);
+      expect(b.mainDiesel, 2500);
+      expect(b.reserveDiesel, 100);
+    });
+
+    test('applyFuelBalanceDelta deducts and reverses Adjust without double-counting', () {
+      var bal = const FuelStockBalance(mainDiesel: 3000, reserveDiesel: 100);
+      final loss = _fuel(
+        id: 'loss',
+        sub: kFuelAdjustSubCategory,
+        movement: 'stock_out',
+        liters: 500,
+        tank: kFuelTankMain,
+      );
+      bal = applyFuelBalanceDelta(bal, loss)!;
+      expect(bal.mainDiesel, 2500);
+      expect(bal.reserveDiesel, 100);
+
+      // reverse old then apply new (update 500 → 200)
+      final old = _fuel(
+        id: 'loss',
+        sub: kFuelAdjustSubCategory,
+        movement: 'stock_out',
+        liters: 500,
+        tank: kFuelTankMain,
+      );
+      final updated = _fuel(
+        id: 'loss',
+        sub: kFuelAdjustSubCategory,
+        movement: 'stock_out',
+        liters: 200,
+        tank: kFuelTankMain,
+      );
+      bal = applyFuelBalanceDelta(bal, old, reverse: true)!;
+      bal = applyFuelBalanceDelta(bal, updated)!;
+      expect(bal.mainDiesel, 2800);
+    });
+
+    test('latestFuelAdjustForDay returns the newest Adjust row', () {
+      final older = _fuel(
+        id: 'a1',
+        sub: kFuelAdjustSubCategory,
+        movement: 'stock_out',
+        liters: 100,
+        tank: kFuelTankMain,
+        createdAt: DateTime.utc(2026, 8, 10, 8),
+      );
+      final newer = _fuel(
+        id: 'a2',
+        sub: kFuelAdjustSubCategory,
+        movement: 'stock_out',
+        liters: 500,
+        tank: kFuelTankMain,
+        createdAt: DateTime.utc(2026, 8, 10, 15),
+      );
+      final hit = latestFuelAdjustForDay(
+        dayYmd: _day,
+        transactions: [older, newer],
+      );
+      expect(hit?.id, 'a2');
+      expect(fuelTxLiters(hit!), 500);
     });
   });
 

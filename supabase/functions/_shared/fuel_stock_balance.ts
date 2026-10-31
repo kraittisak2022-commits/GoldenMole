@@ -14,6 +14,7 @@ const FUEL_TRANSFER = "Transfer";
 const FUEL_SAND_SIEVE = "SandSieve";
 const FUEL_VEHICLE_USAGE = "VehicleUsage";
 const FUEL_STOCK_IN = "StockIn";
+const FUEL_ADJUST = "Adjust";
 
 export type FuelTx = {
   date?: string | null;
@@ -204,7 +205,8 @@ export function computeFuelStockBalances(
     if (
       sub === FUEL_TRANSFER ||
       sub === FUEL_SAND_SIEVE ||
-      sub === FUEL_VEHICLE_USAGE
+      sub === FUEL_VEHICLE_USAGE ||
+      sub === FUEL_ADJUST
     ) {
       bucket.withdraw += liters;
     }

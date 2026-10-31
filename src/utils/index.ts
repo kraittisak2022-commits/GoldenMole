@@ -31,6 +31,8 @@ export const FUEL_SAND_SIEVE_VEHICLE_ID = 'เครื่องจักรร�
 export const FUEL_STOCK_IN_SUB_CATEGORY = 'StockIn';
 /** ใช้น้ำมันรถ/แม็คโคร (เมนูการใช้น้ำมัน) */
 export const FUEL_VEHICLE_USAGE_SUB_CATEGORY = 'VehicleUsage';
+/** ปรับยอดถังหลักให้ตรงของจริง (เมนู «น้ำมันหาย» / description «ปรับค่าใหม่») */
+export const FUEL_ADJUST_SUB_CATEGORY = 'Adjust';
 export const FUEL_TANK_MAIN = 'main';
 export const FUEL_TANK_RESERVE = 'reserve';
 /** ถังหลักรับน้ำมันได้ไม่จำกัด — มีความจุเฉพาะถังสำรอง */
@@ -223,8 +225,9 @@ export function computeFuelStockBalances(
             sub === FUEL_TRANSFER_SUB_CATEGORY
             || sub === FUEL_SAND_SIEVE_SUB_CATEGORY
             || sub === FUEL_VEHICLE_USAGE_SUB_CATEGORY
+            || sub === FUEL_ADJUST_SUB_CATEGORY
         ) {
-            // VehicleUsage หักเฉพาะถังที่ติดป้าย — ไม่นับ stock_out ทั่วไปที่มีรถ
+            // VehicleUsage / Adjust หักเฉพาะถังที่ติดป้าย — ไม่นับ stock_out ทั่วไปที่มีรถ
             bucket.withdraw += liters;
         }
     }

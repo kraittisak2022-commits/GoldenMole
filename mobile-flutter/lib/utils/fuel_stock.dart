@@ -98,6 +98,9 @@ const String kFuelSandSieveVehicleId = 'เครื่องจักรร่�
 /// `subCategory` ของบันทึกการใช้น้ำมันรถแม็คโคร
 const String kFuelVehicleUsageSubCategory = 'VehicleUsage';
 
+/// `subCategory` ของการปรับยอดถังหลักให้ตรงของจริง (เมนู «น้ำมันหาย»)
+const String kFuelAdjustSubCategory = 'Adjust';
+
 /// อัตราใช้น้ำมันเครื่องร่อนทราย (ลิตร/ชั่วโมง)
 const double kFuelSandSieveLitersPerHour = 18;
 
@@ -321,6 +324,27 @@ bool isFuelSandSieveRow(AppTransaction t) {
   return (t.subCategory ?? '').trim() == kFuelSandSieveSubCategory;
 }
 
+/// แถวปรับยอดถังหลัก (เมนู «น้ำมันหาย» / description «ปรับค่าใหม่»)
+bool isFuelAdjustRow(AppTransaction t) {
+  if (!_isFuelExpenseRow(t)) return false;
+  return (t.subCategory ?? '').trim() == kFuelAdjustSubCategory;
+}
+
+/// รายการปรับยอดล่าสุดของวันนั้น
+AppTransaction? latestFuelAdjustForDay({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+}) {
+  final day = dayYmd.trim();
+  final matches = <AppTransaction>[];
+  for (final t in transactions) {
+    if (t.date.trim() != day) continue;
+    if (!isFuelAdjustRow(t)) continue;
+    matches.add(t);
+  }
+  return _latestFuelRow(matches);
+}
+
 /// รหัสวัตถุประสงค์ของแถวเบิกน้ำมัน (`machine` | `car` | `generator` | `mayor` | `other`)
 String? fuelWithdrawPurposeCode(AppTransaction t) {
   if (!isFuelWithdrawRow(t)) return null;
@@ -537,12 +561,14 @@ class FuelSubModeDaySummaries {
     this.withdraw = '',
     this.carFill = '',
     this.macroUsage = '',
+    this.loss = '',
   });
 
   final String stockIn;
   final String withdraw;
   final String carFill;
   final String macroUsage;
+  final String loss;
 }
 
 FuelSubModeDaySummaries buildFuelSubModeDaySummaries({
@@ -561,6 +587,10 @@ FuelSubModeDaySummaries buildFuelSubModeDaySummaries({
     dayYmd: dayYmd,
     transactions: transactions,
   );
+  final loss = latestFuelAdjustForDay(
+    dayYmd: dayYmd,
+    transactions: transactions,
+  );
   final coverage = fuelVehicleCoverageForDay(dayYmd, transactions);
   var macro = '';
   if (coverage.fueledCount > 0) {
@@ -573,6 +603,7 @@ FuelSubModeDaySummaries buildFuelSubModeDaySummaries({
     withdraw: fuelExistingEntrySummary(withdraw),
     carFill: fuelExistingEntrySummary(car),
     macroUsage: macro,
+    loss: fuelExistingEntrySummary(loss),
   );
 }
 
@@ -723,7 +754,7 @@ FuelStockBalance computeFuelStockBalance(
       }
       continue;
     }
-    if (isFuelSandSieveRow(t) || isFuelTransferRow(t)) {
+    if (isFuelSandSieveRow(t) || isFuelTransferRow(t) || isFuelAdjustRow(t)) {
       bucket.withdraw += liters;
       continue;
     }
@@ -901,9 +932,10 @@ FuelStockBalance? applyFuelBalanceDelta(
   }
   if (isFuelSandSieveRow(t) ||
       isFuelTransferRow(t) ||
+      isFuelAdjustRow(t) ||
       isFuelMacroVehicleUsageRow(t)) {
     // Transfer stock_in ถูกจับที่ isFuelStockInRow แล้ว
-    // VehicleUsage หักเฉพาะถังที่ติดป้าย
+    // VehicleUsage / Adjust หักเฉพาะถังที่ติดป้าย
     return _fuelBalanceAdd(
       current,
       tank: tank,

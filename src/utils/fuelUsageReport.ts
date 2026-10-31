@@ -1,6 +1,7 @@
 import type { Transaction } from '../types';
 import type { FuelStockBalances } from './index';
 import {
+    FUEL_ADJUST_SUB_CATEGORY,
     FUEL_SAND_SIEVE_SUB_CATEGORY,
     FUEL_SAND_SIEVE_VEHICLE_ID,
     FUEL_STOCK_IN_SUB_CATEGORY,
@@ -17,7 +18,14 @@ import { FUEL_SAND_SIEVE_LITERS_PER_HOUR } from './fuelSieveEstimate';
 import { isMacroVehicleId } from '../modules/Dashboard/dailyStepRecorderUtils';
 import { transactionVehicleLabel, type VehicleCatalogRow } from './vehicleCatalog';
 
-export type FuelUsageKind = 'stock_in' | 'vehicle' | 'withdraw' | 'transfer' | 'sand_sieve' | 'other_out';
+export type FuelUsageKind =
+    | 'stock_in'
+    | 'vehicle'
+    | 'withdraw'
+    | 'transfer'
+    | 'sand_sieve'
+    | 'other_out'
+    | 'adjust';
 export type FuelPrintGroup = 'macro' | 'sieve_generator' | 'other_fill' | 'stock_in' | 'overview';
 export type FuelTypeFilter = 'Diesel' | 'Benzine';
 
@@ -58,7 +66,9 @@ export interface FuelUsageTotals {
     transferLiters: number;
     sandSieveLiters: number;
     otherOutLiters: number;
-    /** ทุกแถวที่ออกจากถังหลัก — โอนไปถังสำรอง + ใช้ที่ติดป้ายถังหลัก */
+    /** ปรับค่าใหม่ (น้ำมันหาย) — หักถังหลัก ไม่นับเป็นใช้แล้ว */
+    adjustLiters: number;
+    /** ทุกแถวที่ออกจากถังหลัก — โอนไปถังสำรอง + ใช้ที่ติดป้ายถังหลัก + ปรับค่าใหม่ */
     mainOutLiters: number;
     usageLiters: number;
     usageAmount: number;
@@ -98,6 +108,7 @@ export function fuelKindLabel(kind: FuelUsageKind): string {
         case 'withdraw': return 'เบิกไปถังสำรอง';
         case 'transfer': return 'โอนถัง';
         case 'sand_sieve': return 'ใช้แล้ว (ร่อนทราย)';
+        case 'adjust': return 'ปรับค่าใหม่';
         default: return 'ใช้แล้ว (อื่น ๆ)';
     }
 }
@@ -210,6 +221,9 @@ export function fuelPrintGroupOf(row: FuelUsageRow): FuelPrintGroup | null {
     const workType = (row.workType ?? '').trim().toLowerCase();
     const sub = (row.subCategory ?? '').trim();
 
+    // ปรับค่าใหม่ไม่เข้าเล่มพิมพ์สามฉบับ
+    if (row.kind === 'adjust' || sub === FUEL_ADJUST_SUB_CATEGORY) return null;
+
     if (row.kind === 'sand_sieve') return 'sieve_generator';
     if (workType === 'generator') return 'sieve_generator';
 
@@ -269,6 +283,11 @@ export function classifyFuelTx(t: Transaction): FuelUsageKind | null {
         return 'sand_sieve';
     }
 
+    // ปรับค่าใหม่ (น้ำมันหาย) — หักถังหลัก ไม่นับเป็นใช้แล้ว
+    if (sub === FUEL_ADJUST_SUB_CATEGORY) {
+        return 'adjust';
+    }
+
     // เมนูเบิกน้ำมันที่ตัดออกจากถังหลักแล้ว = ใช้แล้ว
     if (sub === FUEL_WITHDRAW_SUB_CATEGORY) {
         if (purpose === 'car') return 'vehicle';
@@ -323,6 +342,7 @@ const emptyTotals = (): FuelUsageTotals => ({
     transferLiters: 0,
     sandSieveLiters: 0,
     otherOutLiters: 0,
+    adjustLiters: 0,
     mainOutLiters: 0,
     usageLiters: 0,
     usageAmount: 0,
@@ -349,6 +369,8 @@ function aggregateFuelUsageRows(rows: FuelUsageRow[]): Omit<FuelUsageReport, 'ro
             totals.transferLiters += row.liters;
         } else if (row.kind === 'sand_sieve') {
             totals.sandSieveLiters += row.liters;
+        } else if (row.kind === 'adjust') {
+            totals.adjustLiters += row.liters;
         } else {
             totals.otherOutLiters += row.liters;
         }
@@ -426,7 +448,7 @@ export function fuelUsedBreakdown(report: FuelUsageReport): FuelUsedBreakdown {
     return out;
 }
 
-export type FuelDetailTypeId = Exclude<FuelPrintGroup, 'overview'> | 'machine_fill';
+export type FuelDetailTypeId = Exclude<FuelPrintGroup, 'overview'> | 'machine_fill' | 'adjust';
 
 export interface FuelDetailRow {
     row: FuelUsageRow;
@@ -441,7 +463,14 @@ export interface FuelDetailDay {
     outLiters: number;
 }
 
-const DETAIL_TYPE_ORDER: FuelDetailTypeId[] = ['stock_in', 'machine_fill', 'macro', 'sieve_generator', 'other_fill'];
+const DETAIL_TYPE_ORDER: FuelDetailTypeId[] = [
+    'stock_in',
+    'machine_fill',
+    'macro',
+    'sieve_generator',
+    'other_fill',
+    'adjust',
+];
 
 const DETAIL_TYPE_LABEL: Record<FuelDetailTypeId, string> = {
     stock_in: 'รับน้ำมันเข้า',
@@ -449,6 +478,7 @@ const DETAIL_TYPE_LABEL: Record<FuelDetailTypeId, string> = {
     macro: 'รถแม็คโคร',
     sieve_generator: 'ร่อนทราย / ปั่นไฟ',
     other_fill: 'เติมน้ำมันอื่นๆ',
+    adjust: 'ปรับค่าใหม่',
 };
 
 /** รายละเอียดรายการรวมทุกรายงาน แยกตามวัน — แถวเติมเครื่องจักร (ไม่มีกลุ่มพิมพ์) เป็นประเภท machine_fill */
@@ -456,7 +486,11 @@ export function fuelDetailDays(report: FuelUsageReport): FuelDetailDay[] {
     const byDate = new Map<string, FuelDetailRow[]>();
     for (const row of report.rows) {
         const group = fuelPrintGroupOf(row);
-        const typeId: FuelDetailTypeId = group && group !== 'overview' ? group : 'machine_fill';
+        const typeId: FuelDetailTypeId = row.kind === 'adjust'
+            ? 'adjust'
+            : group && group !== 'overview'
+                ? group
+                : 'machine_fill';
         const list = byDate.get(row.date) || [];
         list.push({ row, typeId, typeLabel: DETAIL_TYPE_LABEL[typeId] });
         byDate.set(row.date, list);
@@ -599,6 +633,7 @@ export function fuelUsageToCsv(
         ['ใช้แล้ว (รถ/แม็คโคร)', report.totals.vehicleLiters, ''],
         ['ใช้แล้ว (ร่อนทราย)', report.totals.sandSieveLiters, ''],
         ['ใช้แล้ว (อื่น ๆ)', report.totals.otherOutLiters, ''],
+        ['ปรับค่าใหม่', report.totals.adjustLiters, ''],
         ['รวมใช้แล้ว', report.totals.usageLiters, report.totals.count],
         ['กระทบยอด (รับเข้า − ใช้แล้ว)', report.totals.stockInLiters - report.totals.usageLiters, ''],
     ];

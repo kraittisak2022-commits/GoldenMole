@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../types';
 import {
+    FUEL_ADJUST_SUB_CATEGORY,
     FUEL_SAND_SIEVE_SUB_CATEGORY,
     FUEL_STOCK_IN_SUB_CATEGORY,
     FUEL_TRANSFER_SUB_CATEGORY,
@@ -176,6 +177,30 @@ describe('computeFuelStockBalances', () => {
         expect(bal.Diesel).toBe(11304);
         // reserve: 100 (default opening) + 500 - 200 - 30 = 370
         expect(bal.DieselReserve).toBe(370);
+    });
+
+    it('deducts Adjust (น้ำมันหาย) from main diesel only', () => {
+        const bal = computeFuelStockBalances([
+            fuelTx({
+                id: 'in',
+                date: '2026-08-05',
+                fuelMovement: 'stock_in',
+                subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
+                fuelTank: 'main',
+                quantity: 3000,
+            }),
+            fuelTx({
+                id: 'loss',
+                date: '2026-08-10',
+                fuelMovement: 'stock_out',
+                subCategory: FUEL_ADJUST_SUB_CATEGORY,
+                fuelTank: 'main',
+                quantity: 500,
+                description: 'ปรับค่าใหม่: 500 ลิตร (ดีเซล · ถังหลัก)',
+            }),
+        ]);
+        expect(bal.Diesel).toBe(2500);
+        expect(bal.DieselReserve).toBe(100);
     });
 
     it('credits reserve for legacy machine withdraw when no Transfer that day', () => {

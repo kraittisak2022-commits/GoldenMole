@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Transaction } from '../types';
 import {
+    FUEL_ADJUST_SUB_CATEGORY,
     FUEL_SAND_SIEVE_SUB_CATEGORY,
     FUEL_STOCK_IN_SUB_CATEGORY,
     FUEL_TRANSFER_SUB_CATEGORY,
@@ -152,6 +153,38 @@ describe('classifyFuelTx', () => {
             date: '2026-08-10',
             quantity: 200,
         }))).toBe('stock_in');
+    });
+
+    it('classifies Adjust as ปรับค่าใหม่ and keeps it out of print groups and usage', () => {
+        const adjust = fuelTx({
+            id: 'loss',
+            date: '2026-08-10',
+            fuelMovement: 'stock_out',
+            subCategory: FUEL_ADJUST_SUB_CATEGORY,
+            fuelTank: 'main',
+            quantity: 500,
+            description: 'ปรับค่าใหม่: 500 ลิตร (ดีเซล · ถังหลัก)',
+        });
+        expect(classifyFuelTx(adjust)).toBe('adjust');
+
+        const report = buildFuelUsageReport([adjust], {
+            start: '2026-08-01',
+            end: '2026-08-31',
+        });
+        expect(report.rows).toHaveLength(1);
+        expect(report.rows[0].kind).toBe('adjust');
+        expect(report.totals.adjustLiters).toBe(500);
+        expect(report.totals.usageLiters).toBe(0);
+        expect(report.totals.otherOutLiters).toBe(0);
+        expect(report.totals.mainOutLiters).toBe(500);
+        expect(fuelPrintGroupOf(report.rows[0])).toBeNull();
+        expect(fuelUsedBreakdown(report)).toEqual({
+            macroLiters: 0,
+            sieveGeneratorLiters: 0,
+            otherFillLiters: 0,
+            mayorLiters: 0,
+        });
+        expect(fuelDetailDays(report)[0].rows[0].typeLabel).toBe('ปรับค่าใหม่');
     });
 });
 

@@ -654,6 +654,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   FuelCarFillVehicle? _fuelCarFillVehicle;
   /// id แถวเติมรถยนต์ที่กำลังแก้ — null = รายการใหม่
   String? _fuelCarFillTxId;
+  final _fuelLossLitersController = TextEditingController();
+  /// id แถวปรับยอด (น้ำมันหาย) ที่กำลังแก้ — null = รายการใหม่
+  String? _fuelLossTxId;
   final List<_MacroVehicleDraft> _macroVehicleDrafts = [];
   final List<_VehicleTripDraft> _vehicleTripDrafts = [
     _VehicleTripDraft.empty(),
@@ -2313,6 +2316,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         _hydrateFuelCarFillForSelectedVehicle();
       } else if (_fuelSubMode == FuelSubMode.withdraw) {
         _hydrateFuelWithdrawForSelectedPurpose();
+      } else if (_fuelSubMode == FuelSubMode.loss) {
+        _hydrateFuelLossFromDay(dayRows: dayTransactions ?? txs);
       }
       return;
     }
@@ -2471,6 +2476,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _fuelCarFillLitersController.dispose();
     _fuelCarFillTimeController.dispose();
     _fuelCarFillOtherController.dispose();
+    _fuelLossLitersController.dispose();
     _laborWorkDetailsController.dispose();
     _attendanceGeneralPoolScroll.dispose();
     _attendanceDriverPoolScroll.dispose();
@@ -4185,6 +4191,292 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     target ??= rows.first;
     _applyFuelStockInFromTx(target);
+  }
+
+  void _clearFuelLossForm() {
+    _fuelLossTxId = null;
+    _fuelLossLitersController.clear();
+  }
+
+  void _applyFuelLossFromTx(AppTransaction t) {
+    _fuelLossTxId = t.id;
+    _persistOmitCreatedForIds.add(t.id);
+    final liters = fuelTxLiters(t);
+    _fuelLossLitersController.text =
+        liters > 0 ? formatFuelLiters(liters) : '';
+  }
+
+  void _hydrateFuelLossFromDay({List<AppTransaction>? dayRows}) {
+    final source = dayRows ?? _moduleDayAllTransactions;
+    final hit = latestFuelAdjustForDay(
+      dayYmd: _quickYmd(_selectedDate),
+      transactions: source,
+    );
+    if (hit == null) {
+      _clearFuelLossForm();
+      return;
+    }
+    _applyFuelLossFromTx(hit);
+  }
+
+  /// น้ำมันหาย — หักถังหลักดีเซลให้ตรงของจริง (description «ปรับค่าใหม่»)
+  Future<void> _saveFuelLossEntry() async {
+    final liters =
+        double.tryParse(_fuelLossLitersController.text.trim()) ?? 0;
+    var existingId = _fuelLossTxId?.trim();
+    if (existingId == null || existingId.isEmpty) {
+      final latest = latestFuelAdjustForDay(
+        dayYmd: _quickYmd(_selectedDate),
+        transactions: _moduleDayAllTransactions,
+      );
+      if (latest != null) {
+        existingId = latest.id;
+        _fuelLossTxId = latest.id;
+        _persistOmitCreatedForIds.add(latest.id);
+      }
+    }
+    final updateId =
+        (existingId != null && existingId.isNotEmpty) ? existingId : null;
+    final isUpdate = updateId != null;
+    await _runSaveWithPopups(
+      successMessage: isUpdate
+          ? 'อัปเดตน้ำมันหายสำเร็จ'
+          : 'บันทึกน้ำมันหายสำเร็จ',
+      saveActionLabel: isUpdate ? 'อัปเดตน้ำมันหาย' : 'บันทึกน้ำมันหาย',
+      saveButtonLabel: isUpdate ? 'อัปเดตรายการนี้' : 'บันทึกน้ำมันหาย',
+      requireSignature: false,
+      stayOnPage: true,
+      onStayOnPageCleared: () {},
+      body: () async {
+        if (liters <= 0) {
+          _failSave(
+            'กรุณาระบุจำนวนลิตรที่หายให้มากกว่า 0',
+            field: 'จำนวนลิตรที่หาย',
+          );
+        }
+        var priorLiters = 0.0;
+        if (updateId != null) {
+          for (final r in _moduleDayAllTransactions) {
+            if (r.id == updateId && isFuelAdjustRow(r)) {
+              priorLiters = fuelTxLiters(r);
+              break;
+            }
+          }
+        }
+        final available =
+            _fuelStock.mainDiesel + (isUpdate ? priorLiters : 0);
+        if (liters > available + 0.001) {
+          _failSave(
+            'จำนวนที่หายเกินคงเหลือถังหลัก '
+            '(${formatFuelLiters(available)} ลิตร)',
+            field: 'จำนวนลิตรที่หาย',
+          );
+        }
+        final y = _selectedDate.year.toString().padLeft(4, '0');
+        final m = _selectedDate.month.toString().padLeft(2, '0');
+        final d = _selectedDate.day.toString().padLeft(2, '0');
+        final txId = updateId ??
+            '${DateTime.now().millisecondsSinceEpoch}_fuel_adjust';
+        final tx = AppTransaction(
+          id: txId,
+          date: '$y-$m-$d',
+          type: 'Expense',
+          category: 'Fuel',
+          subCategory: kFuelAdjustSubCategory,
+          description: _appendRecorder(
+            'ปรับค่าใหม่: ${formatFuelLiters(liters)} ลิตร (ดีเซล · ถังหลัก)',
+          ),
+          amount: 0,
+          note: _activeSignatureNote,
+          quantity: liters,
+          unit: 'L',
+          fuelType: 'Diesel',
+          fuelMovement: 'stock_out',
+          fuelTank: kFuelTankMain,
+        );
+        await _persist(tx);
+        _fuelLossTxId = tx.id;
+        if (updateId != null && priorLiters > 0) {
+          final oldTx = AppTransaction(
+            id: txId,
+            date: '$y-$m-$d',
+            type: 'Expense',
+            category: 'Fuel',
+            subCategory: kFuelAdjustSubCategory,
+            description: '',
+            amount: 0,
+            quantity: priorLiters,
+            unit: 'L',
+            fuelType: 'Diesel',
+            fuelMovement: 'stock_out',
+            fuelTank: kFuelTankMain,
+          );
+          await _applyLocalFuelStockAfterSave([tx], reverseFirst: [oldTx]);
+        } else {
+          await _applyLocalFuelStockAfterSave([tx]);
+        }
+      },
+    );
+  }
+
+  Widget _buildFuelLossFormCard() {
+    final p = DailyPalette.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final liters =
+        double.tryParse(_fuelLossLitersController.text.trim()) ?? 0;
+    final editing = _fuelLossTxId != null && _fuelLossTxId!.isNotEmpty;
+    var priorLiters = 0.0;
+    if (editing) {
+      for (final r in _moduleDayAllTransactions) {
+        if (r.id == _fuelLossTxId && isFuelAdjustRow(r)) {
+          priorLiters = fuelTxLiters(r);
+          break;
+        }
+      }
+    }
+    final pendingMain = editing ? -(liters - priorLiters) : -liters;
+    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
+        MediaQuery.sizeOf(context).height >=
+            MediaQuery.sizeOf(context).width;
+    final available =
+        _fuelStock.mainDiesel + (editing ? priorLiters : 0);
+    final after = available - liters;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.all(phonePortrait ? 12 : 18),
+      decoration: BoxDecoration(
+        color: p.card,
+        borderRadius: BorderRadius.circular(phonePortrait ? 18 : 22),
+        border: Border.all(color: isDark ? p.hairline : const Color(0xFFE3ECF7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            editing ? 'แก้ไขน้ำมันหาย' : 'น้ำมันหาย',
+            style: GoogleFonts.kanit(
+              fontSize: phonePortrait ? 18 : 24,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFFC62828),
+            ),
+          ),
+          SizedBox(height: phonePortrait ? 4 : 6),
+          Text(
+            editing
+                ? (phonePortrait
+                    ? 'โหลดของวันนี้แล้ว — แก้แล้วกดอัปเดต'
+                    : 'โหลดรายการของวันนี้แล้ว — แก้ค่าแล้วกดอัปเดต')
+                : (phonePortrait
+                    ? 'หักถังหลักให้ตรงของจริง · บันทึกว่าปรับค่าใหม่'
+                    : 'หักยอดถังหลักดีเซลให้ตรงของจริง — บันทึกในฐานข้อมูลว่า «ปรับค่าใหม่»'),
+            style: GoogleFonts.kanit(
+              fontSize: phonePortrait ? 12.5 : 13,
+              fontWeight: FontWeight.w500,
+              color: p.inkMuted,
+              height: 1.35,
+            ),
+          ),
+          SizedBox(height: phonePortrait ? 10 : 14),
+          _buildFuelStockBanner(
+            pendingMainDelta: pendingMain == 0 ? null : pendingMain,
+          ),
+          SizedBox(height: phonePortrait ? 8 : 10),
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: phonePortrait ? 12 : 14,
+              vertical: phonePortrait ? 10 : 12,
+            ),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF2A1A1A) : const Color(0xFFFFF5F5),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isDark ? const Color(0xFF5C2B2B) : const Color(0xFFFFCDD2),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'คงเหลือถังหลักตอนนี้ ${formatFuelLiters(_fuelStock.mainDiesel)} ลิตร',
+                  style: GoogleFonts.kanit(
+                    fontSize: phonePortrait ? 13.5 : 14.5,
+                    fontWeight: FontWeight.w700,
+                    color: p.ink,
+                  ),
+                ),
+                if (liters > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    after < 0
+                        ? 'เกินคงเหลือ — ลดจำนวนที่หาย'
+                        : 'หลังปรับจะเหลือ ${formatFuelLiters(after)} ลิตร',
+                    style: GoogleFonts.kanit(
+                      fontSize: phonePortrait ? 12.5 : 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: after < 0
+                          ? const Color(0xFFD14343)
+                          : (isDark
+                              ? const Color(0xFFEF9A9A)
+                              : const Color(0xFFC62828)),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          SizedBox(height: phonePortrait ? 10 : 14),
+          TextFormField(
+            controller: _fuelLossLitersController,
+            readOnly: true,
+            onTap: () => _openNumericPad(
+              controller: _fuelLossLitersController,
+              label: 'จำนวนลิตรที่หาย',
+              allowDecimal: true,
+              maxDecimalPlaces: 2,
+              onChanged: (_) => _scheduleUiRefresh(),
+            ),
+            style: GoogleFonts.kanit(
+              color: p.ink,
+              fontSize: phonePortrait ? 17 : 20,
+              fontWeight: FontWeight.w800,
+            ),
+            decoration: InputDecoration(
+              labelText: phonePortrait ? 'ลิตรที่หาย' : 'จำนวนลิตรที่หาย',
+              helperText: phonePortrait
+                  ? null
+                  : 'เช่น คงเหลือระบบ 3000 แต่ของจริง 2500 → กรอก 500',
+              prefixIcon: const Icon(Icons.water_drop_outlined),
+            ),
+          ),
+          SizedBox(height: phonePortrait ? 12 : 16),
+          _SmoothPressable(
+            enabled: !_saving,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveFuelLossEntry,
+              icon: Icon(
+                editing ? Icons.save_outlined : Icons.remove_circle_outline,
+                size: phonePortrait ? 20 : 24,
+              ),
+              label: Text(
+                editing
+                    ? (phonePortrait ? 'อัปเดต' : 'อัปเดตรายการนี้')
+                    : (phonePortrait ? 'บันทึกน้ำมันหาย' : 'บันทึกน้ำมันหาย'),
+                style: GoogleFonts.kanit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: phonePortrait ? 16 : 20,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                minimumSize: Size.fromHeight(phonePortrait ? 48 : 62),
+                backgroundColor: const Color(0xFFC62828),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _fuelLookupVehicleIdForCarFill() {
@@ -14011,6 +14303,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _fuelCarFillVehicle?.name ?? '',
         ].join('|'),
       );
+      put('loss', _fuelLossLitersController.text.trim());
       return buf.toString();
     }
 
@@ -14108,6 +14401,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   _hydrateFuelWithdrawForSelectedPurpose();
                 } else if (selected == FuelSubMode.carFill) {
                   _hydrateFuelCarFillForSelectedVehicle();
+                } else if (selected == FuelSubMode.loss) {
+                  _hydrateFuelLossFromDay();
                 }
               });
             },
@@ -14117,6 +14412,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             FuelSubMode.withdraw => _buildFuelWithdrawFormCard(),
             FuelSubMode.carFill => _buildFuelCarFillFormCard(),
             FuelSubMode.macroUsage => _buildFuelFormCard(),
+            FuelSubMode.loss => _buildFuelLossFormCard(),
           };
     return AnimatedSwitcher(
       duration: Duration(

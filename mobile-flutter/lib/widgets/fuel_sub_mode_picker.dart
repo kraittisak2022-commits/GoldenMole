@@ -19,6 +19,9 @@ enum FuelSubMode {
 
   /// บันทึกการใช้น้ำมันรถแม็คโคร
   macroUsage,
+
+  /// ปรับยอดถังหลักให้ตรงของจริง (หักลิตรที่หาย)
+  loss,
 }
 
 /// ขั้นเลือกเมนูย่อยก่อนเข้าฟอร์มน้ำมัน — แสดงระดับน้ำมัน 2 ถังด้านบน
@@ -58,8 +61,8 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       vsync: this,
       duration: Duration(milliseconds: _lite ? 300 : 560),
     );
-    _staggerAnims = List.generate(5, (index) {
-      final start = (0.06 + index * 0.10).clamp(0.0, 0.72);
+    _staggerAnims = List.generate(6, (index) {
+      final start = (0.06 + index * 0.09).clamp(0.0, 0.72);
       final end = (start + (_lite ? 0.22 : 0.32)).clamp(0.0, 1.0);
       return CurvedAnimation(
         parent: _entrance,
@@ -290,6 +293,23 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       listLayout: phonePortrait,
       onTap: () => widget.onSelect(FuelSubMode.macroUsage),
     );
+    final loss = _FuelModeOption(
+      title: 'น้ำมันหาย',
+      subtitle: widget.daySummaries.loss.isNotEmpty
+          ? widget.daySummaries.loss
+          : (phonePortrait
+              ? 'ปรับค่าใหม่ · หักถังหลัก'
+              : 'ปรับค่าใหม่ — หักยอดถังหลักให้ตรงของจริง'),
+      hasExisting: widget.daySummaries.loss.isNotEmpty,
+      icon: Icons.water_drop_outlined,
+      accent: const Color(0xFFC62828),
+      iconTileColor: isDark
+          ? const Color(0xFF3A1A1A)
+          : const Color(0xFFFFEBEE),
+      compact: phonePortrait,
+      listLayout: phonePortrait,
+      onTap: () => widget.onSelect(FuelSubMode.loss),
+    );
 
     final header = _staggerTile(
       0,
@@ -345,6 +365,8 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
               _staggerTile(3, carFill),
               SizedBox(height: gap),
               _staggerTile(4, macro),
+              SizedBox(height: gap),
+              _staggerTile(5, loss),
             ],
           )
         : Column(
@@ -365,6 +387,8 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
                   Expanded(child: _staggerTile(4, macro)),
                 ],
               ),
+              SizedBox(height: gap),
+              _staggerTile(5, loss),
             ],
           );
 
