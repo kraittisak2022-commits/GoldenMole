@@ -60,6 +60,8 @@ function hasVehicle(t: FuelTx): boolean {
 function inferFuelMovement(t: FuelTx): "stock_in" | "stock_out" {
   const sub = String(t.sub_category ?? "").trim();
   if (sub === FUEL_STOCK_IN) return "stock_in";
+  // Adjust (น้ำมันหาย) = หักออกเสมอ — ไม่มีรถ; ห้ามตีความเป็นรับเข้า
+  if (sub === FUEL_ADJUST) return "stock_out";
   const mov = String(t.fuel_movement ?? "").trim().toLowerCase();
   if (mov === "stock_in" || mov === "stock_out") return mov;
   return hasVehicle(t) ? "stock_out" : "stock_in";
@@ -187,6 +189,11 @@ export function computeFuelStockBalances(
     const purpose = String(t.work_type ?? "").trim().toLowerCase();
     const movement = inferFuelMovement(t);
 
+    // Adjust ก่อน stock_in — กันแถวน้ำมันหายที่ fuel_movement หายถูกนับรับเข้า
+    if (sub === FUEL_ADJUST) {
+      bucket.withdraw += liters;
+      continue;
+    }
     if (movement === "stock_in" || sub === FUEL_STOCK_IN) {
       bucket.stockIn += liters;
       continue;
@@ -205,8 +212,7 @@ export function computeFuelStockBalances(
     if (
       sub === FUEL_TRANSFER ||
       sub === FUEL_SAND_SIEVE ||
-      sub === FUEL_VEHICLE_USAGE ||
-      sub === FUEL_ADJUST
+      sub === FUEL_VEHICLE_USAGE
     ) {
       bucket.withdraw += liters;
     }

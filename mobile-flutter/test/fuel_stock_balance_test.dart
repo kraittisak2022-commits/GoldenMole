@@ -841,6 +841,62 @@ void main() {
       expect(b.reserveDiesel, 100);
     });
 
+    test('Adjust without fuelMovement still deducts (never treated as stock_in)', () {
+      final loss = AppTransaction(
+        id: 'loss',
+        date: _day,
+        type: 'Expense',
+        category: 'Fuel',
+        subCategory: kFuelAdjustSubCategory,
+        description: 'ปรับค่าใหม่: 500 ลิตร',
+        amount: 0,
+        quantity: 500,
+        unit: 'L',
+        fuelType: 'Diesel',
+        fuelTank: kFuelTankMain,
+      );
+      expect(isFuelStockInRow(loss), isFalse);
+      expect(isFuelAdjustRow(loss), isTrue);
+
+      final b = computeFuelStockBalance([
+        _fuel(
+          id: 'in',
+          sub: kFuelStockInSubCategory,
+          movement: 'stock_in',
+          liters: 3000,
+          tank: kFuelTankMain,
+          date: '2026-08-05',
+        ),
+        loss,
+      ], openingReserveDiesel: 100);
+      expect(b.mainDiesel, 2500);
+
+      var bal = const FuelStockBalance(mainDiesel: 3000, reserveDiesel: 100);
+      bal = applyFuelBalanceDelta(bal, loss)!;
+      expect(bal.mainDiesel, 2500);
+    });
+
+    test('Adjust with wrong stock_in movement still deducts', () {
+      final b = computeFuelStockBalance([
+        _fuel(
+          id: 'in',
+          sub: kFuelStockInSubCategory,
+          movement: 'stock_in',
+          liters: 3000,
+          tank: kFuelTankMain,
+          date: '2026-08-05',
+        ),
+        _fuel(
+          id: 'loss',
+          sub: kFuelAdjustSubCategory,
+          movement: 'stock_in',
+          liters: 500,
+          tank: kFuelTankMain,
+        ),
+      ], openingReserveDiesel: 100);
+      expect(b.mainDiesel, 2500);
+    });
+
     test('applyFuelBalanceDelta deducts and reverses Adjust without double-counting', () {
       var bal = const FuelStockBalance(mainDiesel: 3000, reserveDiesel: 100);
       final loss = _fuel(

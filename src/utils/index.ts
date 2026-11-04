@@ -17,6 +17,8 @@ export function inferFuelMovement(t: Transaction): 'stock_in' | 'stock_out' {
     const sub = String(t.subCategory ?? '').trim();
     // แถว StockIn = รับเข้าเสมอ (กัน fuelMovement ผิด/หายแล้วถังหลักติดลบ)
     if (sub === FUEL_STOCK_IN_SUB_CATEGORY) return 'stock_in';
+    // แถว Adjust (น้ำมันหาย) = หักออกเสมอ — ไม่มีรถ; ห้ามตีความเป็นรับเข้า
+    if (sub === FUEL_ADJUST_SUB_CATEGORY) return 'stock_out';
     if (t.fuelMovement === 'stock_in' || t.fuelMovement === 'stock_out') return t.fuelMovement;
     return t.vehicleId ? 'stock_out' : 'stock_in';
 }
@@ -205,6 +207,11 @@ export function computeFuelStockBalances(
         const purpose = String(t.workType ?? '').trim().toLowerCase();
         const movement = inferFuelMovement(t);
 
+        // Adjust ก่อน stock_in — กันแถวน้ำมันหายที่ fuelMovement หายถูกนับรับเข้า
+        if (sub === FUEL_ADJUST_SUB_CATEGORY) {
+            bucket.withdraw += liters;
+            continue;
+        }
         if (movement === 'stock_in' || sub === FUEL_STOCK_IN_SUB_CATEGORY) {
             bucket.stockIn += liters;
             continue;
@@ -225,9 +232,8 @@ export function computeFuelStockBalances(
             sub === FUEL_TRANSFER_SUB_CATEGORY
             || sub === FUEL_SAND_SIEVE_SUB_CATEGORY
             || sub === FUEL_VEHICLE_USAGE_SUB_CATEGORY
-            || sub === FUEL_ADJUST_SUB_CATEGORY
         ) {
-            // VehicleUsage / Adjust หักเฉพาะถังที่ติดป้าย — ไม่นับ stock_out ทั่วไปที่มีรถ
+            // VehicleUsage หักเฉพาะถังที่ติดป้าย — ไม่นับ stock_out ทั่วไปที่มีรถ
             bucket.withdraw += liters;
         }
     }

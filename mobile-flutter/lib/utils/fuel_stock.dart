@@ -301,6 +301,9 @@ bool isFuelStockInRow(AppTransaction t) {
   final sub = (t.subCategory ?? '').trim();
   // แถว StockIn = รับเข้าเสมอ (กัน fuelMovement ผิด/หายแล้วถังหลักติดลบ)
   if (sub == kFuelStockInSubCategory) return true;
+  // แถว Adjust (น้ำมันหาย) = หักออกเสมอ — ห้ามตีความเป็นรับเข้า
+  // (แถวนี้ไม่มีรถ; ถ้า fuelMovement หาย heuristic เดิมจะ +ลิตรผิดทาง)
+  if (sub == kFuelAdjustSubCategory) return false;
   final mov = (t.fuelMovement ?? '').trim().toLowerCase();
   if (mov == 'stock_in') return true;
   if (mov == 'stock_out') return false;
@@ -737,6 +740,11 @@ FuelStockBalance computeFuelStockBalance(
     final tank = fuelUsageTankOf(t);
     final benzine = fuelTypeIsBenzine(t.fuelType);
     final bucket = bucketFor(day, tank, benzine);
+    // Adjust ก่อน stock_in — กันแถวน้ำมันหายที่ fuelMovement หายถูกนับรับเข้า
+    if (isFuelAdjustRow(t)) {
+      bucket.withdraw += liters;
+      continue;
+    }
     if (isFuelStockInRow(t)) {
       bucket.stockIn += liters;
       continue;
@@ -754,7 +762,7 @@ FuelStockBalance computeFuelStockBalance(
       }
       continue;
     }
-    if (isFuelSandSieveRow(t) || isFuelTransferRow(t) || isFuelAdjustRow(t)) {
+    if (isFuelSandSieveRow(t) || isFuelTransferRow(t)) {
       bucket.withdraw += liters;
       continue;
     }
@@ -911,6 +919,15 @@ FuelStockBalance? applyFuelBalanceDelta(
   }
   final signed = reverse ? -liters : liters;
 
+  // Adjust ก่อน stock_in — หักถังเสมอแม้ fuelMovement หาย/ผิด
+  if (isFuelAdjustRow(t)) {
+    return _fuelBalanceAdd(
+      current,
+      tank: tank,
+      benzine: benzine,
+      delta: -signed,
+    );
+  }
   if (isFuelStockInRow(t)) {
     return _fuelBalanceAdd(
       current,
@@ -932,10 +949,9 @@ FuelStockBalance? applyFuelBalanceDelta(
   }
   if (isFuelSandSieveRow(t) ||
       isFuelTransferRow(t) ||
-      isFuelAdjustRow(t) ||
       isFuelMacroVehicleUsageRow(t)) {
     // Transfer stock_in ถูกจับที่ isFuelStockInRow แล้ว
-    // VehicleUsage / Adjust หักเฉพาะถังที่ติดป้าย
+    // VehicleUsage หักเฉพาะถังที่ติดป้าย
     return _fuelBalanceAdd(
       current,
       tank: tank,

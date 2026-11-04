@@ -203,6 +203,48 @@ describe('computeFuelStockBalances', () => {
         expect(bal.DieselReserve).toBe(100);
     });
 
+    it('deducts Adjust even when fuelMovement is missing or wrongly stock_in', () => {
+        const missingMov = computeFuelStockBalances([
+            fuelTx({
+                id: 'in',
+                date: '2026-08-05',
+                fuelMovement: 'stock_in',
+                subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
+                fuelTank: 'main',
+                quantity: 3000,
+            }),
+            fuelTx({
+                id: 'loss',
+                date: '2026-08-10',
+                subCategory: FUEL_ADJUST_SUB_CATEGORY,
+                fuelTank: 'main',
+                quantity: 500,
+                description: 'ปรับค่าใหม่: 500 ลิตร (ดีเซล · ถังหลัก)',
+            }),
+        ]);
+        expect(missingMov.Diesel).toBe(2500);
+
+        const wrongMov = computeFuelStockBalances([
+            fuelTx({
+                id: 'in',
+                date: '2026-08-05',
+                fuelMovement: 'stock_in',
+                subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
+                fuelTank: 'main',
+                quantity: 3000,
+            }),
+            fuelTx({
+                id: 'loss',
+                date: '2026-08-10',
+                fuelMovement: 'stock_in',
+                subCategory: FUEL_ADJUST_SUB_CATEGORY,
+                fuelTank: 'main',
+                quantity: 500,
+            }),
+        ]);
+        expect(wrongMov.Diesel).toBe(2500);
+    });
+
     it('credits reserve for legacy machine withdraw when no Transfer that day', () => {
         const bal = computeFuelStockBalances([
             fuelTx({
