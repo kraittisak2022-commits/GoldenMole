@@ -926,7 +926,7 @@ describe('fuelUsageAllToPrintHtml', () => {
         expect(html).toContain('สรุปตามหมวด');
         expect(html).toContain('สรุปตามรถ / เครื่องจักร');
         expect(html).toContain('สรุปรายวัน');
-        expect(html).toContain('รายละเอียดการใช้น้ำมันทั้งหมด');
+        expect(html).toContain('รายละเอียดรายการ');
         expect(html).toContain('รถแม็คโคร SK200');
         expect(html).toContain('ไมตี้');
         expect(html).toContain('ปั่นไฟ');
@@ -935,7 +935,7 @@ describe('fuelUsageAllToPrintHtml', () => {
         expect(html).not.toContain('฿');
     });
 
-    it('lists machine refuels (main → reserve) in their own section, not in usage detail', () => {
+    it('lists stock-in, machine refuels and usage together under each day', () => {
         const html = fuelUsageAllToPrintHtml({
             appName: 'Goldenmole',
             rangeLabel: '01/08/2569 – 31/08/2569',
@@ -944,16 +944,18 @@ describe('fuelUsageAllToPrintHtml', () => {
             formatDate: formatDateBE,
         });
 
-        const machineStart = html.indexOf('รายละเอียดเติมเครื่องจักร');
-        const usageStart = html.indexOf('รายละเอียดการใช้น้ำมันทั้งหมด');
-        expect(machineStart).toBeGreaterThan(-1);
-        const machineSection = html.slice(machineStart, usageStart > machineStart ? usageStart : undefined);
-        expect(machineSection).toContain('ถังหลัก → ถังสำรอง');
-        expect(machineSection).toContain('>100<');
-        expect(machineSection).toContain('10/08/2569');
-
-        const usageSection = html.slice(usageStart);
-        expect(usageSection).not.toContain('เติมเครื่องจักร');
+        expect(html).not.toContain('รายละเอียดเติมเครื่องจักร');
+        const detailStart = html.indexOf('รายละเอียดรายการ');
+        const detail = html.slice(detailStart);
+        expect(detail).toContain('รับน้ำมันเข้า');
+        expect(detail).toContain('เพิ่มน้ำมัน');
+        expect(detail).toContain('เติมเครื่องจักร');
+        expect(detail).toContain('ถังหลัก → ถังสำรอง');
+        expect(detail).toContain('>100<');
+        expect(detail).toContain('รถแม็คโคร');
+        expect(detail).toContain('10/08/2569');
+        expect(detail).toContain('รับเข้า');
+        expect(detail).toContain('จ่ายออก');
         expect(html).toContain('เติมเครื่องจักร (ลิตร)');
     });
 

@@ -881,7 +881,11 @@ function fuelAllPrintUi(locale: FuelPrintLocale) {
             byDay: '每日汇总',
             stockInCol: '收油（升）',
             usageCol: '用油（升）',
-            detail: '全部用油明细',
+            detail: '全部明细',
+            itemCol: '项目',
+            sourceCol: '车辆 / 油箱',
+            received: '收油',
+            dispensed: '支出',
             footer: '仅汇总燃油升数，不含费用 · 调拨至备用油箱不计入用油',
         };
     }
@@ -906,7 +910,11 @@ function fuelAllPrintUi(locale: FuelPrintLocale) {
         byDay: 'สรุปรายวัน',
         stockInCol: 'รับเข้า (ลิตร)',
         usageCol: 'ใช้ (ลิตร)',
-        detail: 'รายละเอียดการใช้น้ำมันทั้งหมด',
+        detail: 'รายละเอียดรายการ',
+        itemCol: 'รายการ',
+        sourceCol: 'รถ / ถัง',
+        received: 'รับเข้า',
+        dispensed: 'จ่ายออก',
         footer: 'สรุปปริมาณน้ำมันเป็นลิตรเท่านั้น ไม่รวมค่าใช้จ่าย · เบิกไปถังสำรองไม่นับเป็นใช้',
     };
 }
@@ -1006,8 +1014,7 @@ export function fuelUsageAllToPrintHtml(opts: {
 <td class="num">${escHtml(d.count)}</td>
 </tr>`).join('');
 
-    const machineDetailRows = buildPrintDetailRowsHtml(machineRows, 'overview', fmt, fmtLiters, locale, ui);
-    const detailRows = buildPrintDetailRowsHtml(usageRows, 'overview', fmt, fmtLiters, locale, ui);
+    const detailRows = buildCombinedPrintDetailHtml(opts.report, fmt, fmtLiters, locale, ui, all);
 
     return `<!doctype html><html lang="${htmlLang}"><head><meta charset="utf-8"/><title>${escHtml(all.title)}</title>
 ${printHtmlStyles()}
@@ -1063,40 +1070,79 @@ ${shortfallHtml}
 <td class="num">${escHtml(t.count)}</td>
 </tr></tfoot>
 </table>
-<h2 class="section-title page-break">${escHtml(all.machineFillDetail)}</h2>
-<p class="summary"><span>${escHtml(ui.totalPrefix)} <strong>${escHtml(fmtLiters(machineLiters))} ${unit}</strong></span><span>${escHtml(machineRows.length)} ${escHtml(ui.itemsUnit)}</span></p>
+<h2 class="section-title">${escHtml(all.detail)}</h2>
 <table>
 <thead><tr>
-<th>${escHtml(ui.dateCol)}</th>
-<th>${escHtml(ui.tankCol)}</th>
-<th class="num">${escHtml(ui.qtyCol)}</th>
-<th>${escHtml(ui.detailCol)}</th>
-</tr></thead>
-<tbody>${machineDetailRows}</tbody>
-<tfoot><tr>
-<td colspan="2">${escHtml(ui.total)}</td>
-<td class="num">${escHtml(fmtLiters(machineLiters))}</td>
-<td></td>
-</tr></tfoot>
-</table>
-<p class="footer">${escHtml(all.machineFillNote)}</p>
-<h2 class="section-title page-break">${escHtml(all.detail)}</h2>
-<table>
-<thead><tr>
-<th>${escHtml(ui.dateCol)}</th>
-<th>${escHtml(ui.vehicleCol)}</th>
+<th>${escHtml(all.itemCol)}</th>
+<th>${escHtml(all.sourceCol)}</th>
 <th class="num">${escHtml(ui.qtyCol)}</th>
 <th>${escHtml(ui.detailCol)}</th>
 </tr></thead>
 <tbody>${detailRows}</tbody>
-<tfoot><tr>
-<td colspan="2">${escHtml(ui.total)}</td>
-<td class="num">${escHtml(fmtLiters(usageLiters))}</td>
-<td></td>
-</tr></tfoot>
 </table>
 <p class="footer">${escHtml(all.footer)}</p>
 </body></html>`;
+}
+
+const PRINT_DETAIL_TYPE_LABEL: Record<FuelPrintLocale, Record<FuelDetailTypeId, string>> = {
+    th: {
+        stock_in: 'รับน้ำมันเข้า',
+        machine_fill: 'เติมเครื่องจักร',
+        macro: 'รถแม็คโคร',
+        sieve_generator: 'ร่อนทราย / ปั่นไฟ',
+        other_fill: 'เติมน้ำมันอื่นๆ',
+        adjust: 'ปรับค่าใหม่',
+    },
+    zh: {
+        stock_in: '收油',
+        machine_fill: '机械加油',
+        macro: '挖掘机',
+        sieve_generator: '筛沙机 / 发电机',
+        other_fill: '其他加油',
+        adjust: '调整',
+    },
+};
+
+/** รายละเอียดพิมพ์รวม — ทุกรายการในวันเดียวกัน ไม่แยกส่วนโอนถังสำรอง */
+function buildCombinedPrintDetailHtml(
+    report: FuelUsageReport,
+    fmt: (ymd: string) => string,
+    fmtLiters: (n: number) => string,
+    locale: FuelPrintLocale,
+    ui: ReturnType<typeof fuelPrintUi>,
+    all: ReturnType<typeof fuelAllPrintUi>,
+): string {
+    const days = fuelDetailDays(report);
+    if (days.length === 0) {
+        return `<tr><td colspan="4" class="empty">${escHtml(ui.empty)}</td></tr>`;
+    }
+    const labels = PRINT_DETAIL_TYPE_LABEL[locale];
+    const parts: string[] = [];
+    for (const day of days) {
+        const bits = [fmt(day.date)];
+        if (day.stockInLiters > 0) bits.push(`${all.received} ${fmtLiters(day.stockInLiters)} ${ui.litersUnit}`);
+        if (day.outLiters > 0) bits.push(`${all.dispensed} ${fmtLiters(day.outLiters)} ${ui.litersUnit}`);
+        bits.push(`${day.rows.length} ${ui.itemsUnit}`);
+        parts.push(`<tr class="day-header"><td colspan="4">${escHtml(bits.join(' · '))}</td></tr>`);
+        for (const item of day.rows) {
+            const source = item.typeId === 'stock_in'
+                ? tankLabel(item.row.tank, locale)
+                : item.typeId === 'machine_fill'
+                    ? all.machineFillRoute
+                    : (item.row.vehicleId || '—');
+            const liters = item.typeId === 'stock_in'
+                ? `+${fmtLiters(item.row.liters)}`
+                : fmtLiters(item.row.liters);
+            const desc = item.row.description + (item.row.estimated ? ui.estimated : '');
+            parts.push(`<tr>
+<td>${escHtml(labels[item.typeId])}</td>
+<td>${escHtml(source)}</td>
+<td class="num">${escHtml(liters)}</td>
+<td>${escHtml(desc || '—')}</td>
+</tr>`);
+        }
+    }
+    return parts.join('');
 }
 
 function buildPrintDetailRowsHtml(
