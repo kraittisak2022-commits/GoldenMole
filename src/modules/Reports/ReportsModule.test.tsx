@@ -140,6 +140,7 @@ describe('ReportsModule', () => {
                         fuelTank: 'main',
                         quantity: 12000,
                         description: 'เพิ่มน้ำมันเข้าถัง: 12000 ลิตร (ดีเซล)',
+                        workDetails: '08:15 (ผู้กรอก: สมชาย)',
                     }),
                     fuelTx({
                         id: 'v1',
@@ -158,6 +159,8 @@ describe('ReportsModule', () => {
         expect(dayHeaders).toHaveLength(1);
         expect(dayHeaders[0]).toHaveTextContent('รับเข้า 12,000 ลิตร');
         expect(dayHeaders[0]).toHaveTextContent('จ่ายออก 60 ลิตร');
+        expect(within(detail).getByRole('columnheader', { name: 'เวลา' })).toBeInTheDocument();
+        expect(within(detail).getByText('08:15')).toBeInTheDocument();
         expect(within(detail).getByText('รับน้ำมันเข้า')).toBeInTheDocument();
         expect(within(detail).getByText('เพิ่มน้ำมันเข้าถัง: 12000 ลิตร (ดีเซล)')).toBeInTheDocument();
         expect(within(detail).getByText('ถังหลัก')).toBeInTheDocument();

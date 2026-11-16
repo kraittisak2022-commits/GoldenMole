@@ -51,6 +51,8 @@ export interface FuelUsageRow {
     liters: number;
     amount: number;
     description: string;
+    /** เวลาที่เติม HH:mm — จากช่องเวลา หรือเวลาที่บันทึก */
+    time?: string;
     subCategory?: string;
     workType?: string;
     /** แถวประมาณจากชั่วโมงร่อนทราย (ไม่มีแถวจริงในฐานข้อมูล) */
@@ -239,6 +241,21 @@ export function fuelPrintGroupOf(row: FuelUsageRow): FuelPrintGroup | null {
 
 function withdrawPurpose(t: Transaction): string {
     return String(t.workType ?? '').trim().toLowerCase();
+}
+
+/** เวลาที่เติม HH:mm — ใช้เวลาที่กรอกไว้ ถ้าไม่มีจึงใช้เวลาที่บันทึกรายการ */
+function fuelRecordedTime(t: Transaction): string {
+    const details = String(t.workDetails ?? '').replace(/\s*\(ผู้กรอก:[^)]+\)\s*$/, '').trim();
+    const typed = details.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (typed) return `${typed[1].padStart(2, '0')}:${typed[2]}`;
+    const created = t.createdAt ? Date.parse(t.createdAt) : NaN;
+    if (Number.isNaN(created)) return '';
+    return new Date(created).toLocaleTimeString('en-GB', {
+        timeZone: 'Asia/Bangkok',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
 }
 
 /**
@@ -576,7 +593,8 @@ export function buildFuelUsageReport(transactions: Transaction[], filters: FuelU
             vehicleId,
             liters: fuelTxToLiters(t),
             amount: Number(t.amount) || 0,
-            description: (t.description || t.workDetails || '').trim(),
+            description: (t.description || '').trim(),
+            time: fuelRecordedTime(t),
             subCategory: String(t.subCategory ?? '').trim() || undefined,
             workType: String(t.workType ?? '').trim() || undefined,
         });
@@ -882,6 +900,7 @@ function fuelAllPrintUi(locale: FuelPrintLocale) {
             stockInCol: '收油（升）',
             usageCol: '用油（升）',
             detail: '全部明细',
+            timeCol: '时间',
             itemCol: '项目',
             sourceCol: '车辆 / 油箱',
             received: '收油',
@@ -911,6 +930,7 @@ function fuelAllPrintUi(locale: FuelPrintLocale) {
         stockInCol: 'รับเข้า (ลิตร)',
         usageCol: 'ใช้ (ลิตร)',
         detail: 'รายละเอียดรายการ',
+        timeCol: 'เวลา',
         itemCol: 'รายการ',
         sourceCol: 'รถ / ถัง',
         received: 'รับเข้า',
@@ -1074,6 +1094,7 @@ ${shortfallHtml}
 <table>
 <thead><tr>
 <th>${escHtml(all.itemCol)}</th>
+<th>${escHtml(all.timeCol)}</th>
 <th>${escHtml(all.sourceCol)}</th>
 <th class="num">${escHtml(ui.qtyCol)}</th>
 <th>${escHtml(ui.detailCol)}</th>
@@ -1114,7 +1135,7 @@ function buildCombinedPrintDetailHtml(
 ): string {
     const days = fuelDetailDays(report);
     if (days.length === 0) {
-        return `<tr><td colspan="4" class="empty">${escHtml(ui.empty)}</td></tr>`;
+        return `<tr><td colspan="5" class="empty">${escHtml(ui.empty)}</td></tr>`;
     }
     const labels = PRINT_DETAIL_TYPE_LABEL[locale];
     const parts: string[] = [];
@@ -1123,7 +1144,7 @@ function buildCombinedPrintDetailHtml(
         if (day.stockInLiters > 0) bits.push(`${all.received} ${fmtLiters(day.stockInLiters)} ${ui.litersUnit}`);
         if (day.outLiters > 0) bits.push(`${all.dispensed} ${fmtLiters(day.outLiters)} ${ui.litersUnit}`);
         bits.push(`${day.rows.length} ${ui.itemsUnit}`);
-        parts.push(`<tr class="day-header"><td colspan="4">${escHtml(bits.join(' · '))}</td></tr>`);
+        parts.push(`<tr class="day-header"><td colspan="5">${escHtml(bits.join(' · '))}</td></tr>`);
         for (const item of day.rows) {
             const source = item.typeId === 'stock_in'
                 ? tankLabel(item.row.tank, locale)
@@ -1136,6 +1157,7 @@ function buildCombinedPrintDetailHtml(
             const desc = item.row.description + (item.row.estimated ? ui.estimated : '');
             parts.push(`<tr>
 <td>${escHtml(labels[item.typeId])}</td>
+<td>${escHtml(item.row.time || '—')}</td>
 <td>${escHtml(source)}</td>
 <td class="num">${escHtml(liters)}</td>
 <td>${escHtml(desc || '—')}</td>

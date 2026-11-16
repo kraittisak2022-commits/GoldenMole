@@ -186,6 +186,29 @@ describe('classifyFuelTx', () => {
         });
         expect(fuelDetailDays(report)[0].rows[0].typeLabel).toBe('ปรับค่าใหม่');
     });
+
+    it('keeps the fill time from work details and drops the recorder name', () => {
+        const report = buildFuelUsageReport([
+            fuelTx({
+                id: 'in',
+                date: '2026-08-10',
+                subCategory: FUEL_STOCK_IN_SUB_CATEGORY,
+                fuelMovement: 'stock_in',
+                quantity: 12000,
+                workDetails: '07:05 (ผู้กรอก: สมชาย)',
+            }),
+            fuelTx({
+                id: 'macro',
+                date: '2026-08-10',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                vehicleId: 'รถแม็คโคร SK200',
+                quantity: 40,
+                createdAt: '2026-08-10T02:40:00.000Z',
+            }),
+        ], { start: '2026-08-01', end: '2026-08-31' });
+
+        expect(report.rows.map(r => r.time)).toEqual(['07:05', '09:40']);
+    });
 });
 
 describe('month / year bounds', () => {
@@ -859,6 +882,7 @@ describe('fuelUsageAllToPrintHtml', () => {
             fuelMovement: 'stock_in',
             quantity: 500,
             description: 'เพิ่มน้ำมัน',
+            workDetails: '06:30',
         }),
         fuelTx({
             id: 'tr-out',
@@ -947,6 +971,8 @@ describe('fuelUsageAllToPrintHtml', () => {
         expect(html).not.toContain('รายละเอียดเติมเครื่องจักร');
         const detailStart = html.indexOf('รายละเอียดรายการ');
         const detail = html.slice(detailStart);
+        expect(detail).toContain('เวลา');
+        expect(detail).toContain('06:30');
         expect(detail).toContain('รับน้ำมันเข้า');
         expect(detail).toContain('เพิ่มน้ำมัน');
         expect(detail).toContain('เติมเครื่องจักร');

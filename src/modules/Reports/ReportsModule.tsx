@@ -778,6 +778,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                     <thead>
                                         <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-100 dark:border-white/10">
                                             <th scope="col" className="px-4 py-2.5 font-semibold">รายการ</th>
+                                            <th scope="col" className="px-4 py-2.5 font-semibold">เวลา</th>
                                             <th scope="col" className="px-4 py-2.5 font-semibold">รถ / ถัง</th>
                                             <th scope="col" className="px-4 py-2.5 font-semibold text-right">ลิตร</th>
                                             <th scope="col" className="px-4 py-2.5 font-semibold">รายละเอียด</th>
@@ -787,7 +788,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                         {fuelDetailDays(fuelReport).map((day) => (
                                             <Fragment key={day.date}>
                                                 <tr className="bg-slate-100/80 dark:bg-white/[0.06]">
-                                                    <th scope="rowgroup" role="rowheader" colSpan={4} className="px-4 py-2 text-left text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                    <th scope="rowgroup" role="rowheader" colSpan={5} className="px-4 py-2 text-left text-xs font-bold text-slate-700 dark:text-slate-200">
                                                         {formatDateBE(day.date)}
                                                         <span className="ml-2 font-semibold text-slate-500 dark:text-slate-400">
                                                             {day.stockInLiters > 0 && <>รับเข้า {formatDisplayNumber(day.stockInLiters)} ลิตร · </>}
@@ -799,6 +800,7 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                                 {day.rows.map(({ row, typeId, typeLabel }, i) => (
                                                     <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
                                                         <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{typeLabel}</td>
+                                                        <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-slate-700 dark:text-slate-200">{row.time || '—'}</td>
                                                         <td className="px-4 py-2.5">
                                                             {typeId === 'stock_in'
                                                                 ? tankLabel(row.tank)
