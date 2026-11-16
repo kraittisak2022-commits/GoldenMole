@@ -697,10 +697,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       color: Color(0xFF6C6FE6),
     ),
     _LaborWorkCategory(
-      id: 'att_leave',
-      label: 'ลางาน',
-      shortTitle: 'ลางาน',
+      id: 'att_leave_morning',
+      label: 'ลางาน • ช่วงเช้า',
+      shortTitle: 'ลา · เช้า',
       color: Color(0xFFEF5D6E),
+    ),
+    _LaborWorkCategory(
+      id: 'att_leave_afternoon',
+      label: 'ลางาน • ช่วงบ่าย',
+      shortTitle: 'ลา · บ่าย',
+      color: Color(0xFFE53935),
     ),
   ];
   static const List<_LaborWorkCategory> _attendanceDriverBuckets = [
@@ -717,10 +723,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       color: Color(0xFF6C6FE6),
     ),
     _LaborWorkCategory(
-      id: 'att_drv_leave',
-      label: 'ลางาน',
-      shortTitle: 'ลางาน',
+      id: 'att_drv_leave_morning',
+      label: 'ลางาน • ช่วงเช้า',
+      shortTitle: 'ลา · เช้า',
       color: Color(0xFFEF5D6E),
+    ),
+    _LaborWorkCategory(
+      id: 'att_drv_leave_afternoon',
+      label: 'ลางาน • ช่วงบ่าย',
+      shortTitle: 'ลา · บ่าย',
+      color: Color(0xFFE53935),
     ),
   ];
   static const List<_LaborWorkCategory> _attendanceAllBuckets = [
@@ -731,12 +743,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     'att_work',
     'att_half_morning',
     'att_half_afternoon',
-    'att_leave',
+    'att_leave_morning',
+    'att_leave_afternoon',
+  };
+  static const Set<String> _attSandLeaveIds = {
+    'att_leave_morning',
+    'att_leave_afternoon',
   };
   static const Set<String> _attDriverIds = {
     'att_drv_macro',
     'att_drv_drum',
-    'att_drv_leave',
+    'att_drv_leave_morning',
+    'att_drv_leave_afternoon',
+  };
+  static const Set<String> _attDriverLeaveIds = {
+    'att_drv_leave_morning',
+    'att_drv_leave_afternoon',
   };
   final Map<String, Set<String>> _attendanceAssignments = {
     for (final c in _attendanceAllBuckets) c.id: <String>{},
@@ -755,8 +777,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   String? _attendanceLaborTxId;
   String? _attendanceLeaveTxId;
+  String? _attendanceLeaveMorningTxId;
+  String? _attendanceLeaveAfternoonTxId;
   String? _attendanceDriverLaborTxId;
   String? _attendanceDriverLeaveTxId;
+  String? _attendanceDriverLeaveMorningTxId;
+  String? _attendanceDriverLeaveAfternoonTxId;
   String? _attendanceLegacyLaborTxId;
   String? _attendanceLegacyLeaveTxId;
 
@@ -1685,7 +1711,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (!merge && bucket.isNotEmpty) return false;
 
     var changed = false;
-    final onLeave = _attendanceAssignments['att_drv_leave'] ?? const <String>[];
+    final onLeave = _attendanceLeaveUnion(_attDriverLeaveIds);
     for (final id in driverIds) {
       if (bucket.contains(id) || onLeave.contains(id)) continue;
       bucket.add(id);
@@ -1699,7 +1725,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final driverIds = _macroDriverIdsFromVehicleUsageToday();
     if (driverIds.isEmpty) return 0;
     final bucket = _attendanceAssignments['att_drv_macro'] ?? const <String>[];
-    final onLeave = _attendanceAssignments['att_drv_leave'] ?? const <String>[];
+    final onLeave = _attendanceLeaveUnion(_attDriverLeaveIds);
     return driverIds
         .where((id) => !bucket.contains(id) && !onLeave.contains(id))
         .length;
@@ -2116,6 +2142,56 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     await prefs.setDouble(_kAttWorkCardHeightKey, _attWorkCardHeight);
   }
 
+  Set<String> _attendanceLeaveUnion(Set<String> bucketIds) {
+    return {
+      for (final id in bucketIds)
+        ...(_attendanceAssignments[id] ?? const <String>{}),
+    };
+  }
+
+  void _rememberAttendanceLeaveTx({
+    required bool driver,
+    required String? halfBucket,
+    required String id,
+  }) {
+    if (driver) {
+      if (halfBucket == 'morning') {
+        _attendanceDriverLeaveMorningTxId = id;
+      } else if (halfBucket == 'afternoon') {
+        _attendanceDriverLeaveAfternoonTxId = id;
+      } else {
+        _attendanceDriverLeaveTxId = id;
+      }
+      return;
+    }
+    if (halfBucket == 'morning') {
+      _attendanceLeaveMorningTxId = id;
+    } else if (halfBucket == 'afternoon') {
+      _attendanceLeaveAfternoonTxId = id;
+    } else {
+      _attendanceLeaveTxId = id;
+    }
+  }
+
+  void _assignAttendanceLeave(
+    void Function(String bucketId, String empId) assign, {
+    required String empId,
+    required bool driver,
+    required String? halfBucket,
+  }) {
+    final morning = driver ? 'att_drv_leave_morning' : 'att_leave_morning';
+    final afternoon = driver ? 'att_drv_leave_afternoon' : 'att_leave_afternoon';
+    if (halfBucket == 'morning') {
+      assign(morning, empId);
+    } else if (halfBucket == 'afternoon') {
+      assign(afternoon, empId);
+    } else {
+      // ลาเต็มวันเดิม — แสดงทั้งเช้าและบ่าย
+      assign(morning, empId);
+      assign(afternoon, empId);
+    }
+  }
+
   /// เติมกระดานเช็คชื่อจากรายการที่บันทึกไว้ของวันนั้น (Labor Attendance / Leave)
   void _hydrateAttendanceFromTransactions(List<AppTransaction> txs) {
     // ล้างค่าก่อนเติมใหม่ (กันค้างจากรอบก่อน)
@@ -2129,8 +2205,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _attendanceDriverPicked.clear();
     _attendanceLaborTxId = null;
     _attendanceLeaveTxId = null;
+    _attendanceLeaveMorningTxId = null;
+    _attendanceLeaveAfternoonTxId = null;
     _attendanceDriverLaborTxId = null;
     _attendanceDriverLeaveTxId = null;
+    _attendanceDriverLeaveMorningTxId = null;
+    _attendanceDriverLeaveAfternoonTxId = null;
     _attendanceLegacyLaborTxId = null;
     _attendanceLegacyLeaveTxId = null;
     _attendanceJustDroppedIds.clear();
@@ -2187,32 +2267,38 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             reason == 'เช็คชื่อ: ลางาน' ||
             (!isSandLeave && !isDriverLeave && reason.contains('เช็คชื่อ'));
 
+        final half = _leaveHalfPartFromTx(t);
+        final halfBucket = half == 'any' ? 'morning' : half;
         if (isLegacyLeave && !isSandLeave && !isDriverLeave) {
           _attendanceLegacyLeaveTxId = t.id;
         } else if (isDriverLeave && !isSandLeave) {
-          _attendanceDriverLeaveTxId = t.id;
+          _rememberAttendanceLeaveTx(
+            driver: true,
+            halfBucket: halfBucket,
+            id: t.id,
+          );
         } else if (isSandLeave && !isDriverLeave) {
-          _attendanceLeaveTxId = t.id;
+          _rememberAttendanceLeaveTx(
+            driver: false,
+            halfBucket: halfBucket,
+            id: t.id,
+          );
         } else {
           // ไม่มี leaveReason ชัด — กระจายตามตำแหน่งพนักงาน
           _attendanceLegacyLeaveTxId ??= t.id;
         }
 
         for (final id in t.employeeIds) {
-          if (isSandLeave && !isDriverLeave) {
-            assign('att_leave', id);
-            continue;
-          }
-          if (isDriverLeave && !isSandLeave) {
-            assign('att_drv_leave', id);
-            continue;
-          }
-          final e = _employeesById[id];
-          if (e != null && _attendanceIsDriver(e)) {
-            assign('att_drv_leave', id);
-          } else {
-            assign('att_leave', id);
-          }
+          final driver = (isDriverLeave && !isSandLeave) ||
+              (!(isSandLeave && !isDriverLeave) &&
+                  _employeesById[id] != null &&
+                  _attendanceIsDriver(_employeesById[id]!));
+          _assignAttendanceLeave(
+            assign,
+            empId: id,
+            driver: isSandLeave && !isDriverLeave ? false : driver,
+            halfBucket: halfBucket,
+          );
         }
         continue;
       }
@@ -5597,14 +5683,137 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     };
   }
 
+  /// บันทึกลาเช็คชื่อแยกช่วง — คนที่อยู่ทั้งเช้าและบ่าย = ลาเต็มวัน
+  Future<void> _saveAttendanceLeaveSlices({
+    required String date,
+    required int baseTs,
+    required Set<String> morning,
+    required Set<String> afternoon,
+    required String reason,
+    required String groupLabel,
+    required String idPrefix,
+    required bool driver,
+  }) async {
+    final full = morning.intersection(afternoon);
+    final morningOnly = morning.difference(afternoon);
+    final afternoonOnly = afternoon.difference(morning);
+
+    var fullExisting =
+        driver ? _attendanceDriverLeaveTxId : _attendanceLeaveTxId;
+    if (full.isNotEmpty &&
+        (fullExisting == null || fullExisting.isEmpty) &&
+        _attendanceLegacyLeaveTxId != null) {
+      fullExisting = _attendanceLegacyLeaveTxId;
+      _attendanceLegacyLeaveTxId = null;
+    }
+    final morningExisting = driver
+        ? _attendanceDriverLeaveMorningTxId
+        : _attendanceLeaveMorningTxId;
+    final afternoonExisting = driver
+        ? _attendanceDriverLeaveAfternoonTxId
+        : _attendanceLeaveAfternoonTxId;
+    final removed = <String>{};
+
+    Future<String?> upsert({
+      required String? existing,
+      required String suffix,
+      required Set<String> ids,
+      required String periodLabel,
+      required double days,
+      required String? halfMeta,
+    }) async {
+      if (ids.isEmpty) {
+        final rowId = existing?.trim() ?? '';
+        if (rowId.isNotEmpty) {
+          await _attendanceDeleteRowIfAny(rowId);
+          removed.add(rowId);
+        }
+        return null;
+      }
+      final id = (existing != null && existing.isNotEmpty)
+          ? existing
+          : '${baseTs}_att_${idPrefix}_leave$suffix';
+      if (existing != null && existing.isNotEmpty) {
+        _persistOmitCreatedSessionIds.add(id);
+      }
+      await _persist(
+        AppTransaction(
+          id: id,
+          date: date,
+          type: 'Leave',
+          category: 'Leave',
+          subCategory: 'Personal',
+          laborStatus: 'Leave',
+          employeeIds: ids.toList(),
+          amount: 0,
+          note: _activeSignatureNote,
+          description: _appendRecorder(
+            'เช็คชื่อ$groupLabel: ลางาน$periodLabel ${ids.length} คน',
+          ),
+          leaveReason: reason,
+          leaveDays: days,
+          workDetails: halfMeta,
+        ),
+      );
+      return id;
+    }
+
+    final nextFull = await upsert(
+      existing: fullExisting,
+      suffix: '',
+      ids: full,
+      periodLabel: '',
+      days: 1,
+      halfMeta: null,
+    );
+    final nextMorning = await upsert(
+      existing: morningExisting,
+      suffix: '_morning',
+      ids: morningOnly,
+      periodLabel: 'ช่วงเช้า',
+      days: 0.5,
+      halfMeta: _leaveHalfMorningMeta,
+    );
+    final nextAfternoon = await upsert(
+      existing: afternoonExisting,
+      suffix: '_afternoon',
+      ids: afternoonOnly,
+      periodLabel: 'ช่วงบ่าย',
+      days: 0.5,
+      halfMeta: _leaveHalfAfternoonMeta,
+    );
+    if (driver) {
+      _attendanceDriverLeaveTxId = nextFull;
+      _attendanceDriverLeaveMorningTxId = nextMorning;
+      _attendanceDriverLeaveAfternoonTxId = nextAfternoon;
+    } else {
+      _attendanceLeaveTxId = nextFull;
+      _attendanceLeaveMorningTxId = nextMorning;
+      _attendanceLeaveAfternoonTxId = nextAfternoon;
+    }
+
+    final keep = {?nextFull, ?nextMorning, ?nextAfternoon};
+    for (final t in List<AppTransaction>.from(_moduleDayAllTransactions)) {
+      if ((t.leaveReason ?? '').trim() != reason) continue;
+      if (keep.contains(t.id) || removed.contains(t.id)) continue;
+      final isLeave = t.category == 'Leave' || t.type.toLowerCase() == 'leave';
+      if (!isLeave) continue;
+      await _attendanceDeleteRowIfAny(t.id);
+    }
+  }
+
   Future<void> _saveAttendanceSandYardEntry() async {
     final work = _attendanceAssignments['att_work']!.toSet();
-    final genLeave = _attendanceAssignments['att_leave']!.toSet();
+    final leaveMorning =
+        _attendanceAssignments['att_leave_morning']!.toSet();
+    final leaveAfternoon =
+        _attendanceAssignments['att_leave_afternoon']!.toSet();
+    final genLeave = {...leaveMorning, ...leaveAfternoon};
 
     // snapshot คนขับไว้เผื่อต้องแยกแถวรวมเก่า
     final drvMacro = _attendanceAssignments['att_drv_macro']!.toSet();
     final drvDrum = _attendanceAssignments['att_drv_drum']!.toSet();
-    final drvLeave = _attendanceAssignments['att_drv_leave']!.toSet();
+    final drvLeave = _attendanceLeaveUnion(_attDriverLeaveIds);
 
     await _runSaveWithPopups(
       successMessage: 'บันทึกเช็คชื่อพนักงานท่าทรายสำเร็จ',
@@ -5682,40 +5891,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _attendanceLaborTxId = null;
         }
 
-        if (genLeave.isNotEmpty) {
-          final id = _attendanceLeaveTxId ??
-              _attendanceLegacyLeaveTxId ??
-              '${baseTs}_att_sand_leave';
-          if (_attendanceLeaveTxId != null ||
-              _attendanceLegacyLeaveTxId == id) {
-            _persistOmitCreatedSessionIds.add(id);
-          }
-          _attendanceLeaveTxId = id;
-          if (_attendanceLegacyLeaveTxId == id) {
-            _attendanceLegacyLeaveTxId = null;
-          }
-          await _persist(
-            AppTransaction(
-              id: id,
-              date: date,
-              type: 'Leave',
-              category: 'Leave',
-              subCategory: 'Personal',
-              laborStatus: 'Leave',
-              employeeIds: genLeave.toList(),
-              amount: 0,
-              note: _activeSignatureNote,
-              description: _appendRecorder(
-                'เช็คชื่อพนักงานท่าทราย: ลางาน ${genLeave.length} คน',
-              ),
-              leaveReason: _attLeaveReasonSand,
-              leaveDays: 1,
-            ),
-          );
-        } else {
-          await _attendanceDeleteRowIfAny(_attendanceLeaveTxId);
-          _attendanceLeaveTxId = null;
-        }
+        await _saveAttendanceLeaveSlices(
+          date: date,
+          baseTs: baseTs,
+          morning: leaveMorning,
+          afternoon: leaveAfternoon,
+          reason: _attLeaveReasonSand,
+          groupLabel: 'พนักงานท่าทราย',
+          idPrefix: 'sand',
+          driver: false,
+        );
 
         await _refreshAttendanceDaysWorked();
       },
@@ -5725,10 +5910,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveAttendanceDriverEntry() async {
     final drvMacro = _attendanceAssignments['att_drv_macro']!.toSet();
     final drvDrum = _attendanceAssignments['att_drv_drum']!.toSet();
-    final drvLeave = _attendanceAssignments['att_drv_leave']!.toSet();
+    final drvLeaveMorning =
+        _attendanceAssignments['att_drv_leave_morning']!.toSet();
+    final drvLeaveAfternoon =
+        _attendanceAssignments['att_drv_leave_afternoon']!.toSet();
+    final drvLeave = {...drvLeaveMorning, ...drvLeaveAfternoon};
 
     final work = _attendanceAssignments['att_work']!.toSet();
-    final genLeave = _attendanceAssignments['att_leave']!.toSet();
+    final genLeave = _attendanceLeaveUnion(_attSandLeaveIds);
 
     await _runSaveWithPopups(
       successMessage: 'บันทึกเช็คชื่อคนขับรถสำเร็จ',
@@ -5814,40 +6003,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _attendanceDriverLaborTxId = null;
         }
 
-        if (drvLeave.isNotEmpty) {
-          final id = _attendanceDriverLeaveTxId ??
-              _attendanceLegacyLeaveTxId ??
-              '${baseTs}_att_drv_leave';
-          if (_attendanceDriverLeaveTxId != null ||
-              _attendanceLegacyLeaveTxId == id) {
-            _persistOmitCreatedSessionIds.add(id);
-          }
-          _attendanceDriverLeaveTxId = id;
-          if (_attendanceLegacyLeaveTxId == id) {
-            _attendanceLegacyLeaveTxId = null;
-          }
-          await _persist(
-            AppTransaction(
-              id: id,
-              date: date,
-              type: 'Leave',
-              category: 'Leave',
-              subCategory: 'Personal',
-              laborStatus: 'Leave',
-              employeeIds: drvLeave.toList(),
-              amount: 0,
-              note: _activeSignatureNote,
-              description: _appendRecorder(
-                'เช็คชื่อคนขับรถ: ลางาน ${drvLeave.length} คน',
-              ),
-              leaveReason: _attLeaveReasonDriver,
-              leaveDays: 1,
-            ),
-          );
-        } else {
-          await _attendanceDeleteRowIfAny(_attendanceDriverLeaveTxId);
-          _attendanceDriverLeaveTxId = null;
-        }
+        await _saveAttendanceLeaveSlices(
+          date: date,
+          baseTs: baseTs,
+          morning: drvLeaveMorning,
+          afternoon: drvLeaveAfternoon,
+          reason: _attLeaveReasonDriver,
+          groupLabel: 'คนขับรถ',
+          idPrefix: 'drv',
+          driver: true,
+        );
         await _refreshAttendanceDaysWorked();
       },
     );
@@ -18115,6 +18280,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Set<String> _attendanceExclusionGroup(String bucketId) {
+    // เช้ากับบ่ายอยู่ด้วยกันได้ — ลากเข้าช่องลาไม่ดึงออกจากอีกช่วง
+    if (_attSandLeaveIds.contains(bucketId)) {
+      return {
+        'att_work',
+        'att_half_morning',
+        'att_half_afternoon',
+        bucketId,
+      };
+    }
+    if (_attDriverLeaveIds.contains(bucketId)) {
+      return {'att_drv_macro', 'att_drv_drum', bucketId};
+    }
     if (_attGeneralPresenceIds.contains(bucketId)) return _attGeneralPresenceIds;
     return _attDriverIds;
   }
@@ -18429,10 +18606,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     bool equalHeightZones = false,
   }) {
     final p = DailyPalette.of(context);
-    final count = zones.fold<int>(
-      0,
-      (sum, z) => sum + (_attendanceAssignments[z.bucketId]?.length ?? 0),
-    );
+    final count = {
+      for (final z in zones)
+        ...(_attendanceAssignments[z.bucketId] ?? const <String>{}),
+    }.length;
     final zoneWidgets = <Widget>[];
     for (var i = 0; i < zones.length; i++) {
       if (i > 0) zoneWidgets.add(const SizedBox(height: 8));
@@ -18770,24 +18947,31 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     // หน้าเลือกเมนูย่อย — กระดานเต็มจออยู่ที่ _buildAttendanceFullscreenShell
     final p = DailyPalette.of(context);
     final workN = _attendanceAssignments['att_work']?.length ?? 0;
-    final leaveN = _attendanceAssignments['att_leave']?.length ?? 0;
+    final leaveMorningN =
+        _attendanceAssignments['att_leave_morning']?.length ?? 0;
+    final leaveAfternoonN =
+        _attendanceAssignments['att_leave_afternoon']?.length ?? 0;
     final macroN = _attendanceAssignments['att_drv_macro']?.length ?? 0;
     final drumN = _attendanceAssignments['att_drv_drum']?.length ?? 0;
-    final drvLeaveN = _attendanceAssignments['att_drv_leave']?.length ?? 0;
+    final drvLeaveMorningN =
+        _attendanceAssignments['att_drv_leave_morning']?.length ?? 0;
+    final drvLeaveAfternoonN =
+        _attendanceAssignments['att_drv_leave_afternoon']?.length ?? 0;
     final size = MediaQuery.sizeOf(context);
     final phonePortrait =
         size.shortestSide < 600 && size.height >= size.width;
 
-    final sandSummary = workN + leaveN == 0
+    final sandSummary = workN + leaveMorningN + leaveAfternoonN == 0
         ? (phonePortrait
             ? 'ยังไม่มีรายชื่อ — แตะเพื่อเริ่ม'
             : 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ')
-        : 'ทำงาน $workN · ลา $leaveN';
-    final driverSummary = macroN + drumN + drvLeaveN == 0
+        : 'ทำงาน $workN · ลาเช้า $leaveMorningN · ลาบ่าย $leaveAfternoonN';
+    final driverSummary =
+        macroN + drumN + drvLeaveMorningN + drvLeaveAfternoonN == 0
         ? (phonePortrait
             ? 'ยังไม่มีรายชื่อ — แตะเพื่อเริ่ม'
             : 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ')
-        : 'แม็คโคร $macroN · ดรัม $drumN · ลา $drvLeaveN';
+        : 'แม็คโคร $macroN · ดรัม $drumN · ลาเช้า $drvLeaveMorningN · ลาบ่าย $drvLeaveAfternoonN';
 
     final picker = AttendanceSubModePicker(
       sandYardSummary: sandSummary,
@@ -18846,13 +19030,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   String _attendanceBoardSummary(AttendanceSection section) {
     if (section == AttendanceSection.sandYard) {
       final work = _attendanceAssignments['att_work']?.length ?? 0;
-      final leave = _attendanceAssignments['att_leave']?.length ?? 0;
-      return 'ทำงาน $work · ลา $leave';
+      final morning = _attendanceAssignments['att_leave_morning']?.length ?? 0;
+      final afternoon =
+          _attendanceAssignments['att_leave_afternoon']?.length ?? 0;
+      return 'ทำงาน $work · ลาเช้า $morning · ลาบ่าย $afternoon';
     }
     final macro = _attendanceAssignments['att_drv_macro']?.length ?? 0;
     final drum = _attendanceAssignments['att_drv_drum']?.length ?? 0;
-    final leave = _attendanceAssignments['att_drv_leave']?.length ?? 0;
-    return 'แม็คโคร $macro · ดรัม $drum · ลา $leave';
+    final morning =
+        _attendanceAssignments['att_drv_leave_morning']?.length ?? 0;
+    final afternoon =
+        _attendanceAssignments['att_drv_leave_afternoon']?.length ?? 0;
+    return 'แม็คโคร $macro · ดรัม $drum · ลาเช้า $morning · ลาบ่าย $afternoon';
   }
 
   Widget _buildAttendanceFullscreenShell() {
@@ -19045,7 +19234,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final leaveCard = _attendanceGroupedCard(
       title: '#ลางาน',
       color: leaveColor,
-      zones: const [_AttZoneDef(bucketId: 'att_leave', subLabel: 'ลางาน')],
+      zones: const [
+        _AttZoneDef(bucketId: 'att_leave_morning', subLabel: 'ช่วงเช้า'),
+        _AttZoneDef(bucketId: 'att_leave_afternoon', subLabel: 'ช่วงบ่าย'),
+      ],
       pickedPool: _attendanceGeneralPicked,
       equalHeightZones: true,
     );
@@ -19066,7 +19258,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final workH = phonePortrait
         ? _attWorkCardHeight.clamp(200.0, 300.0)
         : _attWorkCardHeight;
-    final leaveH = phonePortrait ? 160.0 : 220.0;
+    final leaveH = phonePortrait ? 240.0 : 320.0;
 
     return _attendanceFullscreenBoardLayout(
       pool: pool,
@@ -19210,7 +19402,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       title: '#ลางาน',
       color: leaveColor,
       zones: const [
-        _AttZoneDef(bucketId: 'att_drv_leave', subLabel: 'ลางาน'),
+        _AttZoneDef(bucketId: 'att_drv_leave_morning', subLabel: 'ช่วงเช้า'),
+        _AttZoneDef(
+          bucketId: 'att_drv_leave_afternoon',
+          subLabel: 'ช่วงบ่าย',
+        ),
       ],
       pickedPool: _attendanceDriverPicked,
       equalHeightZones: true,
@@ -19228,7 +19424,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
 
     final zoneH = phonePortrait ? 168.0 : 240.0;
-    final leaveH = phonePortrait ? 148.0 : 220.0;
+    final leaveH = phonePortrait ? 220.0 : 300.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
