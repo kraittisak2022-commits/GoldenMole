@@ -453,6 +453,43 @@ AppTransaction? latestFuelCarFillForVehicle({
   return _latestFuelRow(matches);
 }
 
+/// ชื่อรถที่ผู้ใช้ระบุในเมนูเติมรถยนต์ «อื่นๆ» — ไม่ใช่คันหลักที่เลือกจากรายการ
+String? fuelCarFillSpecifiedName(AppTransaction t) {
+  if (!isFuelCarFillRow(t)) return null;
+  final label = transactionVehicleLabel(t);
+  if (label.isNotEmpty) {
+    if (isKnownFuelCarFillVehicleId(label)) return null;
+    return label;
+  }
+  final desc = _stripFuelRecorderSuffix(t.description);
+  final match = RegExp(
+    r'อื่นๆ:\s*(.+?)(?:\s+\d+(?:\.\d+)?\s*ลิตร|$)',
+  ).firstMatch(desc);
+  final name = match?.group(1)?.trim() ?? '';
+  return name.isEmpty ? null : name;
+}
+
+/// รายการเติมรถยนต์ «อื่นๆ (ระบุ)» ของวันนั้น — คันละแถวล่าสุด
+List<AppTransaction> fuelCarFillOtherRowsForDay({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+}) {
+  final day = dayYmd.trim();
+  final byName = <String, AppTransaction>{};
+  for (final t in transactions) {
+    if (t.date.trim() != day) continue;
+    final name = fuelCarFillSpecifiedName(t);
+    if (name == null) continue;
+    final prev = byName[name];
+    if (prev == null || _fuelRowRecencyMs(t) >= _fuelRowRecencyMs(prev)) {
+      byName[name] = t;
+    }
+  }
+  final rows = byName.values.toList()
+    ..sort((a, b) => _fuelRowRecencyMs(b).compareTo(_fuelRowRecencyMs(a)));
+  return rows;
+}
+
 /// แถวเติมน้ำมันรถตาเปลื่ยนล่าสุดของวัน (รวมชื่อเก่า/ใหม่)
 AppTransaction? latestFuelTaplienFillForDay({
   required String dayYmd,

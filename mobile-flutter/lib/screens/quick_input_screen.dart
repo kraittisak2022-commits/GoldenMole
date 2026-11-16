@@ -4528,11 +4528,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final mapped = fuelCarFillVehicleFromId(vid);
       _fuelCarFillVehicle = mapped;
       if (mapped == FuelCarFillVehicle.other) {
-        _fuelCarFillOtherController.text = vid;
+        _fuelCarFillOtherController.text =
+            fuelCarFillSpecifiedName(latest) ?? vid;
       } else {
         _fuelCarFillOtherController.clear();
       }
       _applyFuelCarFillFromTx(latest);
+      return;
+    }
+    if (vehicle == FuelCarFillVehicle.other &&
+        _fuelCarFillOtherController.text.trim().isEmpty) {
+      final rows = _dayFuelCarFillOtherRows();
+      if (rows.length == 1) {
+        _applyFuelCarFillFromTx(rows.first);
+        return;
+      }
+      _fuelCarFillTxId = null;
+      _fuelCarFillLitersController.clear();
+      _fuelCarFillTimeController.clear();
       return;
     }
     final hit = _dayFuelCarFillLatest();
@@ -4545,19 +4558,39 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _applyFuelCarFillFromTx(hit);
   }
 
-  String _fuelCarFillSummaryForVehicle(FuelCarFillVehicle vehicle) {
-    final vid = vehicle == FuelCarFillVehicle.other
-        ? ''
-        : fuelCarFillVehicleIdOf(vehicle);
-    final hit = _dayFuelCarFillLatest(vehicleId: vid);
-    if (hit == null) return '';
+  List<AppTransaction> _dayFuelCarFillOtherRows() {
+    return fuelCarFillOtherRowsForDay(
+      dayYmd: _quickYmd(_selectedDate),
+      transactions: _moduleDayAllTransactions,
+    );
+  }
+
+  String _fuelCarFillSavedLine(AppTransaction hit, {bool includeName = false}) {
     final liters = fuelTxLiters(hit);
     final time = _stripRecorderSuffix(hit.workDetails ?? '').trim();
+    final name = includeName ? fuelCarFillSpecifiedName(hit) : null;
     final parts = <String>[
+      if (name != null && name.isNotEmpty) name,
       if (liters > 0) '${formatFuelLiters(liters)} ลิตร',
       if (time.isNotEmpty) time,
     ];
     return parts.join(' · ');
+  }
+
+  String _fuelCarFillSummaryForVehicle(FuelCarFillVehicle vehicle) {
+    if (vehicle == FuelCarFillVehicle.other) {
+      final rows = _dayFuelCarFillOtherRows();
+      if (rows.isEmpty) return '';
+      if (rows.length == 1) {
+        return _fuelCarFillSavedLine(rows.first, includeName: true);
+      }
+      return '${rows.length} รายการ — ดูชื่อรถด้านล่าง';
+    }
+    final hit = _dayFuelCarFillLatest(
+      vehicleId: fuelCarFillVehicleIdOf(vehicle),
+    );
+    if (hit == null) return '';
+    return _fuelCarFillSavedLine(hit);
   }
 
   void _clearFuelCarFillFormFields({bool clearVehicle = false}) {
@@ -4570,14 +4603,67 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
   }
 
+  Future<void> _deleteSavedFuelCarFill(AppTransaction prior) async {
+    try {
+      await _deleteTransactionOfflineAware(prior.id);
+      if (!mounted) return;
+      await _applyLocalFuelStockAfterSave(const [], reverseFirst: [prior]);
+      if (!mounted) return;
+      await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
+      if (!mounted) return;
+      setState(() {
+        if (_fuelCarFillTxId == prior.id) {
+          _clearFuelCarFillFormFields(clearVehicle: true);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'ลบรายการเติมน้ำมันรถยนต์แล้ว',
+            style: GoogleFonts.kanit(),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ลบไม่สำเร็จ: $e', style: GoogleFonts.kanit()),
+          ),
+        );
+      }
+    }
+  }
+
   /// ปัดซ้ายแถวเลือกรถ — ลบรายการที่บันทึกแล้ว / เคลียร์การเลือกผิดเป็น 0
   Future<void> _handleFuelCarFillVehicleRowDelete(
     FuelCarFillVehicle vehicle,
   ) async {
-    final lookupId = vehicle == FuelCarFillVehicle.other
-        ? ''
-        : fuelCarFillVehicleIdOf(vehicle);
-    final prior = _dayFuelCarFillLatest(vehicleId: lookupId);
+    AppTransaction? prior;
+    if (vehicle == FuelCarFillVehicle.other) {
+      final typed = _fuelCarFillOtherController.text.trim();
+      final rows = _dayFuelCarFillOtherRows();
+      if (typed.isNotEmpty) {
+        prior = _dayFuelCarFillLatest(vehicleId: typed);
+      } else if (rows.length == 1) {
+        prior = rows.first;
+      } else if (rows.isNotEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'มีหลายคัน — ปัดแถวชื่อรถด้านล่างเพื่อลบทีละคัน',
+              style: GoogleFonts.kanit(),
+            ),
+          ),
+        );
+        return;
+      }
+    } else {
+      prior = _dayFuelCarFillLatest(
+        vehicleId: fuelCarFillVehicleIdOf(vehicle),
+      );
+    }
     final isSelected = _fuelCarFillVehicle == vehicle;
     final hasFormData = isSelected &&
         ((_fuelCarFillTxId != null && _fuelCarFillTxId!.trim().isNotEmpty) ||
@@ -4588,35 +4674,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                 _fuelCarFillOtherController.text.trim().isNotEmpty));
 
     if (prior != null) {
-      try {
-        await _deleteTransactionOfflineAware(prior.id);
-        if (!mounted) return;
-        await _applyLocalFuelStockAfterSave(const [], reverseFirst: [prior]);
-        if (!mounted) return;
-        await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
-        if (!mounted) return;
-        setState(() {
-          if (isSelected) {
-            _clearFuelCarFillFormFields(clearVehicle: true);
-          }
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'ลบรายการเติมน้ำมันรถยนต์แล้ว',
-              style: GoogleFonts.kanit(),
-            ),
-          ),
-        );
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('ลบไม่สำเร็จ: $e', style: GoogleFonts.kanit()),
-            ),
-          );
-        }
-      }
+      await _deleteSavedFuelCarFill(prior);
       return;
     }
 
@@ -15441,6 +15499,128 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       );
     }
 
+    Widget otherSavedTile(AppTransaction row) {
+      final name = fuelCarFillSpecifiedName(row) ?? 'อื่นๆ';
+      final line = _fuelCarFillSavedLine(row);
+      final selected = _fuelCarFillTxId == row.id;
+      final tile = Material(
+        color: selected
+            ? (isDark ? const Color(0xFF2E1A3A) : const Color(0xFFF3E5F5))
+            : (isDark ? p.chipSurface : const Color(0xFFF8FAFD)),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            setState(() {
+              _fuelCarFillVehicle = FuelCarFillVehicle.other;
+              _fuelCarFillOtherController.text = name;
+              _applyFuelCarFillFromTx(row);
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: selected
+                    ? const Color(0xFF6A1B9A)
+                    : (isDark ? p.hairline : const Color(0xFFE1E8F0)),
+                width: selected ? 1.6 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.edit_note_rounded,
+                  size: 20,
+                  color: selected
+                      ? const Color(0xFF6A1B9A)
+                      : (isDark ? p.inkMuted : const Color(0xFF90A4AE)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: GoogleFonts.kanit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: selected
+                              ? (isDark
+                                  ? const Color(0xFFCE93D8)
+                                  : const Color(0xFF4A148C))
+                              : p.ink,
+                        ),
+                      ),
+                      if (line.isNotEmpty)
+                        Text(
+                          line,
+                          style: GoogleFonts.kanit(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: p.inkMuted,
+                          ),
+                        ),
+                      Text(
+                        'กดเพื่อแก้ไข · ปัดซ้ายเพื่อลบ',
+                        style: GoogleFonts.kanit(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: p.inkMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (selected)
+                  const Icon(
+                    Icons.check_circle,
+                    size: 20,
+                    color: Color(0xFF6A1B9A),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+      return Dismissible(
+        key: ValueKey('fuel_car_fill_other_${row.id}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (_) async {
+          await _deleteSavedFuelCarFill(row);
+          return false;
+        },
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF7F1D1D) : const Color(0xFFD14343),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text(
+                'ลบ',
+                style: GoogleFonts.kanit(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.delete_outline_rounded, color: Colors.white),
+            ],
+          ),
+        ),
+        child: tile,
+      );
+    }
+
+    final otherSavedRows = _dayFuelCarFillOtherRows();
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
@@ -15550,6 +15730,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           const SizedBox(height: 8),
           vehicleTile(FuelCarFillVehicle.other, Icons.more_horiz_rounded),
+          if (otherSavedRows.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            for (final row in otherSavedRows) ...[
+              Padding(
+                padding: const EdgeInsets.only(left: 16, bottom: 8),
+                child: otherSavedTile(row),
+              ),
+            ],
+          ],
           if (_fuelCarFillVehicle == FuelCarFillVehicle.other) ...[
             const SizedBox(height: 12),
             TextFormField(

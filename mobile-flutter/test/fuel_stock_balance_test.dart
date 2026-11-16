@@ -569,6 +569,76 @@ void main() {
       expect(hit?.id, 'other');
     });
 
+    test('fuelCarFillOtherRowsForDay lists each specified car for edit or delete', () {
+      final pickupOld = _fuel(
+        id: 'pickup-old',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 10,
+        workType: 'car',
+        vehicleId: 'รถปิคอัพ',
+        createdAt: DateTime.utc(2026, 8, 10, 8),
+      );
+      final pickupNew = _fuel(
+        id: 'pickup-new',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 25,
+        workType: 'car',
+        vehicleId: 'รถปิคอัพ',
+        createdAt: DateTime.utc(2026, 8, 10, 16),
+      );
+      final drum = _fuel(
+        id: 'drum',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 15,
+        workType: 'car',
+        vehicleId: 'รถดรัม',
+        createdAt: DateTime.utc(2026, 8, 10, 12),
+      );
+      final mighty = _fuel(
+        id: 'mighty',
+        sub: kFuelWithdrawSubCategory,
+        movement: 'stock_out',
+        liters: 40,
+        workType: 'car',
+        vehicleId: kFuelCarFillMighty,
+        createdAt: DateTime.utc(2026, 8, 10, 18),
+      );
+      final fromDescription = AppTransaction(
+        id: 'desc-only',
+        date: _day,
+        type: 'Expense',
+        category: 'Fuel',
+        subCategory: kFuelWithdrawSubCategory,
+        description: 'เติมน้ำมันรถยนต์: อื่นๆ: รถกระบะ 8 ลิตร (ดีเซล · ถังหลัก)',
+        amount: 0,
+        quantity: 8,
+        unit: 'L',
+        fuelType: 'Diesel',
+        fuelMovement: 'stock_out',
+        fuelTank: kFuelTankMain,
+        workType: 'car',
+        createdAt: DateTime.utc(2026, 8, 10, 7),
+      );
+
+      expect(fuelCarFillSpecifiedName(mighty), isNull);
+      expect(fuelCarFillSpecifiedName(pickupNew), 'รถปิคอัพ');
+      expect(fuelCarFillSpecifiedName(fromDescription), 'รถกระบะ');
+
+      final rows = fuelCarFillOtherRowsForDay(
+        dayYmd: _day,
+        transactions: [pickupOld, pickupNew, drum, mighty, fromDescription],
+      );
+      expect(rows.map((row) => row.id).toList(), [
+        'pickup-new',
+        'drum',
+        'desc-only',
+      ]);
+      expect(fuelTxLiters(rows.first), 25);
+    });
+
     test('latestFuelWithdrawForPurpose picks transfer out for machine', () {
       final outTx = _fuel(
         id: 'xfer_out',
