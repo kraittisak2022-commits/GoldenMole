@@ -203,11 +203,19 @@ describe('classifyFuelTx', () => {
                 subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
                 vehicleId: 'รถแม็คโคร SK200',
                 quantity: 40,
-                createdAt: '2026-08-10T02:40:00.000Z',
+                createdAt: '2026-08-10T08:40:00.000Z',
+            }),
+            fuelTx({
+                id: 'pm',
+                date: '2026-08-10',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                vehicleId: 'รถดรัม',
+                quantity: 20,
+                workDetails: '2:05 PM',
             }),
         ], { start: '2026-08-01', end: '2026-08-31' });
 
-        expect(report.rows.map(r => r.time)).toEqual(['07:05', '09:40']);
+        expect(report.rows.map(r => r.time)).toEqual(['07:05', '15:40', '14:05']);
     });
 });
 

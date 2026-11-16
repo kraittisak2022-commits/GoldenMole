@@ -243,19 +243,53 @@ function withdrawPurpose(t: Transaction): string {
     return String(t.workType ?? '').trim().toLowerCase();
 }
 
-/** เวลาที่เติม HH:mm — ใช้เวลาที่กรอกไว้ ถ้าไม่มีจึงใช้เวลาที่บันทึกรายการ */
-function fuelRecordedTime(t: Transaction): string {
-    const details = String(t.workDetails ?? '').replace(/\s*\(ผู้กรอก:[^)]+\)\s*$/, '').trim();
-    const typed = details.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
-    if (typed) return `${typed[1].padStart(2, '0')}:${typed[2]}`;
-    const created = t.createdAt ? Date.parse(t.createdAt) : NaN;
-    if (Number.isNaN(created)) return '';
-    return new Date(created).toLocaleTimeString('en-GB', {
+/** จัดเวลาเป็น HH:mm แบบ 24 ชั่วโมง ไม่ขึ้นกับภาษาของเครื่อง */
+function formatHourMinute24(hour: number, minute: number): string {
+    const h = ((hour % 24) + 24) % 24;
+    const m = Math.min(59, Math.max(0, minute));
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function parseTyped24h(details: string): string | null {
+    const ampm = details.match(/^(\d{1,2})[:.](\d{2})(?::\d{2})?\s*(am|pm|ก่อนเที่ยง|หลังเที่ยง)$/i);
+    if (ampm) {
+        let hour = Number(ampm[1]);
+        const minute = Number(ampm[2]);
+        if (hour > 12 || minute > 59) return null;
+        const mark = ampm[3].toLowerCase();
+        if (mark === 'pm' || mark === 'หลังเที่ยง') hour = hour % 12 + 12;
+        else hour = hour % 12;
+        return formatHourMinute24(hour, minute);
+    }
+    const typed = details.match(/^(\d{1,2})[:.](\d{2})(?::\d{2})?$/);
+    if (!typed) return null;
+    const hour = Number(typed[1]);
+    const minute = Number(typed[2]);
+    if (hour > 23 || minute > 59) return null;
+    return formatHourMinute24(hour, minute);
+}
+
+function formatBangkok24h(ms: number): string {
+    const parts = new Intl.DateTimeFormat('en-GB', {
         timeZone: 'Asia/Bangkok',
         hour: '2-digit',
         minute: '2-digit',
-        hour12: false,
-    });
+        hourCycle: 'h23',
+    }).formatToParts(new Date(ms));
+    const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+    const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+    if (Number.isNaN(hour) || Number.isNaN(minute)) return '';
+    return formatHourMinute24(hour === 24 ? 0 : hour, minute);
+}
+
+/** เวลาที่เติม HH:mm — ใช้เวลาที่กรอกไว้ ถ้าไม่มีจึงใช้เวลาที่บันทึกรายการ */
+function fuelRecordedTime(t: Transaction): string {
+    const details = String(t.workDetails ?? '').replace(/\s*\(ผู้กรอก:[^)]+\)\s*$/, '').trim();
+    const typed = parseTyped24h(details);
+    if (typed) return typed;
+    const created = t.createdAt ? Date.parse(t.createdAt) : NaN;
+    if (Number.isNaN(created)) return '';
+    return formatBangkok24h(created);
 }
 
 /**
