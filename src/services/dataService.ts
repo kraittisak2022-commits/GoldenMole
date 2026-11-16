@@ -130,7 +130,10 @@ export const fetchTransactions = async (): Promise<Transaction[]> => {
             .order('created_at', { ascending: false })
             .order('id', { ascending: true })
             .range(from, from + TRANSACTIONS_PAGE_SIZE - 1);
-        if (error) { console.error('fetchTransactions error:', error); return []; }
+        if (error) {
+            console.error('fetchTransactions error:', error);
+            throw error;
+        }
         const page = data || [];
         all.push(...page);
         if (page.length < TRANSACTIONS_PAGE_SIZE) break;

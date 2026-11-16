@@ -31,7 +31,11 @@ export function useShareTransactionsRealtime(enabled: boolean) {
         let cancelled = false;
         void (async () => {
             setLoading(true);
-            await refreshTransactions();
+            try {
+                await refreshTransactions();
+            } catch (err) {
+                console.error('share transactions refresh failed:', err);
+            }
             if (!cancelled) setLoading(false);
         })();
         return () => {

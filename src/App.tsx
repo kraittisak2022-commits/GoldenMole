@@ -30,6 +30,7 @@ const AdminModule = lazyWithRetry(() => import('./modules/Admin/AdminModule'));
 
 import { getToday, formatDateBE, normalizeDate, formatDateTimeTH } from './utils';
 import { isExactMockSeedCars } from './utils/appSettingsCarsGuard';
+import { pickLoadedTransactions } from './utils/bootstrapTransactions';
 import { canAccessSite } from './utils/siteAccess';
 import { fuelTxToLiters } from './utils';
 import { hashPasswordForStorage, needsPasswordRehash, validateNewPasswordPolicy, verifyStoredPassword } from './utils/passwordAuth';
@@ -137,7 +138,12 @@ const readBootstrapCache = (): BootstrapCachePayload | null => {
 const saveBootstrapCache = (payload: Omit<BootstrapCachePayload, 'savedAt'>) => {
     if (typeof window === 'undefined') return;
     const next: BootstrapCachePayload = { savedAt: Date.now(), ...payload };
-    window.localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(next));
+    try {
+        window.localStorage.setItem(BOOTSTRAP_CACHE_KEY, JSON.stringify(next));
+    } catch (err) {
+        // เครื่องที่พื้นที่เก็บข้อมูลเต็มจะโยน QuotaExceededError — ห้ามให้ล้มทั้งการโหลด
+        console.error('saveBootstrapCache error', err);
+    }
 };
 
 /** อัปเดตเฉพาะ admins ใน bootstrap cache (คง sessionActive ข้ามรีเฟรช) */
@@ -630,7 +636,13 @@ function App() {
                     setLoadProgress(20);
                     setLoadMessage(t(locale, 'loadingSeed'));
                     hasSeeded.current = true;
-                    await db.seedDefaultData(MOCK_EMPLOYEES, MOCK_TRANSACTIONS, MOCK_PROJECTS, MOCK_SETTINGS, DEFAULT_ADMINS);
+                    await withTimeout(
+                        db.seedDefaultData(MOCK_EMPLOYEES, MOCK_TRANSACTIONS, MOCK_PROJECTS, MOCK_SETTINGS, DEFAULT_ADMINS),
+                        8000,
+                        undefined,
+                    ).catch((err) => {
+                        console.error('seedDefaultData failed:', err);
+                    });
                 }
 
                 // Load all data in parallel
@@ -647,19 +659,34 @@ function App() {
                         if (timeoutHandle) window.clearTimeout(timeoutHandle);
                     }
                 };
-                const [emps, txs, projs, settOrTimeout, adms, logs] = await Promise.all([
+                const TX_FETCH_TIMEOUT = Symbol('transactions-timeout');
+                const transactionPromise = db.fetchTransactions().catch((err) => {
+                    console.error('fetchTransactions failed:', err);
+                    return TX_FETCH_TIMEOUT as unknown as Transaction[];
+                });
+                const [emps, txResult, projs, settOrTimeout, adms, logs] = await Promise.all([
                     withTimeout(db.fetchEmployees(), 12000, MOCK_EMPLOYEES),
-                    withTimeout(db.fetchTransactions(), 12000, MOCK_TRANSACTIONS),
+                    withTimeout(transactionPromise, 45000, TX_FETCH_TIMEOUT as unknown as Transaction[]),
                     withTimeout(db.fetchProjects(), 12000, MOCK_PROJECTS),
                     fetchSettingsGuarded(),
                     withTimeout(db.fetchAdmins(), 12000, DEFAULT_ADMINS),
                     withTimeout(db.fetchAdminLogs(), 12000, [] as AdminLog[]),
                 ]);
+                const transactionFetch = txResult === (TX_FETCH_TIMEOUT as unknown as Transaction[]) ? 'failed' : txResult;
+
+                const pickedTransactions = pickLoadedTransactions(transactionFetch, cached?.transactions ?? null);
+                const nextTransactions = pickedTransactions.rows.length > 0 || pickedTransactions.persist
+                    ? pickedTransactions.rows
+                    : MOCK_TRANSACTIONS;
 
                 setLoadProgress(85);
                 setLoadMessage(t(locale, 'loadingProcess'));
                 setEmployees(emps);
-                setTransactions(normalizeTransactionsCreatedAt(txs));
+                setTransactions(normalizeTransactionsCreatedAt(nextTransactions));
+                if (!pickedTransactions.persist && cached && pickedTransactions.rows.length > 0) {
+                    setToast('โหลดข้อมูลล่าสุดไม่สำเร็จ แสดงข้อมูลที่บันทึกไว้ในเครื่องนี้');
+                    setTimeout(() => setToast(null), 6000);
+                }
                 setProjects(projs);
                 const cachedSettings = cached?.settings;
                 const fetchedSettings = settOrTimeout === 'timeout' ? null : settOrTimeout;
@@ -678,9 +705,9 @@ function App() {
                 setSettings(nextSettings);
                 setAdmins(nextAdmins);
                 setAdminLogs(logs);
-                saveBootstrapCache({
+                if (pickedTransactions.persist) saveBootstrapCache({
                     employees: emps,
-                    transactions: normalizeTransactionsCreatedAt(txs),
+                    transactions: normalizeTransactionsCreatedAt(nextTransactions),
                     projects: projs,
                     settings: settingsPersistableRef.current
                         ? nextSettings
@@ -1460,7 +1487,13 @@ function App() {
     }, [isLoggedIn, activeMenu]);
 
     const refreshTransactionsFromServer = useCallback(async () => {
-        const latest = await db.fetchTransactions();
+        let latest: Transaction[];
+        try {
+            latest = await db.fetchTransactions();
+        } catch (err) {
+            console.error('refreshTransactionsFromServer failed:', err);
+            return;
+        }
         const normalized = normalizeTransactionsCreatedAt(latest);
         const queued = getOfflineQueue();
         if (queued.length === 0) {
