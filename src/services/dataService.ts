@@ -585,24 +585,28 @@ export const seedDefaultData = async (
     defaultSettings: AppSettings,
     defaultAdmins: AdminUser[]
 ): Promise<void> => {
-    // Check if data already exists
-    const { count: empCount } = await supabase.from('employees').select('*', { count: 'exact', head: true });
-    const { count: settingsCount } = await supabase.from('app_settings').select('*', { count: 'exact', head: true });
-    const { count: adminCount } = await supabase.from('admin_users').select('*', { count: 'exact', head: true });
+    // Check if data already exists. A failed count is not an empty table —
+    // seeding then overwrites real rows that share the sample ids.
+    const { count: empCount, error: empCountError } = await supabase.from('employees').select('*', { count: 'exact', head: true });
+    const { count: settingsCount, error: settingsCountError } = await supabase.from('app_settings').select('*', { count: 'exact', head: true });
+    const { count: adminCount, error: adminCountError } = await supabase.from('admin_users').select('*', { count: 'exact', head: true });
 
-    if (!empCount || empCount === 0) {
+    if (empCountError) console.error('seedDefaultData employee count failed:', empCountError);
+    else if (empCount === 0) {
         console.log('Seeding employees...');
         for (const emp of defaultEmployees) {
             await saveEmployee(emp);
         }
     }
 
-    if (!settingsCount || settingsCount === 0) {
+    if (settingsCountError) console.error('seedDefaultData settings count failed:', settingsCountError);
+    else if (settingsCount === 0) {
         console.log('Seeding settings...');
         await saveSettings(defaultSettings);
     }
 
-    if (!adminCount || adminCount === 0) {
+    if (adminCountError) console.error('seedDefaultData admin count failed:', adminCountError);
+    else if (adminCount === 0) {
         console.log('Seeding admin users...');
         for (const admin of defaultAdmins) {
             await saveAdmin(admin);
@@ -610,8 +614,9 @@ export const seedDefaultData = async (
     }
 
     // Seed transactions
-    const { count: txCount } = await supabase.from('transactions').select('*', { count: 'exact', head: true });
-    if (!txCount || txCount === 0) {
+    const { count: txCount, error: txCountError } = await supabase.from('transactions').select('*', { count: 'exact', head: true });
+    if (txCountError) console.error('seedDefaultData transaction count failed:', txCountError);
+    else if (txCount === 0) {
         console.log('Seeding transactions...');
         for (const tx of defaultTransactions) {
             await saveTransaction(tx);
@@ -619,8 +624,9 @@ export const seedDefaultData = async (
     }
 
     // Seed projects
-    const { count: projCount } = await supabase.from('land_projects').select('*', { count: 'exact', head: true });
-    if (!projCount || projCount === 0) {
+    const { count: projCount, error: projCountError } = await supabase.from('land_projects').select('*', { count: 'exact', head: true });
+    if (projCountError) console.error('seedDefaultData project count failed:', projCountError);
+    else if (projCount === 0) {
         console.log('Seeding land projects...');
         for (const proj of defaultProjects) {
             await saveProject(proj);

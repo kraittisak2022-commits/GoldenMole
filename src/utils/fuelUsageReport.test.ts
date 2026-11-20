@@ -23,7 +23,11 @@ import {
     fuelUsageAllToPrintHtml,
     fuelUsageToCsv,
     fuelUsageToPrintHtml,
+    fuelQuantityForLiters,
+    fuelWorkDetailsWithTime,
     monthBoundsFromYmd,
+    normalizeFuelClockInput,
+    replaceFuelLiterText,
     shiftMonthBounds,
     yearBoundsFromYmd,
     type FuelUsageRow,
@@ -215,7 +219,30 @@ describe('classifyFuelTx', () => {
             }),
         ], { start: '2026-08-01', end: '2026-08-31' });
 
-        expect(report.rows.map(r => r.time)).toEqual(['07:05', '15:40', '14:05']);
+        expect(report.rows.map(r => r.time)).toEqual(['07:05', '14:05', '15:40']);
+        expect(fuelDetailDays(report)[0].rows.map(r => r.row.time)).toEqual(['07:05', '14:05', '15:40']);
+    });
+});
+
+describe('fuel clock edits', () => {
+    it('normalizes a typed time and keeps the recorder name', () => {
+        expect(normalizeFuelClockInput('10:30')).toBe('10:30');
+        expect(normalizeFuelClockInput('8.05')).toBe('08:05');
+        expect(normalizeFuelClockInput('2:05 PM')).toBe('14:05');
+        expect(normalizeFuelClockInput('25:00')).toBeNull();
+        expect(fuelWorkDetailsWithTime('17:20 (ผู้กรอก: สมชาย)', '10:30')).toBe('10:30 (ผู้กรอก: สมชาย)');
+        expect(fuelWorkDetailsWithTime(undefined, '10:30')).toBe('10:30');
+    });
+});
+
+describe('replaceFuelLiterText', () => {
+    it('replaces the liter amount in the description and keeps gallon quantity in gallons', () => {
+        expect(replaceFuelLiterText('ใช้น้ำมันรถ แม็คโคร: 202 ลิตร (ดีเซล)', 202, 201.54))
+            .toBe('ใช้น้ำมันรถ แม็คโคร: 201.54 ลิตร (ดีเซล)');
+        expect(replaceFuelLiterText('4.27 ชม. × 18 L = 76.93 L', 76.93, 70))
+            .toBe('4.27 ชม. × 18 L = 70 L');
+        expect(fuelQuantityForLiters('gallon', 3.785411784)).toBeCloseTo(1, 6);
+        expect(fuelQuantityForLiters('L', 201.54)).toBe(201.54);
     });
 });
 
@@ -245,6 +272,33 @@ describe('fuelDetailDays', () => {
         expect(days[0]).toMatchObject({ stockInLiters: 12000, outLiters: 720 });
         expect(days[1].rows[0].typeLabel).toBe('เติมน้ำมันอื่นๆ');
         expect(days.flatMap(d => d.rows).length).toBe(report.rows.length);
+    });
+
+    it('puts main-tank rows above reserve-tank rows, each group still by time', () => {
+        const report = buildFuelUsageReport([
+            fuelTx({
+                id: 'reserve-early',
+                date: '2026-09-10',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                fuelTank: 'reserve',
+                vehicleId: 'รถแม็คโคร SK200',
+                quantity: 10,
+                workDetails: '08:00',
+            }),
+            fuelTx({
+                id: 'main-late',
+                date: '2026-09-10',
+                subCategory: FUEL_VEHICLE_USAGE_SUB_CATEGORY,
+                fuelTank: 'main',
+                vehicleId: 'รถแม็คโคร SK200',
+                quantity: 20,
+                workDetails: '16:00',
+            }),
+        ], { start: '2026-09-01', end: '2026-09-30' });
+
+        const day = fuelDetailDays(report)[0];
+        expect(day.rows.map(r => r.row.id)).toEqual(['main-late', 'reserve-early']);
+        expect(day.sections.map(s => s.tank)).toEqual(['main', 'reserve']);
     });
 });
 

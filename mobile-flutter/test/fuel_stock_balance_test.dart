@@ -1088,4 +1088,159 @@ void main() {
       expect(b.reserveDiesel, 75);
     });
   });
+
+  group('fuel macro per-tank helpers', () {
+    test('fuelMacroDaySummaryByTank splits counts and liters by tank', () {
+      final txs = [
+        _fuel(
+          id: 'main_m1',
+          sub: kFuelVehicleUsageSubCategory,
+          movement: 'stock_out',
+          liters: 80,
+          tank: kFuelTankMain,
+          vehicleId: 'แม็คโคร 1',
+          workDetails: '08:15',
+          createdAt: DateTime.utc(2026, 8, 10, 8, 15),
+        ),
+        _fuel(
+          id: 'res_m1',
+          sub: kFuelVehicleUsageSubCategory,
+          movement: 'stock_out',
+          liters: 120,
+          tank: kFuelTankReserve,
+          vehicleId: 'แม็คโคร 1',
+          workDetails: '13:30',
+          createdAt: DateTime.utc(2026, 8, 10, 13, 30),
+        ),
+        // legacy VehicleUsage with null tank counts as reserve
+        _fuel(
+          id: 'res_m2_legacy',
+          sub: kFuelVehicleUsageSubCategory,
+          movement: 'stock_out',
+          liters: 65.5,
+          tank: null,
+          vehicleId: 'แม็คโคร 2',
+          workDetails: '15:00',
+          createdAt: DateTime.utc(2026, 8, 10, 15),
+        ),
+        // non-VehicleUsage fuel row should be ignored
+        _fuel(
+          id: 'car1',
+          sub: kFuelWithdrawSubCategory,
+          movement: 'stock_out',
+          liters: 40,
+          tank: kFuelTankMain,
+          workType: 'car',
+          vehicleId: kFuelCarFillMighty,
+        ),
+        // different day should be ignored
+        _fuel(
+          id: 'other_day',
+          sub: kFuelVehicleUsageSubCategory,
+          movement: 'stock_out',
+          liters: 99,
+          tank: kFuelTankMain,
+          vehicleId: 'แม็คโคร 3',
+          date: '2026-08-11',
+        ),
+      ];
+
+      final summary = fuelMacroDaySummaryByTank(
+        dayYmd: _day,
+        transactions: txs,
+      );
+
+      expect(summary.main.fueledCount, 1);
+      expect(summary.main.liters, 80);
+      expect(summary.main.hasEntries, isTrue);
+
+      expect(summary.reserve.fueledCount, 2);
+      expect(summary.reserve.liters, 185.5);
+      expect(summary.reserve.hasEntries, isTrue);
+    });
+
+    test('latestFuelMacroUsageForVehicleAndTank isolates main from reserve', () {
+      final mainOld = _fuel(
+        id: 'main_old',
+        sub: kFuelVehicleUsageSubCategory,
+        movement: 'stock_out',
+        liters: 50,
+        tank: kFuelTankMain,
+        vehicleId: 'แม็คโคร 1',
+        createdAt: DateTime.utc(2026, 8, 10, 8),
+      );
+      final mainNew = _fuel(
+        id: 'main_new',
+        sub: kFuelVehicleUsageSubCategory,
+        movement: 'stock_out',
+        liters: 95,
+        tank: kFuelTankMain,
+        vehicleId: 'แม็คโคร 1',
+        createdAt: DateTime.utc(2026, 8, 10, 11),
+      );
+      final reserveRow = _fuel(
+        id: 'res_only',
+        sub: kFuelVehicleUsageSubCategory,
+        movement: 'stock_out',
+        liters: 140,
+        tank: kFuelTankReserve,
+        vehicleId: 'แม็คโคร 1',
+        createdAt: DateTime.utc(2026, 8, 10, 16),
+      );
+      final list = [mainOld, mainNew, reserveRow];
+
+      final hitMain = latestFuelMacroUsageForVehicleAndTank(
+        dayYmd: _day,
+        transactions: list,
+        vehicleId: 'แม็คโคร 1',
+        tank: kFuelTankMain,
+      );
+      expect(hitMain?.id, 'main_new');
+
+      final hitReserve = latestFuelMacroUsageForVehicleAndTank(
+        dayYmd: _day,
+        transactions: list,
+        vehicleId: 'แม็คโคร 1',
+        tank: kFuelTankReserve,
+      );
+      expect(hitReserve?.id, 'res_only');
+
+      final hitMissing = latestFuelMacroUsageForVehicleAndTank(
+        dayYmd: _day,
+        transactions: [reserveRow],
+        vehicleId: 'แม็คโคร 1',
+        tank: kFuelTankMain,
+      );
+      expect(hitMissing, isNull);
+    });
+
+    test('fuelMacroOtherTankSummaryForVehicle reports opposite tank fill', () {
+      final reserveRow = _fuel(
+        id: 'res_1',
+        sub: kFuelVehicleUsageSubCategory,
+        movement: 'stock_out',
+        liters: 120,
+        tank: kFuelTankReserve,
+        vehicleId: 'แม็คโคร 1',
+        workDetails: '08:30 (ผู้กรอก: สมชาย)',
+        createdAt: DateTime.utc(2026, 8, 10, 8, 30),
+      );
+
+      final fromMainView = fuelMacroOtherTankSummaryForVehicle(
+        dayYmd: _day,
+        transactions: [reserveRow],
+        vehicleId: 'แม็คโคร 1',
+        currentTank: kFuelTankMain,
+      );
+      expect(fromMainView, 'เติมจากถังสำรองแล้ว 120 ล. · 08:30');
+
+      final fromReserveView = fuelMacroOtherTankSummaryForVehicle(
+        dayYmd: _day,
+        transactions: [reserveRow],
+        vehicleId: 'แม็คโคร 1',
+        currentTank: kFuelTankReserve,
+      );
+      expect(fromReserveView, '');
+    });
+  });
 }

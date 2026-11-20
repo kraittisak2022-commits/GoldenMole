@@ -279,10 +279,12 @@ class _FuelSubModePickerState extends State<FuelSubModePicker>
       onTap: () => widget.onSelect(FuelSubMode.carFill),
     );
     final macro = _FuelModeOption(
-      title: phonePortrait ? 'น้ำมันแม็คโคร' : 'การใช้น้ำมันรถแม็คโคร',
+      title: phonePortrait ? 'น้ำมันรถแม็คโคร' : 'การใช้น้ำมันรถแม็คโคร',
       subtitle: widget.daySummaries.macroUsage.isNotEmpty
           ? widget.daySummaries.macroUsage
-          : (phonePortrait ? 'หักจากถังสำรอง' : 'ค่าเริ่มต้นหักจากถังสำรอง'),
+          : (phonePortrait
+              ? 'เลือกถังหลัก / ถังสำรอง'
+              : 'เลือกเติมจากถังหลัก หรือ ถังสำรอง'),
       hasExisting: widget.daySummaries.macroUsage.isNotEmpty,
       icon: Icons.local_gas_station_rounded,
       accent: const Color(0xFF1565C0),

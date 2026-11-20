@@ -1673,6 +1673,9 @@ function App() {
                         settings={settings}
                         employees={employees}
                         maskAmounts={isFinancialMaskEnabled}
+                        canEditReportValues={currentAdmin?.role === 'SuperAdmin'}
+                        onSaveTransaction={handleSave}
+                        onAuditLog={addLog}
                     />
             );
             case 'MonthDataAudit': return (

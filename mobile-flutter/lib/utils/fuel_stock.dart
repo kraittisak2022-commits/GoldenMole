@@ -594,6 +594,315 @@ AppTransaction? latestFuelWithdrawForDay({
   return _latestFuelRow(matches);
 }
 
+/// แปลงแถวเบิก/โอนน้ำมันกลับเป็น [FuelWithdrawPurpose] ที่ตรงกัน
+FuelWithdrawPurpose fuelWithdrawPurposeOfTx(AppTransaction t) {
+  final codePurpose =
+      fuelWithdrawPurposeFromCode(t.workType) ??
+      (isFuelTransferRow(t)
+          ? FuelWithdrawPurpose.machine
+          : FuelWithdrawPurpose.other);
+  if (codePurpose == FuelWithdrawPurpose.car) {
+    final rowCarVehicle = fuelCarFillVehicleFromId(transactionVehicleLabel(t));
+    if (rowCarVehicle == FuelCarFillVehicle.taplien) {
+      return FuelWithdrawPurpose.car;
+    }
+    if (rowCarVehicle == FuelCarFillVehicle.tenWheelerMayor) {
+      return FuelWithdrawPurpose.tenWheelerMayor;
+    }
+  }
+  return codePurpose;
+}
+
+/// ข้อความเวลาที่เติมของแถวเบิกน้ำมัน (ตัด suffix ผู้กรอกออก)
+String fuelWithdrawTimeLabel(AppTransaction t) =>
+    _stripFuelRecorderSuffix(t.workDetails ?? '').trim();
+
+/// แปลงเวลาเช่น `09:00`, `09.30 น.` เป็นจำนวนนาทีตั้งแต่เที่ยงคืน (null ถ้าไม่มี)
+int? fuelWithdrawClockMinutes(String? rawWorkDetails) {
+  final clean = _stripFuelRecorderSuffix(rawWorkDetails ?? '').trim();
+  if (clean.isEmpty) return null;
+  final match = RegExp(r'(\d{1,2})\s*[:.]\s*(\d{2})').firstMatch(clean);
+  if (match == null) return null;
+  final h = int.tryParse(match.group(1)!);
+  final m = int.tryParse(match.group(2)!);
+  if (h == null || m == null || h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
+int _compareFuelWithdrawEntries(AppTransaction a, AppTransaction b) {
+  final ma = fuelWithdrawClockMinutes(a.workDetails);
+  final mb = fuelWithdrawClockMinutes(b.workDetails);
+  if (ma != null && mb != null && ma != mb) return ma.compareTo(mb);
+  if (ma != null && mb == null) return -1;
+  if (ma == null && mb != null) return 1;
+  final ca = _fuelRowRecencyMs(a);
+  final cb = _fuelRowRecencyMs(b);
+  if (ca != cb) return ca.compareTo(cb);
+  return a.id.compareTo(b.id);
+}
+
+/// รายการเบิก/โอนน้ำมันทั้งหมดของวันนั้นตาม [purpose] เรียงตามเวลา (เช้า → บ่าย)
+List<AppTransaction> fuelWithdrawEntriesForPurpose({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+  required FuelWithdrawPurpose purpose,
+}) {
+  final day = dayYmd.trim();
+  final carVehicle = fuelWithdrawCarVehicleOf(purpose);
+  final matches = <AppTransaction>[];
+  if (carVehicle != null) {
+    final wantVid = fuelCarFillVehicleIdOf(carVehicle);
+    for (final t in transactions) {
+      if (t.date.trim() != day) continue;
+      if (!isFuelCarFillRow(t)) continue;
+      final rowVid = transactionVehicleLabel(t);
+      if (!fuelCarFillVehicleIdMatches(rowVid, wantVid)) continue;
+      matches.add(t);
+    }
+  } else if (purpose == FuelWithdrawPurpose.machine) {
+    for (final t in transactions) {
+      if (t.date.trim() != day) continue;
+      if (!isFuelTransferRow(t)) continue;
+      if ((t.workType ?? '').trim().toLowerCase() != 'machine') continue;
+      if ((t.fuelMovement ?? '').trim().toLowerCase() != 'stock_out') continue;
+      matches.add(t);
+    }
+  } else {
+    final code = fuelWithdrawPurposeCodeOf(purpose);
+    for (final t in transactions) {
+      if (t.date.trim() != day) continue;
+      if (!isFuelWithdrawRow(t)) continue;
+      if (fuelWithdrawPurposeCode(t) != code) continue;
+      matches.add(t);
+    }
+  }
+  matches.sort(_compareFuelWithdrawEntries);
+  return matches;
+}
+
+/// รายการเบิกน้ำมันทั้งหมดที่แสดงในเมนู «เบิกน้ำมัน» ของวันนั้น เรียงตามเวลา
+List<AppTransaction> fuelWithdrawEntriesForDay({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+}) {
+  const purposes = [
+    FuelWithdrawPurpose.machine,
+    FuelWithdrawPurpose.generator,
+    FuelWithdrawPurpose.mayor,
+    FuelWithdrawPurpose.car,
+    FuelWithdrawPurpose.tenWheelerMayor,
+    FuelWithdrawPurpose.other,
+  ];
+  final byId = <String, AppTransaction>{};
+  for (final purpose in purposes) {
+    for (final row in fuelWithdrawEntriesForPurpose(
+      dayYmd: dayYmd,
+      transactions: transactions,
+      purpose: purpose,
+    )) {
+      byId[row.id] = row;
+    }
+  }
+  final list = byId.values.toList()..sort(_compareFuelWithdrawEntries);
+  return list;
+}
+
+/// สรุปรายการเบิกน้ำมันต่อวันหรือต่อวัตถุประสงค์
+class FuelWithdrawDaySummary {
+  const FuelWithdrawDaySummary({
+    this.entries = const [],
+    this.totalLiters = 0,
+  });
+
+  final List<AppTransaction> entries;
+  final double totalLiters;
+
+  int get count => entries.length;
+  bool get hasEntries => entries.isNotEmpty;
+}
+
+FuelWithdrawDaySummary _summarizeWithdrawEntries(List<AppTransaction> entries) {
+  var total = 0.0;
+  for (final e in entries) {
+    total += fuelTxLiters(e);
+  }
+  return FuelWithdrawDaySummary(entries: entries, totalLiters: total);
+}
+
+FuelWithdrawDaySummary fuelWithdrawSummaryForPurpose({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+  required FuelWithdrawPurpose purpose,
+}) =>
+    _summarizeWithdrawEntries(
+      fuelWithdrawEntriesForPurpose(
+        dayYmd: dayYmd,
+        transactions: transactions,
+        purpose: purpose,
+      ),
+    );
+
+FuelWithdrawDaySummary fuelWithdrawSummaryForDay({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+}) =>
+    _summarizeWithdrawEntries(
+      fuelWithdrawEntriesForDay(dayYmd: dayYmd, transactions: transactions),
+    );
+
+/// สรุปสั้นสำหรับแต่ละวัตถุประสงค์ในหน้า «เบิกน้ำมัน»
+String formatFuelWithdrawPurposeSummary(FuelWithdrawDaySummary summary) {
+  if (!summary.hasEntries) return '';
+  if (summary.count == 1) {
+    final only = summary.entries.first;
+    final liters = fuelTxLiters(only);
+    final time = fuelWithdrawTimeLabel(only);
+    final parts = <String>[
+      if (liters > 0) '${formatFuelLiters(liters)} ลิตร',
+      if (time.isNotEmpty) time,
+    ];
+    return parts.join(' · ');
+  }
+  return '${summary.count} รอบ · รวม ${formatFuelLiters(summary.totalLiters)} ลิตร';
+}
+
+/// สรุปสั้นสำหรับไทล์เมนู «เบิกน้ำมัน» ในหน้าเลือกเมนูย่อยน้ำมัน
+String formatFuelWithdrawSubModeSummary(FuelWithdrawDaySummary summary) {
+  if (!summary.hasEntries) return '';
+  if (summary.count == 1) {
+    return fuelExistingEntrySummary(summary.entries.first);
+  }
+  return 'มีข้อมูลแล้ว · ${summary.count} รายการ · '
+      'รวม ${formatFuelLiters(summary.totalLiters)} ลิตร';
+}
+
+/// คำนวณ delta คงเหลือล่วงหน้าของฟอร์มเบิกน้ำมัน (รองรับทั้งโหมดเพิ่มใหม่และโหมดแก้ไขโดยไม่หักซ้ำ)
+({double mainDelta, double reserveDelta}) computeFuelWithdrawPendingDeltas({
+  required FuelWithdrawPurpose purpose,
+  required double inputLiters,
+  required bool isEditing,
+  double priorLiters = 0,
+}) {
+  final effectiveLiters = inputLiters > 0 ? inputLiters : 0.0;
+  final netOut = isEditing
+      ? (effectiveLiters - (priorLiters > 0 ? priorLiters : 0.0))
+      : effectiveLiters;
+  if (netOut.abs() <= 1e-9) {
+    return (mainDelta: 0, reserveDelta: 0);
+  }
+  final isMachine = purpose == FuelWithdrawPurpose.machine;
+  return (
+    mainDelta: -netOut,
+    reserveDelta: isMachine ? netOut : 0,
+  );
+}
+
+/// สรุปการเติมน้ำมันรถแม็คโครต่อถังใน 1 วัน (จำนวนคันไม่ซ้ำ + รวมลิตร)
+class FuelMacroTankDaySummary {
+  const FuelMacroTankDaySummary({
+    this.fueledCount = 0,
+    this.liters = 0,
+  });
+
+  final int fueledCount;
+  final double liters;
+
+  bool get hasEntries => fueledCount > 0 || liters > 0;
+}
+
+/// แยกสรุปน้ำมันรถแม็คโครของวันตามถัง (ถังหลัก vs ถังสำรอง)
+({FuelMacroTankDaySummary main, FuelMacroTankDaySummary reserve})
+fuelMacroDaySummaryByTank({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+}) {
+  final day = dayYmd.trim();
+  final mainVehicles = <String>{};
+  final reserveVehicles = <String>{};
+  var mainLiters = 0.0;
+  var reserveLiters = 0.0;
+
+  for (final t in transactions) {
+    if (t.date.trim() != day) continue;
+    if (!isFuelMacroVehicleUsageRow(t)) continue;
+    final liters = fuelTxLiters(t);
+    if (liters <= 0) continue;
+    final vehicle = transactionVehicleLabel(t);
+    final tank = fuelUsageTankOf(t);
+    if (fuelTankIsReserve(tank)) {
+      if (vehicle.isNotEmpty) reserveVehicles.add(vehicle);
+      reserveLiters += liters;
+    } else {
+      if (vehicle.isNotEmpty) mainVehicles.add(vehicle);
+      mainLiters += liters;
+    }
+  }
+
+  return (
+    main: FuelMacroTankDaySummary(
+      fueledCount: mainVehicles.length,
+      liters: mainLiters,
+    ),
+    reserve: FuelMacroTankDaySummary(
+      fueledCount: reserveVehicles.length,
+      liters: reserveLiters,
+    ),
+  );
+}
+
+/// รายการใช้น้ำมันรถแม็คโครล่าสุดของวันสำหรับ (คัน + ถังที่ระบุ)
+AppTransaction? latestFuelMacroUsageForVehicleAndTank({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+  required String vehicleId,
+  required String tank,
+  bool Function(AppTransaction tx, String vehicle)? vehicleMatcher,
+}) {
+  final day = dayYmd.trim();
+  final vid = vehicleId.trim();
+  if (vid.isEmpty) return null;
+  final wantTank = normalizeFuelTank(tank);
+  final matches = <AppTransaction>[];
+  for (final t in transactions) {
+    if (t.date.trim() != day) continue;
+    if (!isFuelMacroVehicleUsageRow(t)) continue;
+    if (fuelUsageTankOf(t) != wantTank) continue;
+    final matched = vehicleMatcher != null
+        ? vehicleMatcher(t, vid)
+        : transactionVehicleMatches(t, vid);
+    if (!matched) continue;
+    matches.add(t);
+  }
+  return _latestFuelRow(matches);
+}
+
+/// สรุปสั้นหากคันนี้มีการบันทึกเติมน้ำมันจากถังฝั่งตรงข้ามแล้วในวันเดียวกัน
+String fuelMacroOtherTankSummaryForVehicle({
+  required String dayYmd,
+  required Iterable<AppTransaction> transactions,
+  required String vehicleId,
+  required String currentTank,
+  bool Function(AppTransaction tx, String vehicle)? vehicleMatcher,
+}) {
+  final otherTank = fuelTankIsReserve(currentTank)
+      ? kFuelTankMain
+      : kFuelTankReserve;
+  final row = latestFuelMacroUsageForVehicleAndTank(
+    dayYmd: dayYmd,
+    transactions: transactions,
+    vehicleId: vehicleId,
+    tank: otherTank,
+    vehicleMatcher: vehicleMatcher,
+  );
+  if (row == null) return '';
+  final liters = fuelTxLiters(row);
+  if (liters <= 0) return '';
+  final tankLabel = fuelTankLabelOf(otherTank);
+  final time = _stripFuelRecorderSuffix(row.workDetails ?? '');
+  final timePart = time.isEmpty ? '' : ' · $time';
+  return 'เติมจาก$tankLabelแล้ว ${formatFuelLiters(liters)} ล.$timePart';
+}
+
 /// สรุปต่อเมนูย่อยน้ำมันสำหรับหน้าเลือก — ว่าง = ยังไม่มีข้อมูลวันนี้
 class FuelSubModeDaySummaries {
   const FuelSubModeDaySummaries({
@@ -619,7 +928,7 @@ FuelSubModeDaySummaries buildFuelSubModeDaySummaries({
     dayYmd: dayYmd,
     transactions: transactions,
   );
-  final withdraw = latestFuelWithdrawForDay(
+  final withdrawSummary = fuelWithdrawSummaryForDay(
     dayYmd: dayYmd,
     transactions: transactions,
   );
@@ -640,7 +949,7 @@ FuelSubModeDaySummaries buildFuelSubModeDaySummaries({
   }
   return FuelSubModeDaySummaries(
     stockIn: fuelExistingEntrySummary(stock),
-    withdraw: fuelExistingEntrySummary(withdraw),
+    withdraw: formatFuelWithdrawSubModeSummary(withdrawSummary),
     carFill: fuelExistingEntrySummary(car),
     macroUsage: macro,
     loss: fuelExistingEntrySummary(loss),

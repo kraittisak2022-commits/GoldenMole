@@ -119,6 +119,47 @@ export function fuelTypeLabel(fuelType: FuelTypeFilter): string {
     return fuelType === 'Benzine' ? 'เบนซิน' : 'ดีเซล';
 }
 
+/** ปริมาณที่เก็บในรายการ เมื่อหน้าจอแก้เป็นลิตร */
+export function fuelQuantityForLiters(unit: string | undefined, liters: number): number {
+    const u = (unit || 'L').toLowerCase();
+    if (u === 'gallon' || u === 'แกลลอน') return liters / 3.785411784;
+    return liters;
+}
+
+function fuelLiterText(liters: number): string {
+    const rounded = Math.round(liters * 100) / 100;
+    return String(rounded);
+}
+
+/** แปลงเวลาที่พิมพ์เป็น HH:mm — รับ 10:30, 8.05 และ 2:05 PM */
+export function normalizeFuelClockInput(raw: string): string | null {
+    return parseTyped24h(raw.trim());
+}
+
+const FUEL_RECORDER_SUFFIX = /\s*\(ผู้กรอก:[^)]+\)\s*$/;
+
+/** ใส่เวลาที่กรอก โดยคงชื่อผู้กรอกท้ายรายละเอียดเดิม */
+export function fuelWorkDetailsWithTime(workDetails: string | undefined, time: string): string {
+    const suffix = String(workDetails ?? '').match(FUEL_RECORDER_SUFFIX)?.[0]?.trim() ?? '';
+    return suffix ? `${time} ${suffix}` : time;
+}
+
+/** แทนที่ตัวเลขลิตรในคำอธิบายเดิม เช่น "202 ลิตร" หรือ "76.93 L" */
+export function replaceFuelLiterText(description: string, oldLiters: number, nextLiters: number): string {
+    const next = fuelLiterText(nextLiters);
+    const candidates = [...new Set([
+        fuelLiterText(oldLiters),
+        String(oldLiters),
+        oldLiters.toFixed(2).replace(/\.?0+$/, ''),
+    ])].filter(Boolean);
+    for (const old of candidates) {
+        const escaped = old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const pattern = new RegExp(`(?<![\\d.])${escaped}(?=\\s*(?:ลิตร|L)(?![A-Za-z0-9]))`, 'i');
+        if (pattern.test(description)) return description.replace(pattern, next);
+    }
+    return description;
+}
+
 export function tankLabel(tank: 'main' | 'reserve', locale: FuelPrintLocale = 'th'): string {
     if (locale === 'zh') {
         return tank === 'reserve' ? '备用油箱' : '主油箱';
@@ -244,6 +285,16 @@ function withdrawPurpose(t: Transaction): string {
 }
 
 /** จัดเวลาเป็น HH:mm แบบ 24 ชั่วโมง ไม่ขึ้นกับภาษาของเครื่อง */
+/** เปรียบเทียบ HH:mm — รายการที่ไม่มีเวลาอยู่ท้ายกลุ่ม */
+function compareClockTime(a: string | undefined, b: string | undefined): number {
+    const left = a && /^\d{2}:\d{2}$/.test(a) ? a : '';
+    const right = b && /^\d{2}:\d{2}$/.test(b) ? b : '';
+    if (left && right) return left.localeCompare(right);
+    if (left) return -1;
+    if (right) return 1;
+    return 0;
+}
+
 function formatHourMinute24(hour: number, minute: number): string {
     const h = ((hour % 24) + 24) % 24;
     const m = Math.min(59, Math.max(0, minute));
@@ -507,9 +558,16 @@ export interface FuelDetailRow {
     typeLabel: string;
 }
 
+export interface FuelDetailSection {
+    tank: 'main' | 'reserve';
+    rows: FuelDetailRow[];
+}
+
 export interface FuelDetailDay {
     date: string;
     rows: FuelDetailRow[];
+    /** ถังหลักอยู่ก่อน ถังสำรองอยู่หลัง — แต่ละช่วงเรียงตามเวลา */
+    sections: FuelDetailSection[];
     stockInLiters: number;
     outLiters: number;
 }
@@ -549,10 +607,25 @@ export function fuelDetailDays(report: FuelUsageReport): FuelDetailDay[] {
     return [...byDate.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, rows]) => {
-            const sorted = [...rows].sort((a, b) => DETAIL_TYPE_ORDER.indexOf(a.typeId) - DETAIL_TYPE_ORDER.indexOf(b.typeId));
+            const sorted = [...rows].sort((a, b) => {
+                const byTank = (a.row.tank === 'reserve' ? 1 : 0) - (b.row.tank === 'reserve' ? 1 : 0);
+                if (byTank !== 0) return byTank;
+                const byTime = compareClockTime(a.row.time, b.row.time);
+                if (byTime !== 0) return byTime;
+                const byType = DETAIL_TYPE_ORDER.indexOf(a.typeId) - DETAIL_TYPE_ORDER.indexOf(b.typeId);
+                if (byType !== 0) return byType;
+                return a.row.id.localeCompare(b.row.id);
+            });
+            const sections: FuelDetailSection[] = [];
+            for (const item of sorted) {
+                const tank = item.row.tank === 'reserve' ? 'reserve' : 'main';
+                const last = sections[sections.length - 1];
+                if (!last || last.tank !== tank) sections.push({ tank, rows: [item] });
+                else last.rows.push(item);
+            }
             const stockInLiters = sorted.filter(r => r.typeId === 'stock_in').reduce((s, r) => s + r.row.liters, 0);
             const outLiters = sorted.filter(r => r.typeId !== 'stock_in').reduce((s, r) => s + r.row.liters, 0);
-            return { date, rows: sorted, stockInLiters, outLiters };
+            return { date, rows: sorted, sections, stockInLiters, outLiters };
         });
 }
 
@@ -659,6 +732,8 @@ export function buildFuelUsageReport(transactions: Transaction[], filters: FuelU
     rows.sort((a, b) => {
         const d = a.date.localeCompare(b.date);
         if (d !== 0) return d;
+        const byTime = compareClockTime(a.time, b.time);
+        if (byTime !== 0) return byTime;
         return a.id.localeCompare(b.id);
     });
 
@@ -1179,23 +1254,26 @@ function buildCombinedPrintDetailHtml(
         if (day.outLiters > 0) bits.push(`${all.dispensed} ${fmtLiters(day.outLiters)} ${ui.litersUnit}`);
         bits.push(`${day.rows.length} ${ui.itemsUnit}`);
         parts.push(`<tr class="day-header"><td colspan="5">${escHtml(bits.join(' · '))}</td></tr>`);
-        for (const item of day.rows) {
-            const source = item.typeId === 'stock_in'
-                ? tankLabel(item.row.tank, locale)
-                : item.typeId === 'machine_fill'
-                    ? all.machineFillRoute
-                    : (item.row.vehicleId || '—');
-            const liters = item.typeId === 'stock_in'
-                ? `+${fmtLiters(item.row.liters)}`
-                : fmtLiters(item.row.liters);
-            const desc = item.row.description + (item.row.estimated ? ui.estimated : '');
-            parts.push(`<tr>
+        for (const section of day.sections) {
+            parts.push(`<tr class="tank-header"><td colspan="5">${escHtml(tankLabel(section.tank, locale))}</td></tr>`);
+            for (const item of section.rows) {
+                const source = item.typeId === 'stock_in'
+                    ? tankLabel(item.row.tank, locale)
+                    : item.typeId === 'machine_fill'
+                        ? all.machineFillRoute
+                        : (item.row.vehicleId || '—');
+                const liters = item.typeId === 'stock_in'
+                    ? `+${fmtLiters(item.row.liters)}`
+                    : fmtLiters(item.row.liters);
+                const desc = item.row.description + (item.row.estimated ? ui.estimated : '');
+                parts.push(`<tr>
 <td>${escHtml(labels[item.typeId])}</td>
 <td>${escHtml(item.row.time || '—')}</td>
 <td>${escHtml(source)}</td>
 <td class="num">${escHtml(liters)}</td>
 <td>${escHtml(desc || '—')}</td>
 </tr>`);
+            }
         }
     }
     return parts.join('');
@@ -1265,6 +1343,7 @@ thead th{padding:8px 10px;text-align:left;font-weight:600;color:#374151;border-b
 tbody td{padding:7px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top}
 tbody tr:last-child td{border-bottom:1px solid #d1d5db}
 tr.day-header td{background:#f3f4f6;font-weight:700;color:#111827;border-bottom:1px solid #d1d5db;padding:9px 10px}
+tr.tank-header td{background:#f9fafb;font-weight:600;color:#374151;padding:6px 10px 6px 18px}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 td.empty{text-align:center;color:#9ca3af;padding:24px}
 tfoot td{padding:10px;font-weight:600;border-top:2px solid #111827}

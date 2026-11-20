@@ -18,10 +18,16 @@ import '../services/employee_service.dart';
 import '../services/transaction_service.dart';
 import '../constants/thai_banks.dart';
 import '../widgets/app_page_route.dart';
+import '../widgets/attendance_board_widgets.dart';
 import '../widgets/attendance_sub_mode_picker.dart';
+import '../widgets/daily_event_widgets.dart';
 import '../widgets/daily_record_day_picker.dart';
+import '../widgets/fuel_macro_form_widgets.dart';
+import '../widgets/fuel_macro_tank_picker.dart';
 import '../widgets/fuel_sub_mode_picker.dart';
 import '../widgets/fuel_time_picker_dialog.dart';
+import '../widgets/fuel_withdraw_widgets.dart';
+import '../widgets/macro_vehicle_widgets.dart';
 import '../widgets/thai_bank_brand_icon.dart';
 import '../widgets/save_operation_feedback.dart';
 import '../widgets/soft_press_button.dart';
@@ -31,10 +37,13 @@ import '../utils/app_haptics.dart';
 import '../utils/advance_employee_filter.dart';
 import '../utils/advance_line_notify.dart';
 import '../utils/advance_work_details.dart';
+import '../utils/attendance_board_summary.dart';
 import '../utils/attendance_session_times.dart';
+import '../utils/daily_event_summary.dart';
 import '../utils/daily_module_transactions.dart';
 import '../theme/daily_palette.dart';
 import '../utils/fuel_stock.dart';
+import '../utils/macro_vehicle_summary.dart';
 import '../utils/maintenance_catalog.dart';
 import '../utils/maintenance_image_permissions.dart';
 import '../utils/maintenance_work_details.dart';
@@ -165,8 +174,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   ];
   static const Color _bg = Color(0xFFFDFEFF);
   static const Color _macroAccent = Color(0xFF0F9EA8);
-  static const Color _macroAccentInk = Color(0xFF00838F);
-  static const Color _macroAccentTint = Color(0xFFE0F2F1);
 
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
@@ -195,10 +202,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   final _laborWorkDetailsController = TextEditingController();
   final _otDescController = TextEditingController();
   final _dailyEventDescController = TextEditingController();
+  final _dailyEventTimeController = TextEditingController();
   String _dailyEventType = 'info';
   String _dailyEventPriority = 'normal';
   /// id เหตุการณ์ที่กำลังแก้ไข — null = บันทึกใหม่
   String? _dailyEventTxId;
+  DailyEventFilter _dailyEventFilter = DailyEventFilter.all;
+  int _dailyEventSeq = 0;
 
   final _maintenanceDetailController = TextEditingController();
   final _maintenanceAmountController = TextEditingController();
@@ -489,59 +499,79 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     if (lit > 0) {
       row.liters = _strNum(lit);
       row.litersController.text = row.liters;
+    } else {
+      row.liters = '';
+      row.litersController.clear();
     }
     final time = _stripRecorderSuffix(t.workDetails ?? '').trim();
     if (time.isNotEmpty) {
       row.time = time;
       row.timeController.text = time;
+    } else {
+      row.time = '';
+      row.timeController.clear();
     }
+    row.timeAutoFilled = false;
   }
 
-  /// หาแถว VehicleUsage เดิมของวันนั้นสำหรับร่างฟอร์ม (txId หรือจับคู่ชื่อ/รหัสรถ)
+  /// จับคู่แถวกับชื่อรถแม็คโครในฟอร์ม (รองรับทั้งชื่อและรหัสแคตตาล็อก)
+  bool _matchesFuelVehicle(AppTransaction t, String vehicle) {
+    final v = vehicle.trim();
+    if (v.isEmpty) return false;
+    if (transactionVehicleMatches(t, v)) return true;
+    final catalogHit = _vehicleCatalog.findByNameOrId(v);
+    if (catalogHit == null) return false;
+    final label = transactionVehicleLabel(t);
+    final vid = (t.vehicleId ?? '').trim();
+    return label == catalogHit.name ||
+        vid == catalogHit.id ||
+        transactionVehicleMatches(t, catalogHit.name) ||
+        transactionVehicleMatches(t, catalogHit.id);
+  }
+
+  /// หาแถว VehicleUsage เดิมของวันนั้นสำหรับ (รถ + ถังที่กำลังบันทึก)
+  /// แยกถังหลักและถังสำรองออกจากกัน เพื่อไม่ให้แก้ไข/ลบข้ามถัง
   AppTransaction? _priorFuelVehicleUsageForDraft(_FuelVehicleDraft row) {
+    final wantTank = normalizeFuelTank(_fuelMacroTank ?? row.fuelTank);
     final id = row.txId?.trim();
     if (id != null && id.isNotEmpty) {
       for (final t in _moduleDayAllTransactions) {
-        if (t.id == id && isFuelMacroVehicleUsageRow(t)) return t;
+        if (t.id == id &&
+            isFuelMacroVehicleUsageRow(t) &&
+            fuelUsageTankOf(t) == wantTank) {
+          return t;
+        }
       }
     }
     final vehicle = row.vehicleId.trim();
     if (vehicle.isEmpty) return null;
-    final catalogHit = _vehicleCatalog.findByNameOrId(vehicle);
-    AppTransaction? best;
-    var bestMs = -1;
-    for (final t in _moduleDayAllTransactions) {
-      if (!isFuelMacroVehicleUsageRow(t)) continue;
-      final label = transactionVehicleLabel(t);
-      final vid = (t.vehicleId ?? '').trim();
-      final matched = transactionVehicleMatches(t, vehicle) ||
-          (catalogHit != null &&
-              (label == catalogHit.name ||
-                  vid == catalogHit.id ||
-                  transactionVehicleMatches(t, catalogHit.name) ||
-                  transactionVehicleMatches(t, catalogHit.id)));
-      if (!matched) continue;
-      final ms = t.createdAt?.millisecondsSinceEpoch ?? 0;
-      if (best == null || ms >= bestMs) {
-        best = t;
-        bestMs = ms;
-      }
-    }
-    return best;
+    return latestFuelMacroUsageForVehicleAndTank(
+      dayYmd: _quickYmd(_selectedDate),
+      transactions: _moduleDayAllTransactions,
+      vehicleId: vehicle,
+      tank: wantTank,
+      vehicleMatcher: _matchesFuelVehicle,
+    );
   }
 
-  /// สร้างแถวบันทึกน้ำมัน 1 แถวต่อ 1 รถแม็คโครจากตั้งค่าแอพ
+  /// สร้างแถวบันทึกน้ำมัน 1 แถวต่อ 1 รถแม็คโคร (เฉพาะถังที่เลือกอยู่)
   void _syncFuelVehicleDraftsFromMacroCars({
     Iterable<AppTransaction>? dayFuelRows,
     bool forceHydrate = false,
   }) {
     final cars = _fuelMacroCars();
+    final activeTank = normalizeFuelTank(_fuelMacroTank ?? kFuelTankReserve);
     final fuelByVehicle = <String, AppTransaction>{};
     void indexFuelRow(AppTransaction t) {
       void put(String key) {
         final k = key.trim();
         if (k.isEmpty) return;
-        fuelByVehicle[k] = t;
+        final prev = fuelByVehicle[k];
+        final prevMs = prev?.createdAt?.millisecondsSinceEpoch ?? -1;
+        final currMs = t.createdAt?.millisecondsSinceEpoch ?? 0;
+        if (prev == null || currMs >= prevMs) {
+          fuelByVehicle[k] = t;
+        }
       }
 
       final label = transactionVehicleLabel(t);
@@ -559,6 +589,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final source = dayFuelRows ?? _moduleDayTransactions;
     for (final t in source) {
       if (!isFuelMacroVehicleUsageRow(t)) continue;
+      if (fuelUsageTankOf(t) != activeTank) continue;
       indexFuelRow(t);
     }
 
@@ -571,15 +602,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       final orphans = List<_FuelVehicleDraft>.from(_fuelVehicleDrafts);
       _fuelVehicleDrafts
         ..clear()
-        ..add(_FuelVehicleDraft.empty());
+        ..add(_FuelVehicleDraft.empty()..fuelTank = activeTank);
       _deferDisposeFuelVehicleDrafts(orphans);
       return;
     }
 
     final next = <_FuelVehicleDraft>[];
     for (final car in cars) {
-      final row = preserved[car] ?? (_FuelVehicleDraft.empty()..vehicleId = car);
+      final row = preserved[car] ??
+          (_FuelVehicleDraft.empty()
+            ..vehicleId = car
+            ..fuelTank = activeTank);
       row.vehicleId = car;
+      row.fuelTank = activeTank;
       if (row.fuelType.trim().isEmpty) row.fuelType = 'Diesel';
       final typed = row.litersController.text.trim().isNotEmpty ||
           row.liters.trim().isNotEmpty;
@@ -592,11 +627,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           row.txId = null;
           row.liters = '';
           row.time = '';
+          row.timeAutoFilled = false;
           row.litersController.clear();
           row.timeController.clear();
         }
       } else if (existing != null && (!typed || missingTxId)) {
-        // มีแถวของคันนี้แล้ว — ผูก txId เสมอแม้พิมพ์ลิตรไว้แล้ว
+        // มีแถวของคันนี้ในถังนี้แล้ว — ผูก txId เสมอแม้พิมพ์ลิตรไว้แล้ว
         // (กันเซฟเป็นรายการใหม่แล้วโดนบล็อกตอนถังติดลบ)
         _hydrateFuelDraftFromTransaction(row, existing);
       }
@@ -618,6 +654,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   // ── น้ำมัน: เมนูย่อย + สต็อกถัง ──
   /// เมนูย่อยที่เลือกอยู่ใน «น้ำมัน» (null = ยังอยู่หน้าเลือกเมนู)
   FuelSubMode? _fuelSubMode;
+  /// ถังที่เลือกในเมนูย่อย «น้ำมันรถแม็คโคร» (null = ยังอยู่หน้าเลือกถังหลัก/สำรอง)
+  String? _fuelMacroTank;
   ({
     double diesel,
     double benzine,
@@ -648,6 +686,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   String? _fuelWithdrawTxId;
   /// คู่รับเข้าถังสำรอง (เฉพาะเครื่องจักร)
   String? _fuelWithdrawTransferInTxId;
+  /// แสดงรายการเบิกวันนี้ทุกหมวด (true) หรือเฉพาะหมวดที่เลือก (false)
+  bool _fuelWithdrawShowAllPurposes = true;
+  /// ลำดับป้องกัน id/note ชนกันเมื่อบันทึกหลายรอบติดกัน
+  int _fuelWithdrawSeq = 0;
   final _fuelCarFillLitersController = TextEditingController();
   final _fuelCarFillTimeController = TextEditingController();
   final _fuelCarFillOtherController = TextEditingController();
@@ -658,6 +700,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   /// id แถวปรับยอด (น้ำมันหาย) ที่กำลังแก้ — null = รายการใหม่
   String? _fuelLossTxId;
   final List<_MacroVehicleDraft> _macroVehicleDrafts = [];
+  MacroFleetFilter _macroFleetFilter = MacroFleetFilter.all;
+  final Set<String> _macroDriverPickerExpanded = <String>{};
   final List<_VehicleTripDraft> _vehicleTripDrafts = [
     _VehicleTripDraft.empty(),
   ];
@@ -697,6 +741,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       color: Color(0xFF6C6FE6),
     ),
     _LaborWorkCategory(
+      id: 'att_leave_full',
+      label: 'ลางาน • เต็มวัน',
+      shortTitle: 'ลาเต็มวัน',
+      color: Color(0xFFC62828),
+    ),
+    _LaborWorkCategory(
       id: 'att_leave_morning',
       label: 'ลางาน • ช่วงเช้า',
       shortTitle: 'ลา · เช้า',
@@ -723,6 +773,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       color: Color(0xFF6C6FE6),
     ),
     _LaborWorkCategory(
+      id: 'att_drv_leave_full',
+      label: 'ลางาน • เต็มวัน',
+      shortTitle: 'ลาเต็มวัน',
+      color: Color(0xFFC62828),
+    ),
+    _LaborWorkCategory(
       id: 'att_drv_leave_morning',
       label: 'ลางาน • ช่วงเช้า',
       shortTitle: 'ลา · เช้า',
@@ -743,20 +799,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     'att_work',
     'att_half_morning',
     'att_half_afternoon',
+    'att_leave_full',
     'att_leave_morning',
     'att_leave_afternoon',
   };
   static const Set<String> _attSandLeaveIds = {
+    'att_leave_full',
     'att_leave_morning',
     'att_leave_afternoon',
   };
   static const Set<String> _attDriverIds = {
     'att_drv_macro',
     'att_drv_drum',
+    'att_drv_leave_full',
     'att_drv_leave_morning',
     'att_drv_leave_afternoon',
   };
   static const Set<String> _attDriverLeaveIds = {
+    'att_drv_leave_full',
     'att_drv_leave_morning',
     'att_drv_leave_afternoon',
   };
@@ -786,6 +846,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   String? _attendanceLegacyLaborTxId;
   String? _attendanceLegacyLeaveTxId;
 
+  /// รายการจากเมนูลางานที่ครอบคลุมวันนี้ — ไม่ใช่แถวที่เช็คชื่อสร้างเอง
+  List<AppTransaction> _attendanceExternalLeaves = [];
+
   /// เมนูย่อยเช็คชื่อ (null = หน้าเลือกเมนู)
   AttendanceSection? _attendanceSection;
 
@@ -810,6 +873,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Map<String, int> _attendanceDaysWorked = const {};
   final ScrollController _attendanceGeneralPoolScroll = ScrollController();
   final ScrollController _attendanceDriverPoolScroll = ScrollController();
+  final TextEditingController _attendancePoolSearchController =
+      TextEditingController();
+  bool _attendancePoolSearchOpen = false;
+  String _attendancePoolQuery = '';
   /// ชิปที่เพิ่งวาง — ใช้เด้ง AnimatedScale ชั่วคราว
   final Set<String> _attendanceJustDroppedIds = <String>{};
 
@@ -1201,15 +1268,64 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
-  /// ลบแถวแม็คโคร: รายการที่บันทึกแล้ว (`txId`) ลบจากฐานข้อมูล — ไม่เช่นนั้นล้างเฉพาะแถว
+  Future<bool> _confirmDeleteSavedMacroVehicleRow(
+    _MacroVehicleDraft row,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(
+          Icons.delete_outline_rounded,
+          size: 34,
+          color: Color(0xFFD14343),
+        ),
+        title: Text(
+          'ลบรายการใช้รถแม็คโคร?',
+          style: GoogleFonts.kanit(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          'ลบข้อมูลการทำงานวันนี้ของ ${row.vehicleId} ออกจากฐานข้อมูล',
+          style: GoogleFonts.kanit(fontSize: 15),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'ยกเลิก',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFD14343),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'ลบรายการ',
+              style: GoogleFonts.kanit(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  /// ลบแถวแม็คโคร: รายการที่บันทึกแล้ว (`txId`) ถามยืนยันก่อนลบจากฐานข้อมูล — ไม่เช่นนั้นล้างเฉพาะแถว
   Future<void> _handleMacroVehicleRowDelete(_MacroVehicleDraft row) async {
     final persistedId = row.txId?.trim();
     if (persistedId != null && persistedId.isNotEmpty) {
+      final confirmed = await _confirmDeleteSavedMacroVehicleRow(row);
+      if (!confirmed || !mounted) return;
       try {
         await _deleteTransactionOfflineAware(persistedId);
         if (!mounted) return;
         await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
         if (!mounted) return;
+        _macroDriverPickerExpanded.remove(row.vehicleId);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -1229,10 +1345,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }
       return;
     }
+    AppHaptics.tap();
     setState(() {
       row.txId = null;
       row.driverId = '';
       row.workType = 'FullDay';
+      _macroDriverPickerExpanded.remove(row.vehicleId);
       if (!row.isDisposed) row.workDetailsController.clear();
     });
   }
@@ -1242,15 +1360,70 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     row.txId = null;
     row.liters = '';
     row.time = '';
+    row.timeAutoFilled = false;
     row.litersController.clear();
     row.timeController.clear();
   }
 
+  Future<bool> _confirmDeleteSavedFuelVehicleRow(_FuelVehicleDraft row) async {
+    final tankLabel = fuelTankLabelOf(_fuelMacroTank ?? row.fuelTank);
+    final litersVal = double.tryParse(row.liters.trim()) ?? 0;
+    final litersDesc = litersVal > 0 ? ' (${formatFuelLiters(litersVal)} ลิตร)' : '';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(
+          Icons.delete_outline_rounded,
+          size: 34,
+          color: Color(0xFFD14343),
+        ),
+        title: Text(
+          'ลบรายการน้ำมัน?',
+          style: GoogleFonts.kanit(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          'ลบรายการของ ${row.vehicleId}$litersDesc จาก$tankLabel และคืนยอดเข้าถัง',
+          style: GoogleFonts.kanit(fontSize: 15),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'ยกเลิก',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFD14343),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'ลบรายการ',
+              style: GoogleFonts.kanit(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
   /// ลบรายการใช้น้ำมันแม็คโคร: มี `txId` ลบจากฐานข้อมูล + คืนยอดถัง — ไม่เช่นนั้นล้างเฉพาะฟอร์ม
-  Future<void> _handleFuelVehicleRowDelete(_FuelVehicleDraft row) async {
+  Future<void> _handleFuelVehicleRowDelete(
+    _FuelVehicleDraft row, {
+    bool confirmIfSaved = false,
+  }) async {
     final prior = _priorFuelVehicleUsageForDraft(row);
     final persistedId = (row.txId ?? prior?.id)?.trim();
     if (persistedId != null && persistedId.isNotEmpty) {
+      if (confirmIfSaved) {
+        final confirmed = await _confirmDeleteSavedFuelVehicleRow(row);
+        if (!confirmed || !mounted) return;
+      }
       AppTransaction? oldTx = prior;
       if (oldTx == null) {
         for (final t in _moduleDayAllTransactions) {
@@ -1273,6 +1446,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
         if (!mounted) return;
         setState(() => _clearFuelVehicleDraftFields(row));
+        _captureModuleFormBaseline();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -1292,6 +1466,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }
       return;
     }
+    AppHaptics.tap();
     setState(() => _clearFuelVehicleDraftFields(row));
   }
 
@@ -1334,8 +1509,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       _fuelVehicleController.clear();
       _fuelVehicleLitersController.clear();
       _fuelVehicleTimeController.clear();
-      if (!_saving) _syncFuelVehicleDraftsFromMacroCars();
+      if (!_saving) {
+        _syncFuelVehicleDraftsFromMacroCars();
+        _clearFuelWithdrawComposer();
+      }
     } else if (_isMacroVehicleMode) {
+      _macroDriverPickerExpanded.clear();
       if (!_saving) _syncMacroVehicleDraftsFromMacroCars();
     } else if (_isLaborMode) {
       _selectedLaborEmpIds.clear();
@@ -1380,10 +1559,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }
     } else if (_isDailyEventMode) {
       if (!_saving) {
-        _dailyEventTxId = null;
-        _dailyEventDescController.clear();
-        _dailyEventType = 'info';
-        _dailyEventPriority = 'normal';
+        _resetDailyEventComposer();
+        _dailyEventFilter = DailyEventFilter.all;
       }
     } else if (_isMaintenanceMode) {
       if (!_saving) {
@@ -1462,7 +1639,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         await _refreshHomeSandStock();
       }
       if (!mounted || !isCurrentLoad()) return;
-      _hydrateFormsFromTransactions(matched, dayTransactions: rows);
+      var hydrateRows = matched;
+      if (cat == 'เช็คชื่อ') {
+        final seen = matched.map((t) => t.id).toSet();
+        final extra = <AppTransaction>[];
+        void takeLeave(Iterable<AppTransaction> src) {
+          for (final t in src) {
+            if (!seen.add(t.id)) continue;
+            if (laborLeaveCoversCalendarDay(t, ymd)) extra.add(t);
+          }
+        }
+
+        takeLeave(rows);
+        final fullLeaves = await LocalDataCache.readTransactionsFullAny();
+        if (fullLeaves != null) takeLeave(fullLeaves);
+        if (extra.isNotEmpty) hydrateRows = [...matched, ...extra];
+      }
+      if (!mounted || !isCurrentLoad()) return;
+      _hydrateFormsFromTransactions(hydrateRows, dayTransactions: rows);
       if (!mounted || !isCurrentLoad()) return;
       if (_isLaborMode) {
         _syncMacroDriverCanvasFromVehicleUsage();
@@ -1674,7 +1868,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       for (final t in _moduleDayAllTransactions) {
         if (t.date.trim() != dayKey) continue;
         if (!isMacroFuelReportRow(t)) continue;
-        if (transactionVehicleMatches(t, car)) {
+        if (_matchesFuelVehicle(t, car)) {
           fueledInDb = true;
           break;
         }
@@ -2179,6 +2373,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required bool driver,
     required String? halfBucket,
   }) {
+    final full = driver ? 'att_drv_leave_full' : 'att_leave_full';
     final morning = driver ? 'att_drv_leave_morning' : 'att_leave_morning';
     final afternoon = driver ? 'att_drv_leave_afternoon' : 'att_leave_afternoon';
     if (halfBucket == 'morning') {
@@ -2186,10 +2381,26 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     } else if (halfBucket == 'afternoon') {
       assign(afternoon, empId);
     } else {
-      // ลาเต็มวันเดิม — แสดงทั้งเช้าและบ่าย
-      assign(morning, empId);
-      assign(afternoon, empId);
+      assign(full, empId);
     }
+  }
+
+  bool _isAttendanceOwnedLeaveReason(String reason) {
+    final text = reason.trim();
+    if (text.isEmpty) return false;
+    return text == _attLeaveReasonSand ||
+        text == _attLeaveReasonDriver ||
+        text == _attLeaveReasonLegacy ||
+        text == 'เช็คชื่อ: ลางาน' ||
+        text.contains('พนักงานท่าทราย') ||
+        text.contains('คนขับรถ') ||
+        text.contains('เช็คชื่อ');
+  }
+
+  String? _attendanceLeaveHalfBucket(AppTransaction t) {
+    final half = _leaveHalfPartFromTx(t);
+    if (half == 'any') return 'morning';
+    return half;
   }
 
   /// เติมกระดานเช็คชื่อจากรายการที่บันทึกไว้ของวันนั้น (Labor Attendance / Leave)
@@ -2213,13 +2424,35 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _attendanceDriverLeaveAfternoonTxId = null;
     _attendanceLegacyLaborTxId = null;
     _attendanceLegacyLeaveTxId = null;
+    _attendanceExternalLeaves = [];
     _attendanceJustDroppedIds.clear();
     _attendanceSessions = [];
 
     void assign(String bucketId, String empId) {
+      for (final other in _attendanceExclusionGroup(bucketId)) {
+        if (other == bucketId) continue;
+        _attendanceAssignments[other]?.remove(empId);
+      }
       _attendanceAssignments[bucketId]?.add(empId);
       _attendanceBucketExpanded[bucketId] = true;
     }
+
+    bool rowIsLeave(AppTransaction t) {
+      final ls = (t.laborStatus ?? '').toLowerCase();
+      return t.category == 'Leave' ||
+          t.type.toLowerCase() == 'leave' ||
+          ls == 'leave' ||
+          ls == 'sick' ||
+          ls == 'personal';
+    }
+
+    // ลางานทับช่องทำงาน — รายการจากเมนูลางานต้องชนะถ้าครอบคลุมวันนี้
+    final ordered = [
+      for (final t in txs)
+        if (!rowIsLeave(t)) t,
+      for (final t in txs)
+        if (rowIsLeave(t)) t,
+    ];
 
     ({bool sand, bool driver}) classifyWa(Map<String, List<String>>? wa) {
       if (wa == null || wa.isEmpty) {
@@ -2246,7 +2479,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       return (sand: sand, driver: driver);
     }
 
-    for (final t in txs) {
+    for (final t in ordered) {
       final ls = (t.laborStatus ?? '').toLowerCase();
       final sc = (t.subCategory ?? '').toLowerCase();
       final isLeave = t.category == 'Leave' ||
@@ -2267,8 +2500,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             reason == 'เช็คชื่อ: ลางาน' ||
             (!isSandLeave && !isDriverLeave && reason.contains('เช็คชื่อ'));
 
-        final half = _leaveHalfPartFromTx(t);
-        final halfBucket = half == 'any' ? 'morning' : half;
+        final halfBucket = _attendanceLeaveHalfBucket(t);
+        final owned = _isAttendanceOwnedLeaveReason(reason);
+        if (!owned && isLaborLeaveRecord(t)) {
+          _attendanceExternalLeaves.add(t);
+        }
         if (isLegacyLeave && !isSandLeave && !isDriverLeave) {
           _attendanceLegacyLeaveTxId = t.id;
         } else if (isDriverLeave && !isSandLeave) {
@@ -2283,8 +2519,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             halfBucket: halfBucket,
             id: t.id,
           );
-        } else {
-          // ไม่มี leaveReason ชัด — กระจายตามตำแหน่งพนักงาน
+        } else if (owned) {
+          // แถวเช็คชื่อที่ไม่มีเหตุผลแยกกลุ่ม — ใช้เป็นแถวลาเต็มวันตอนบันทึก
           _attendanceLegacyLeaveTxId ??= t.id;
         }
 
@@ -2401,7 +2637,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       if (_fuelSubMode == FuelSubMode.carFill) {
         _hydrateFuelCarFillForSelectedVehicle();
       } else if (_fuelSubMode == FuelSubMode.withdraw) {
-        _hydrateFuelWithdrawForSelectedPurpose();
+        _syncFuelWithdrawAfterDayReload();
       } else if (_fuelSubMode == FuelSubMode.loss) {
         _hydrateFuelLossFromDay(dayRows: dayTransactions ?? txs);
       }
@@ -2566,6 +2802,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     _laborWorkDetailsController.dispose();
     _attendanceGeneralPoolScroll.dispose();
     _attendanceDriverPoolScroll.dispose();
+    _attendancePoolSearchController.dispose();
     for (final c in _generalWorkDetails) {
       c.dispose();
     }
@@ -2587,6 +2824,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
     _otDescController.dispose();
     _dailyEventDescController.dispose();
+    _dailyEventTimeController.dispose();
     _maintenanceDetailController.dispose();
     _maintenanceAmountController.dispose();
     _disposeVehicleDrafts();
@@ -4787,22 +5025,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  AppTransaction? _dayFuelWithdrawLatest(FuelWithdrawPurpose purpose) {
-    final carVehicle = fuelWithdrawCarVehicleOf(purpose);
-    if (carVehicle != null) {
-      return latestFuelCarFillForVehicle(
-        dayYmd: _quickYmd(_selectedDate),
-        transactions: _moduleDayAllTransactions,
-        vehicleId: fuelCarFillVehicleIdOf(carVehicle),
-      );
-    }
-    return latestFuelWithdrawForPurpose(
-      dayYmd: _quickYmd(_selectedDate),
-      transactions: _moduleDayAllTransactions,
-      purpose: purpose,
-    );
-  }
-
   String? _fuelOtherDetailFromDescription(String description) {
     final plain = _stripRecorderSuffix(description);
     const marker = ' — ';
@@ -4816,33 +5038,40 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     return rest.isEmpty ? null : rest;
   }
 
+  void _clearFuelWithdrawComposer({bool resetPurpose = false}) {
+    _fuelWithdrawTxId = null;
+    _fuelWithdrawTransferInTxId = null;
+    _fuelWithdrawLitersController.clear();
+    _fuelWithdrawTimeController.clear();
+    _fuelWithdrawOtherController.clear();
+    if (resetPurpose) {
+      _fuelWithdrawPurpose = FuelWithdrawPurpose.machine;
+    }
+  }
+
+  AppTransaction? _editingFuelWithdrawTx() {
+    final editId = _fuelWithdrawTxId?.trim() ?? '';
+    if (editId.isEmpty) return null;
+    final dayYmd = _quickYmd(_selectedDate);
+    for (final t in _moduleDayAllTransactions) {
+      if (t.id == editId && t.date.trim() == dayYmd) return t;
+    }
+    return null;
+  }
+
   void _applyFuelWithdrawFromTx(AppTransaction t) {
     _fuelWithdrawTxId = t.id;
     _persistOmitCreatedForIds.add(t.id);
     final liters = fuelTxLiters(t);
     _fuelWithdrawLitersController.text =
         liters > 0 ? formatFuelLiters(liters) : '';
-    _fuelWithdrawTimeController.text =
-        _stripRecorderSuffix(t.workDetails ?? '').trim();
-    final codePurpose = fuelWithdrawPurposeFromCode(t.workType) ??
-        (isFuelTransferRow(t)
-            ? FuelWithdrawPurpose.machine
-            : FuelWithdrawPurpose.other);
-    final rowCarVehicle = codePurpose == FuelWithdrawPurpose.car
-        ? fuelCarFillVehicleFromId(transactionVehicleLabel(t))
-        : null;
-    if (rowCarVehicle == FuelCarFillVehicle.taplien) {
-      _fuelWithdrawPurpose = FuelWithdrawPurpose.car;
-      _fuelWithdrawOtherController.clear();
-    } else if (rowCarVehicle == FuelCarFillVehicle.tenWheelerMayor) {
-      _fuelWithdrawPurpose = FuelWithdrawPurpose.tenWheelerMayor;
-      _fuelWithdrawOtherController.clear();
-    } else if (codePurpose == FuelWithdrawPurpose.other) {
-      _fuelWithdrawPurpose = FuelWithdrawPurpose.other;
+    _fuelWithdrawTimeController.text = fuelWithdrawTimeLabel(t);
+    final resolvedPurpose = fuelWithdrawPurposeOfTx(t);
+    _fuelWithdrawPurpose = resolvedPurpose;
+    if (resolvedPurpose == FuelWithdrawPurpose.other) {
       _fuelWithdrawOtherController.text =
           _fuelOtherDetailFromDescription(t.description) ?? '';
     } else {
-      _fuelWithdrawPurpose = codePurpose;
       _fuelWithdrawOtherController.clear();
     }
     _fuelWithdrawTransferInTxId = null;
@@ -4859,32 +5088,178 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     }
   }
 
-  void _hydrateFuelWithdrawForSelectedPurpose() {
-    final hit = _dayFuelWithdrawLatest(_fuelWithdrawPurpose);
-    if (hit != null) {
-      _applyFuelWithdrawFromTx(hit);
+  /// รักษาสถานะหลังรีโหลดรายการวัน — โหมดเพิ่มใหม่จะคงช่องว่างไว้เพื่อเพิ่มหลายรอบต่อวันได้
+  void _syncFuelWithdrawAfterDayReload() {
+    final editId = _fuelWithdrawTxId?.trim() ?? '';
+    if (editId.isEmpty) return;
+    final current = _editingFuelWithdrawTx();
+    if (current == null) {
+      _clearFuelWithdrawComposer();
       return;
     }
-    // วัตถุประสงค์ที่เลือกยังไม่มีรายการวันนี้ — เริ่มฟอร์มว่าง (อย่าโหลดรายการอื่นมาทับ)
-    _fuelWithdrawTxId = null;
-    _fuelWithdrawTransferInTxId = null;
-    _fuelWithdrawLitersController.clear();
-    _fuelWithdrawTimeController.clear();
-    if (_fuelWithdrawPurpose != FuelWithdrawPurpose.other) {
-      _fuelWithdrawOtherController.clear();
+    if (isFuelTransferRow(current) &&
+        (_fuelWithdrawTransferInTxId?.trim().isEmpty ?? true)) {
+      final pair = fuelMachineTransferPair(
+        outTx: current,
+        transactions: _moduleDayAllTransactions,
+      );
+      final inId = pair.inTx?.id.trim();
+      if (inId != null && inId.isNotEmpty) {
+        _fuelWithdrawTransferInTxId = inId;
+        _persistOmitCreatedForIds.add(inId);
+      }
     }
   }
 
-  String _fuelWithdrawSummaryForPurpose(FuelWithdrawPurpose purpose) {
-    final hit = _dayFuelWithdrawLatest(purpose);
-    if (hit == null) return '';
-    final liters = fuelTxLiters(hit);
-    final time = _stripRecorderSuffix(hit.workDetails ?? '').trim();
-    final parts = <String>[
-      if (liters > 0) '${formatFuelLiters(liters)} ลิตร',
-      if (time.isNotEmpty) time,
-    ];
-    return parts.join(' · ');
+  void _startEditFuelWithdrawEntry(AppTransaction entry) {
+    AppHaptics.tap();
+    setState(() => _applyFuelWithdrawFromTx(entry));
+    _captureModuleFormBaseline();
+  }
+
+  void _cancelEditFuelWithdrawEntry() {
+    AppHaptics.tap();
+    setState(() => _clearFuelWithdrawComposer());
+    _captureModuleFormBaseline();
+  }
+
+  void _upsertLocalDayTransactions(List<AppTransaction> rows) {
+    if (!mounted || rows.isEmpty) return;
+    final ymd = _quickYmd(_selectedDate);
+    final cat = widget.initialCategory?.trim();
+    setState(() {
+      final byId = <String, AppTransaction>{
+        for (final t in _moduleDayAllTransactions) t.id: t,
+      };
+      for (final row in rows) {
+        byId[row.id] = row;
+      }
+      final nextAll = byId.values.toList();
+      _moduleDayAllTransactions = nextAll;
+      if (cat != null && cat.isNotEmpty) {
+        _moduleDayTransactions = nextAll
+            .where((row) => transactionMatchesDailyModule(row, ymd, cat))
+            .toList();
+      }
+    });
+  }
+
+  void _removeLocalDayTransactionIds(Set<String> ids) {
+    if (!mounted || ids.isEmpty) return;
+    setState(() {
+      _moduleDayAllTransactions = _moduleDayAllTransactions
+          .where((row) => !ids.contains(row.id))
+          .toList();
+      _moduleDayTransactions = _moduleDayTransactions
+          .where((row) => !ids.contains(row.id))
+          .toList();
+    });
+  }
+
+  Future<void> _confirmAndDeleteFuelWithdrawEntry(AppTransaction entry) async {
+    _releaseKeyboardFocus();
+    AppHaptics.tap();
+    final purpose = fuelWithdrawPurposeOfTx(entry);
+    final purposeLabel = fuelWithdrawPurposeDisplayLabel(purpose);
+    final timeLabel = fuelWithdrawTimeLabel(entry);
+    final litersLabel = '${formatFuelLiters(fuelTxLiters(entry))} ลิตร';
+    final detail = [
+      purposeLabel,
+      if (timeLabel.isNotEmpty) timeLabel,
+      litersLabel,
+    ].join(' · ');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(
+          Icons.delete_outline_rounded,
+          size: 34,
+          color: Color(0xFFC62828),
+        ),
+        title: Text(
+          'ลบรายการเบิกน้ำมัน?',
+          style: GoogleFonts.kanit(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          '$detail\nยอดน้ำมันในถังจะถูกปรับคืนอัตโนมัติ',
+          style: GoogleFonts.kanit(fontSize: 15, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'ยกเลิก',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFC62828),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'ลบรายการ',
+              style: GoogleFonts.kanit(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final toReverse = <AppTransaction>[entry];
+      final deletedIds = <String>{entry.id};
+      AppTransaction? pairedIn;
+      if (isFuelTransferRow(entry)) {
+        final pair = fuelMachineTransferPair(
+          outTx: entry,
+          transactions: _moduleDayAllTransactions,
+        );
+        pairedIn = pair.inTx;
+      }
+      await _deleteTransactionOfflineAware(entry.id);
+      if (pairedIn != null) {
+        await _deleteTransactionOfflineAware(pairedIn.id);
+        toReverse.add(pairedIn);
+        deletedIds.add(pairedIn.id);
+      }
+      if (!mounted) return;
+      _removeLocalDayTransactionIds(deletedIds);
+      await _applyLocalFuelStockAfterSave(const [], reverseFirst: toReverse);
+      if (!mounted) return;
+      setState(() {
+        if (_fuelWithdrawTxId == entry.id) {
+          _clearFuelWithdrawComposer();
+        }
+        if (_fuelCarFillTxId == entry.id) {
+          _fuelCarFillTxId = null;
+        }
+      });
+      _captureModuleFormBaseline();
+      await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'ลบรายการเบิกน้ำมันแล้ว ($detail)',
+            style: GoogleFonts.kanit(),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ลบไม่สำเร็จ: $e', style: GoogleFonts.kanit()),
+          ),
+        );
+      }
+    }
   }
 
   /// เพิ่มน้ำมันเข้าถัง (รถน้ำมันมาเติม) — สร้างใหม่หรืออัปเดตรายการเดิม
@@ -5029,7 +5404,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  /// เบิกน้ำมัน — เติมเครื่องจักร = โอนหลัก→สำรอง; อื่นๆ หักถังหลัก
+  /// เบิกน้ำมัน — เติมเครื่องจักร = โอนหลัก→สำรอง; อื่นๆ หักถังหลัก (รองรับเพิ่มได้หลายรอบต่อวัน)
   Future<void> _saveFuelWithdrawEntry() async {
     final liters =
         double.tryParse(_fuelWithdrawLitersController.text.trim()) ?? 0;
@@ -5040,28 +5415,18 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final isMachine = purpose == FuelWithdrawPurpose.machine;
     final carVehicle = fuelWithdrawCarVehicleOf(purpose);
     final isCarFill = carVehicle != null;
-    var existingId = _fuelWithdrawTxId?.trim();
-    if (existingId == null || existingId.isEmpty) {
-      final latest = carVehicle != null
-          ? latestFuelCarFillForVehicle(
-              dayYmd: _quickYmd(_selectedDate),
-              transactions: _moduleDayAllTransactions,
-              vehicleId: fuelCarFillVehicleIdOf(carVehicle),
-            )
-          : latestFuelWithdrawForPurpose(
-              dayYmd: _quickYmd(_selectedDate),
-              transactions: _moduleDayAllTransactions,
-              purpose: purpose,
-            );
-      if (latest != null) {
-        existingId = latest.id;
-        _applyFuelWithdrawFromTx(latest);
-        _persistOmitCreatedForIds.add(latest.id);
-      }
-    }
+    final existingId = _fuelWithdrawTxId?.trim();
     final updateId =
         (existingId != null && existingId.isNotEmpty) ? existingId : null;
     final isUpdate = updateId != null;
+    final existingCount = fuelWithdrawEntriesForPurpose(
+      dayYmd: _quickYmd(_selectedDate),
+      transactions: _moduleDayAllTransactions,
+      purpose: purpose,
+    ).length;
+    final roundTag = !isUpdate && existingCount > 0
+        ? ' (รอบที่ ${existingCount + 1})'
+        : '';
     await _runSaveWithPopups(
       successMessage: isUpdate
           ? (isMachine
@@ -5070,20 +5435,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ? 'อัปเดตเติมน้ำมันรถยนต์สำเร็จ'
                   : 'อัปเดตเบิกน้ำมันสำเร็จ'))
           : (isMachine
-              ? 'เติมถังสำรองสำเร็จ'
+              ? 'เติมถังสำรอง$roundTagสำเร็จ'
               : (isCarFill
-                  ? 'บันทึกเติมน้ำมันรถยนต์สำเร็จ'
-                  : 'บันทึกเบิกน้ำมันสำเร็จ')),
+                  ? 'บันทึกเติมน้ำมันรถยนต์$roundTagสำเร็จ'
+                  : 'บันทึกเบิกน้ำมัน$roundTagสำเร็จ')),
       saveActionLabel: isMachine
           ? 'เติมถังสำรอง'
           : (isCarFill ? 'เติมน้ำมันรถยนต์' : 'เบิกน้ำมันออกจากถังหลัก'),
       saveButtonLabel: isUpdate
           ? 'อัปเดตรายการนี้'
-          : (isCarFill ? 'บันทึกเติมน้ำมันรถยนต์' : 'บันทึกเบิกน้ำมัน'),
+          : (existingCount > 0
+              ? 'บันทึกเพิ่มรอบที่ ${existingCount + 1}'
+              : (isCarFill ? 'บันทึกเติมน้ำมันรถยนต์' : 'บันทึกเบิกน้ำมัน')),
       requireSignature: false,
       stayOnPage: true,
       onStayOnPageCleared: () {
-        // คงค่าในช่องเพื่อแก้ต่อ — txId ตั้งจากรายการที่เพิ่งบันทึก
+        // ล้างช่องกรอกเพื่อพร้อมเพิ่มรอบถัดไป โดยคงวัตถุประสงค์ที่เลือกไว้
+        _clearFuelWithdrawComposer();
+        _captureModuleFormBaseline();
       },
       body: () async {
         if (liters <= 0) {
@@ -5100,9 +5469,11 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         }
         var priorLiters = 0.0;
         String? priorXferNote;
+        AppTransaction? priorTx;
         if (isUpdate) {
           for (final r in _moduleDayAllTransactions) {
             if (r.id == updateId) {
+              priorTx = r;
               priorLiters = fuelTxLiters(r);
               final n = (r.note ?? '').trim();
               if (n.startsWith('xfer:')) priorXferNote = n;
@@ -5116,6 +5487,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final date = '$y-$m-$d';
         final availableMain =
             _fuelStock.mainDiesel + (isUpdate ? priorLiters : 0);
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        final seq = ++_fuelWithdrawSeq;
 
         if (isMachine) {
           if (liters > availableMain + 1e-9) {
@@ -5125,20 +5498,27 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             );
           }
           // เกินความจุถังสำรอง — เตือนบนแบนเนอร์ได้ แต่ไม่บล็อกบันทึก
-          final ts = DateTime.now().millisecondsSinceEpoch;
-          final existingInId = _fuelWithdrawTransferInTxId?.trim();
-          final outId =
-              updateId ?? '${ts}_fuel_xfer_out';
+          var existingInId = _fuelWithdrawTransferInTxId?.trim();
+          if (isUpdate &&
+              (existingInId == null || existingInId.isEmpty) &&
+              priorTx != null &&
+              isFuelTransferRow(priorTx)) {
+            existingInId = fuelMachineTransferPair(
+              outTx: priorTx,
+              transactions: _moduleDayAllTransactions,
+            ).inTx?.id.trim();
+          }
+          final outId = updateId ?? '${ts}_${seq}_fuel_xfer_out';
           final inId = isUpdate &&
                   existingInId != null &&
                   existingInId.isNotEmpty
               ? existingInId
-              : '${ts}_fuel_xfer_in';
+              : '${ts}_${seq}_fuel_xfer_in';
           final pairNote = (isUpdate &&
                   priorXferNote != null &&
                   priorXferNote.isNotEmpty)
               ? priorXferNote
-              : 'xfer:$ts';
+              : 'xfer:${ts}_$seq';
           final outTx = AppTransaction(
             id: outId,
             date: date,
@@ -5181,8 +5561,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           );
           await _persist(outTx);
           await _persist(inTx);
-          _fuelWithdrawTxId = outTx.id;
-          _fuelWithdrawTransferInTxId = inTx.id;
+          _upsertLocalDayTransactions([outTx, inTx]);
           if (isUpdate && priorLiters > 0) {
             final oldOut = AppTransaction(
               id: outId,
@@ -5230,8 +5609,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               field: 'จำนวนลิตรที่เบิกออก',
             );
           }
-          final txId = updateId ??
-              '${DateTime.now().millisecondsSinceEpoch}_fuel_car';
+          final txId = updateId ?? '${ts}_${seq}_fuel_car';
           final tx = _buildFuelCarFillTx(
             date: date,
             txId: txId,
@@ -5241,8 +5619,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             fuelType: fuelType,
           );
           await _persist(tx);
-          _fuelWithdrawTxId = tx.id;
-          _fuelWithdrawTransferInTxId = null;
+          _upsertLocalDayTransactions([tx]);
           _fuelCarFillTxId = tx.id;
           _fuelCarFillVehicle = carVehicle;
           if (isUpdate && priorLiters > 0) {
@@ -5275,8 +5652,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               field: 'จำนวนลิตรที่เบิกออก',
             );
           }
-          final txId = updateId ??
-              '${DateTime.now().millisecondsSinceEpoch}_fuel_wd';
+          final txId = updateId ?? '${ts}_${seq}_fuel_wd';
           final tx = AppTransaction(
             id: txId,
             date: date,
@@ -5297,8 +5673,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             workDetails: _appendRecorder(time),
           );
           await _persist(tx);
-          _fuelWithdrawTxId = tx.id;
-          _fuelWithdrawTransferInTxId = null;
+          _upsertLocalDayTransactions([tx]);
           if (isUpdate && priorLiters > 0) {
             final oldTx = AppTransaction(
               id: txId,
@@ -5511,7 +5886,8 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             _failSave('กรุณาระบุเวลาเติมน้ำมัน ($vehicle)');
           }
           row.fuelType = 'Diesel';
-          final tank = normalizeFuelTank(row.fuelTank);
+          final tank = normalizeFuelTank(_fuelMacroTank ?? row.fuelTank);
+          row.fuelTank = tank;
           final tankLabel = fuelTankIsReserve(tank)
               ? 'ถังสำรอง'
               : 'พล่าม/หลัก';
@@ -5531,7 +5907,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             category: 'Fuel',
             subCategory: kFuelVehicleUsageSubCategory,
             description: _appendRecorder(
-              'ใช้น้ำมันรถ $vehicle: ${liters.toStringAsFixed(0)} ลิตร '
+              'ใช้น้ำมันรถ $vehicle: ${formatFuelLiters(liters)} ลิตร '
               '(ดีเซล · $tankLabel)',
             ),
             amount: 0,
@@ -5683,10 +6059,80 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     };
   }
 
-  /// บันทึกลาเช็คชื่อแยกช่วง — คนที่อยู่ทั้งเช้าและบ่าย = ลาเต็มวัน
+  Set<String> _attendanceMultiDayExternalIds({required bool driver}) {
+    final ymd = _quickYmd(_selectedDate);
+    final locked = <String>{};
+    for (final source in _attendanceExternalLeaves) {
+      final singleDay =
+          leaveInclusiveDayCount(source) <= 1 &&
+          source.date.trim().startsWith(ymd);
+      if (singleDay) continue;
+      for (final id in source.employeeIds) {
+        if (_attendanceLeaveEmployeeIsDriver(id) == driver) locked.add(id);
+      }
+    }
+    return locked;
+  }
+
+  bool _attendanceLeaveEmployeeIsDriver(String empId) {
+    final employee = _employeesById[empId];
+    return employee != null && _attendanceIsDriver(employee);
+  }
+
+  /// รายการเมนูลางานที่ครอบคลุมวันนี้ — อัปเดตเฉพาะลาวันเดียว แล้วกันไม่ให้เช็คชื่อเขียนซ้ำ
+  Future<Set<String>> _syncExternalLeavesForBoard({
+    required bool driver,
+    required Set<String> full,
+    required Set<String> morning,
+    required Set<String> afternoon,
+  }) async {
+    final linked = <String>{};
+    final ymd = _quickYmd(_selectedDate);
+    for (final source in _attendanceExternalLeaves) {
+      final mine = source.employeeIds
+          .where(
+            (id) => _attendanceLeaveEmployeeIsDriver(id) == driver,
+          )
+          .toList();
+      if (mine.isEmpty) continue;
+      final half = _attendanceLeaveHalfBucket(source);
+      final slot = half == 'morning'
+          ? morning
+          : half == 'afternoon'
+          ? afternoon
+          : full;
+      final still = mine.where(slot.contains).toList();
+      final singleDay =
+          leaveInclusiveDayCount(source) <= 1 &&
+          source.date.trim().startsWith(ymd);
+      if (!singleDay) {
+        linked.addAll(mine);
+        continue;
+      }
+      linked.addAll(still);
+      if (still.length == mine.length) continue;
+      final others = source.employeeIds
+          .where((id) => _attendanceLeaveEmployeeIsDriver(id) != driver)
+          .toList();
+      final nextIds = [...others, ...still];
+      if (nextIds.isEmpty) {
+        await _attendanceDeleteRowIfAny(source.id);
+        _attendanceExternalLeaves.removeWhere((t) => t.id == source.id);
+        continue;
+      }
+      final updated = source.copyWith(employeeIds: nextIds);
+      await _persist(updated);
+      final idx = _attendanceExternalLeaves.indexWhere((t) => t.id == source.id);
+      if (idx >= 0) _attendanceExternalLeaves[idx] = updated;
+    }
+    return linked;
+  }
+
+  /// บันทึกลาเช็คชื่อแยกช่อง — เต็มวัน / เช้า / บ่าย เป็นแถวลาคนละแบบ
   Future<void> _saveAttendanceLeaveSlices({
     required String date,
     required int baseTs,
+    required Set<String> full,
     required Set<String> morning,
     required Set<String> afternoon,
     required String reason,
@@ -5694,13 +6140,19 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     required String idPrefix,
     required bool driver,
   }) async {
-    final full = morning.intersection(afternoon);
-    final morningOnly = morning.difference(afternoon);
-    final afternoonOnly = afternoon.difference(morning);
+    final linked = await _syncExternalLeavesForBoard(
+      driver: driver,
+      full: full,
+      morning: morning,
+      afternoon: afternoon,
+    );
+    final fullIds = full.difference(linked);
+    final morningIds = morning.difference(linked);
+    final afternoonIds = afternoon.difference(linked);
 
     var fullExisting =
         driver ? _attendanceDriverLeaveTxId : _attendanceLeaveTxId;
-    if (full.isNotEmpty &&
+    if (fullIds.isNotEmpty &&
         (fullExisting == null || fullExisting.isEmpty) &&
         _attendanceLegacyLeaveTxId != null) {
       fullExisting = _attendanceLegacyLeaveTxId;
@@ -5760,16 +6212,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
     final nextFull = await upsert(
       existing: fullExisting,
-      suffix: '',
-      ids: full,
-      periodLabel: '',
+      suffix: '_full',
+      ids: fullIds,
+      periodLabel: 'เต็มวัน',
       days: 1,
       halfMeta: null,
     );
     final nextMorning = await upsert(
       existing: morningExisting,
       suffix: '_morning',
-      ids: morningOnly,
+      ids: morningIds,
       periodLabel: 'ช่วงเช้า',
       days: 0.5,
       halfMeta: _leaveHalfMorningMeta,
@@ -5777,7 +6229,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final nextAfternoon = await upsert(
       existing: afternoonExisting,
       suffix: '_afternoon',
-      ids: afternoonOnly,
+      ids: afternoonIds,
       periodLabel: 'ช่วงบ่าย',
       days: 0.5,
       halfMeta: _leaveHalfAfternoonMeta,
@@ -5804,11 +6256,12 @@ class _QuickInputScreenState extends State<QuickInputScreen>
 
   Future<void> _saveAttendanceSandYardEntry() async {
     final work = _attendanceAssignments['att_work']!.toSet();
+    final leaveFull = _attendanceAssignments['att_leave_full']!.toSet();
     final leaveMorning =
         _attendanceAssignments['att_leave_morning']!.toSet();
     final leaveAfternoon =
         _attendanceAssignments['att_leave_afternoon']!.toSet();
-    final genLeave = {...leaveMorning, ...leaveAfternoon};
+    final genLeave = {...leaveFull, ...leaveMorning, ...leaveAfternoon};
 
     // snapshot คนขับไว้เผื่อต้องแยกแถวรวมเก่า
     final drvMacro = _attendanceAssignments['att_drv_macro']!.toSet();
@@ -5829,6 +6282,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           AttendanceSessionTimes.roleWork,
         });
         final present = <String>{...work, ...sessionEmp};
+        present.removeAll(_attendanceMultiDayExternalIds(driver: false));
         if (present.isEmpty && genLeave.isEmpty) {
           _failSave('กรุณาลากรายชื่อลงกล่องอย่างน้อย 1 คน');
         }
@@ -5894,6 +6348,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         await _saveAttendanceLeaveSlices(
           date: date,
           baseTs: baseTs,
+          full: leaveFull,
           morning: leaveMorning,
           afternoon: leaveAfternoon,
           reason: _attLeaveReasonSand,
@@ -5910,11 +6365,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Future<void> _saveAttendanceDriverEntry() async {
     final drvMacro = _attendanceAssignments['att_drv_macro']!.toSet();
     final drvDrum = _attendanceAssignments['att_drv_drum']!.toSet();
+    final drvLeaveFull = _attendanceAssignments['att_drv_leave_full']!.toSet();
     final drvLeaveMorning =
         _attendanceAssignments['att_drv_leave_morning']!.toSet();
     final drvLeaveAfternoon =
         _attendanceAssignments['att_drv_leave_afternoon']!.toSet();
-    final drvLeave = {...drvLeaveMorning, ...drvLeaveAfternoon};
+    final drvLeave = {
+      ...drvLeaveFull,
+      ...drvLeaveMorning,
+      ...drvLeaveAfternoon,
+    };
 
     final work = _attendanceAssignments['att_work']!.toSet();
     final genLeave = _attendanceLeaveUnion(_attSandLeaveIds);
@@ -5934,6 +6394,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           AttendanceSessionTimes.roleDrum,
         });
         final present = <String>{...drvMacro, ...drvDrum, ...sessionEmp};
+        present.removeAll(_attendanceMultiDayExternalIds(driver: true));
         if (present.isEmpty && drvLeave.isEmpty) {
           _failSave('กรุณาลากรายชื่อลงกล่องอย่างน้อย 1 คน');
         }
@@ -6006,6 +6467,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         await _saveAttendanceLeaveSlices(
           date: date,
           baseTs: baseTs,
+          full: drvLeaveFull,
           morning: drvLeaveMorning,
           afternoon: drvLeaveAfternoon,
           reason: _attLeaveReasonDriver,
@@ -6629,17 +7091,46 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
+  void _resetDailyEventComposer() {
+    _dailyEventTxId = null;
+    _dailyEventDescController.clear();
+    _dailyEventTimeController.clear();
+    _dailyEventType = 'info';
+    _dailyEventPriority = 'normal';
+  }
+
+  AppTransaction? _editingDailyEventTx() {
+    final editId = _dailyEventTxId?.trim() ?? '';
+    if (editId.isEmpty) return null;
+    final dayYmd = _quickYmd(_selectedDate);
+    for (final t in _moduleDayAllTransactions) {
+      if (t.id == editId && t.date.trim() == dayYmd && isDailyEventRow(t)) {
+        return t;
+      }
+    }
+    for (final t in _moduleDayTransactions) {
+      if (t.id == editId && t.date.trim() == dayYmd && isDailyEventRow(t)) {
+        return t;
+      }
+    }
+    return null;
+  }
+
   Future<void> _saveDailyEventEntry() async {
+    final isUpdate =
+        _dailyEventTxId != null && _dailyEventTxId!.trim().isNotEmpty;
     await _runSaveWithPopups(
-      successMessage: 'บันทึกเหตุการณ์สำเร็จ',
+      successMessage: isUpdate
+          ? 'อัปเดตเหตุการณ์สำเร็จ'
+          : 'บันทึกเหตุการณ์สำเร็จ',
       saveActionLabel: 'บันทึกเหตุการณ์ประจำวัน',
-      saveButtonLabel: _dailyEventTxId != null && _dailyEventTxId!.isNotEmpty
-          ? 'อัปเดตเหตุการณ์'
-          : 'บันทึกเหตุการณ์',
+      saveButtonLabel: isUpdate ? 'อัปเดตเหตุการณ์' : 'บันทึกเหตุการณ์',
       requireSignature: false,
       stayOnPage: true,
-      // คงฟอร์มไว้ให้ตรวจ/แก้ต่อ — hydrate ตอนโหลดวันจะเติมเมื่อ !_saving
-      onStayOnPageCleared: null,
+      onStayOnPageCleared: () {
+        // ล้างฟอร์มให้พร้อมบันทึกเหตุการณ์ถัดไปทันที โดยไม่เขียนทับรายการก่อนหน้า
+        _resetDailyEventComposer();
+      },
       body: () async {
         final text = _dailyEventDescController.text.trim();
         if (text.isEmpty) {
@@ -6649,89 +7140,139 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         final m = _selectedDate.month.toString().padLeft(2, '0');
         final d = _selectedDate.day.toString().padLeft(2, '0');
         final date = '$y-$m-$d';
-        final id = (_dailyEventTxId != null && _dailyEventTxId!.trim().isNotEmpty)
+        final seq = ++_dailyEventSeq;
+        final id = isUpdate
             ? _dailyEventTxId!.trim()
-            : '${DateTime.now().millisecondsSinceEpoch}_event';
-        _dailyEventTxId = id;
-        await _persist(
-          AppTransaction(
-            id: id,
-            date: date,
-            type: 'Expense',
-            category: 'DailyLog',
-            subCategory: 'Event',
-            description: _appendRecorder(text),
-            amount: 0,
-            note: _activeSignatureNote,
-            eventType: _dailyEventType.trim().isEmpty
-                ? 'info'
-                : _dailyEventType,
-            eventPriority: _dailyEventPriority.trim().isEmpty
-                ? 'normal'
-                : _dailyEventPriority,
-          ),
+            : '${DateTime.now().millisecondsSinceEpoch}_${seq}_event';
+        final rawTime = _dailyEventTimeController.text.trim();
+        final tx = AppTransaction(
+          id: id,
+          date: date,
+          type: 'Expense',
+          category: 'DailyLog',
+          subCategory: 'Event',
+          description: _appendRecorder(text),
+          amount: 0,
+          note: _activeSignatureNote,
+          eventTime: rawTime.isEmpty ? null : rawTime,
+          eventType: normalizeDailyEventType(_dailyEventType),
+          eventPriority: normalizeDailyEventPriority(_dailyEventPriority),
+          createdAt: DateTime.now(),
         );
+        await _persist(tx);
+        _upsertLocalDayTransactions([tx]);
       },
     );
   }
 
   void _applyDailyEventToForm(AppTransaction t) {
     _dailyEventTxId = t.id;
-    _dailyEventDescController.text = _stripRecorderSuffix(t.description);
-    final et = (t.eventType ?? '').trim();
-    _dailyEventType = et.isEmpty ? 'info' : et;
-    final ep = (t.eventPriority ?? '').trim();
-    _dailyEventPriority = ep.isEmpty ? 'normal' : ep;
+    _dailyEventDescController.text = stripDailyEventRecorderSuffix(
+      t.description,
+    );
+    _dailyEventTimeController.text = (t.eventTime ?? '').trim();
+    _dailyEventType = normalizeDailyEventType(t.eventType);
+    _dailyEventPriority = normalizeDailyEventPriority(t.eventPriority);
     _persistOmitCreatedForIds.add(t.id);
   }
 
+  /// รักษาสถานะหลังรีโหลดวัน — เริ่มต้นเป็นโหมดเพิ่มใหม่เสมอ ไม่เขียนทับรายการเดิมอัตโนมัติ
   void _hydrateDailyEventFromTransactions(List<AppTransaction> txs) {
-    AppTransaction? best;
-    for (final t in txs) {
-      if (t.category != 'DailyLog') continue;
-      if ((t.subCategory ?? '').trim() != 'Event') continue;
-      if (t.description.trim().isEmpty) continue;
-      best = t;
-      break; // matched เรียงใหม่สุดก่อน
+    final editId = _dailyEventTxId?.trim() ?? '';
+    if (editId.isEmpty) return;
+    final stillExists = txs.any((t) => t.id == editId && isDailyEventRow(t));
+    if (!stillExists) {
+      _resetDailyEventComposer();
     }
-    if (best == null) {
-      _dailyEventTxId = null;
-      _dailyEventDescController.clear();
-      _dailyEventType = 'info';
-      _dailyEventPriority = 'normal';
-      return;
-    }
-    _applyDailyEventToForm(best);
   }
 
   void _loadDailyEventIntoForm(AppTransaction t) {
-    _applyDailyEventToForm(t);
-    _scheduleUiRefresh();
+    AppHaptics.tap();
+    setState(() => _applyDailyEventToForm(t));
   }
 
   void _startNewDailyEvent() {
-    setState(() {
-      _dailyEventTxId = null;
-      _dailyEventDescController.clear();
-      _dailyEventType = 'info';
-      _dailyEventPriority = 'normal';
-    });
+    AppHaptics.tap();
+    setState(_resetDailyEventComposer);
   }
 
-  String _dailyEventTypeLabel(String? raw) {
-    switch ((raw ?? '').trim()) {
-      case 'warning':
-        return 'เตือน';
-      case 'problem':
-        return 'ปัญหา';
-      case 'success':
-        return 'สำเร็จ';
-      case 'complaint':
-        return 'ข้อร้องเรียน';
-      case 'request':
-        return 'ความต้องการ';
-      default:
-        return 'ข้อมูล';
+  Future<void> _confirmAndDeleteDailyEvent(AppTransaction entry) async {
+    _releaseKeyboardFocus();
+    AppHaptics.tap();
+    final spec = dailyEventTypeSpecOf(entry.eventType);
+    final desc = stripDailyEventRecorderSuffix(entry.description);
+    final time = dailyEventDisplayTime(entry);
+    final header = [
+      spec.label,
+      if (time.isNotEmpty) time,
+    ].join(' · ');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(
+          Icons.delete_outline_rounded,
+          size: 34,
+          color: Color(0xFFC62828),
+        ),
+        title: Text(
+          'ลบเหตุการณ์นี้?',
+          style: GoogleFonts.kanit(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          '$header\n$desc',
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          style: GoogleFonts.kanit(fontSize: 15, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'ยกเลิก',
+              style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFC62828),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'ลบรายการ',
+              style: GoogleFonts.kanit(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _deleteTransactionOfflineAware(entry.id);
+      if (!mounted) return;
+      _removeLocalDayTransactionIds({entry.id});
+      if (_dailyEventTxId == entry.id) {
+        setState(_resetDailyEventComposer);
+      }
+      await _loadModuleTransactions(forceRefresh: !_isOfflineCapableCategory);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ลบเหตุการณ์แล้ว', style: GoogleFonts.kanit()),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('ลบไม่สำเร็จ: $e', style: GoogleFonts.kanit()),
+          ),
+        );
+      }
     }
   }
 
@@ -13070,6 +13611,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     setState(() {
       row.time = value;
       row.timeController.text = value;
+      row.timeAutoFilled = false;
     });
   }
 
@@ -13408,150 +13950,20 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  /// ปุ่มแตะเลือกบนการ์ดแม็คโคร — ใหญ่ กดง่าย มีสถานะติ๊กถูก
-  Widget _macroPickButton({
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-    IconData? icon,
-    bool starred = false,
-    VoidCallback? onRemove,
-  }) {
-    final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark ||
-        (AppThemeScope.maybeOf(context)?.isDark ?? false);
-    final accent = isDark ? p.brand : _macroAccent;
-    final accentInk = isDark ? p.brandDateInk : _macroAccentInk;
-    final accentTint = isDark ? p.brandSurface : _macroAccentTint;
-    final unselectedBg = isDark ? p.chipSurface : Colors.white;
-    final unselectedBorder = isDark ? p.hairline : const Color(0xFFE0E6ED);
-    final unselectedLabel = isDark ? p.ink : const Color(0xFF37474F);
-    final idleIcon = isDark ? p.inkMuted : const Color(0xFF90A4AE);
-    final danger = isDark ? const Color(0xFFF87171) : const Color(0xFFD14343);
-    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
-        MediaQuery.sizeOf(context).height >=
-            MediaQuery.sizeOf(context).width;
-    final padH = phonePortrait ? 10.0 : 14.0;
-    final padV = phonePortrait ? 9.0 : 12.0;
-    final fontSize = phonePortrait ? 14.0 : 16.0;
-    final iconSize = phonePortrait ? 17.0 : 20.0;
-    return AnimatedScale(
-      scale: selected ? 1.03 : 1,
-      duration: const Duration(milliseconds: 160),
-      curve: Curves.easeOutBack,
-      child: Material(
-        color: selected ? accentTint : unselectedBg,
-        borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
-          onTap: onTap,
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
-              border: Border.all(
-                color: selected ? accent : unselectedBorder,
-                width: selected ? 1.8 : 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (selected)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 5),
-                    child: Icon(
-                      Icons.check_circle_rounded,
-                      size: iconSize,
-                      color: accent,
-                    ),
-                  )
-                else if (icon != null)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 5),
-                    child: Icon(
-                      icon,
-                      size: iconSize,
-                      color: idleIcon,
-                    ),
-                  ),
-                if (starred)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 3),
-                    child: Icon(
-                      Icons.star_rounded,
-                      size: phonePortrait ? 15 : 17,
-                      color: const Color(0xFFFFA000),
-                    ),
-                  ),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.kanit(
-                    fontSize: fontSize,
-                    fontWeight: FontWeight.w700,
-                    color: selected ? accentInk : unselectedLabel,
-                  ),
-                ),
-                if (onRemove != null) ...[
-                  const SizedBox(width: 4),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: onRemove,
-                    child: Icon(
-                      Icons.cancel_rounded,
-                      size: phonePortrait ? 17 : 19,
-                      color: danger,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _macroSectionLabel(String text) {
-    final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark ||
-        (AppThemeScope.maybeOf(context)?.isDark ?? false);
-    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
-        MediaQuery.sizeOf(context).height >=
-            MediaQuery.sizeOf(context).width;
-    return Padding(
-      padding: EdgeInsets.only(bottom: phonePortrait ? 4 : 6),
-      child: Text(
-        text,
-        style: GoogleFonts.kanit(
-          fontSize: phonePortrait ? 12.5 : 13.5,
-          fontWeight: FontWeight.w700,
-          color: isDark ? p.inkMuted : const Color(0xFF78909C),
-        ),
-      ),
-    );
-  }
-
   Widget _buildMacroVehicleRow({
     required _MacroVehicleDraft row,
     required String vehicleName,
     required int displayIndex,
   }) {
-    final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark ||
-        (AppThemeScope.maybeOf(context)?.isDark ?? false);
-    final accent = isDark ? p.brand : _macroAccent;
-    final accentInk = isDark ? p.brandDateInk : _macroAccentInk;
-    final accentTint = isDark ? p.brandSurface : _macroAccentTint;
-    final danger = isDark ? const Color(0xFFF87171) : const Color(0xFFD14343);
     final isSaved = row.txId != null && row.txId!.trim().isNotEmpty;
     final hasDriver = row.driverId.trim().isNotEmpty;
     final tags = _macroWorkTags(row);
     final hasDetails = tags.isNotEmpty;
-    final isComplete = _macroRowIsComplete(row);
-    final isIdle = !isComplete;
+    final status = resolveMacroVehicleRowStatus(
+      isSaved: isSaved,
+      hasDriver: hasDriver,
+      hasWorkTags: hasDetails,
+    );
     final defaultDriverId = _defaultDriverIdForVehicle(vehicleName);
     final drivers = [..._macroSelectableDriversFor(vehicleName)]
       ..sort((a, b) {
@@ -13559,330 +13971,56 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         if (b.id == defaultDriverId) return 1;
         return 0;
       });
-    final customTags =
-        tags.where((t) => !_kMacroWorkQuickPhrases.contains(t)).toList();
-    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
-        MediaQuery.sizeOf(context).height >=
-            MediaQuery.sizeOf(context).width;
-    final iconBox = phonePortrait ? 40.0 : 52.0;
-    final titleSize = phonePortrait ? 18.0 : 23.0;
-    final gap = phonePortrait ? 8.0 : 12.0;
-
-    Widget statusBadge() {
-      if (isIdle) {
-        return Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: phonePortrait ? 7 : 8,
-            vertical: 4,
-          ),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF3D2E12) : const Color(0xFFFFF8E1),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: isDark ? const Color(0xFF8B6914) : const Color(0xFFFFE082),
-            ),
-          ),
-          child: Text(
-            phonePortrait ? 'ไม่ได้ทำงาน' : 'วันนั้นไม่ได้ทำงาน',
-            style: GoogleFonts.kanit(
-              fontSize: phonePortrait ? 11 : 12,
-              fontWeight: FontWeight.w700,
-              color: isDark ? p.statusIncomplete : const Color(0xFFF57F17),
-            ),
-          ),
-        );
-      }
-      if (isSaved) {
-        return Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: phonePortrait ? 7 : 8,
-            vertical: 4,
-          ),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF143528) : const Color(0xFFE8F5E9),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: isDark ? const Color(0xFF2E7D32) : const Color(0xFFA5D6A7),
-            ),
-          ),
-          child: Text(
-            'บันทึกแล้ว',
-            style: GoogleFonts.kanit(
-              fontSize: phonePortrait ? 11 : 12,
-              fontWeight: FontWeight.w700,
-              color: isDark ? p.statusComplete : const Color(0xFF2E7D32),
-            ),
-          ),
-        );
-      }
-      return const SizedBox.shrink();
-    }
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      margin: EdgeInsets.only(bottom: phonePortrait ? 10 : 12),
-      padding: EdgeInsets.all(phonePortrait ? 12 : 14),
-      decoration: BoxDecoration(
-        color: isComplete || isSaved
-            ? accent.withValues(alpha: isDark ? 0.12 : 0.05)
-            : (isDark ? p.chipSurface : const Color(0xFFF7F8FA)),
-        borderRadius: BorderRadius.circular(phonePortrait ? 16 : 18),
-        border: Border.all(
-          color: isComplete || isSaved
-              ? accent
-              : (isDark ? p.hairline : const Color(0xFFCFD8DC)),
-          width: isComplete || isSaved ? 1.8 : 1,
+    final driverOptions = [
+      for (final e in drivers)
+        MacroDriverOption(
+          id: e.id,
+          displayName: e.nickname.isNotEmpty ? e.nickname : e.name,
+          isDefault: e.id == defaultDriverId,
         ),
-        boxShadow: [
-          if (isComplete || isSaved)
-            BoxShadow(
-              color: accent.withValues(alpha: isDark ? 0.28 : 0.18),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: iconBox,
-                height: iconBox,
-                decoration: BoxDecoration(
-                  color: isIdle
-                      ? (isDark ? p.chipSurface : const Color(0xFFECEFF1))
-                      : accentTint,
-                  borderRadius: BorderRadius.circular(phonePortrait ? 12 : 16),
-                ),
-                child: Icon(
-                  isIdle
-                      ? Icons.do_not_disturb_on_outlined
-                      : Icons.construction_rounded,
-                  size: phonePortrait ? 22 : 30,
-                  color: isIdle
-                      ? (isDark ? p.inkMuted : const Color(0xFF78909C))
-                      : accent,
-                ),
-              ),
-              SizedBox(width: phonePortrait ? 10 : 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      phonePortrait
-                          ? 'คันที่ $displayIndex'
-                          : 'รถแม็คโคร คันที่ $displayIndex',
-                      style: GoogleFonts.kanit(
-                        fontSize: phonePortrait ? 12 : 13,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? p.inkMuted : const Color(0xFF607D8B),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      vehicleName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.kanit(
-                        fontSize: titleSize,
-                        fontWeight: FontWeight.w800,
-                        color: isIdle
-                            ? (isDark ? p.inkSubtle : const Color(0xFF546E7A))
-                            : accentInk,
-                        height: 1.2,
-                      ),
-                    ),
-                    if (phonePortrait && (isIdle || isSaved)) ...[
-                      const SizedBox(height: 6),
-                      statusBadge(),
-                    ],
-                  ],
-                ),
-              ),
-              if (!phonePortrait) statusBadge(),
-              if (isSaved || hasDriver || hasDetails)
-                IconButton(
-                  onPressed: () => _handleMacroVehicleRowDelete(row),
-                  icon: const Icon(Icons.delete_outline_rounded),
-                  color: danger,
-                  tooltip: isSaved ? 'ลบรายการที่บันทึก' : 'ล้างแถว',
-                  visualDensity: VisualDensity.compact,
-                  constraints: phonePortrait
-                      ? const BoxConstraints(minWidth: 40, minHeight: 40)
-                      : null,
-                  padding: phonePortrait ? EdgeInsets.zero : null,
-                ),
-            ],
-          ),
-          if (isIdle) ...[
-            SizedBox(height: phonePortrait ? 8 : 10),
-            Text(
-              phonePortrait
-                  ? 'ยังไม่ครบคนขับหรืองาน — จะไม่บันทึกคันนี้'
-                  : 'ยังไม่ครบคนขับหรืองานวันนี้ — จะไม่บันทึกคันนี้',
-              style: GoogleFonts.kanit(
-                fontSize: phonePortrait ? 12.5 : 13.5,
-                fontWeight: FontWeight.w600,
-                color: isDark ? p.inkMuted : const Color(0xFF78909C),
-              ),
-            ),
-          ],
-          SizedBox(height: gap),
-          _macroSectionLabel(
-            phonePortrait ? 'คนขับ' : 'คนขับ — แตะเลือก',
-          ),
-          if (drivers.isEmpty)
-            Text(
-              phonePortrait
-                  ? 'ยังไม่พบคนขับแม็คโคร / คนขับเริ่มต้นของรถคันนี้'
-                  : 'ยังไม่พบพนักงานตำแหน่ง «คนขับรถแม็คโคร» '
-                      'และยังไม่ได้ตั้งคนขับเริ่มต้นของรถคันนี้บนเว็บ',
-              style: GoogleFonts.kanit(
-                fontSize: phonePortrait ? 12.5 : 13.5,
-                fontWeight: FontWeight.w600,
-                color: danger,
-              ),
-            )
-          else
-            Wrap(
-              spacing: phonePortrait ? 6 : 8,
-              runSpacing: phonePortrait ? 6 : 8,
-              children: [
-                for (final e in drivers)
-                  _macroPickButton(
-                    label: e.nickname.isNotEmpty ? e.nickname : e.name,
-                    selected: row.driverId == e.id,
-                    starred: e.id == defaultDriverId,
-                    icon: Icons.person_outline_rounded,
-                    onTap: () {
-                      AppHaptics.tap();
-                      row.driverId = row.driverId == e.id ? '' : e.id;
-                      _scheduleUiRefresh();
-                    },
-                  ),
-              ],
-            ),
-          SizedBox(height: gap),
-          _macroSectionLabel('ช่วงเวลาทำงาน'),
-          Row(
-            children: [
-              Expanded(
-                child: _macroPickButton(
-                  label: 'เต็มวัน',
-                  icon: Icons.wb_sunny_rounded,
-                  selected: row.workType != 'HalfDay',
-                  onTap: () {
-                    AppHaptics.tap();
-                    row.workType = 'FullDay';
-                    _scheduleUiRefresh();
-                  },
-                ),
-              ),
-              SizedBox(width: phonePortrait ? 6 : 8),
-              Expanded(
-                child: _macroPickButton(
-                  label: 'ครึ่งวัน',
-                  icon: Icons.brightness_4_rounded,
-                  selected: row.workType == 'HalfDay',
-                  onTap: () {
-                    AppHaptics.tap();
-                    row.workType = 'HalfDay';
-                    _scheduleUiRefresh();
-                  },
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: gap),
-          _macroSectionLabel(
-            phonePortrait
-                ? 'งานวันนี้ — แตะเลือกได้หลายงาน'
-                : 'งานวันนี้ — แตะเลือกได้หลายงาน แตะซ้ำเพื่อเอาออก',
-          ),
-          Wrap(
-            spacing: phonePortrait ? 6 : 8,
-            runSpacing: phonePortrait ? 6 : 8,
-            children: [
-              for (final phrase in _kMacroWorkQuickPhrases)
-                _macroPickButton(
-                  label: phrase,
-                  selected: tags.contains(phrase),
-                  onTap: () => _toggleMacroWorkTag(row, phrase),
-                ),
-              for (final tag in customTags)
-                _macroPickButton(
-                  label: tag,
-                  selected: true,
-                  onTap: () => _toggleMacroWorkTag(row, tag),
-                  onRemove: () => _removeMacroWorkTag(row, tag),
-                ),
-              _macroPickButton(
-                label: 'งานอื่น',
-                icon: Icons.add_rounded,
-                selected: false,
-                onTap: () => unawaited(_addMacroCustomWorkTag(row)),
-              ),
-            ],
-          ),
-          if (tags.length > 1) ...[
-            SizedBox(height: phonePortrait ? 8 : 10),
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: phonePortrait ? 10 : 12,
-                vertical: phonePortrait ? 8 : 9,
-              ),
-              decoration: BoxDecoration(
-                color: accentTint,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: accent.withValues(alpha: 0.45)),
-              ),
-              child: Text(
-                'ลำดับงาน: ${tags.join(' → ')}',
-                style: GoogleFonts.kanit(
-                  fontSize: phonePortrait ? 13 : 14,
-                  fontWeight: FontWeight.w700,
-                  color: accentInk,
-                  height: 1.3,
-                ),
-              ),
-            ),
-          ],
-          if (isSaved && isComplete) ...[
-            SizedBox(height: gap),
-            _SmoothPressable(
-              enabled: !_saving,
-              child: OutlinedButton.icon(
-                onPressed: _saving ? null : () => _saveSingleMacroRow(row),
-                icon: Icon(
-                  Icons.sync_rounded,
-                  size: phonePortrait ? 18 : 22,
-                ),
-                label: Text(
-                  'อัปเดตคันนี้',
-                  style: GoogleFonts.kanit(
-                    fontWeight: FontWeight.w800,
-                    fontSize: phonePortrait ? 14.5 : 16,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: Size.fromHeight(phonePortrait ? 44 : 48),
-                  foregroundColor: accent,
-                  side: BorderSide(
-                    color: accent.withValues(alpha: 0.55),
-                    width: 1.5,
-                  ),
-                  backgroundColor: isDark ? p.card : Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
+    ];
+
+    return MacroVehicleCard(
+      displayIndex: displayIndex,
+      vehicleName: vehicleName,
+      status: status,
+      isSaved: isSaved,
+      hasData: isSaved || hasDriver || hasDetails,
+      selectedDriverId: row.driverId,
+      drivers: driverOptions,
+      driverPickerExpanded: _macroDriverPickerExpanded.contains(vehicleName),
+      workType: row.workType,
+      quickPhrases: _kMacroWorkQuickPhrases,
+      selectedTags: tags,
+      saving: _saving,
+      onToggleDriverPicker: () {
+        AppHaptics.tap();
+        setState(() {
+          if (!_macroDriverPickerExpanded.remove(vehicleName)) {
+            _macroDriverPickerExpanded.add(vehicleName);
+          }
+        });
+      },
+      onSelectDriver: (id) {
+        AppHaptics.tap();
+        setState(() {
+          if (row.driverId == id) {
+            row.driverId = '';
+          } else {
+            row.driverId = id;
+            _macroDriverPickerExpanded.remove(vehicleName);
+          }
+        });
+      },
+      onSelectWorkType: (wt) {
+        AppHaptics.tap();
+        setState(() => row.workType = wt);
+      },
+      onToggleWorkTag: (tag) => _toggleMacroWorkTag(row, tag),
+      onRemoveCustomTag: (tag) => _removeMacroWorkTag(row, tag),
+      onAddCustomTag: () => unawaited(_addMacroCustomWorkTag(row)),
+      onSaveSingle: () => unawaited(_saveSingleMacroRow(row)),
+      onDeleteOrClear: () => unawaited(_handleMacroVehicleRowDelete(row)),
     );
   }
 
@@ -13891,8 +14029,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark ||
         (AppThemeScope.maybeOf(context)?.isDark ?? false);
     final accent = isDark ? p.brand : _macroAccent;
-    final accentInk = isDark ? p.brandDateInk : _macroAccentInk;
-    final accentTint = isDark ? p.brandSurface : _macroAccentTint;
     final danger = isDark ? const Color(0xFFF87171) : const Color(0xFFD14343);
     final dangerBg =
         isDark ? const Color(0xFF3B1A1A) : const Color(0xFFFFF3F3);
@@ -13900,24 +14036,82 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         isDark ? const Color(0xFF7F1D1D) : const Color(0xFFF5C2C2);
     final macroCars = _fuelMacroCars();
     var savedCount = 0;
-    var workedCount = 0;
+    var activeCount = 0;
     var idleCount = 0;
-    for (final car in macroCars) {
+    var missingDriverCount = 0;
+    var completeCount = 0;
+    var clearedSavedCount = 0;
+
+    final rowEntries = <({
+      int index,
+      String car,
+      _MacroVehicleDraft row,
+      MacroVehicleRowStatus status,
+    })>[];
+
+    for (var i = 0; i < macroCars.length; i++) {
+      final car = macroCars[i];
       final row = _macroDraftForVehicle(car);
       if (row == null) {
         idleCount++;
         continue;
       }
-      if (_macroRowIsComplete(row)) {
-        workedCount++;
-        if (row.txId != null && row.txId!.trim().isNotEmpty) savedCount++;
-      } else {
-        idleCount++;
+      final isSaved = row.txId != null && row.txId!.trim().isNotEmpty;
+      final hasDriver = row.driverId.trim().isNotEmpty;
+      final hasTags = _macroWorkTags(row).isNotEmpty;
+      final status = resolveMacroVehicleRowStatus(
+        isSaved: isSaved,
+        hasDriver: hasDriver,
+        hasWorkTags: hasTags,
+      );
+      rowEntries.add((index: i + 1, car: car, row: row, status: status));
+
+      switch (status) {
+        case MacroVehicleRowStatus.saved:
+          activeCount++;
+          savedCount++;
+          completeCount++;
+        case MacroVehicleRowStatus.readyToSave:
+          activeCount++;
+          completeCount++;
+        case MacroVehicleRowStatus.missingDriver:
+          activeCount++;
+          missingDriverCount++;
+          if (isSaved) clearedSavedCount++;
+        case MacroVehicleRowStatus.idle:
+          idleCount++;
+          if (isSaved) clearedSavedCount++;
       }
     }
+
+    final overview = MacroFleetOverview(
+      totalCount: macroCars.length,
+      activeCount: activeCount,
+      savedCount: savedCount,
+      idleCount: idleCount,
+      missingDriverCount: missingDriverCount,
+      clearedSavedCount: clearedSavedCount,
+    );
+
+    final effectiveFilter =
+        macroCars.length < 3 ? MacroFleetFilter.all : _macroFleetFilter;
+    final visibleEntries = [
+      for (final entry in rowEntries)
+        if (matchesMacroFleetFilter(entry.status, effectiveFilter)) entry,
+    ];
+
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
+    final y = _selectedDate.year + 543;
+    final dateLabel = '${_selectedDate.day}/${_selectedDate.month}/$y';
+    final saveLabel = buildMacroSaveButtonLabel(
+      saving: _saving,
+      completeCount: completeCount,
+      clearedSavedCount: clearedSavedCount,
+      compact: phonePortrait,
+    );
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
@@ -13962,12 +14156,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ),
                 ),
               ] else ...[
+                MacroFleetHeader(
+                  dateLabel: dateLabel,
+                  overview: overview,
+                  filter: effectiveFilter,
+                  hasUnsavedChanges: _hasUnsavedModuleChanges,
+                  onFilterChanged: (next) {
+                    AppHaptics.tap();
+                    setState(() => _macroFleetFilter = next);
+                  },
+                ),
                 if (_macroDriverEmployees.isEmpty &&
                     !_macroVehicleDrafts.any(
                       (r) => _macroSelectableDriversFor(r.vehicleId).isNotEmpty,
                     ))
-                  Padding(
-                    padding: EdgeInsets.only(top: phonePortrait ? 4 : 10),
+                  Container(
+                    margin: const EdgeInsets.only(top: 10),
+                    padding: const EdgeInsets.all(11),
+                    decoration: BoxDecoration(
+                      color: dangerBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: dangerBorder),
+                    ),
                     child: Text(
                       phonePortrait
                           ? 'ยังไม่พบคนขับแม็คโคร / คนขับเริ่มต้นของรถ '
@@ -13978,52 +14188,60 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       style: GoogleFonts.kanit(
                         color: danger,
                         fontWeight: FontWeight.w700,
-                        fontSize: phonePortrait ? 13 : 14.5,
+                        fontSize: phonePortrait ? 12.5 : 14,
                         height: 1.3,
                       ),
                     ),
                   ),
-                SizedBox(height: phonePortrait ? 8 : 12),
-                ...List.generate(macroCars.length, (index) {
-                  final car = macroCars[index];
-                  final row = _macroDraftForVehicle(car);
-                  if (row == null) return const SizedBox.shrink();
-                  return _buildMacroVehicleRow(
-                    row: row,
-                    vehicleName: car,
-                    displayIndex: index + 1,
-                  );
-                }),
-                const SizedBox(height: 4),
-                Container(
-                  padding: EdgeInsets.all(phonePortrait ? 10 : 12),
-                  decoration: BoxDecoration(
-                    color: accentTint,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: workedCount > 0
-                          ? accent.withValues(alpha: 0.45)
-                          : accent.withValues(alpha: 0.25),
+                SizedBox(height: phonePortrait ? 10 : 14),
+                if (visibleEntries.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 22,
+                    ),
+                    decoration: BoxDecoration(
+                      color: p.chipSurface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: p.hairline),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          effectiveFilter == MacroFleetFilter.working
+                              ? 'ยังไม่มีคันที่ทำงานวันนี้'
+                              : 'รถแม็คโครทุกคันทำงานวันนี้แล้ว',
+                          style: GoogleFonts.kanit(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: p.inkSubtle,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextButton(
+                          onPressed: () => setState(
+                            () => _macroFleetFilter = MacroFleetFilter.all,
+                          ),
+                          child: Text(
+                            'แสดงทั้งหมด (${macroCars.length} คัน)',
+                            style: GoogleFonts.kanit(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ...visibleEntries.map(
+                    (entry) => _buildMacroVehicleRow(
+                      row: entry.row,
+                      vehicleName: entry.car,
+                      displayIndex: entry.index,
                     ),
                   ),
-                  child: Text(
-                    phonePortrait
-                        ? 'ทำงาน $workedCount/${macroCars.length}'
-                            '${idleCount > 0 ? ' · ว่าง $idleCount' : ''}'
-                            '${savedCount > 0 ? ' · บันทึกแล้ว $savedCount' : ''}'
-                        : 'ทำงาน $workedCount/${macroCars.length} คัน'
-                            '${idleCount > 0 ? ' · ไม่ได้ทำงาน $idleCount คัน' : ''}'
-                            '${savedCount > 0 ? ' · บันทึกแล้ว $savedCount คัน' : ''}',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.kanit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: phonePortrait ? 14.5 : 16.5,
-                      color: accentInk,
-                    ),
-                  ),
-                ),
               ],
-              SizedBox(height: phonePortrait ? 10 : 14),
+              SizedBox(height: phonePortrait ? 8 : 12),
               _SmoothPressable(
                 enabled: !_saving && macroCars.isNotEmpty,
                 child: FilledButton.icon(
@@ -14031,22 +14249,23 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                       ? null
                       : _saveQuickEntry,
                   icon: Icon(
-                    Icons.save_outlined,
+                    Icons.check_circle_outline_rounded,
                     size: phonePortrait ? 20 : 24,
                   ),
                   label: Text(
-                    _saving
-                        ? 'กำลังบันทึก...'
-                        : (phonePortrait
-                            ? 'บันทึกแม็คโคร'
-                            : 'บันทึกการใช้รถแม็คโคร'),
+                    saveLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.kanit(
                       fontWeight: FontWeight.w800,
                       fontSize: phonePortrait ? 16 : 19,
                     ),
                   ),
                   style: FilledButton.styleFrom(
-                    minimumSize: Size.fromHeight(phonePortrait ? 48 : 56),
+                    minimumSize: Size.fromHeight(phonePortrait ? 52 : 58),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
                 ),
               ),
@@ -14060,368 +14279,110 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget _buildFuelVehicleRow({
     required _FuelVehicleDraft row,
     required String vehicleName,
-    int? displayIndex,
+    required String activeTank,
+    required int displayIndex,
     bool workedToday = false,
     bool missingFuelAfterWork = false,
   }) {
-    final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final liters = double.tryParse(row.liters.trim()) ?? 0;
-    final isFilled = liters > 0 && row.time.trim().isNotEmpty;
     final isSaved = row.txId != null && row.txId!.trim().isNotEmpty;
-    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
-        MediaQuery.sizeOf(context).height >=
-            MediaQuery.sizeOf(context).width;
-    final hasDeletableData = isSaved ||
-        liters > 0 ||
-        row.time.trim().isNotEmpty ||
-        row.liters.trim().isNotEmpty;
-    final card = Container(
-      margin: EdgeInsets.only(bottom: phonePortrait ? 8 : 10),
-      padding: EdgeInsets.all(phonePortrait ? 12 : 14),
-      decoration: BoxDecoration(
-        color: isFilled || isSaved
-            ? (isDark ? const Color(0xFF16324A) : const Color(0xFFF3FAFF))
-            : missingFuelAfterWork
-                ? (isDark ? const Color(0xFF3A2A14) : const Color(0xFFFFF8E8))
-                : (isDark ? p.chipSurface : const Color(0xFFFAFCFE)),
-        borderRadius: BorderRadius.circular(phonePortrait ? 14 : 16),
-        border: Border.all(
-          color: isFilled || isSaved
-              ? (isDark ? const Color(0xFF3B82F6) : const Color(0xFF90CAF9))
-              : missingFuelAfterWork
-                  ? (isDark ? const Color(0xFFB45309) : const Color(0xFFFFCC80))
-                  : (isDark ? p.hairline : const Color(0xFFDCE8F5)),
-          width: isFilled || isSaved || missingFuelAfterWork ? 1.4 : 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: phonePortrait ? 38 : 44,
-                height: phonePortrait ? 38 : 44,
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1A2A3A) : const Color(0xFFE3F2FD),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.local_shipping_outlined,
-                  size: phonePortrait ? 20 : 24,
-                  color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF1565C0),
-                ),
-              ),
-              SizedBox(width: phonePortrait ? 10 : 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (displayIndex != null)
-                      Text(
-                        phonePortrait
-                            ? 'คันที่ $displayIndex'
-                            : 'รถแม็คโคร คันที่ $displayIndex',
-                        style: GoogleFonts.kanit(
-                          fontSize: phonePortrait ? 12 : 13,
-                          fontWeight: FontWeight.w700,
-                          color: p.inkMuted,
-                        ),
-                      ),
-                    if (displayIndex != null) const SizedBox(height: 2),
-                    Text(
-                      vehicleName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.kanit(
-                        fontSize: phonePortrait ? 16 : 19,
-                        fontWeight: FontWeight.w800,
-                        color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF0D47A1),
-                        height: 1.2,
-                      ),
-                    ),
-                    if (_fuelDriverLabelForVehicle(vehicleName).isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.person_outline_rounded,
-                            size: phonePortrait ? 14 : 15,
-                            color: p.inkMuted,
-                          ),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              'คนขับ: ${_fuelDriverLabelForVehicle(vehicleName)}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.kanit(
-                                fontSize: phonePortrait ? 13 : 14.5,
-                                fontWeight: FontWeight.w700,
-                                color: isDark ? p.inkSubtle : const Color(0xFF37474F),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (workedToday || missingFuelAfterWork || isSaved) ...[
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          if (workedToday)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? const Color(0xFF1A2F4A)
-                                    : const Color(0xFFE3F2FD),
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(
-                                  color: isDark
-                                      ? const Color(0xFF2563EB)
-                                      : const Color(0xFF90CAF9),
-                                ),
-                              ),
-                              child: Text(
-                                'ใช้รถวันนี้',
-                                style: GoogleFonts.kanit(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: isDark
-                                      ? const Color(0xFF93C5FD)
-                                      : const Color(0xFF1565C0),
-                                ),
-                              ),
-                            ),
-                          if (missingFuelAfterWork)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? const Color(0xFF3A2A14)
-                                    : const Color(0xFFFFF3E0),
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(
-                                  color: isDark
-                                      ? const Color(0xFFB45309)
-                                      : const Color(0xFFFFB74D),
-                                ),
-                              ),
-                              child: Text(
-                                'ยังไม่เติม',
-                                style: GoogleFonts.kanit(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: isDark
-                                      ? const Color(0xFFFBBF24)
-                                      : const Color(0xFFE65100),
-                                ),
-                              ),
-                            ),
-                          if (isSaved)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? const Color(0xFF1A3A24)
-                                    : const Color(0xFFE8F5E9),
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(
-                                  color: isDark
-                                      ? const Color(0xFF2E7D32)
-                                      : const Color(0xFFA5D6A7),
-                                ),
-                              ),
-                              child: Text(
-                                'บันทึกแล้ว',
-                                style: GoogleFonts.kanit(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: isDark
-                                      ? const Color(0xFF81C784)
-                                      : const Color(0xFF2E7D32),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                    if (phonePortrait && hasDeletableData) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'ปัดซ้ายเพื่อลบ',
-                        style: GoogleFonts.kanit(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: p.inkMuted,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: phonePortrait ? 8 : 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: phonePortrait ? 8 : 10,
-                vertical: phonePortrait ? 4 : 5,
-              ),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF3A2F14) : const Color(0xFFFFF8E1),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: isDark ? const Color(0xFFB45309) : const Color(0xFFFFE082),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.local_gas_station_outlined,
-                    size: phonePortrait ? 14 : 16,
-                    color: isDark ? const Color(0xFFFBBF24) : Colors.amber.shade900,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'น้ำมันดีเซล',
-                    style: GoogleFonts.kanit(
-                      fontSize: phonePortrait ? 12.5 : 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: isDark
-                          ? const Color(0xFFFDE68A)
-                          : const Color(0xFF6D4C00),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SizedBox(height: phonePortrait ? 8 : 10),
-          Text(
-            'หักจากถัง',
-            style: GoogleFonts.kanit(
-              fontSize: phonePortrait ? 12.5 : 13.5,
-              fontWeight: FontWeight.w700,
-              color: p.inkMuted,
-            ),
-          ),
-          const SizedBox(height: 6),
-          _buildFuelTankChoiceChips(
-            selected: row.fuelTank,
-            onChanged: (tank) => setState(() => row.fuelTank = tank),
-          ),
-          SizedBox(height: phonePortrait ? 8 : 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 3,
-                child: TextFormField(
-                  controller: row.litersController,
-                  readOnly: true,
-                  onTap: () => _openNumericPad(
-                    controller: row.litersController,
-                    label: 'ใช้น้ำมัน (ลิตร)',
-                    onChanged: (v) {
-                      row.liters = v;
-                      _scheduleUiRefresh();
-                    },
-                    allowDecimal: true,
-                    maxDecimalPlaces: 2,
-                  ),
-                  style: GoogleFonts.kanit(
-                    color: p.ink,
-                    fontSize: phonePortrait ? 17 : 20,
-                    fontWeight: FontWeight.w800,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: phonePortrait ? 'ลิตร' : 'ใช้น้ำมัน (ลิตร)',
-                    prefixIcon: const Icon(Icons.opacity_outlined),
-                  ),
-                ),
-              ),
-              SizedBox(width: phonePortrait ? 8 : 10),
-              Expanded(
-                flex: 2,
-                child: TextFormField(
-                  controller: row.timeController,
-                  readOnly: true,
-                  onTap: () => _pickFuelTime(row),
-                  style: GoogleFonts.kanit(
-                    color: p.ink,
-                    fontSize: phonePortrait ? 17 : 20,
-                    fontWeight: FontWeight.w800,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: phonePortrait ? 'เวลา' : 'เวลาที่เติม',
-                    prefixIcon: const Icon(Icons.access_time_outlined),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+    final dayKey = _quickYmd(_selectedDate);
+    final otherTankSummary = fuelMacroOtherTankSummaryForVehicle(
+      dayYmd: dayKey,
+      transactions: _moduleDayAllTransactions,
+      vehicleId: vehicleName,
+      currentTank: activeTank,
+      vehicleMatcher: _matchesFuelVehicle,
     );
 
-    if (!hasDeletableData) return card;
-
-    return Dismissible(
-      key: ValueKey('fuel_usage_row_${identityHashCode(row)}'),
-      direction: DismissDirection.endToStart,
-      confirmDismiss: (direction) async {
-        await _handleFuelVehicleRowDelete(row);
-        return false;
-      },
-      background: Container(
-        margin: EdgeInsets.only(bottom: phonePortrait ? 8 : 10),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF7F1D1D) : const Color(0xFFD14343),
-          borderRadius: BorderRadius.circular(phonePortrait ? 14 : 16),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text(
-              'ลบ',
-              style: GoogleFonts.kanit(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.delete_outline_rounded, color: Colors.white),
-          ],
-        ),
+    return FuelMacroVehicleCard(
+      dismissKey: ValueKey('fuel_usage_row_${identityHashCode(row)}_$activeTank'),
+      displayIndex: displayIndex,
+      vehicleName: vehicleName,
+      driverLabel: _fuelDriverLabelForVehicle(vehicleName),
+      activeTank: activeTank,
+      litersText: row.liters,
+      timeText: row.time,
+      isSaved: isSaved,
+      workedToday: workedToday,
+      missingFuelAfterWork: missingFuelAfterWork,
+      otherTankSummary: otherTankSummary,
+      onTapLiters: () => _openNumericPad(
+        controller: row.litersController,
+        label: 'ใช้น้ำมัน (ลิตร) · $vehicleName',
+        onChanged: (v) {
+          row.liters = v;
+          final parsed = double.tryParse(v.trim()) ?? 0;
+          if (parsed > 0 && row.time.trim().isEmpty) {
+            final nowText = _formatFuelTimeOfDay(TimeOfDay.now());
+            row.time = nowText;
+            row.timeController.text = nowText;
+            row.timeAutoFilled = true;
+          } else if (parsed <= 0 && !isSaved && row.timeAutoFilled) {
+            row.time = '';
+            row.timeController.clear();
+            row.timeAutoFilled = false;
+          }
+          _scheduleUiRefresh();
+        },
+        allowDecimal: true,
+        maxDecimalPlaces: 2,
       ),
-      child: card,
+      onTapTime: () => _pickFuelTime(row),
+      onClearOrDelete: () => _handleFuelVehicleRowDelete(
+        row,
+        confirmIfSaved: true,
+      ),
     );
   }
 
-  /// ปุ่มย้อนกลับ — เมนูย่อยน้ำมัน/เช็คชื่อกลับหน้าเลือกก่อน
+  void _selectFuelMacroTank(String tank) {
+    final normalized = normalizeFuelTank(tank);
+    setState(() {
+      _fuelMacroTank = normalized;
+      _syncFuelVehicleDraftsFromMacroCars(
+        dayFuelRows: _moduleDayAllTransactions,
+        forceHydrate: true,
+      );
+    });
+    _captureModuleFormBaseline();
+  }
+
+  Future<void> _switchFuelMacroTank() async {
+    final current = _fuelMacroTank;
+    if (current == null) return;
+    if (_hasUnsavedModuleChanges) {
+      final discard = await _confirmDiscardUnsavedChanges();
+      if (!discard || !mounted) return;
+    }
+    _releaseKeyboardFocus();
+    AppHaptics.tap();
+    final nextTank = fuelTankIsReserve(current)
+        ? kFuelTankMain
+        : kFuelTankReserve;
+    _selectFuelMacroTank(nextTank);
+  }
+
+  /// ปุ่มย้อนกลับ — น้ำมันรถแม็คโครย้อนจากฟอร์ม→เลือกถัง→เลือกเมนูย่อย
   Future<void> _handleQuickInputBack() async {
+    // ขั้น 2/2 ของน้ำมันรถแม็คโคร: กลับไปหน้าเลือกถังหลัก/ถังสำรองก่อน
+    if (_isFuelMode &&
+        _fuelSubMode == FuelSubMode.macroUsage &&
+        _fuelMacroTank != null) {
+      if (_hasUnsavedModuleChanges) {
+        final discard = await _confirmDiscardUnsavedChanges();
+        if (!discard || !mounted) return;
+      }
+      _releaseKeyboardFocus();
+      setState(() {
+        _fuelMacroTank = null;
+        _syncFuelVehicleDraftsFromMacroCars(
+          dayFuelRows: _moduleDayAllTransactions,
+          forceHydrate: true,
+        );
+      });
+      _captureModuleFormBaseline();
+      return;
+    }
     // กลับจากฟอร์มย่อย / กระดาน — ถ้ายังมีข้อมูลค้างให้ถามก่อน
     if ((_isFuelMode && _fuelSubMode != null) ||
         (_isAttendanceMode && _attendanceSection != null)) {
@@ -14433,8 +14394,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       }
       _releaseKeyboardFocus();
       setState(() {
-        if (_isFuelMode) _fuelSubMode = null;
-        if (_isAttendanceMode) _attendanceSection = null;
+        if (_isFuelMode) {
+          _fuelSubMode = null;
+          _fuelMacroTank = null;
+        }
+        if (_isAttendanceMode) {
+          _attendanceSection = null;
+          _resetAttendancePoolSearch();
+          _attendanceGeneralPicked.clear();
+          _attendanceDriverPicked.clear();
+        }
       });
       // baseline หลังออกจากเมนูย่อย เพื่อให้กดกลับอีกครั้งออกหน้าแรกได้
       _captureModuleFormBaseline();
@@ -14508,14 +14477,22 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           _fuelStockInTimeController.text.trim(),
         ].join('|'),
       );
+      final wdLiters = _fuelWithdrawLitersController.text.trim();
+      final wdTime = _fuelWithdrawTimeController.text.trim();
+      final wdOther = _fuelWithdrawOtherController.text.trim();
+      final wdHasDraft =
+          wdLiters.isNotEmpty || wdTime.isNotEmpty || wdOther.isNotEmpty;
       put(
         'withdraw',
-        [
-          _fuelWithdrawLitersController.text.trim(),
-          _fuelWithdrawTimeController.text.trim(),
-          _fuelWithdrawOtherController.text.trim(),
-          _fuelWithdrawPurpose.name,
-        ].join('|'),
+        wdHasDraft
+            ? [
+                _fuelWithdrawTxId ?? '',
+                wdLiters,
+                wdTime,
+                wdOther,
+                _fuelWithdrawPurpose.name,
+              ].join('|')
+            : '',
       );
       put(
         'carFill',
@@ -14603,40 +14580,62 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   /// เนื้อหาเมนู «น้ำมัน» — เลือกเมนูย่อยก่อน แล้วค่อยแสดงฟอร์ม
+  /// เฉพาะ «น้ำมันรถแม็คโคร» ให้เลือกถังหลัก / ถังสำรองก่อนเข้าฟอร์ม
   Widget _buildFuelModeBody() {
     final mode = _fuelSubMode;
+    final dayYmd = _quickYmd(_selectedDate);
     final daySummaries = buildFuelSubModeDaySummaries(
-      dayYmd: _quickYmd(_selectedDate),
+      dayYmd: dayYmd,
       transactions: _moduleDayAllTransactions,
     );
-    final child = mode == null
-        ? FuelSubModePicker(
-            mainDieselLiters: _fuelStock.mainDiesel,
-            reserveDieselLiters: _fuelStock.reserveDiesel,
-            dateLabel: _formatDate(_selectedDate),
-            daySummaries: daySummaries,
-            onSelect: (selected) {
-              setState(() {
-                _fuelSubMode = selected;
-                if (selected == FuelSubMode.stockIn) {
-                  _hydrateFuelStockInFromDay();
-                } else if (selected == FuelSubMode.withdraw) {
-                  _hydrateFuelWithdrawForSelectedPurpose();
-                } else if (selected == FuelSubMode.carFill) {
-                  _hydrateFuelCarFillForSelectedVehicle();
-                } else if (selected == FuelSubMode.loss) {
-                  _hydrateFuelLossFromDay();
-                }
-              });
-            },
-          )
-        : switch (mode) {
-            FuelSubMode.stockIn => _buildFuelStockInFormCard(),
-            FuelSubMode.withdraw => _buildFuelWithdrawFormCard(),
-            FuelSubMode.carFill => _buildFuelCarFillFormCard(),
-            FuelSubMode.macroUsage => _buildFuelFormCard(),
-            FuelSubMode.loss => _buildFuelLossFormCard(),
-          };
+    final Widget child;
+    if (mode == null) {
+      child = FuelSubModePicker(
+        mainDieselLiters: _fuelStock.mainDiesel,
+        reserveDieselLiters: _fuelStock.reserveDiesel,
+        dateLabel: _formatDate(_selectedDate),
+        daySummaries: daySummaries,
+        onSelect: (selected) {
+          setState(() {
+            _fuelSubMode = selected;
+            _fuelMacroTank = null;
+            if (selected == FuelSubMode.stockIn) {
+              _hydrateFuelStockInFromDay();
+            } else if (selected == FuelSubMode.withdraw) {
+              _clearFuelWithdrawComposer();
+            } else if (selected == FuelSubMode.carFill) {
+              _hydrateFuelCarFillForSelectedVehicle();
+            } else if (selected == FuelSubMode.loss) {
+              _hydrateFuelLossFromDay();
+            }
+          });
+          _captureModuleFormBaseline();
+        },
+      );
+    } else if (mode == FuelSubMode.macroUsage && _fuelMacroTank == null) {
+      final tankSummaries = fuelMacroDaySummaryByTank(
+        dayYmd: dayYmd,
+        transactions: _moduleDayAllTransactions,
+      );
+      final missingCount = _fuelMacroUsedMissingFuelLabels().length;
+      child = FuelMacroTankPicker(
+        mainDieselLiters: _fuelStock.mainDiesel,
+        reserveDieselLiters: _fuelStock.reserveDiesel,
+        dateLabel: _formatDate(_selectedDate),
+        mainSummary: tankSummaries.main,
+        reserveSummary: tankSummaries.reserve,
+        missingCount: missingCount,
+        onSelect: _selectFuelMacroTank,
+      );
+    } else {
+      child = switch (mode) {
+        FuelSubMode.stockIn => _buildFuelStockInFormCard(),
+        FuelSubMode.withdraw => _buildFuelWithdrawFormCard(),
+        FuelSubMode.carFill => _buildFuelCarFillFormCard(),
+        FuelSubMode.macroUsage => _buildFuelFormCard(),
+        FuelSubMode.loss => _buildFuelLossFormCard(),
+      };
+    }
     return AnimatedSwitcher(
       duration: Duration(
         milliseconds: DevicePerf.isConstrainedDevice ? 140 : 240,
@@ -14644,7 +14643,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       child: KeyedSubtree(
-        key: ValueKey('fuel_sub_${mode?.name ?? 'pick'}'),
+        key: ValueKey(
+          'fuel_sub_${mode?.name ?? 'pick'}_${_fuelMacroTank ?? 'none'}',
+        ),
         child: child,
       ),
     );
@@ -15138,82 +15139,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  Widget _buildFuelTankChoiceChips({
-    required String selected,
-    required ValueChanged<String> onChanged,
-  }) {
-    final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
-        MediaQuery.sizeOf(context).height >=
-            MediaQuery.sizeOf(context).width;
-    Widget chip(String tank, String label, String hint) {
-      final on = normalizeFuelTank(selected) == tank;
-      return Expanded(
-        child: Material(
-          color: on
-              ? (isDark ? const Color(0xFF1A2A3A) : const Color(0xFFE3F2FD))
-              : (isDark ? p.chipSurface : const Color(0xFFF8FAFD)),
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () => onChanged(tank),
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: phonePortrait ? 8 : 10,
-                vertical: phonePortrait ? 8 : 10,
-              ),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: on
-                      ? (isDark ? const Color(0xFF60A5FA) : const Color(0xFF1565C0))
-                      : (isDark ? p.hairline : const Color(0xFFE1E8F0)),
-                  width: on ? 1.6 : 1,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: GoogleFonts.kanit(
-                      fontSize: phonePortrait ? 13.5 : 14.5,
-                      fontWeight: FontWeight.w800,
-                      color: on
-                          ? (isDark ? const Color(0xFF93C5FD) : const Color(0xFF0D47A1))
-                          : p.inkMuted,
-                    ),
-                  ),
-                  Text(
-                    hint,
-                    style: GoogleFonts.kanit(
-                      fontSize: phonePortrait ? 11 : 11.5,
-                      fontWeight: FontWeight.w500,
-                      color: p.inkMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Row(
-      children: [
-        chip(kFuelTankMain, 'ถังหลัก', phonePortrait ? 'พล่าม' : 'เติมที่พล่าม'),
-        SizedBox(width: phonePortrait ? 6 : 8),
-        chip(
-          kFuelTankReserve,
-          'ถังสำรอง',
-          'เครื่องจักร',
-        ),
-      ],
-    );
-  }
-
   Widget _buildFuelWithdrawFormCard() {
     final p = DailyPalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -15221,97 +15146,45 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final liters =
         double.tryParse(_fuelWithdrawLitersController.text.trim()) ?? 0;
     final dayKey = _quickYmd(_selectedDate);
+    final dayEntries = fuelWithdrawEntriesForDay(
+      dayYmd: dayKey,
+      transactions: _moduleDayAllTransactions,
+    );
+    final summariesByPurpose = <FuelWithdrawPurpose, FuelWithdrawDaySummary>{
+      for (final purpose in kFuelWithdrawSelectablePurposes)
+        purpose: fuelWithdrawSummaryForPurpose(
+          dayYmd: dayKey,
+          transactions: _moduleDayAllTransactions,
+          purpose: purpose,
+        ),
+    };
+    final selectedSummary =
+        summariesByPurpose[_fuelWithdrawPurpose] ??
+        const FuelWithdrawDaySummary();
     final reconcile = fuelMachineReconcileForDay(
       dayKey,
       _moduleDayAllTransactions,
       tank: kFuelTankReserve,
     );
-    final editing =
-        _fuelWithdrawTxId != null && _fuelWithdrawTxId!.isNotEmpty;
+    final editingEntry = _editingFuelWithdrawTx();
+    final editing = editingEntry != null;
+    final priorLiters = editingEntry != null ? fuelTxLiters(editingEntry) : 0.0;
+    final deltas = computeFuelWithdrawPendingDeltas(
+      purpose: _fuelWithdrawPurpose,
+      inputLiters: liters,
+      isEditing: editing,
+      priorLiters: priorLiters,
+    );
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
-
-    Widget purposeTile(FuelWithdrawPurpose purpose, IconData icon) {
-      final isSelected = _fuelWithdrawPurpose == purpose;
-      final label = purpose == FuelWithdrawPurpose.car
-          ? fuelCarFillVehicleLabelOf(FuelCarFillVehicle.taplien)
-          : fuelWithdrawPurposeLabelOf(purpose);
-      final summary = _fuelWithdrawSummaryForPurpose(purpose);
-      return Material(
-        color: isSelected
-            ? (isDark ? const Color(0xFF3A2A14) : const Color(0xFFFFF3E0))
-            : (isDark ? p.chipSurface : const Color(0xFFF8FAFD)),
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () {
-            setState(() {
-              _fuelWithdrawPurpose = purpose;
-              _hydrateFuelWithdrawForSelectedPurpose();
-            });
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isSelected
-                    ? const Color(0xFFEF6C00)
-                    : (isDark ? p.hairline : const Color(0xFFE1E8F0)),
-                width: isSelected ? 1.6 : 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  size: 20,
-                  color: isSelected
-                      ? const Color(0xFFEF6C00)
-                      : (isDark ? p.inkMuted : const Color(0xFF90A4AE)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        label,
-                        style: GoogleFonts.kanit(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: isSelected
-                              ? (isDark
-                                  ? const Color(0xFFFFB74D)
-                                  : const Color(0xFF8A4B00))
-                              : p.inkMuted,
-                        ),
-                      ),
-                      if (summary.isNotEmpty)
-                        Text(
-                          summary,
-                          style: GoogleFonts.kanit(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: p.inkMuted,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                if (isSelected)
-                  const Icon(
-                    Icons.check_circle,
-                    size: 20,
-                    color: Color(0xFFEF6C00),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
+    final orangeAccent =
+        isDark ? const Color(0xFFFFB74D) : const Color(0xFFEF6C00);
+    final saveButtonText = editing
+        ? 'อัปเดตรายการนี้'
+        : (selectedSummary.hasEntries
+            ? 'บันทึกเพิ่มรอบที่ ${selectedSummary.count + 1}'
+            : 'บันทึกเบิกน้ำมัน');
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
@@ -15325,26 +15198,51 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'เบิกน้ำมัน',
-            style: GoogleFonts.kanit(
-              fontSize: phonePortrait ? 18 : 24,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFFEF6C00),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'เบิกน้ำมัน',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.kanit(
+                    fontSize: phonePortrait ? 18 : 24,
+                    fontWeight: FontWeight.w800,
+                    color: orangeAccent,
+                  ),
+                ),
+              ),
+              if (dayEntries.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: orangeAccent.withValues(alpha: isDark ? 0.2 : 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'วันนี้ ${dayEntries.length} รายการ',
+                    style: GoogleFonts.kanit(
+                      fontSize: phonePortrait ? 12 : 13,
+                      fontWeight: FontWeight.w800,
+                      color: orangeAccent,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
           SizedBox(height: phonePortrait ? 4 : 6),
           Text(
             editing
-                ? (phonePortrait
-                    ? 'โหลดของวันนี้แล้ว — แก้แล้วกดอัปเดต'
-                    : 'โหลดรายการของวันนี้แล้ว — แก้ค่าแล้วกดอัปเดต '
-                        '(เปลี่ยนวัตถุประสงค์ได้ถ้าต้องการดูรายการอื่น)')
+                ? 'กำลังแก้ไขรายการเดิม — ปรับจำนวนลิตรหรือเวลาแล้วกดอัปเดต'
                 : (phonePortrait
-                    ? 'เครื่องจักร→สำรอง · อื่นๆ→ถังหลัก'
-                    : 'เติมเครื่องจักร = โอนเข้าถังสำรอง · '
-                        'ปั่นไฟ/นายกเบิก = หักจากถังหลัก · '
-                        'รถตาเปลื่ยนบันทึกร่วมกับเมนูเติมน้ำมันรถยนต์'),
+                    ? 'เพิ่มได้หลายรอบต่อวัน · เครื่องจักร→สำรอง · อื่นๆ→ถังหลัก'
+                    : 'บันทึกได้หลายรอบต่อวัน (เช่น 09:00 และ 13:00) · '
+                        'เติมเครื่องจักร = โอนเข้าถังสำรอง · อื่นๆ = หักถังหลัก'),
             style: GoogleFonts.kanit(
               fontSize: phonePortrait ? 12.5 : 13,
               fontWeight: FontWeight.w500,
@@ -15354,13 +15252,16 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
           SizedBox(height: phonePortrait ? 10 : 14),
           _buildFuelStockBanner(
-            pendingMainDelta: liters > 0 ? -liters : 0,
-            pendingReserveDelta:
-                _fuelWithdrawPurpose == FuelWithdrawPurpose.machine &&
-                        liters > 0
-                    ? liters
-                    : 0,
+            pendingMainDelta: deltas.mainDelta,
+            pendingReserveDelta: deltas.reserveDelta,
           ),
+          if (editing) ...[
+            SizedBox(height: phonePortrait ? 10 : 12),
+            FuelWithdrawEditingBanner(
+              entry: editingEntry,
+              onCancel: _cancelEditFuelWithdrawEntry,
+            ),
+          ],
           SizedBox(height: phonePortrait ? 10 : 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -15408,6 +15309,29 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ],
           ),
+          if (_fuelWithdrawPurpose == FuelWithdrawPurpose.other) ...[
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _fuelWithdrawOtherController,
+              readOnly: true,
+              onTap: () => _openThaiTextPad(
+                controller: _fuelWithdrawOtherController,
+                label: 'ระบุรายละเอียดการเบิก',
+                onChanged: _scheduleUiRefresh,
+                minLines: 1,
+                maxLines: 2,
+              ),
+              style: GoogleFonts.kanit(
+                color: p.ink,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'ระบุรายละเอียด',
+                prefixIcon: Icon(Icons.notes_rounded),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           Text(
             'เอาไปใช้ทำอะไร',
@@ -15418,26 +15342,24 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             ),
           ),
           const SizedBox(height: 8),
-          purposeTile(
-            FuelWithdrawPurpose.machine,
-            Icons.precision_manufacturing_outlined,
-          ),
-          const SizedBox(height: 8),
-          purposeTile(FuelWithdrawPurpose.generator, Icons.bolt_outlined),
-          const SizedBox(height: 8),
-          purposeTile(
-            FuelWithdrawPurpose.mayor,
-            Icons.account_balance_outlined,
-          ),
-          const SizedBox(height: 8),
-          purposeTile(
-            FuelWithdrawPurpose.car,
-            Icons.airport_shuttle_outlined,
-          ),
-          const SizedBox(height: 8),
-          purposeTile(
-            FuelWithdrawPurpose.tenWheelerMayor,
-            Icons.local_shipping_outlined,
+          FuelWithdrawPurposeSelector(
+            selectedPurpose: _fuelWithdrawPurpose,
+            summariesByPurpose: summariesByPurpose,
+            compact: phonePortrait,
+            onSelect: (purpose) {
+              if (purpose == _fuelWithdrawPurpose) return;
+              setState(() {
+                if (_fuelWithdrawTxId != null &&
+                    _fuelWithdrawTxId!.isNotEmpty) {
+                  _clearFuelWithdrawComposer();
+                }
+                _fuelWithdrawPurpose = purpose;
+              });
+              if (_fuelWithdrawLitersController.text.trim().isEmpty &&
+                  _fuelWithdrawTimeController.text.trim().isEmpty) {
+                _captureModuleFormBaseline();
+              }
+            },
           ),
           if (_fuelWithdrawPurpose == FuelWithdrawPurpose.machine) ...[
             const SizedBox(height: 12),
@@ -15473,13 +15395,15 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             child: FilledButton.icon(
               onPressed: _saving ? null : _saveFuelWithdrawEntry,
               icon: Icon(
-                editing ? Icons.edit_outlined : Icons.output_rounded,
+                editing
+                    ? Icons.check_circle_outline_rounded
+                    : (selectedSummary.hasEntries
+                        ? Icons.add_circle_outline_rounded
+                        : Icons.output_rounded),
                 size: phonePortrait ? 20 : 24,
               ),
               label: Text(
-                editing
-                    ? (phonePortrait ? 'อัปเดต' : 'อัปเดตรายการนี้')
-                    : 'บันทึกเบิกน้ำมัน',
+                saveButtonText,
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w800,
                   fontSize: phonePortrait ? 16 : 20,
@@ -15487,9 +15411,28 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
               style: FilledButton.styleFrom(
                 minimumSize: Size.fromHeight(phonePortrait ? 48 : 62),
-                backgroundColor: const Color(0xFFEF6C00),
+                backgroundColor: editing
+                    ? const Color(0xFF1565C0)
+                    : const Color(0xFFEF6C00),
               ),
             ),
+          ),
+          const SizedBox(height: 18),
+          Divider(height: 1, color: p.hairline),
+          const SizedBox(height: 14),
+          FuelWithdrawDayLogSection(
+            entries: dayEntries,
+            selectedPurpose: _fuelWithdrawPurpose,
+            showAllPurposes: _fuelWithdrawShowAllPurposes,
+            editingTxId: _fuelWithdrawTxId,
+            customDetailResolver: (tx) =>
+                fuelWithdrawPurposeOfTx(tx) == FuelWithdrawPurpose.other
+                    ? _fuelOtherDetailFromDescription(tx.description)
+                    : null,
+            onToggleShowAll: (showAll) =>
+                setState(() => _fuelWithdrawShowAllPurposes = showAll),
+            onEdit: _startEditFuelWithdrawEntry,
+            onDelete: _confirmAndDeleteFuelWithdrawEntry,
           ),
         ],
       ),
@@ -15965,6 +15908,9 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   Widget _buildFuelFormCard() {
     final p = DailyPalette.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeTank = normalizeFuelTank(_fuelMacroTank ?? kFuelTankReserve);
+    final tankLabel = fuelTankLabelOf(activeTank);
+    final accent = fuelMacroTankAccent(activeTank, isDark: isDark, palette: p);
 
     final fuelCars = _fuelMacroCars();
     final dayKey = _quickYmd(_selectedDate);
@@ -15975,47 +15921,50 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     final missingFuel = _fuelMacroUsedMissingFuelLabels();
     final missingFuelSet = missingFuel.toSet();
     final coverage = fuelVehicleCoverageForDay(dayKey, _moduleDayAllTransactions);
-    final litersLabel = coverage.liters % 1 == 0
-        ? coverage.liters.toStringAsFixed(0)
-        : coverage.liters.toStringAsFixed(2);
-    // เดลต้าจากฟอร์ม — หักตามถังที่เลือก; แถวที่บันทึกแล้วและไม่เปลี่ยน = 0
-    var pendingMain = 0.0;
-    var pendingReserve = 0.0;
+
+    // คำนวณเดลต้าเฉพาะถังที่กำลังบันทึก + ยอดรวมที่จะเซฟ/ลบในรอบนี้
+    var pendingTankDelta = 0.0;
+    var activeFilledCount = 0;
+    var activeFilledLiters = 0.0;
+    var activeDeleteCount = 0;
     final allowedCars = fuelCars.toSet();
     for (final row in _fuelVehicleDrafts) {
       if (!allowedCars.contains(row.vehicleId.trim())) continue;
       final liters = double.tryParse(row.liters.trim()) ?? 0;
-      final tank = normalizeFuelTank(row.fuelTank);
-      var priorLiters = 0.0;
-      String? priorTank;
-      final txId = row.txId?.trim();
-      if (txId != null && txId.isNotEmpty) {
-        for (final t in _moduleDayAllTransactions) {
-          if (t.id == txId) {
-            priorLiters = fuelTxLiters(t);
-            priorTank = fuelUsageTankOf(t);
-            break;
-          }
-        }
-      }
-      if (priorLiters > 0 && priorTank != null) {
-        if (fuelTankIsReserve(priorTank)) {
-          pendingReserve += priorLiters;
-        } else {
-          pendingMain += priorLiters;
-        }
+      final priorTx = _priorFuelVehicleUsageForDraft(row);
+      final priorLiters = priorTx != null ? fuelTxLiters(priorTx) : 0.0;
+      final hasPersisted =
+          priorTx != null || (row.txId?.trim().isNotEmpty ?? false);
+      if (priorLiters > 0) {
+        pendingTankDelta += priorLiters;
       }
       if (liters > 0) {
-        if (fuelTankIsReserve(tank)) {
-          pendingReserve -= liters;
-        } else {
-          pendingMain -= liters;
-        }
+        pendingTankDelta -= liters;
+        activeFilledCount++;
+        activeFilledLiters += liters;
+      } else if (hasPersisted) {
+        activeDeleteCount++;
       }
     }
+
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
         MediaQuery.sizeOf(context).height >=
             MediaQuery.sizeOf(context).width;
+
+    final String saveButtonLabel;
+    if (activeFilledCount > 0 && activeDeleteCount > 0) {
+      saveButtonLabel =
+          'บันทึก $activeFilledCount คัน (${formatFuelLiters(activeFilledLiters)} ล.) · ลบ $activeDeleteCount';
+    } else if (activeFilledCount > 0) {
+      saveButtonLabel =
+          'บันทึก $activeFilledCount คัน (${formatFuelLiters(activeFilledLiters)} ล.) · $tankLabel';
+    } else if (activeDeleteCount > 0) {
+      saveButtonLabel = 'ลบรายการที่ล้าง ($activeDeleteCount คัน)';
+    } else {
+      saveButtonLabel = 'บันทึกน้ำมัน · $tankLabel';
+    }
+
+    final saveButtonFg = isDark ? const Color(0xFF0B1219) : Colors.white;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
@@ -16027,8 +15976,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         border: Border.all(color: isDark ? p.hairline : const Color(0xFFE3ECF7)),
         boxShadow: [
           BoxShadow(
-            color: (isDark ? p.brand : const Color(0xFF0F9EA8))
-                .withValues(alpha: isDark ? 0.12 : 0.05),
+            color: accent.withValues(alpha: isDark ? 0.12 : 0.05),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -16037,32 +15985,13 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            phonePortrait ? 'น้ำมันแม็คโคร' : 'บันทึกการใช้น้ำมันรถแม็คโคร',
-            style: GoogleFonts.kanit(
-              fontSize: phonePortrait ? 18 : 24,
-              fontWeight: FontWeight.w800,
-              color: isDark ? const Color(0xFF60A5FA) : const Color(0xFF0F5FAF),
-            ),
-          ),
-          SizedBox(height: phonePortrait ? 4 : 6),
-          Text(
-            phonePortrait
-                ? 'แสดงรถแม็คโครทั้งหมด · กรอกคันที่เติม · ปัดซ้ายลบ'
-                : 'แสดงรถแม็คโครทั้งหมดจากตั้งค่าแอพ — กรอกเฉพาะคันที่เติมน้ำมัน · '
-                    'ปัดซ้ายเพื่อลบรายการผิด · ไม่บังคับบันทึกการใช้รถก่อน · '
-                    'ถังสำรองหักเฉพาะสำรอง · ถังหลัก (พล่าม) หักเฉพาะหลัก',
-            style: GoogleFonts.kanit(
-              fontSize: phonePortrait ? 12.5 : 13,
-              fontWeight: FontWeight.w500,
-              color: p.inkMuted,
-              height: 1.35,
-            ),
-          ),
-          SizedBox(height: phonePortrait ? 8 : 12),
-          _buildFuelStockBanner(
-            pendingMainDelta: pendingMain == 0 ? null : pendingMain,
-            pendingReserveDelta: pendingReserve == 0 ? null : pendingReserve,
+          FuelMacroTankHeader(
+            activeTank: activeTank,
+            mainDieselLiters: _fuelStock.mainDiesel,
+            reserveDieselLiters: _fuelStock.reserveDiesel,
+            pendingDelta: pendingTankDelta,
+            reserveShortfallLiters: _fuelStock.reserveShortfallLiters,
+            onSwitchTank: _switchFuelMacroTank,
           ),
           if (fuelCars.isEmpty) ...[
             const SizedBox(height: 14),
@@ -16085,102 +16014,180 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               ),
             ),
           ] else ...[
-            if (missingFuel.isNotEmpty) ...[
-              const SizedBox(height: 12),
+            const SizedBox(height: 10),
+            if (missingFuel.isNotEmpty)
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF3A2A14) : const Color(0xFFFFF8E8),
-                  borderRadius: BorderRadius.circular(14),
+                  color: isDark
+                      ? const Color(0xFF3A2A14)
+                      : const Color(0xFFFFF8E8),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isDark
                         ? const Color(0xFFB45309)
                         : const Color(0xFFFFCC80),
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text(
-                      phonePortrait
-                          ? 'คันที่ใช้รถวันนี้ยังไม่เติม ${missingFuel.length} คัน '
-                              '(บันทึกได้ — เป็นคำเตือน)'
-                          : 'ตรวจจากบันทึกการใช้รถแม็คโคร: มี ${missingFuel.length} คัน '
-                              'ที่ใช้งานวันนี้แล้วยังไม่เติมน้ำมัน — บันทึกได้ตามปกติ '
-                              '(คำเตือนเท่านั้น ไม่บังคับ)',
-                      style: GoogleFonts.kanit(
-                        color: isDark
-                            ? const Color(0xFFFBBF24)
-                            : const Color(0xFFE65100),
-                        fontWeight: FontWeight.w700,
-                        height: 1.35,
-                        fontSize: phonePortrait ? 13 : 14,
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: isDark
+                          ? const Color(0xFFFBBF24)
+                          : const Color(0xFFE65100),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'ใช้รถวันนี้ยังไม่เติม ${missingFuel.length} คัน',
+                            style: GoogleFonts.kanit(
+                              color: isDark
+                                  ? const Color(0xFFFBBF24)
+                                  : const Color(0xFFE65100),
+                              fontWeight: FontWeight.w700,
+                              fontSize: phonePortrait ? 13 : 14,
+                              height: 1.2,
+                            ),
+                          ),
+                          Text(
+                            missingFuel.join(' · '),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.kanit(
+                              color: p.inkSubtle,
+                              fontWeight: FontWeight.w600,
+                              fontSize: phonePortrait ? 12 : 12.5,
+                              height: 1.25,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      missingFuel.join(' · '),
-                      style: GoogleFonts.kanit(
-                        color: p.inkSubtle,
-                        fontWeight: FontWeight.w600,
-                        fontSize: phonePortrait ? 12.5 : 13.5,
-                        height: 1.3,
+                    const SizedBox(width: 6),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
                       onPressed: _openMacroVehicleUsageFromFuel,
-                      icon: const Icon(Icons.front_loader, size: 18),
-                      label: Text(
-                        phonePortrait
-                            ? 'ดูบันทึกการใช้รถ'
-                            : 'เปิดเมนูบันทึกการใช้รถแม็คโคร',
-                        style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      child: Text(
+                        'ดูการใช้รถ',
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.5,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ] else if (usedTodayCount == 0) ...[
-              const SizedBox(height: 12),
+              )
+            else if (usedTodayCount > 0)
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
-                  color: isDark ? p.chipSurface : const Color(0xFFF4F8FD),
-                  borderRadius: BorderRadius.circular(14),
+                  color: isDark
+                      ? const Color(0xFF142E22)
+                      : const Color(0xFFEAF7EE),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isDark ? p.hairline : const Color(0xFFD6E4F5),
+                    color: isDark
+                        ? const Color(0xFF2E7D32)
+                        : const Color(0xFFA5D6A7),
                   ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: Row(
                   children: [
-                    Text(
-                      phonePortrait
-                          ? 'ยังไม่มีบันทึกการใช้รถวันนี้ — กรอกน้ำมันได้เลย'
-                          : 'ยังไม่มีบันทึกการใช้รถแม็คโครของวันนี้ — '
-                              'กรอกและบันทึกน้ำมันได้เลย '
-                              '(เมนูการใช้รถใช้ตรวจว่าคันไหนทำงานครบ)',
-                      style: GoogleFonts.kanit(
-                        color: p.inkSubtle,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35,
-                        fontSize: phonePortrait ? 12.5 : 13.5,
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 17,
+                      color: isDark
+                          ? const Color(0xFF4ADE80)
+                          : const Color(0xFF2E7D32),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'เติมครบทุกคันที่ใช้งานวันนี้แล้ว (${coverage.fueledCount}/${coverage.usedCount} คัน · รวม ${formatFuelLiters(coverage.liters)} ล.)',
+                        style: GoogleFonts.kanit(
+                          fontSize: phonePortrait ? 12.5 : 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: isDark
+                              ? const Color(0xFF86EFAC)
+                              : const Color(0xFF1B5E20),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    TextButton.icon(
+                  ],
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: isDark ? p.chipSurface : const Color(0xFFF4F8FD),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDark ? p.hairline : const Color(0xFFDCE8F5),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.touch_app_rounded,
+                      size: 17,
+                      color: p.inkMuted,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'แตะกรอกลิตรเฉพาะคันที่เติม (เติมเวลาปัจจุบันให้อัตโนมัติ)',
+                        style: GoogleFonts.kanit(
+                          color: p.inkSubtle,
+                          fontWeight: FontWeight.w600,
+                          fontSize: phonePortrait ? 12 : 13,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                       onPressed: _openMacroVehicleUsageFromFuel,
-                      icon: const Icon(Icons.front_loader, size: 18),
-                      label: Text(
-                        'ไปบันทึกการใช้รถแม็คโคร',
-                        style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      child: Text(
+                        'ใช้รถ',
+                        style: GoogleFonts.kanit(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.5,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
             const SizedBox(height: 12),
             ...List.generate(fuelCars.length, (index) {
               final car = fuelCars[index];
@@ -16194,46 +16201,14 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               return _buildFuelVehicleRow(
                 row: row,
                 vehicleName: car,
+                activeTank: activeTank,
                 displayIndex: index + 1,
                 workedToday: worked,
                 missingFuelAfterWork: missingFuelSet.contains(car),
               );
             }),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isDark ? p.chipSurface : const Color(0xFFF4F8FD),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: missingFuel.isNotEmpty
-                      ? (isDark
-                          ? const Color(0xFFB45309)
-                          : const Color(0xFFFFCC80))
-                      : coverage.liters > 0 || coverage.usedCount > 0
-                          ? (isDark
-                              ? const Color(0xFF2A4A6A)
-                              : const Color(0xFFBFD8F4))
-                          : (isDark ? p.hairline : const Color(0xFFE2EAF4)),
-                ),
-              ),
-              child: Text(
-                phonePortrait
-                    ? 'ใช้รถ ${coverage.usedCount} · เติม ${coverage.fueledCount}'
-                        '${missingFuel.isNotEmpty ? ' · ค้าง ${missingFuel.length}' : ''}'
-                        ' · $litersLabel ล.'
-                    : 'วันนี้ใช้รถ ${coverage.usedCount} คัน · เติมน้ำมัน ${coverage.fueledCount} คัน'
-                        '${missingFuel.isNotEmpty ? ' · ยังไม่เติม ${missingFuel.length} คัน' : ''}'
-                        ' · รวม $litersLabel ลิตร',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w700,
-                  fontSize: phonePortrait ? 13.5 : 16,
-                ),
-              ),
-            ),
           ],
-          SizedBox(height: phonePortrait ? 10 : 14),
+          SizedBox(height: phonePortrait ? 8 : 12),
           _SmoothPressable(
             enabled: !_saving && fuelCars.isNotEmpty,
             child: FilledButton.icon(
@@ -16241,18 +16216,25 @@ class _QuickInputScreenState extends State<QuickInputScreen>
                   ? null
                   : _saveFuelVehicleUsageEntries,
               icon: Icon(
-                Icons.local_gas_station_outlined,
+                Icons.check_circle_outline_rounded,
                 size: phonePortrait ? 20 : 24,
               ),
               label: Text(
-                phonePortrait ? 'บันทึกน้ำมัน' : 'บันทึกการใช้น้ำมัน',
+                saveButtonLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.kanit(
                   fontWeight: FontWeight.w800,
-                  fontSize: phonePortrait ? 16 : 20,
+                  fontSize: phonePortrait ? 15.5 : 19,
                 ),
               ),
               style: FilledButton.styleFrom(
-                minimumSize: Size.fromHeight(phonePortrait ? 48 : 62),
+                backgroundColor: accent,
+                foregroundColor: saveButtonFg,
+                minimumSize: Size.fromHeight(phonePortrait ? 52 : 62),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
             ),
           ),
@@ -18280,17 +18262,17 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Set<String> _attendanceExclusionGroup(String bucketId) {
-    // เช้ากับบ่ายอยู่ด้วยกันได้ — ลากเข้าช่องลาไม่ดึงออกจากอีกช่วง
+    // เต็มวัน / เช้า / บ่าย เลือกได้ช่องเดียว และไม่ซ้อนกับช่องทำงาน
     if (_attSandLeaveIds.contains(bucketId)) {
       return {
         'att_work',
         'att_half_morning',
         'att_half_afternoon',
-        bucketId,
+        ..._attSandLeaveIds,
       };
     }
     if (_attDriverLeaveIds.contains(bucketId)) {
-      return {'att_drv_macro', 'att_drv_drum', bucketId};
+      return {'att_drv_macro', 'att_drv_drum', ..._attDriverLeaveIds};
     }
     if (_attGeneralPresenceIds.contains(bucketId)) return _attGeneralPresenceIds;
     return _attDriverIds;
@@ -18398,592 +18380,187 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     });
   }
 
-  String _attendanceActiveChipLabel(String empId, String bucketId) {
-    final emp = _employeesById[empId];
-    final name = emp == null ? empId : _employeeUiDisplayName(emp);
-    final role = AttendanceSessionTimes.roleForBucket(bucketId);
-    if (role == null) return name;
-    for (final s in _attendanceSessions) {
-      if (s.role == role && s.empId == empId && s.isOpen) {
-        return '$name · ${s.labelRange}';
-      }
-    }
-    return name;
+  void _resetAttendancePoolSearch() {
+    _attendancePoolSearchOpen = false;
+    _attendancePoolQuery = '';
+    _attendancePoolSearchController.clear();
   }
 
-  /// ช่องดรอปย่อยในการ์ดเช็คชื่อ (ว่าง = แสดง label, มีคน = ชิป)
-  Widget _attendanceZone(
-    _AttZoneDef z,
-    Color color,
-    Set<String> pickedPool, {
-    bool expand = false,
+  void _attendanceDropBackToPool(
+    String empId,
+    Set<String> poolBucketIds,
+    Set<String> pickedPool,
+  ) {
+    AppHaptics.tap();
+    setState(() {
+      for (final id in poolBucketIds) {
+        if (_attendanceAssignments[id]?.remove(empId) ?? false) {
+          _attendanceApplyTimedLeave(id, empId);
+        }
+      }
+      pickedPool.remove(empId);
+    });
+  }
+
+  Future<void> _switchAttendanceSection() async {
+    final current = _attendanceSection;
+    if (current == null) return;
+    if (_hasUnsavedModuleChanges) {
+      final discard = await _confirmDiscardUnsavedChanges();
+      if (!discard || !mounted) return;
+      _hydrateAttendanceFromTransactions(_moduleDayTransactions);
+    }
+    _releaseKeyboardFocus();
+    AppHaptics.tap();
+    final next = current == AttendanceSection.sandYard
+        ? AttendanceSection.driver
+        : AttendanceSection.sandYard;
+    setState(() {
+      _attendanceSection = next;
+      _resetAttendancePoolSearch();
+      _attendanceGeneralPicked.clear();
+      _attendanceDriverPicked.clear();
+      if (next == AttendanceSection.driver) {
+        _syncAttendanceMacroDriversFromVehicleUsage();
+      }
+    });
+    _captureModuleFormBaseline();
+  }
+
+  AttendanceGroupProgress _attendanceProgressFor(AttendanceSection section) {
+    if (section == AttendanceSection.sandYard) {
+      final total = _employees
+          .where((e) => !e.inactive && _isSandYardAttendanceEmployee(e))
+          .length;
+      final checked = <String>{
+        for (final id in _attGeneralPresenceIds)
+          ...(_attendanceAssignments[id] ?? const <String>{}),
+      }.length;
+      return AttendanceGroupProgress(checkedCount: checked, totalCount: total);
+    }
+    final total = _employees
+        .where((e) => !e.inactive && _isMacroExcavatorDriverEmployee(e))
+        .length;
+    final checked = <String>{
+      for (final id in _attDriverIds)
+        ...(_attendanceAssignments[id] ?? const <String>{}),
+    }.length;
+    return AttendanceGroupProgress(checkedCount: checked, totalCount: total);
+  }
+
+  List<AttendanceStatBadgeData> _attendanceStatsFor(AttendanceSection section) {
+    if (section == AttendanceSection.sandYard) {
+      return buildAttendanceSandYardStats(
+        work: _attendanceAssignments['att_work']?.length ?? 0,
+        leaveFull: _attendanceAssignments['att_leave_full']?.length ?? 0,
+        leaveMorning: _attendanceAssignments['att_leave_morning']?.length ?? 0,
+        leaveAfternoon:
+            _attendanceAssignments['att_leave_afternoon']?.length ?? 0,
+      );
+    }
+    return buildAttendanceDriverStats(
+      macro: _attendanceAssignments['att_drv_macro']?.length ?? 0,
+      drum: _attendanceAssignments['att_drv_drum']?.length ?? 0,
+      leaveFull: _attendanceAssignments['att_drv_leave_full']?.length ?? 0,
+      leaveMorning:
+          _attendanceAssignments['att_drv_leave_morning']?.length ?? 0,
+      leaveAfternoon:
+          _attendanceAssignments['att_drv_leave_afternoon']?.length ?? 0,
+    );
+  }
+
+  String? _attendanceOpenSessionRange(String empId, String bucketId) {
+    final role = AttendanceSessionTimes.roleForBucket(bucketId);
+    if (role == null) return null;
+    for (final s in _attendanceSessions) {
+      if (s.role == role && s.empId == empId && s.isOpen) {
+        return s.labelRange;
+      }
+    }
+    return null;
+  }
+
+  AttendanceZoneSlotData _attendanceBuildZoneSlot({
+    required String bucketId,
+    required String label,
+    required String emptyHint,
   }) {
-    final p = DailyPalette.of(context);
-    final ids = _attendanceAssignments[z.bucketId] ?? <String>{};
-    final role = AttendanceSessionTimes.roleForBucket(z.bucketId);
-    final closedIndexes = <int>[];
+    final ids = _attendanceAssignments[bucketId] ?? const <String>{};
+    final role = AttendanceSessionTimes.roleForBucket(bucketId);
+    final isTimedWork = role != null;
+    final activeChips = <AttendancePlacedChipData>[];
+    for (final empId in ids) {
+      final emp = _employeesById[empId];
+      final name = emp == null ? empId : _employeeUiDisplayName(emp);
+      activeChips.add(
+        AttendancePlacedChipData(
+          empId: empId,
+          displayName: name,
+          timeRange: _attendanceOpenSessionRange(empId, bucketId),
+          isTimedWork: isTimedWork,
+          justDropped: _attendanceJustDroppedIds.contains(empId),
+        ),
+      );
+    }
+    final closedSessions = <AttendanceClosedSessionChipData>[];
     if (role != null) {
       for (var i = 0; i < _attendanceSessions.length; i++) {
         final s = _attendanceSessions[i];
-        if (s.role == role && !s.isOpen) closedIndexes.add(i);
+        if (s.role == role && !s.isOpen) {
+          final emp = _employeesById[s.empId];
+          final name = emp == null ? s.empId : _employeeUiDisplayName(emp);
+          closedSessions.add(
+            AttendanceClosedSessionChipData(
+              sessionIndex: i,
+              displayName: name,
+              timeRange: s.labelRange,
+            ),
+          );
+        }
       }
     }
-    final canMove = pickedPool.isNotEmpty;
-    final hasContent = ids.isNotEmpty || closedIndexes.isNotEmpty;
-    final Widget body = DragTarget<String>(
-      onWillAcceptWithDetails: (_) => true,
-      onAcceptWithDetails: (d) =>
-          _attendanceAssignEmp(z.bucketId, d.data, pickedPool),
-      builder: (context, cand, _) {
-        final hovering = cand.isNotEmpty;
-        final child = Material(
-          color: hovering
-              ? color.withValues(alpha: 0.14)
-              : p.chipSurface,
-          borderRadius: BorderRadius.circular(10),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: canMove
-                ? () => _attendanceMovePicked(z.bucketId, pickedPool)
-                : null,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              width: double.infinity,
-              constraints: BoxConstraints(minHeight: expand ? 0 : 56),
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: hovering
-                      ? color.withValues(alpha: 0.85)
-                      : color.withValues(alpha: 0.28),
-                  width: hovering ? 1.6 : 1,
-                ),
-              ),
-              child: !hasContent
-                  ? Center(
-                      child: Text(
-                        z.subLabel ?? 'วางที่นี่',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.kanit(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w600,
-                          color: p.inkMuted,
-                        ),
-                      ),
-                    )
-                  : _attendanceZoneChips(
-                      ids: ids,
-                      color: color,
-                      bucketId: z.bucketId,
-                      closedIndexes: closedIndexes,
-                      scrollable: expand,
-                    ),
-            ),
-          ),
-        );
-        if (!expand) return child;
-        return SizedBox.expand(child: child);
-      },
-    );
-    return expand ? Expanded(child: body) : body;
-  }
-
-  /// ชิปรายชื่อในช่องดรอป — เลื่อนได้เมื่อช่องมีความสูงคงที่ กันชื่อล้นกล่อง
-  Widget _attendanceZoneChips({
-    required Set<String> ids,
-    required Color color,
-    required String bucketId,
-    required List<int> closedIndexes,
-    required bool scrollable,
-  }) {
-    final p = DailyPalette.of(context);
-    final chips = <Widget>[];
-    for (final empId in ids) {
-      final label = _attendanceActiveChipLabel(empId, bucketId);
-      chips.add(
-        LongPressDraggable<String>(
-          data: empId,
-          delay: _attDragDelay,
-          onDragStarted: () => AppHaptics.tap(),
-          feedback: Material(
-            color: Colors.transparent,
-            elevation: 6,
-            borderRadius: BorderRadius.circular(16),
-            child: Chip(
-              label: Text(
-                label,
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                  fontSize: 18,
-                ),
-              ),
-              backgroundColor: color.withValues(alpha: 0.92),
-            ),
-          ),
-          childWhenDragging: Opacity(
-            opacity: 0.35,
-            child: InputChip(
-              labelPadding: const EdgeInsets.symmetric(horizontal: 8),
-              padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
-              label: Text(
-                label,
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 17,
-                  color: p.ink,
-                ),
-              ),
-              onDeleted: null,
-            ),
-          ),
-          child: AnimatedScale(
-            scale: _attendanceJustDroppedIds.contains(empId) ? 1.08 : 1.0,
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            child: InputChip(
-              labelPadding: const EdgeInsets.symmetric(horizontal: 8),
-              padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
-              label: Text(
-                label,
-                style: GoogleFonts.kanit(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 17,
-                  color: p.ink,
-                ),
-              ),
-              deleteIcon: Icon(
-                Icons.cancel_rounded,
-                size: 20,
-                color: p.inkMuted,
-              ),
-              onDeleted: () => _attendanceRemoveEmp(bucketId, empId),
-            ),
-          ),
-        ),
-      );
-    }
-    for (final index in closedIndexes) {
-      final s = _attendanceSessions[index];
-      final emp = _employeesById[s.empId];
-      final name = emp == null ? s.empId : _employeeUiDisplayName(emp);
-      final label = '$name · ${s.labelRange}';
-      chips.add(
-        InputChip(
-          labelPadding: const EdgeInsets.symmetric(horizontal: 8),
-          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
-          avatar: Icon(Icons.schedule_rounded, size: 18, color: color),
-          label: Text(
-            label,
-            style: GoogleFonts.kanit(
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
-              color: p.inkSubtle,
-            ),
-          ),
-          backgroundColor: color.withValues(alpha: 0.10),
-          deleteIcon: Icon(Icons.close_rounded, size: 18, color: p.inkMuted),
-          onDeleted: () => _attendanceDeleteClosedSession(index),
-        ),
-      );
-    }
-    final wrap = Wrap(spacing: 8, runSpacing: 8, children: chips);
-    if (!scrollable) return wrap;
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: wrap,
-    );
-  }
-
-  /// การ์ดกลุ่ม (ทำงาน / ลางาน / แม็คโคร / ดรัม)
-  Widget _attendanceGroupedCard({
-    required String title,
-    required Color color,
-    String? subheader,
-    required List<_AttZoneDef> zones,
-    required Set<String> pickedPool,
-    bool equalHeightZones = false,
-  }) {
-    final p = DailyPalette.of(context);
-    final count = {
-      for (final z in zones)
-        ...(_attendanceAssignments[z.bucketId] ?? const <String>{}),
-    }.length;
-    final zoneWidgets = <Widget>[];
-    for (var i = 0; i < zones.length; i++) {
-      if (i > 0) zoneWidgets.add(const SizedBox(height: 8));
-      zoneWidgets.add(
-        _attendanceZone(
-          zones[i],
-          color,
-          pickedPool,
-          expand: equalHeightZones,
-        ),
-      );
-    }
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: p.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.42)),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.07),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(height: 4, color: color),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.kanit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: MediaQuery.sizeOf(context).shortestSide < 600
-                          ? 15.0
-                          : 17.0,
-                      color: p.ink,
-                      height: 1.2,
-                    ),
-                  ),
-                ),
-                if (count > 0)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '$count',
-                      style: GoogleFonts.kanit(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: color,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          if (subheader != null && subheader.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
-              child: Text(
-                subheader,
-                style: GoogleFonts.kanit(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: p.inkMuted,
-                ),
-              ),
-            ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              child: equalHeightZones
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: zoneWidgets,
-                    )
-                  : SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: zoneWidgets,
-                      ),
-                    ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// คอลัมน์พูลรายชื่อ (#รายชื่อพนักงาน / #รายชื่อพนักงานขับรถ)
-  Widget _attendancePoolColumn({
-    required String hashtag,
-    required List<Employee> people,
-    required Set<String> pickedPool,
-    required Set<String> poolBucketIds,
-    required String emptyText,
-    required ScrollController scrollController,
-    Color accent = const Color(0xFF7C4DFF),
-  }) {
-    final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final assignedHere = <String>{
-      for (final id in poolBucketIds)
-        ...(_attendanceAssignments[id] ?? const <String>{}),
-    };
-    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
-        MediaQuery.sizeOf(context).height >=
-            MediaQuery.sizeOf(context).width;
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: p.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withValues(alpha: 0.55), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: isDark ? 0.16 : 0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: phonePortrait ? 6 : 9,
-            ),
-            color: isDark ? const Color(0xFF334155) : const Color(0xFF475569),
-            child: Text(
-              people.isEmpty ? hashtag : '$hashtag · ${people.length} คน',
-              textAlign: TextAlign.center,
-              maxLines: phonePortrait ? 1 : 2,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.kanit(
-                fontWeight: FontWeight.w800,
-                fontSize: phonePortrait ? 13.5 : 16,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          Expanded(
-            child: DragTarget<String>(
-              onWillAcceptWithDetails: (_) => true,
-              onAcceptWithDetails: (d) {
-                final empId = d.data;
-                setState(() {
-                  for (final id in poolBucketIds) {
-                    _attendanceAssignments[id]?.remove(empId);
-                  }
-                  pickedPool.remove(empId);
-                });
-              },
-              builder: (context, cand, _) {
-                final hovering = cand.isNotEmpty;
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 140),
-                  width: double.infinity,
-                  padding: EdgeInsets.fromLTRB(
-                    phonePortrait ? 6 : 8,
-                    phonePortrait ? 6 : 8,
-                    phonePortrait ? 6 : 8,
-                    phonePortrait ? 6 : 8,
-                  ),
-                  color: hovering
-                      ? accent.withValues(alpha: isDark ? 0.14 : 0.08)
-                      : p.surface,
-                  child: people.isEmpty
-                      ? Center(
-                          child: Text(
-                            emptyText,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.kanit(
-                              fontSize: phonePortrait ? 13 : 14.5,
-                              color: p.inkMuted,
-                            ),
-                          ),
-                        )
-                      : Scrollbar(
-                          controller: scrollController,
-                          thumbVisibility: !phonePortrait,
-                          radius: const Radius.circular(8),
-                          child: SingleChildScrollView(
-                            controller: scrollController,
-                            // เลื่อนดูรายชื่อแบบลื่นๆ (เด้งปลายรายการเหมือนเลื่อนการ์ดในเกม)
-                            physics: const BouncingScrollPhysics(),
-                            padding: EdgeInsets.only(
-                              right: phonePortrait ? 4 : 8,
-                            ),
-                          child: Wrap(
-                            spacing: phonePortrait ? 6 : 8,
-                            runSpacing: phonePortrait ? 8 : 10,
-                            children: people.map((e) {
-                                final id = e.id;
-                                final selected = pickedPool.contains(id);
-                                final placed = assignedHere.contains(id);
-                                final name = _employeeUiDisplayName(e);
-                                return LongPressDraggable<String>(
-                                  data: id,
-                                  delay: _attDragDelay,
-                                  onDragStarted: () => AppHaptics.tap(),
-                                  feedback: Material(
-                                    elevation: 6,
-                                    borderRadius: BorderRadius.circular(14),
-                                    color: Colors.transparent,
-                                    child: Container(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: phonePortrait ? 14 : 16,
-                                        vertical: phonePortrait ? 10 : 12,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF1565C0),
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      child: Text(
-                                        name,
-                                        style: GoogleFonts.kanit(
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white,
-                                          fontSize: phonePortrait ? 16 : 18,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  childWhenDragging: Opacity(
-                                    opacity: 0.35,
-                                    child: _attendanceNameChip(
-                                      name: name,
-                                      selected: selected,
-                                      placed: placed,
-                                      accent: accent,
-                                    ),
-                                  ),
-                                  child: _attendanceNameChip(
-                                    name: name,
-                                    selected: selected,
-                                    placed: placed,
-                                    accent: accent,
-                                    onTap: () => setState(() {
-                                      if (selected) {
-                                        pickedPool.remove(id);
-                                      } else {
-                                        pickedPool.add(id);
-                                      }
-                                    }),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                        ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _attendanceNameChip({
-    required String name,
-    required bool selected,
-    required bool placed,
-    required Color accent,
-    VoidCallback? onTap,
-  }) {
-    final p = DailyPalette.of(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
-        MediaQuery.sizeOf(context).height >=
-            MediaQuery.sizeOf(context).width;
-    final placedBg =
-        isDark ? const Color(0xFF1B3A2A) : const Color(0xFFE8F5E9);
-    final placedBorder =
-        isDark ? const Color(0xFF4ADE80) : const Color(0xFF81C784);
-    return Material(
-      color: selected
-          ? accent.withValues(alpha: isDark ? 0.28 : 0.18)
-          : placed
-          ? placedBg
-          : p.card,
-      borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
-        onTap: onTap,
-        child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: phonePortrait ? 12 : 16,
-            vertical: phonePortrait ? 9 : 13,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
-            border: Border.all(
-              color: selected
-                  ? accent
-                  : placed
-                  ? placedBorder
-                  : p.hairline,
-              width: selected || placed ? 1.6 : 1,
-            ),
-          ),
-          child: Text(
-            name,
-            style: GoogleFonts.kanit(
-              fontWeight: FontWeight.w700,
-              fontSize: phonePortrait ? 15 : 18,
-              color: p.ink,
-            ),
-          ),
-        ),
-      ),
+    return AttendanceZoneSlotData(
+      bucketId: bucketId,
+      label: label,
+      emptyHint: emptyHint,
+      activeChips: activeChips,
+      closedSessions: closedSessions,
     );
   }
 
   Widget _buildAttendanceFormCard() {
     // หน้าเลือกเมนูย่อย — กระดานเต็มจออยู่ที่ _buildAttendanceFullscreenShell
     final p = DailyPalette.of(context);
-    final workN = _attendanceAssignments['att_work']?.length ?? 0;
-    final leaveMorningN =
-        _attendanceAssignments['att_leave_morning']?.length ?? 0;
-    final leaveAfternoonN =
-        _attendanceAssignments['att_leave_afternoon']?.length ?? 0;
-    final macroN = _attendanceAssignments['att_drv_macro']?.length ?? 0;
-    final drumN = _attendanceAssignments['att_drv_drum']?.length ?? 0;
-    final drvLeaveMorningN =
-        _attendanceAssignments['att_drv_leave_morning']?.length ?? 0;
-    final drvLeaveAfternoonN =
-        _attendanceAssignments['att_drv_leave_afternoon']?.length ?? 0;
     final size = MediaQuery.sizeOf(context);
     final phonePortrait =
         size.shortestSide < 600 && size.height >= size.width;
-
-    final sandSummary = workN + leaveMorningN + leaveAfternoonN == 0
-        ? (phonePortrait
-            ? 'ยังไม่มีรายชื่อ — แตะเพื่อเริ่ม'
-            : 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ')
-        : 'ทำงาน $workN · ลาเช้า $leaveMorningN · ลาบ่าย $leaveAfternoonN';
-    final driverSummary =
-        macroN + drumN + drvLeaveMorningN + drvLeaveAfternoonN == 0
-        ? (phonePortrait
-            ? 'ยังไม่มีรายชื่อ — แตะเพื่อเริ่ม'
-            : 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ')
-        : 'แม็คโคร $macroN · ดรัม $drumN · ลาเช้า $drvLeaveMorningN · ลาบ่าย $drvLeaveAfternoonN';
+    final sandProgress = _attendanceProgressFor(AttendanceSection.sandYard);
+    final driverProgress = _attendanceProgressFor(AttendanceSection.driver);
+    final sandStats = _attendanceStatsFor(AttendanceSection.sandYard);
+    final driverStats = _attendanceStatsFor(AttendanceSection.driver);
+    final y = _selectedDate.year + 543;
+    final dateLabel = '${_selectedDate.day}/${_selectedDate.month}/$y';
 
     final picker = AttendanceSubModePicker(
-      sandYardSummary: sandSummary,
-      driverSummary: driverSummary,
+      dateLabel: dateLabel,
+      sandYardSummary: 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ',
+      driverSummary: 'ยังไม่มีรายชื่อวันนี้ — แตะเพื่อเริ่มเช็คชื่อ',
+      sandProgress: sandProgress,
+      driverProgress: driverProgress,
+      sandStats: sandStats,
+      driverStats: driverStats,
       onSelect: (section) {
         AppHaptics.confirm();
         setState(() {
           _attendanceSection = section;
+          _resetAttendancePoolSearch();
+          _attendanceGeneralPicked.clear();
+          _attendanceDriverPicked.clear();
           if (section == AttendanceSection.driver) {
             _syncAttendanceMacroDriversFromVehicleUsage();
           }
         });
+        _captureModuleFormBaseline();
       },
     );
 
@@ -19000,14 +18577,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _employeeDataLoadProgressBanner(),
-          // ให้การ์ดเลือกกลุ่มสูงพอสัมผัสบนมือถือแนวตั้ง (Picker ใช้ Expanded)
-          if (phonePortrait)
-            SizedBox(
-              height: (size.height * 0.52).clamp(340.0, 480.0),
-              child: picker,
-            )
-          else
-            picker,
+          picker,
         ],
       ),
     );
@@ -19020,113 +18590,129 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     };
   }
 
-  String _attendanceSectionSaveLabel(AttendanceSection section) {
+  String _attendanceSectionSaveLabel(AttendanceSection section, int count) {
+    final suffix = count > 0 ? ' ($count คน)' : '';
     return switch (section) {
-      AttendanceSection.sandYard => 'บันทึกเช็คชื่อพนักงานท่าทราย',
-      AttendanceSection.driver => 'บันทึกเช็คชื่อคนขับรถ',
+      AttendanceSection.sandYard => 'บันทึกพนักงานท่าทราย$suffix',
+      AttendanceSection.driver => 'บันทึกคนขับรถ$suffix',
     };
   }
 
-  String _attendanceBoardSummary(AttendanceSection section) {
+  List<AttendanceQuickAssignTarget> _attendanceQuickTargets(
+    AttendanceSection section,
+  ) {
     if (section == AttendanceSection.sandYard) {
-      final work = _attendanceAssignments['att_work']?.length ?? 0;
-      final morning = _attendanceAssignments['att_leave_morning']?.length ?? 0;
-      final afternoon =
-          _attendanceAssignments['att_leave_afternoon']?.length ?? 0;
-      return 'ทำงาน $work · ลาเช้า $morning · ลาบ่าย $afternoon';
+      return const [
+        AttendanceQuickAssignTarget(
+          bucketId: 'att_work',
+          label: 'มาทำงาน',
+          color: kAttendanceWorkColor,
+          icon: Icons.engineering_rounded,
+        ),
+        AttendanceQuickAssignTarget(
+          bucketId: 'att_leave_full',
+          label: 'ลาเต็มวัน',
+          color: kAttendanceLeaveColor,
+          icon: Icons.event_busy_rounded,
+        ),
+        AttendanceQuickAssignTarget(
+          bucketId: 'att_leave_morning',
+          label: 'ลาเช้า',
+          color: Color(0xFFFB7185),
+          icon: Icons.wb_sunny_outlined,
+        ),
+        AttendanceQuickAssignTarget(
+          bucketId: 'att_leave_afternoon',
+          label: 'ลาบ่าย',
+          color: Color(0xFFBE123C),
+          icon: Icons.wb_twilight_rounded,
+        ),
+      ];
     }
-    final macro = _attendanceAssignments['att_drv_macro']?.length ?? 0;
-    final drum = _attendanceAssignments['att_drv_drum']?.length ?? 0;
-    final morning =
-        _attendanceAssignments['att_drv_leave_morning']?.length ?? 0;
-    final afternoon =
-        _attendanceAssignments['att_drv_leave_afternoon']?.length ?? 0;
-    return 'แม็คโคร $macro · ดรัม $drum · ลาเช้า $morning · ลาบ่าย $afternoon';
+    return const [
+      AttendanceQuickAssignTarget(
+        bucketId: 'att_drv_macro',
+        label: 'ขับแม็คโคร',
+        color: kAttendanceMacroColor,
+        icon: Icons.front_loader,
+      ),
+      AttendanceQuickAssignTarget(
+        bucketId: 'att_drv_drum',
+        label: 'ขับดรัม',
+        color: kAttendanceDrumColor,
+        icon: Icons.local_shipping_rounded,
+      ),
+      AttendanceQuickAssignTarget(
+        bucketId: 'att_drv_leave_full',
+        label: 'ลาเต็มวัน',
+        color: kAttendanceLeaveColor,
+        icon: Icons.event_busy_rounded,
+      ),
+      AttendanceQuickAssignTarget(
+        bucketId: 'att_drv_leave_morning',
+        label: 'ลาเช้า',
+        color: Color(0xFFFB7185),
+        icon: Icons.wb_sunny_outlined,
+      ),
+      AttendanceQuickAssignTarget(
+        bucketId: 'att_drv_leave_afternoon',
+        label: 'ลาบ่าย',
+        color: Color(0xFFBE123C),
+        icon: Icons.wb_twilight_rounded,
+      ),
+    ];
   }
 
   Widget _buildAttendanceFullscreenShell() {
     final p = DailyPalette.of(context);
     final section = _attendanceSection!;
     final y = _selectedDate.year + 543;
-    final dateLabel =
-        '${_selectedDate.day}/${_selectedDate.month}/$y';
+    final dateLabel = '${_selectedDate.day}/${_selectedDate.month}/$y';
     final canSave = !_saving && !_employeesLoading;
     final size = MediaQuery.sizeOf(context);
     final phonePortrait =
         size.shortestSide < 600 && size.height >= size.width;
+    final progress = _attendanceProgressFor(section);
+    final stats = _attendanceStatsFor(section);
+    final pickedPool = section == AttendanceSection.sandYard
+        ? _attendanceGeneralPicked
+        : _attendanceDriverPicked;
+
     final title = phonePortrait
         ? (section == AttendanceSection.sandYard
             ? 'พนักงานท่าทราย'
             : 'คนขับรถ')
         : _attendanceSectionTitle(section);
+    final switchLabel = section == AttendanceSection.sandYard
+        ? 'คนขับรถ'
+        : 'ท่าทราย';
     final saveLabel = _saving
         ? 'กำลังบันทึก...'
         : (phonePortrait
-            ? 'บันทึกเช็คชื่อ'
-            : _attendanceSectionSaveLabel(section));
+            ? (progress.checkedCount > 0
+                ? 'บันทึกเช็คชื่อ · ${progress.checkedCount} คน'
+                : 'บันทึกเช็คชื่อ')
+            : _attendanceSectionSaveLabel(section, progress.checkedCount));
+
     return Scaffold(
       backgroundColor: p.surface,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                phonePortrait ? 4 : 8,
-                phonePortrait ? 2 : 4,
-                phonePortrait ? 8 : 16,
-                0,
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: _handleQuickInputBack,
-                    iconSize: phonePortrait ? 24 : 28,
-                    style: IconButton.styleFrom(
-                      minimumSize: Size(
-                        phonePortrait ? 44 : 52,
-                        phonePortrait ? 44 : 52,
-                      ),
-                      padding: EdgeInsets.all(phonePortrait ? 8 : 12),
-                      tapTargetSize: MaterialTapTargetSize.padded,
-                    ),
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                    color: p.brandDeep,
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Text(
-                          title,
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.kanit(
-                            fontSize: phonePortrait ? 18 : 23,
-                            fontWeight: FontWeight.w800,
-                            color: p.brandDeep,
-                          ),
-                        ),
-                        Text(
-                          dateLabel,
-                          style: GoogleFonts.kanit(
-                            fontSize: phonePortrait ? 13 : 14.5,
-                            fontWeight: FontWeight.w600,
-                            color: p.inkMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: phonePortrait ? 36 : 44),
-                ],
-              ),
+            AttendanceBoardHeader(
+              title: title,
+              dateLabel: dateLabel,
+              progress: progress,
+              switchLabel: switchLabel,
+              onBack: _handleQuickInputBack,
+              onSwitchSection: _switchAttendanceSection,
             ),
             if (_employeesLoading)
               Padding(
                 padding: EdgeInsets.fromLTRB(
                   phonePortrait ? 12 : 16,
-                  phonePortrait ? 4 : 8,
+                  phonePortrait ? 6 : 8,
                   phonePortrait ? 12 : 16,
                   0,
                 ),
@@ -19136,67 +18722,39 @@ class _QuickInputScreenState extends State<QuickInputScreen>
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
                   phonePortrait ? 8 : 12,
-                  phonePortrait ? 4 : 8,
+                  phonePortrait ? 6 : 10,
                   phonePortrait ? 8 : 12,
                   phonePortrait ? 4 : 8,
                 ),
-                child: section == AttendanceSection.sandYard
-                    ? _buildAttendanceSandYardBoard()
-                    : _buildAttendanceDriverBoard(),
-              ),
-            ),
-            Material(
-              elevation: 8,
-              color: p.card,
-              shadowColor: p.shadowLift,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    phonePortrait ? 12 : 16,
-                    phonePortrait ? 8 : 10,
-                    phonePortrait ? 12 : 16,
-                    phonePortrait ? 10 : 12,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        _attendanceBoardSummary(section),
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.kanit(
-                          fontSize: phonePortrait ? 13.5 : 15,
-                          fontWeight: FontWeight.w700,
-                          color: p.inkSubtle,
-                        ),
-                      ),
-                      SizedBox(height: phonePortrait ? 6 : 8),
-                      _SmoothPressable(
-                        enabled: canSave,
-                        child: FilledButton.icon(
-                          onPressed: canSave ? _saveQuickEntry : null,
-                          icon: Icon(
-                            Icons.how_to_reg_outlined,
-                            size: phonePortrait ? 20 : 24,
-                          ),
-                          label: Text(
-                            saveLabel,
-                            style: GoogleFonts.kanit(
-                              fontWeight: FontWeight.w800,
-                              fontSize: phonePortrait ? 16 : 19,
-                            ),
-                          ),
-                          style: FilledButton.styleFrom(
-                            minimumSize: Size.fromHeight(
-                              phonePortrait ? 48 : 54,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AttendanceSelectionBar(
+                      selectedCount: pickedPool.length,
+                      targets: _attendanceQuickTargets(section),
+                      onAssignToBucket: (bucketId) =>
+                          _attendanceMovePicked(bucketId, pickedPool),
+                      onClearSelection: () {
+                        AppHaptics.tap();
+                        setState(pickedPool.clear);
+                      },
+                    ),
+                    Expanded(
+                      child: section == AttendanceSection.sandYard
+                          ? _buildAttendanceSandYardBoard()
+                          : _buildAttendanceDriverBoard(),
+                    ),
+                  ],
                 ),
               ),
+            ),
+            AttendanceBottomDock(
+              stats: stats,
+              remainingCount: progress.remainingCount,
+              hasUnsavedChanges: _hasUnsavedModuleChanges,
+              canSave: canSave,
+              saveLabel: saveLabel,
+              onSave: _saveQuickEntry,
             ),
           ],
         ),
@@ -19210,55 +18768,133 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       for (final id in genPresenceIds)
         ...(_attendanceAssignments[id] ?? const <String>{}),
     };
-    final generalPeople = _employees
-        .where(
-          (e) =>
-              !e.inactive &&
-              _isSandYardAttendanceEmployee(e) &&
-              !assignedGeneral.contains(e.id),
-        )
+    final allSandPeople = _employees
+        .where((e) => !e.inactive && _isSandYardAttendanceEmployee(e))
+        .toList();
+    final remainingPeople = allSandPeople
+        .where((e) => !assignedGeneral.contains(e.id))
         .toList()
       ..sort(_compareAttendancePoolOrder);
-
-    const workColor = Color(0xFF2FB6A6);
-    const leaveColor = Color(0xFFEF5D6E);
-    const poolAccent = Color(0xFF7C4DFF);
-
-    final workCard = _attendanceGroupedCard(
-      title: '#ทำงาน',
-      color: workColor,
-      zones: const [_AttZoneDef(bucketId: 'att_work', subLabel: 'วางชื่อที่นี่')],
-      pickedPool: _attendanceGeneralPicked,
-      equalHeightZones: true,
+    final filteredPeople = filterAttendancePoolEmployees(
+      remainingPeople,
+      _attendancePoolQuery,
+      _employeeUiDisplayName,
     );
-    final leaveCard = _attendanceGroupedCard(
-      title: '#ลางาน',
-      color: leaveColor,
-      zones: const [
-        _AttZoneDef(bucketId: 'att_leave_morning', subLabel: 'ช่วงเช้า'),
-        _AttZoneDef(bucketId: 'att_leave_afternoon', subLabel: 'ช่วงบ่าย'),
+
+    final workCard = AttendanceBoardCard(
+      title: 'มาทำงาน',
+      icon: Icons.engineering_rounded,
+      color: kAttendanceWorkColor,
+      pickedCount: _attendanceGeneralPicked.length,
+      equalHeightZones: true,
+      dragDelay: _attDragDelay,
+      zones: [
+        _attendanceBuildZoneSlot(
+          bucketId: 'att_work',
+          label: 'มาทำงาน',
+          emptyHint: 'แตะเลือกชื่อแล้ววาง หรือกดค้างลากมาวาง',
+        ),
       ],
-      pickedPool: _attendanceGeneralPicked,
-      equalHeightZones: true,
+      onTapZone: (bucketId) =>
+          _attendanceMovePicked(bucketId, _attendanceGeneralPicked),
+      onAcceptDrop: (bucketId, empId) =>
+          _attendanceAssignEmp(bucketId, empId, _attendanceGeneralPicked),
+      onRemoveEmp: _attendanceRemoveEmp,
+      onDeleteClosedSession: _attendanceDeleteClosedSession,
     );
-    final pool = _attendancePoolColumn(
-      hashtag: '#รายชื่อพนักงานท่าทราย',
-      people: generalPeople,
-      pickedPool: _attendanceGeneralPicked,
-      poolBucketIds: genPresenceIds,
-      emptyText:
-          'ไม่มีพนักงานท่าทราย — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
-      accent: poolAccent,
+
+    final leaveCard = AttendanceBoardCard(
+      title: 'ลางาน',
+      icon: Icons.event_busy_rounded,
+      color: kAttendanceLeaveColor,
+      pickedCount: _attendanceGeneralPicked.length,
+      equalHeightZones: true,
+      dragDelay: _attDragDelay,
+      zones: [
+        _attendanceBuildZoneSlot(
+          bucketId: 'att_leave_full',
+          label: 'ลาเต็มวัน',
+          emptyHint: 'วางชื่อที่นี่',
+        ),
+        _attendanceBuildZoneSlot(
+          bucketId: 'att_leave_morning',
+          label: 'ช่วงเช้า',
+          emptyHint: 'วางชื่อที่นี่',
+        ),
+        _attendanceBuildZoneSlot(
+          bucketId: 'att_leave_afternoon',
+          label: 'ช่วงบ่าย',
+          emptyHint: 'วางชื่อที่นี่',
+        ),
+      ],
+      onTapZone: (bucketId) =>
+          _attendanceMovePicked(bucketId, _attendanceGeneralPicked),
+      onAcceptDrop: (bucketId, empId) =>
+          _attendanceAssignEmp(bucketId, empId, _attendanceGeneralPicked),
+      onRemoveEmp: _attendanceRemoveEmp,
+      onDeleteClosedSession: _attendanceDeleteClosedSession,
+    );
+
+    final pool = AttendancePoolPanel(
+      title: 'รอเช็คชื่อ',
+      remainingCount: remainingPeople.length,
+      totalGroupCount: allSandPeople.length,
+      visiblePeople: [
+        for (final e in filteredPeople)
+          AttendancePoolPerson(
+            id: e.id,
+            displayName: _employeeUiDisplayName(e),
+            selected: _attendanceGeneralPicked.contains(e.id),
+          ),
+      ],
+      selectedCount: _attendanceGeneralPicked.length,
+      searchOpen: _attendancePoolSearchOpen,
+      searchQuery: _attendancePoolQuery,
+      searchController: _attendancePoolSearchController,
       scrollController: _attendanceGeneralPoolScroll,
+      accent: kAttendanceWorkColor,
+      dragDelay: _attDragDelay,
+      emptyConfigText:
+          'ยังไม่มีพนักงานท่าทราย — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
+      onToggleSearch: () => setState(() {
+        _attendancePoolSearchOpen = !_attendancePoolSearchOpen;
+        if (!_attendancePoolSearchOpen) {
+          _attendancePoolQuery = '';
+          _attendancePoolSearchController.clear();
+        }
+      }),
+      onSearchChanged: (q) => setState(() => _attendancePoolQuery = q),
+      onSelectAllRemaining: () {
+        AppHaptics.tap();
+        setState(() {
+          for (final e in filteredPeople) {
+            _attendanceGeneralPicked.add(e.id);
+          }
+        });
+      },
+      onClearSelection: () {
+        AppHaptics.tap();
+        setState(_attendanceGeneralPicked.clear);
+      },
+      onTogglePerson: (id) => setState(() {
+        if (!_attendanceGeneralPicked.remove(id)) {
+          _attendanceGeneralPicked.add(id);
+        }
+      }),
+      onAcceptDropBack: (empId) => _attendanceDropBackToPool(
+        empId,
+        genPresenceIds,
+        _attendanceGeneralPicked,
+      ),
     );
 
     final size = MediaQuery.sizeOf(context);
     final phonePortrait =
         size.shortestSide < 600 && size.height >= size.width;
     final workH = phonePortrait
-        ? _attWorkCardHeight.clamp(200.0, 300.0)
+        ? _attWorkCardHeight.clamp(190.0, 280.0)
         : _attWorkCardHeight;
-    final leaveH = phonePortrait ? 240.0 : 320.0;
+    final leaveH = phonePortrait ? 276.0 : 400.0;
 
     return _attendanceFullscreenBoardLayout(
       pool: pool,
@@ -19276,6 +18912,7 @@ class _QuickInputScreenState extends State<QuickInputScreen>
   }
 
   Widget _buildAttendanceDriverBoard() {
+    final p = DailyPalette.of(context);
     final missingFromMacro = _attendanceMacroDriversMissingFromVehicleUsage();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final phonePortrait = MediaQuery.sizeOf(context).shortestSide < 600 &&
@@ -19283,79 +18920,110 @@ class _QuickInputScreenState extends State<QuickInputScreen>
             MediaQuery.sizeOf(context).width;
     final macroSyncBanner = missingFromMacro > 0
         ? Padding(
-            padding: EdgeInsets.only(bottom: phonePortrait ? 6 : 10),
-            child: DecoratedBox(
+            padding: EdgeInsets.only(bottom: phonePortrait ? 6 : 8),
+            child: Container(
+              padding: EdgeInsets.fromLTRB(
+                phonePortrait ? 10 : 12,
+                phonePortrait ? 7 : 9,
+                8,
+                phonePortrait ? 7 : 9,
+              ),
               decoration: BoxDecoration(
                 color: isDark
-                    ? const Color(0xFF3D2A14)
-                    : const Color(0xFFFFF3E0),
+                    ? const Color(0xFF3A2814)
+                    : const Color(0xFFFFF7ED),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: isDark
-                      ? const Color(0xFF8B5A2B)
-                      : const Color(0xFFFFCC80),
+                      ? const Color(0xFF9A5B13)
+                      : const Color(0xFFFDBA74),
                 ),
               ),
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  phonePortrait ? 10 : 12,
-                  phonePortrait ? 8 : 10,
-                  8,
-                  phonePortrait ? 8 : 10,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.front_loader,
-                      color: Color(0xFFEF6C00),
-                      size: phonePortrait ? 18 : 22,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.front_loader,
+                    color: kAttendanceMacroColor,
+                    size: phonePortrait ? 18 : 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      phonePortrait
+                          ? 'จากบันทึกแม็คโครยังไม่อยู่ในกล่อง $missingFromMacro คน'
+                          : 'มีคนขับจากบันทึกการใช้รถแม็คโคร $missingFromMacro คนที่ยังไม่อยู่ในกล่อง',
+                      style: GoogleFonts.kanit(
+                        fontSize: phonePortrait ? 12.5 : 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: isDark
+                            ? const Color(0xFFFDBA74)
+                            : const Color(0xFF9A3412),
+                        height: 1.25,
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        phonePortrait
-                            ? 'แม็คโคร $missingFromMacro คนยังไม่อยู่ในกล่อง'
-                            : 'มีคนขับจากบันทึกแม็คโคร $missingFromMacro คนที่ยังไม่อยู่ในกล่อง',
-                        style: GoogleFonts.kanit(
-                          fontSize: phonePortrait ? 12.5 : 13.5,
-                          fontWeight: FontWeight.w600,
-                          color: isDark
-                              ? const Color(0xFFFDBA74)
-                              : const Color(0xFF5D4037),
-                          height: 1.25,
+                  ),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: kAttendanceMacroColor,
+                      foregroundColor: Colors.white,
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                    ),
+                    onPressed: () =>
+                        _attendanceSyncMacroDriversFromVehicleUsage(
+                          merge: true,
                         ),
+                    child: Text(
+                      'ดึงรายชื่อ',
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
                       ),
                     ),
-                    TextButton(
-                      onPressed: () => _attendanceSyncMacroDriversFromVehicleUsage(
-                        merge: true,
-                      ),
-                      child: Text(
-                        'อัปเดต',
-                        style: GoogleFonts.kanit(
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFFEF6C00),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           )
         : _macroDriverIdsFromVehicleUsageToday().isNotEmpty
             ? Padding(
-                padding: EdgeInsets.only(bottom: phonePortrait ? 4 : 10),
+                padding: EdgeInsets.only(bottom: phonePortrait ? 4 : 8),
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
-                    onPressed: () => _attendanceSyncMacroDriversFromVehicleUsage(
-                      merge: true,
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    icon: const Icon(Icons.sync_rounded, size: 18),
+                    onPressed: () =>
+                        _attendanceSyncMacroDriversFromVehicleUsage(
+                          merge: true,
+                        ),
+                    icon: Icon(
+                      Icons.sync_rounded,
+                      size: 16,
+                      color: p.brandDeep,
+                    ),
                     label: Text(
-                      phonePortrait ? 'จากแม็คโคร' : 'อัปเดตจากบันทึกแม็คโคร',
-                      style: GoogleFonts.kanit(fontWeight: FontWeight.w700),
+                      phonePortrait
+                          ? 'ซิงก์จากบันทึกแม็คโคร'
+                          : 'อัปเดตคนขับจากบันทึกแม็คโคร',
+                      style: GoogleFonts.kanit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
+                        color: p.brandDeep,
+                      ),
                     ),
                   ),
                 ),
@@ -19366,65 +19034,150 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       for (final id in _attDriverIds)
         ...(_attendanceAssignments[id] ?? const <String>{}),
     };
-    final driverPeople = _employees
-        .where(
-          (e) =>
-              !e.inactive &&
-              _isMacroExcavatorDriverEmployee(e) &&
-              !assignedDriver.contains(e.id),
-        )
+    final allDriverPeople = _employees
+        .where((e) => !e.inactive && _isMacroExcavatorDriverEmployee(e))
+        .toList();
+    final remainingDrivers = allDriverPeople
+        .where((e) => !assignedDriver.contains(e.id))
         .toList()
       ..sort(_compareAttendancePoolOrder);
+    final filteredDrivers = filterAttendancePoolEmployees(
+      remainingDrivers,
+      _attendancePoolQuery,
+      _employeeUiDisplayName,
+    );
 
-    const macroColor = Color(0xFFEF6C00);
-    const drumColor = Color(0xFF6C6FE6);
-    const leaveColor = Color(0xFFEF5D6E);
-
-    final macroCard = _attendanceGroupedCard(
+    final macroCard = AttendanceBoardCard(
       title: 'ขับรถแม็คโคร',
-      color: macroColor,
-      zones: const [
-        _AttZoneDef(bucketId: 'att_drv_macro', subLabel: 'ขับรถแม็คโคร'),
-      ],
-      pickedPool: _attendanceDriverPicked,
+      icon: Icons.front_loader,
+      color: kAttendanceMacroColor,
+      pickedCount: _attendanceDriverPicked.length,
       equalHeightZones: true,
-    );
-    final drumCard = _attendanceGroupedCard(
-      title: 'ขับรถดรัม',
-      color: drumColor,
-      zones: const [
-        _AttZoneDef(bucketId: 'att_drv_drum', subLabel: 'ขับรถดรัม'),
-      ],
-      pickedPool: _attendanceDriverPicked,
-      equalHeightZones: true,
-    );
-    final leaveCard = _attendanceGroupedCard(
-      title: '#ลางาน',
-      color: leaveColor,
-      zones: const [
-        _AttZoneDef(bucketId: 'att_drv_leave_morning', subLabel: 'ช่วงเช้า'),
-        _AttZoneDef(
-          bucketId: 'att_drv_leave_afternoon',
-          subLabel: 'ช่วงบ่าย',
+      dragDelay: _attDragDelay,
+      zones: [
+        _attendanceBuildZoneSlot(
+          bucketId: 'att_drv_macro',
+          label: 'ขับรถแม็คโคร',
+          emptyHint: 'แตะเลือกชื่อแล้ววาง หรือลากมาวาง',
         ),
       ],
-      pickedPool: _attendanceDriverPicked,
+      onTapZone: (bucketId) =>
+          _attendanceMovePicked(bucketId, _attendanceDriverPicked),
+      onAcceptDrop: (bucketId, empId) =>
+          _attendanceAssignEmp(bucketId, empId, _attendanceDriverPicked),
+      onRemoveEmp: _attendanceRemoveEmp,
+      onDeleteClosedSession: _attendanceDeleteClosedSession,
+    );
+
+    final drumCard = AttendanceBoardCard(
+      title: 'ขับรถดรัม',
+      icon: Icons.local_shipping_rounded,
+      color: kAttendanceDrumColor,
+      pickedCount: _attendanceDriverPicked.length,
       equalHeightZones: true,
+      dragDelay: _attDragDelay,
+      zones: [
+        _attendanceBuildZoneSlot(
+          bucketId: 'att_drv_drum',
+          label: 'ขับรถดรัม',
+          emptyHint: 'แตะเลือกชื่อแล้ววาง หรือลากมาวาง',
+        ),
+      ],
+      onTapZone: (bucketId) =>
+          _attendanceMovePicked(bucketId, _attendanceDriverPicked),
+      onAcceptDrop: (bucketId, empId) =>
+          _attendanceAssignEmp(bucketId, empId, _attendanceDriverPicked),
+      onRemoveEmp: _attendanceRemoveEmp,
+      onDeleteClosedSession: _attendanceDeleteClosedSession,
     );
 
-    final pool = _attendancePoolColumn(
-      hashtag: '#รายชื่อคนขับรถแม็คโคร',
-      people: driverPeople,
-      pickedPool: _attendanceDriverPicked,
-      poolBucketIds: _attDriverIds,
-      emptyText:
-          'ไม่มีพนักงานตำแหน่งคนขับรถแม็คโคร — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
-      accent: const Color(0xFF00897B),
+    final leaveCard = AttendanceBoardCard(
+      title: 'ลางาน',
+      icon: Icons.event_busy_rounded,
+      color: kAttendanceLeaveColor,
+      pickedCount: _attendanceDriverPicked.length,
+      equalHeightZones: true,
+      dragDelay: _attDragDelay,
+      zones: [
+        _attendanceBuildZoneSlot(
+          bucketId: 'att_drv_leave_full',
+          label: 'ลาเต็มวัน',
+          emptyHint: 'วางชื่อที่นี่',
+        ),
+        _attendanceBuildZoneSlot(
+          bucketId: 'att_drv_leave_morning',
+          label: 'ช่วงเช้า',
+          emptyHint: 'วางชื่อที่นี่',
+        ),
+        _attendanceBuildZoneSlot(
+          bucketId: 'att_drv_leave_afternoon',
+          label: 'ช่วงบ่าย',
+          emptyHint: 'วางชื่อที่นี่',
+        ),
+      ],
+      onTapZone: (bucketId) =>
+          _attendanceMovePicked(bucketId, _attendanceDriverPicked),
+      onAcceptDrop: (bucketId, empId) =>
+          _attendanceAssignEmp(bucketId, empId, _attendanceDriverPicked),
+      onRemoveEmp: _attendanceRemoveEmp,
+      onDeleteClosedSession: _attendanceDeleteClosedSession,
+    );
+
+    final pool = AttendancePoolPanel(
+      title: 'คนขับรอเช็คชื่อ',
+      remainingCount: remainingDrivers.length,
+      totalGroupCount: allDriverPeople.length,
+      visiblePeople: [
+        for (final e in filteredDrivers)
+          AttendancePoolPerson(
+            id: e.id,
+            displayName: _employeeUiDisplayName(e),
+            selected: _attendanceDriverPicked.contains(e.id),
+          ),
+      ],
+      selectedCount: _attendanceDriverPicked.length,
+      searchOpen: _attendancePoolSearchOpen,
+      searchQuery: _attendancePoolQuery,
+      searchController: _attendancePoolSearchController,
       scrollController: _attendanceDriverPoolScroll,
+      accent: const Color(0xFF0284C7),
+      dragDelay: _attDragDelay,
+      emptyConfigText:
+          'ยังไม่มีพนักงานตำแหน่งคนขับรถแม็คโคร — ตรวจตำแหน่งงานที่ ตั้งค่า > พนักงาน',
+      onToggleSearch: () => setState(() {
+        _attendancePoolSearchOpen = !_attendancePoolSearchOpen;
+        if (!_attendancePoolSearchOpen) {
+          _attendancePoolQuery = '';
+          _attendancePoolSearchController.clear();
+        }
+      }),
+      onSearchChanged: (q) => setState(() => _attendancePoolQuery = q),
+      onSelectAllRemaining: () {
+        AppHaptics.tap();
+        setState(() {
+          for (final e in filteredDrivers) {
+            _attendanceDriverPicked.add(e.id);
+          }
+        });
+      },
+      onClearSelection: () {
+        AppHaptics.tap();
+        setState(_attendanceDriverPicked.clear);
+      },
+      onTogglePerson: (id) => setState(() {
+        if (!_attendanceDriverPicked.remove(id)) {
+          _attendanceDriverPicked.add(id);
+        }
+      }),
+      onAcceptDropBack: (empId) => _attendanceDropBackToPool(
+        empId,
+        _attDriverIds,
+        _attendanceDriverPicked,
+      ),
     );
 
-    final zoneH = phonePortrait ? 168.0 : 240.0;
-    final leaveH = phonePortrait ? 220.0 : 300.0;
+    final zoneH = phonePortrait ? 156.0 : 230.0;
+    final leaveH = phonePortrait ? 268.0 : 370.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -19475,10 +19228,10 @@ class _QuickInputScreenState extends State<QuickInputScreen>
       );
     }
 
-    // มือถือแนวตั้ง: พูลเล็กลง เหลือที่ให้กล่องวางชื่อ — แท็บเล็ตแนวตั้งคงพูลใหญ่
+    // มือถือแนวตั้ง: พูลขนาดกำลังดี + กล่องวางชื่อเลื่อนลื่น
     final poolH = phonePortrait
-        ? (size.height * 0.22).clamp(140.0, 200.0)
-        : (size.height * 0.38).clamp(300.0, 460.0);
+        ? (size.height * 0.24).clamp(150.0, 215.0)
+        : (size.height * 0.36).clamp(280.0, 430.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -20082,362 +19835,204 @@ class _QuickInputScreenState extends State<QuickInputScreen>
     );
   }
 
-  List<String> _eventDescSuggestionsFromDay() {
-    final seen = <String>{};
-    final out = <String>[];
-    for (final t in _moduleDayAllTransactions) {
-      if (t.category != 'DailyLog') continue;
-      if ((t.subCategory ?? '').trim() != 'Event') continue;
-      final s = _stripRecorderSuffix(t.description).trim();
-      if (s.isEmpty || !seen.add(s)) continue;
-      out.add(s);
-      if (out.length >= 10) break;
-    }
-    return out;
-  }
-
   Widget _buildDailyEventFormCard() {
-    const quickPhrases = <String>[
-      'ฝนตก หยุดงาน',
-      'เครื่องจักรเสีย',
-      'ทรายไม่ครบ',
-      'คนงานมาสาย',
-      'งานเสร็จตามแผน',
-      'ไฟฟ้าดับ',
-      'อุบัติเหตุเล็กน้อย',
-    ];
     final p = DailyPalette.of(context);
     final isDark = AppThemeScope.maybeOf(context)?.isDark ??
         Theme.of(context).brightness == Brightness.dark;
-    const accent = Color(0xFFFF9800);
-    final accentInk = isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100);
-    final accentDeep =
-        isDark ? const Color(0xFFFFCC80) : const Color(0xFFBF360C);
-    final editBannerBg =
-        isDark ? const Color(0xFF3D2E0A) : const Color(0xFFFFF3E0);
-    final editBannerBorder =
-        isDark ? const Color(0xFF8D6E2F) : const Color(0xFFFFCC80);
     final size = MediaQuery.sizeOf(context);
     final phonePortrait =
         size.shortestSide < 600 && size.height >= size.width;
-    final typeOpts = <({String v, String label})>[
-      (v: 'info', label: phonePortrait ? 'ข้อมูล' : 'ℹ️ ข้อมูล'),
-      (v: 'warning', label: phonePortrait ? 'เตือน' : '⚠️ เตือน'),
-      (v: 'problem', label: phonePortrait ? 'ปัญหา' : '🚨 ปัญหา'),
-      (v: 'success', label: phonePortrait ? 'สำเร็จ' : '✅ สำเร็จ'),
-      (v: 'complaint', label: phonePortrait ? 'ร้องเรียน' : '📢 ข้อร้องเรียน'),
-      (v: 'request', label: phonePortrait ? 'ความต้องการ' : '📋 ความต้องการ'),
-    ];
-    final suggestions = _eventDescSuggestionsFromDay();
-    final chipFont = phonePortrait ? 11.5 : 12.5;
-    final sectionGap = phonePortrait ? 8.0 : 12.0;
-    final editing = _dailyEventTxId != null && _dailyEventTxId!.isNotEmpty;
+    final dayYmd = _quickYmd(_selectedDate);
+    final dayEntries = dailyEventEntriesForDay(
+      dayYmd: dayYmd,
+      transactions: _moduleDayAllTransactions.isNotEmpty
+          ? _moduleDayAllTransactions
+          : _moduleDayTransactions,
+    );
+    final overview = summarizeDailyEvents(dayEntries);
+    final editingEntry = _editingDailyEventTx();
+    final editing = editingEntry != null;
+    final activeSpec = dailyEventTypeSpecOf(_dailyEventType);
+    final urgent = isDailyEventUrgent(_dailyEventPriority);
+    final sectionGap = phonePortrait ? 10.0 : 14.0;
+    final hasDescText = _dailyEventDescController.text.trim().isNotEmpty;
+    final ctaColor = editing
+        ? const Color(0xFF1565C0)
+        : (urgent
+            ? const Color(0xFFC62828)
+            : activeSpec.accent(isDark: false));
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.all(phonePortrait ? 12 : 18),
-        decoration: BoxDecoration(
-          color: p.card,
-          borderRadius: BorderRadius.circular(phonePortrait ? 16 : 22),
-          border: Border.all(color: p.hairline),
-          boxShadow: [
-            BoxShadow(
-              color: accent.withValues(alpha: isDark ? 0.16 : 0.07),
-              blurRadius: phonePortrait ? 8 : 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
+      child: Padding(
+        padding: EdgeInsets.all(phonePortrait ? 4 : 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            DailyEventOverviewHeader(
+              dateLabel: _formatDate(_selectedDate),
+              overview: overview,
+            ),
             if (editing) ...[
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: phonePortrait ? 10 : 12,
-                  vertical: phonePortrait ? 6 : 8,
-                ),
-                decoration: BoxDecoration(
-                  color: editBannerBg,
-                  borderRadius: BorderRadius.circular(phonePortrait ? 10 : 12),
-                  border: Border.all(color: editBannerBorder),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.edit_note_rounded,
-                      size: phonePortrait ? 18 : 20,
-                      color: accentInk,
-                    ),
-                    SizedBox(width: phonePortrait ? 6 : 8),
-                    Expanded(
-                      child: Text(
-                        phonePortrait
-                            ? 'กำลังแก้ไข — อัปเดต หรือเพิ่มใหม่ด้านล่าง'
-                            : 'กำลังแก้ไขเหตุการณ์ที่มีอยู่ — กดอัปเดตเพื่อบันทึก หรือเพิ่มใหม่ด้านล่าง',
-                        style: GoogleFonts.kanit(
-                          fontSize: phonePortrait ? 12 : 13,
-                          fontWeight: FontWeight.w600,
-                          color: accentDeep,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
               SizedBox(height: sectionGap),
-            ],
-            Text(
-              'ประเภท',
-              style: GoogleFonts.kanit(
-                fontSize: phonePortrait ? 13 : 14,
-                fontWeight: FontWeight.w700,
-                color: p.inkSubtle,
+              DailyEventEditingBanner(
+                entry: editingEntry,
+                onCancel: _startNewDailyEvent,
               ),
-            ),
-            SizedBox(height: phonePortrait ? 4 : 6),
-            Wrap(
-              spacing: phonePortrait ? 5 : 6,
-              runSpacing: phonePortrait ? 5 : 6,
-              children: [
-                for (final o in typeOpts)
-                  ChoiceChip(
-                    label: Text(
-                      o.label,
-                      style: GoogleFonts.kanit(
-                        fontSize: chipFont,
-                        fontWeight: FontWeight.w600,
-                        color: p.ink,
-                      ),
-                    ),
-                    selected: _dailyEventType == o.v,
-                    visualDensity: phonePortrait
-                        ? VisualDensity.compact
-                        : VisualDensity.standard,
-                    materialTapTargetSize: phonePortrait
-                        ? MaterialTapTargetSize.shrinkWrap
-                        : MaterialTapTargetSize.padded,
-                    labelPadding: phonePortrait
-                        ? const EdgeInsets.symmetric(horizontal: 6)
-                        : null,
-                    onSelected: (sel) {
-                      if (sel) setState(() => _dailyEventType = o.v);
-                    },
-                  ),
-              ],
-            ),
+            ],
             SizedBox(height: sectionGap),
             Text(
-              'ความสำคัญ',
+              'ประเภทเหตุการณ์',
               style: GoogleFonts.kanit(
-                fontSize: phonePortrait ? 13 : 14,
-                fontWeight: FontWeight.w700,
+                fontSize: phonePortrait ? 13.5 : 14.5,
+                fontWeight: FontWeight.w800,
                 color: p.inkSubtle,
               ),
             ),
-            SizedBox(height: phonePortrait ? 4 : 6),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment<String>(value: 'normal', label: Text('ปกติ')),
-                ButtonSegment<String>(value: 'urgent', label: Text('ด่วน')),
-              ],
-              selected: {_dailyEventPriority},
-              onSelectionChanged: (s) {
-                if (s.isEmpty) return;
-                setState(() => _dailyEventPriority = s.first);
+            const SizedBox(height: 6),
+            DailyEventTypeGrid(
+              selectedType: _dailyEventType,
+              compact: phonePortrait,
+              onSelect: (code) {
+                AppHaptics.tap();
+                setState(() => _dailyEventType = code);
               },
-              style: ButtonStyle(
-                visualDensity: phonePortrait
-                    ? VisualDensity.compact
-                    : VisualDensity.standard,
-                textStyle: WidgetStatePropertyAll(
-                  GoogleFonts.kanit(
-                    fontWeight: FontWeight.w700,
-                    fontSize: phonePortrait ? 13 : 14,
-                  ),
-                ),
-              ),
             ),
             SizedBox(height: sectionGap),
-            if (!phonePortrait) ...[
-              Text(
-                'แตะพื้นที่ว่างบนการ์ดเพื่อซ่อนแป้นพิมพ์',
-                style: GoogleFonts.kanit(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: p.inkMuted,
-                ),
+            Text(
+              'ความสำคัญ และเวลาเกิดเหตุ',
+              style: GoogleFonts.kanit(
+                fontSize: phonePortrait ? 13.5 : 14.5,
+                fontWeight: FontWeight.w800,
+                color: p.inkSubtle,
               ),
-              const SizedBox(height: 6),
-            ],
+            ),
+            const SizedBox(height: 6),
+            DailyEventPriorityAndTimeBar(
+              priority: _dailyEventPriority,
+              timeText: _dailyEventTimeController.text,
+              compact: phonePortrait,
+              onPriorityChanged: (pri) {
+                AppHaptics.tap();
+                setState(() => _dailyEventPriority = pri);
+              },
+              onPickTime: () => _pickFuelTimeInto(_dailyEventTimeController),
+              onClearTime: () {
+                AppHaptics.tap();
+                setState(() => _dailyEventTimeController.clear());
+              },
+            ),
+            SizedBox(height: sectionGap),
             TextFormField(
               controller: _dailyEventDescController,
-              minLines: phonePortrait ? 2 : 3,
+              minLines: 3,
               maxLines: phonePortrait ? 5 : 6,
               keyboardType: TextInputType.multiline,
               autocorrect: false,
               enableSuggestions: false,
               style: GoogleFonts.kanit(
-                fontSize: phonePortrait ? 14.5 : 16,
+                fontSize: phonePortrait ? 15 : 16,
                 fontWeight: FontWeight.w600,
                 color: p.ink,
+                height: 1.35,
               ),
               decoration: InputDecoration(
-                labelText: phonePortrait ? 'รายละเอียด' : 'รายละเอียดเหตุการณ์',
-                hintText: phonePortrait
-                    ? 'เช่น ฝนตกหนักต้องหยุดงาน หรือกดวลีด่วน'
-                    : 'พิมพ์รายละเอียดเป็นภาษาไทย เช่น ฝนตกหนักต้องหยุดงาน หรือกดวลีด่วนด้านล่าง',
-                hintMaxLines: phonePortrait ? 2 : 3,
+                labelText: 'รายละเอียดเหตุการณ์',
+                hintText:
+                    'พิมพ์รายละเอียดเหตุการณ์ หรือแตะเทมเพลตด่วนด้านล่าง',
+                hintMaxLines: 2,
                 alignLabelWithHint: true,
                 isDense: phonePortrait,
                 prefixIcon: phonePortrait
                     ? null
-                    : const Icon(Icons.edit_note_outlined),
-                contentPadding: phonePortrait
-                    ? const EdgeInsets.symmetric(horizontal: 12, vertical: 12)
+                    : Icon(
+                        activeSpec.icon,
+                        color: activeSpec.accent(isDark: isDark),
+                      ),
+                suffixIcon: hasDescText
+                    ? IconButton(
+                        tooltip: 'ล้างข้อความ',
+                        onPressed: () {
+                          AppHaptics.tap();
+                          setState(() => _dailyEventDescController.clear());
+                        },
+                        icon: Icon(
+                          Icons.close_rounded,
+                          size: 19,
+                          color: p.inkMuted,
+                        ),
+                      )
                     : null,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: phonePortrait ? 12 : 14,
+                ),
               ),
               onChanged: (_) => _scheduleUiRefresh(),
             ),
-            if (suggestions.isNotEmpty) ...[
-              SizedBox(height: phonePortrait ? 6 : 8),
-              Text(
-                'จากประวัติ',
-                style: GoogleFonts.kanit(
-                  fontSize: phonePortrait ? 11.5 : 12,
-                  fontWeight: FontWeight.w700,
-                  color: p.inkMuted,
-                ),
-              ),
-              SizedBox(height: phonePortrait ? 4 : 6),
-              Wrap(
-                spacing: phonePortrait ? 5 : 6,
-                runSpacing: phonePortrait ? 5 : 6,
-                children: [
-                  for (final s in suggestions)
-                    ActionChip(
-                      label: Text(
-                        s,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.kanit(
-                          fontSize: phonePortrait ? 11.5 : 12,
-                          color: p.ink,
-                        ),
-                      ),
-                      visualDensity: phonePortrait
-                          ? VisualDensity.compact
-                          : VisualDensity.standard,
-                      materialTapTargetSize: phonePortrait
-                          ? MaterialTapTargetSize.shrinkWrap
-                          : MaterialTapTargetSize.padded,
-                      labelPadding: phonePortrait
-                          ? const EdgeInsets.symmetric(horizontal: 6)
-                          : null,
-                      onPressed: () {
-                        setState(() => _dailyEventDescController.text = s);
-                      },
-                    ),
-                ],
-              ),
-            ],
-            SizedBox(height: phonePortrait ? 8 : 10),
-            Text(
-              'วลีด่วน',
-              style: GoogleFonts.kanit(
-                fontSize: phonePortrait ? 11.5 : 12,
-                fontWeight: FontWeight.w700,
-                color: p.inkMuted,
-              ),
+            SizedBox(height: sectionGap),
+            DailyEventQuickTemplatesStrip(
+              compact: phonePortrait,
+              onSelectTemplate: (tmpl) {
+                AppHaptics.tap();
+                final applied = applyQuickEventTemplate(
+                  currentText: _dailyEventDescController.text,
+                  currentType: _dailyEventType,
+                  currentPriority: _dailyEventPriority,
+                  template: tmpl,
+                );
+                setState(() {
+                  _dailyEventDescController.text = applied.text;
+                  _dailyEventType = applied.type;
+                  _dailyEventPriority = applied.priority;
+                });
+              },
             ),
-            SizedBox(height: phonePortrait ? 4 : 6),
-            Wrap(
-              spacing: phonePortrait ? 5 : 6,
-              runSpacing: phonePortrait ? 5 : 6,
-              children: [
-                for (final tmpl in quickPhrases)
-                  ActionChip(
-                    label: Text(
-                      tmpl,
-                      style: GoogleFonts.kanit(
-                        fontSize: phonePortrait ? 11.5 : 12,
-                        color: p.ink,
-                      ),
-                    ),
-                    visualDensity: phonePortrait
-                        ? VisualDensity.compact
-                        : VisualDensity.standard,
-                    materialTapTargetSize: phonePortrait
-                        ? MaterialTapTargetSize.shrinkWrap
-                        : MaterialTapTargetSize.padded,
-                    labelPadding: phonePortrait
-                        ? const EdgeInsets.symmetric(horizontal: 6)
-                        : null,
-                    onPressed: () {
-                      setState(() {
-                        final prev = _dailyEventDescController.text.trim();
-                        _dailyEventDescController.text = prev.isEmpty
-                            ? tmpl
-                            : '$prev, $tmpl';
-                      });
-                    },
-                  ),
-              ],
-            ),
-            SizedBox(height: phonePortrait ? 12 : 16),
+            SizedBox(height: phonePortrait ? 14 : 18),
             _SmoothPressable(
               enabled: !_saving,
               child: FilledButton.icon(
                 onPressed: _saving ? null : _saveQuickEntry,
                 icon: Icon(
-                  editing ? Icons.update_rounded : Icons.save_outlined,
-                  size: phonePortrait ? 20 : 24,
+                  editing
+                      ? Icons.check_circle_outline_rounded
+                      : (urgent
+                          ? Icons.notification_important_rounded
+                          : Icons.add_task_rounded),
+                  size: phonePortrait ? 20 : 22,
                 ),
                 label: Text(
                   _saving
                       ? 'กำลังบันทึก...'
                       : (editing
-                          ? (phonePortrait ? 'อัปเดต' : 'อัปเดตเหตุการณ์')
-                          : (phonePortrait ? 'บันทึก' : 'บันทึกเหตุการณ์')),
+                          ? 'อัปเดตเหตุการณ์'
+                          : (urgent
+                              ? 'บันทึกเหตุการณ์ด่วน'
+                              : 'บันทึกเหตุการณ์')),
                   style: GoogleFonts.kanit(
                     fontWeight: FontWeight.w800,
                     fontSize: phonePortrait ? 16 : 18,
                   ),
                 ),
                 style: FilledButton.styleFrom(
-                  minimumSize: Size.fromHeight(phonePortrait ? 46 : 54),
-                  backgroundColor: accent,
+                  minimumSize: Size.fromHeight(phonePortrait ? 48 : 54),
+                  backgroundColor: ctaColor,
                   foregroundColor: Colors.white,
                 ),
               ),
             ),
-            if (editing) ...[
-              SizedBox(height: phonePortrait ? 6 : 8),
-              OutlinedButton.icon(
-                onPressed: _saving ? null : _startNewDailyEvent,
-                icon: Icon(
-                  Icons.add_rounded,
-                  size: phonePortrait ? 18 : 24,
-                ),
-                label: Text(
-                  phonePortrait ? 'เพิ่มใหม่' : 'เพิ่มเหตุการณ์ใหม่',
-                  style: GoogleFonts.kanit(
-                    fontWeight: FontWeight.w700,
-                    fontSize: phonePortrait ? 13.5 : 14,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: Size.fromHeight(phonePortrait ? 40 : 48),
-                  visualDensity: phonePortrait
-                      ? VisualDensity.compact
-                      : VisualDensity.standard,
-                ),
-              ),
-            ],
-            _buildDailyEventSavedTodaySection(),
+            SizedBox(height: phonePortrait ? 16 : 20),
+            Divider(height: 1, color: p.hairline),
+            SizedBox(height: phonePortrait ? 12 : 14),
+            DailyEventDayLogSection(
+              entries: dayEntries,
+              filter: _dailyEventFilter,
+              editingTxId: _dailyEventTxId,
+              onFilterChanged: (f) => setState(() => _dailyEventFilter = f),
+              onEdit: _loadDailyEventIntoForm,
+              onDelete: _confirmAndDeleteDailyEvent,
+            ),
           ],
         ),
       ),
@@ -21037,156 +20632,6 @@ class _QuickInputScreenState extends State<QuickInputScreen>
           ),
         ),
       ),
-    );
-  }
-
-  Widget _dailyEventSavedDetailCard(AppTransaction t) {
-    final p = DailyPalette.of(context);
-    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
-        Theme.of(context).brightness == Brightness.dark;
-    final size = MediaQuery.sizeOf(context);
-    final phonePortrait =
-        size.shortestSide < 600 && size.height >= size.width;
-    final desc = _stripRecorderSuffix(t.description).trim();
-    final typeLabel = _dailyEventTypeLabel(t.eventType);
-    final pri = ((t.eventPriority ?? '').trim() == 'urgent') ? 'ด่วน' : 'ปกติ';
-    final created = t.createdAt;
-    final timeHint = created != null
-        ? (phonePortrait
-            ? '${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}'
-            : 'บันทึกในระบบ ${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}')
-        : null;
-    final isCurrent = t.id == _dailyEventTxId;
-    final cardBg = isCurrent
-        ? (isDark ? const Color(0xFF3D2E0A) : const Color(0xFFFFF8E1))
-        : (isDark ? p.chipSurface : const Color(0xFFFFFBF5));
-    final cardBorder = isCurrent
-        ? const Color(0xFFFFB74D)
-        : (isDark ? p.hairline : const Color(0xFFFFE0B2));
-    final metaColor =
-        isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100);
-    return Container(
-      padding: EdgeInsets.all(phonePortrait ? 10 : 12),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
-        border: Border.all(color: cardBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '$typeLabel • $pri${isCurrent ? (phonePortrait ? ' • แก้ไข' : ' • กำลังแก้ไข') : ''}',
-            maxLines: phonePortrait ? 1 : 2,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.kanit(
-              fontSize: phonePortrait ? 12.5 : 13.5,
-              fontWeight: FontWeight.w700,
-              color: metaColor,
-            ),
-          ),
-          SizedBox(height: phonePortrait ? 3 : 4),
-          Text(
-            desc.isEmpty ? '(ไม่มีรายละเอียด)' : desc,
-            maxLines: phonePortrait ? 3 : 5,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.kanit(
-              fontSize: phonePortrait ? 13.5 : 15,
-              fontWeight: FontWeight.w600,
-              color: p.ink,
-              height: 1.3,
-            ),
-          ),
-          if (timeHint != null) ...[
-            SizedBox(height: phonePortrait ? 4 : 6),
-            Text(
-              timeHint,
-              style: GoogleFonts.kanit(
-                fontSize: phonePortrait ? 11 : 12,
-                color: p.inkMuted,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDailyEventSavedTodaySection() {
-    final p = DailyPalette.of(context);
-    final isDark = AppThemeScope.maybeOf(context)?.isDark ??
-        Theme.of(context).brightness == Brightness.dark;
-    final size = MediaQuery.sizeOf(context);
-    final phonePortrait =
-        size.shortestSide < 600 && size.height >= size.width;
-    final saved = _moduleDayTransactions
-        .where(
-          (t) =>
-              t.category == 'DailyLog' &&
-              (t.subCategory ?? '').trim() == 'Event' &&
-              t.description.trim().isNotEmpty,
-        )
-        .toList();
-    final sectionAccent =
-        isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100);
-    if (saved.isEmpty) {
-      return Padding(
-        padding: EdgeInsets.only(top: phonePortrait ? 8 : 10),
-        child: Text(
-          phonePortrait
-              ? 'ยังไม่มีเหตุการณ์ — กรอกด้านบนแล้วกดบันทึก'
-              : 'ยังไม่มีเหตุการณ์ในวันที่เลือก — กรอกด้านบนแล้วกดบันทึก',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.kanit(
-            fontSize: phonePortrait ? 12.5 : 13.5,
-            color: p.inkMuted,
-          ),
-        ),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(height: phonePortrait ? 10 : 14),
-        Text(
-          phonePortrait
-              ? 'วันนี้ (${saved.length}) — แตะแก้ไข'
-              : 'เหตุการณ์วันนี้ (${saved.length} รายการ) — แตะเพื่อแก้ไข',
-          style: GoogleFonts.kanit(
-            fontSize: phonePortrait ? 13.5 : 15,
-            fontWeight: FontWeight.w800,
-            color: sectionAccent,
-          ),
-        ),
-        SizedBox(height: phonePortrait ? 6 : 8),
-        ...saved.map(
-          (t) => Padding(
-            padding: EdgeInsets.only(bottom: phonePortrait ? 6 : 8),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(phonePortrait ? 12 : 14),
-                onTap: () {
-                  _loadDailyEventIntoForm(t);
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        phonePortrait
-                            ? 'โหลดมาแก้ไขด้านบนแล้ว'
-                            : 'โหลดเหตุการณ์มาแก้ไขด้านบนแล้ว',
-                        style: GoogleFonts.kanit(),
-                      ),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                },
-                child: _dailyEventSavedDetailCard(t),
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -24242,6 +23687,7 @@ class _FuelVehicleDraft {
   String fuelTank = kFuelTankReserve;
   String liters = '';
   String time = '';
+  bool timeAutoFilled = false;
   final TextEditingController litersController;
   final TextEditingController timeController;
 
@@ -24268,14 +23714,6 @@ class _LaborWorkCategory {
   final String label;
   final String shortTitle;
   final Color color;
-}
-
-/// นิยามช่องดรอปย่อยในกระดานเช็คชื่อ
-class _AttZoneDef {
-  const _AttZoneDef({required this.bucketId, this.subLabel});
-
-  final String bucketId;
-  final String? subLabel;
 }
 
 /// การ์ดหนึ่งใบบนกระดานเช็คชื่อ — จอกว้างใช้ [flex], จอสูงใช้ [height]

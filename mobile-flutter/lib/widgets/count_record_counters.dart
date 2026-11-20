@@ -2399,7 +2399,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_units.isNotEmpty) ...[
-            _CountStatsStrip(
+            CountStatsStrip(
               isTrip: true,
               totals: totals,
               goal: _tripGoal,
@@ -2494,7 +2494,7 @@ class _CountRecordCounterPanelState extends State<CountRecordCounterPanel>
         if (u.rounds > 0) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 2, 6, 6),
-            child: _CountStatsStrip(
+            child: CountStatsStrip(
               isTrip: false,
               totals: totals,
               goal: 0,
@@ -5647,8 +5647,9 @@ class _SelectRow extends StatelessWidget {
 }
 
 /// แถบสรุปยอดรวมวันนี้ — รวม/เช้า/บ่าย + ป้ายช่วงกะ + ปุ่มเป้าหมาย/แชร์
-class _CountStatsStrip extends StatelessWidget {
-  const _CountStatsStrip({
+class CountStatsStrip extends StatelessWidget {
+  const CountStatsStrip({
+    super.key,
     required this.isTrip,
     required this.totals,
     required this.goal,
@@ -5681,6 +5682,106 @@ class _CountStatsStrip extends StatelessWidget {
     final periodText = isTrip
         ? 'เช้า ${totals.morning} · บ่าย ${totals.afternoon} · รวม $totalCubicLabel คิว'
         : 'เช้า ${totals.morning} · บ่าย ${totals.afternoon}';
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+
+    final totalBlock = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'รวม',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: accent.withValues(alpha: 0.75),
+          ),
+        ),
+        const SizedBox(width: 6),
+        _PunchScale(
+          trigger: totals.total,
+          punch: 1.25,
+          child: _RollingCount(
+            value: totals.total,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: accent,
+              height: 1,
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          unitLabel,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: accent.withValues(alpha: 0.75),
+          ),
+        ),
+      ],
+    );
+
+    final periodLabel = Text(
+      periodText,
+      maxLines: 1,
+      style: TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w700,
+        color: p.inkSubtle,
+      ),
+    );
+
+    final Widget? cubicButton = isTrip && onCubicTap != null
+        ? Tooltip(
+            message: 'ตั้งค่าคิวต่อเที่ยว',
+            child: SoftPressButton(
+              size: SoftPressSize.small,
+              borderRadius: 10,
+              isDarkSurface: isDark,
+              onTap: onCubicTap!,
+              child: Material(
+                color: const Color(0xFF1565C0).withValues(
+                  alpha: isDark ? 0.2 : 0.09,
+                ),
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  child: Text(
+                    '×$cubicLabel คิว/เที่ยว',
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: isDark
+                          ? const Color(0xFF90CAF9)
+                          : const Color(0xFF1565C0),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          )
+        : null;
+
+    final Widget? goalButton = isTrip && onGoalTap != null
+        ? _StatsStripIconButton(
+            icon: goal > 0 ? Icons.flag_rounded : Icons.flag_outlined,
+            color: goal > 0 ? const Color(0xFFE65100) : p.inkMuted,
+            tooltip: goal > 0 ? 'เป้า $goal เที่ยว/คัน' : 'ตั้งเป้าหมาย',
+            onTap: onGoalTap!,
+          )
+        : null;
+
+    final shareButton = _StatsStripIconButton(
+      icon: Icons.ios_share_rounded,
+      color: p.brand,
+      tooltip: 'แชร์สรุปประจำวัน',
+      onTap: onShareTap,
+    );
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -5688,106 +5789,105 @@ class _CountStatsStrip extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: p.hairline),
       ),
-      child: Row(
-        children: [
-          Text(
-            'รวม',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: accent.withValues(alpha: 0.75),
-            ),
-          ),
-          const SizedBox(width: 6),
-          _PunchScale(
-            trigger: totals.total,
-            punch: 1.25,
-            child: _RollingCount(
-              value: totals.total,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: accent,
-                height: 1,
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            unitLabel,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: accent.withValues(alpha: 0.75),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                periodText,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: p.inkSubtle,
-                ),
-              ),
-            ),
-          ),
-          const _ShiftBadge(),
-          if (isTrip && onCubicTap != null) ...[
-            const SizedBox(width: 6),
-            Tooltip(
-              message: 'ตั้งค่าคิวต่อเที่ยว',
-              child: SoftPressButton(
-                size: SoftPressSize.small,
-                borderRadius: 10,
-                isDarkSurface: isDark,
-                onTap: onCubicTap!,
-                child: Material(
-                  color: const Color(0xFF1565C0).withValues(
-                    alpha: isDark ? 0.2 : 0.09,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxW = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : MediaQuery.sizeOf(context).width;
+          final effectiveWidth = maxW / (textScale > 0 ? textScale : 1.0);
+          final useCompactTwoRow = effectiveWidth < 500;
+
+          if (!useCompactTwoRow) {
+            return Row(
+              children: [
+                totalBlock,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: periodLabel,
                   ),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
+                ),
+                const SizedBox(width: 8),
+                const _ShiftBadge(),
+                if (cubicButton != null) ...[
+                  const SizedBox(width: 6),
+                  cubicButton,
+                ],
+                if (goalButton != null) ...[
+                  const SizedBox(width: 6),
+                  goalButton,
+                ],
+                const SizedBox(width: 6),
+                shareButton,
+              ],
+            );
+          }
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: totalBlock,
                     ),
-                    child: Text(
-                      '×$cubicLabel คิว/เที่ยว',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: isDark
-                            ? const Color(0xFF90CAF9)
-                            : const Color(0xFF1565C0),
+                  ),
+                  const SizedBox(width: 8),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxW * 0.62),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const _ShiftBadge(),
+                          if (goalButton != null) ...[
+                            const SizedBox(width: 6),
+                            goalButton,
+                          ],
+                          const SizedBox(width: 6),
+                          shareButton,
+                        ],
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ),
-          ],
-          if (isTrip && onGoalTap != null) ...[
-            const SizedBox(width: 6),
-            _StatsStripIconButton(
-              icon: goal > 0 ? Icons.flag_rounded : Icons.flag_outlined,
-              color: goal > 0 ? const Color(0xFFE65100) : p.inkMuted,
-              tooltip: goal > 0 ? 'เป้า $goal เที่ยว/คัน' : 'ตั้งเป้าหมาย',
-              onTap: onGoalTap!,
-            ),
-          ],
-          const SizedBox(width: 6),
-          _StatsStripIconButton(
-            icon: Icons.ios_share_rounded,
-            color: p.brand,
-            tooltip: 'แชร์สรุปประจำวัน',
-            onTap: onShareTap,
-          ),
-        ],
+              const SizedBox(height: 6),
+              Divider(height: 1, color: p.hairline),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: periodLabel,
+                    ),
+                  ),
+                  if (cubicButton != null) ...[
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxW * 0.44),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: cubicButton,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }

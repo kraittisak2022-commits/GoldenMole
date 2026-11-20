@@ -1,4 +1,4 @@
-import { useMemo, useState, Fragment, type ReactNode } from 'react';
+import { useMemo, useRef, useState, Fragment, type ReactNode } from 'react';
 import { FileDown, Fuel, Printer, Truck } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -10,6 +10,7 @@ import {
     daysInMonth,
     formatDateBE,
     formatDisplayNumber,
+    fuelTxToLiters,
     getToday,
     normalizeDate,
     ymdFromParts,
@@ -26,8 +27,12 @@ import {
     fuelReportVehicleLabel,
     fuelUsageAllToPrintHtml,
     fuelUsageToCsv,
+    fuelQuantityForLiters,
     fuelUsageToPrintHtml,
+    fuelWorkDetailsWithTime,
     monthBoundsFromYmd,
+    normalizeFuelClockInput,
+    replaceFuelLiterText,
     shiftMonthBounds,
     tankLabel,
     yearBoundsFromYmd,
@@ -63,6 +68,10 @@ interface ReportsModuleProps {
     employees?: Employee[];
     /** คงไว้เพื่อความเข้ากันได้กับ App — รายงานนี้ไม่แสดงยอดเงิน */
     maskAmounts?: boolean;
+    /** SuperAdmin แก้จำนวนลิตรในรายละเอียดรายงานน้ำมันได้ */
+    canEditReportValues?: boolean;
+    onSaveTransaction?: (t: Transaction) => Promise<'synced' | 'queued' | false>;
+    onAuditLog?: (action: string, details: string) => void;
 }
 
 const KIND_OPTIONS: Array<{ id: '' | FuelUsageKind; label: string }> = [
@@ -193,7 +202,274 @@ const ReportDocHeader = ({
 
 const reportTableClass = 'w-full min-w-[36rem] text-sm';
 
-const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModuleProps) => {
+function formatEditLiters(liters: number): string {
+    return String(Math.round(liters * 100) / 100);
+}
+
+function FuelLiterCell({
+    row,
+    typeId,
+    transactions,
+    canEdit,
+    onSaveTransaction,
+    onAuditLog,
+}: {
+    row: { id: string; date: string; liters: number; time?: string; vehicleId: string; tank: 'main' | 'reserve'; description: string; estimated?: boolean };
+    typeId: string;
+    transactions: Transaction[];
+    canEdit: boolean;
+    onSaveTransaction?: ReportsModuleProps['onSaveTransaction'];
+    onAuditLog?: ReportsModuleProps['onAuditLog'];
+}) {
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    const saving = useRef(false);
+    const closed = useRef(false);
+    const shown = `${typeId === 'stock_in' ? '+' : ''}${formatDisplayNumber(row.liters)}`;
+
+    const save = async () => {
+        if (saving.current || closed.current) return;
+        const nextLiters = Number(draft.replace(/,/g, '').trim());
+        if (!Number.isFinite(nextLiters) || nextLiters <= 0) {
+            setError('ใส่จำนวนลิตรที่มากกว่า 0');
+            return;
+        }
+        if (Math.abs(nextLiters - row.liters) < 0.0005) {
+            closed.current = true;
+            setEditing(false);
+            setError('');
+            return;
+        }
+        const source = transactions.find((t) => t.id === row.id);
+        if (!source || !onSaveTransaction) {
+            setError('ไม่พบรายการเดิม');
+            return;
+        }
+        const targets = [source];
+        if (source.subCategory === 'Transfer') {
+            const pair = transactions.find((t) =>
+                t.id !== source.id
+                && t.category === 'Fuel'
+                && t.subCategory === 'Transfer'
+                && normalizeDate(t.date) === normalizeDate(source.date)
+                && Math.abs(fuelTxToLiters(t) - row.liters) < 0.001,
+            );
+            if (pair) targets.push(pair);
+        }
+        saving.current = true;
+        setBusy(true);
+        setError('');
+        try {
+            for (const target of targets) {
+                const result = await onSaveTransaction({
+                    ...target,
+                    quantity: fuelQuantityForLiters(target.unit, nextLiters),
+                    description: replaceFuelLiterText(target.description, fuelTxToLiters(target), nextLiters),
+                });
+                if (result === false) {
+                    setError('บันทึกไม่สำเร็จ');
+                    return;
+                }
+            }
+            const who = row.vehicleId || tankLabel(row.tank);
+            const when = row.time ? ` ${row.time}` : '';
+            onAuditLog?.(
+                'edit_fuel_report',
+                `แก้รายงานน้ำมัน ${formatDateBE(row.date)}${when} ${who}: ${formatDisplayNumber(row.liters)} → ${formatDisplayNumber(nextLiters)} ลิตร`,
+            );
+            closed.current = true;
+            setEditing(false);
+        } finally {
+            saving.current = false;
+            setBusy(false);
+        }
+    };
+
+    if (!canEdit || row.estimated || !onSaveTransaction) {
+        return <span>{shown}</span>;
+    }
+    if (!editing) {
+        return (
+            <button
+                type="button"
+                className="tabular-nums underline decoration-dotted underline-offset-2 hover:text-indigo-700 dark:hover:text-indigo-300"
+                aria-label={`แก้ไข ${formatDisplayNumber(row.liters)} ลิตร`}
+                onClick={() => {
+                    closed.current = false;
+                    setDraft(formatEditLiters(row.liters));
+                    setError('');
+                    setEditing(true);
+                }}
+            >
+                {shown}
+            </button>
+        );
+    }
+    return (
+        <span className="inline-flex flex-col items-end gap-0.5">
+            <input
+                autoFocus
+                inputMode="decimal"
+                aria-label="ลิตร"
+                disabled={busy}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        closed.current = true;
+                        setEditing(false);
+                        setError('');
+                    }
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void save();
+                    }
+                }}
+                onBlur={() => { void save(); }}
+                className="w-24 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-right text-sm tabular-nums text-slate-900 dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
+            />
+            {error ? <span className="text-[10px] font-medium text-rose-600">{error}</span> : null}
+        </span>
+    );
+}
+
+function FuelTimeCell({
+    row,
+    transactions,
+    canEdit,
+    onSaveTransaction,
+    onAuditLog,
+}: {
+    row: { id: string; date: string; liters: number; time?: string; vehicleId: string; tank: 'main' | 'reserve'; estimated?: boolean };
+    transactions: Transaction[];
+    canEdit: boolean;
+    onSaveTransaction?: ReportsModuleProps['onSaveTransaction'];
+    onAuditLog?: ReportsModuleProps['onAuditLog'];
+}) {
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    const saving = useRef(false);
+    const closed = useRef(false);
+    const shown = row.time || '—';
+
+    const save = async () => {
+        if (saving.current || closed.current) return;
+        const nextTime = normalizeFuelClockInput(draft);
+        if (!nextTime) {
+            setError('ใส่เวลาเป็น ชม:นาที เช่น 10:30');
+            return;
+        }
+        if (nextTime === (row.time || '')) {
+            closed.current = true;
+            setEditing(false);
+            setError('');
+            return;
+        }
+        const source = transactions.find((t) => t.id === row.id);
+        if (!source || !onSaveTransaction) {
+            setError('ไม่พบรายการเดิม');
+            return;
+        }
+        const targets = [source];
+        if (source.subCategory === 'Transfer') {
+            const pair = transactions.find((t) =>
+                t.id !== source.id
+                && t.category === 'Fuel'
+                && t.subCategory === 'Transfer'
+                && normalizeDate(t.date) === normalizeDate(source.date)
+                && Math.abs(fuelTxToLiters(t) - row.liters) < 0.001,
+            );
+            if (pair) targets.push(pair);
+        }
+        saving.current = true;
+        setBusy(true);
+        setError('');
+        try {
+            for (const target of targets) {
+                const result = await onSaveTransaction({
+                    ...target,
+                    workDetails: fuelWorkDetailsWithTime(target.workDetails, nextTime),
+                });
+                if (result === false) {
+                    setError('บันทึกไม่สำเร็จ');
+                    return;
+                }
+            }
+            const who = row.vehicleId || tankLabel(row.tank);
+            onAuditLog?.(
+                'edit_fuel_report',
+                `แก้เวลารายงานน้ำมัน ${formatDateBE(row.date)} ${who}: ${row.time || '—'} → ${nextTime}`,
+            );
+            closed.current = true;
+            setEditing(false);
+        } finally {
+            saving.current = false;
+            setBusy(false);
+        }
+    };
+
+    if (!canEdit || row.estimated || !onSaveTransaction) {
+        return <span>{shown}</span>;
+    }
+    if (!editing) {
+        return (
+            <button
+                type="button"
+                className="tabular-nums underline decoration-dotted underline-offset-2 hover:text-indigo-700 dark:hover:text-indigo-300"
+                aria-label={`แก้ไขเวลา ${shown}`}
+                onClick={() => {
+                    closed.current = false;
+                    setDraft(row.time || '');
+                    setError('');
+                    setEditing(true);
+                }}
+            >
+                {shown}
+            </button>
+        );
+    }
+    return (
+        <span className="inline-flex flex-col items-start gap-0.5">
+            <input
+                autoFocus
+                aria-label="เวลา"
+                disabled={busy}
+                value={draft}
+                placeholder="ชม:นาที"
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        closed.current = true;
+                        setEditing(false);
+                        setError('');
+                    }
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void save();
+                    }
+                }}
+                onBlur={() => { void save(); }}
+                className="w-24 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-sm tabular-nums text-slate-900 dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
+            />
+            {error ? <span className="text-[10px] font-medium text-rose-600">{error}</span> : null}
+        </span>
+    );
+}
+
+const ReportsModule = ({
+    transactions,
+    settings,
+    employees = [],
+    canEditReportValues = false,
+    onSaveTransaction,
+    onAuditLog,
+}: ReportsModuleProps) => {
     const today = getToday();
     const initial = monthBoundsFromYmd(today);
     const [menu, setMenu] = useState<ReportMenu>('fuel');
@@ -769,6 +1045,9 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                     <Card className="p-0 overflow-hidden border-slate-200/80 dark:border-white/10">
                         <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10">
                             <h4 className="text-sm font-bold tracking-wide text-slate-800 dark:text-slate-100 uppercase">รายละเอียดรายการ</h4>
+                            {canEditReportValues ? (
+                                <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">คลิกจำนวนลิตรหรือเวลาเพื่อแก้ไข — ระบบเก็บบันทึกประวัติการแก้</p>
+                            ) : null}
                         </div>
                         {fuelReport.rows.length === 0 ? (
                             <p className="p-6 text-sm text-slate-400 text-center">ไม่พบรายการน้ำมันในช่วงนี้</p>
@@ -797,22 +1076,46 @@ const ReportsModule = ({ transactions, settings, employees = [] }: ReportsModule
                                                         </span>
                                                     </th>
                                                 </tr>
-                                                {day.rows.map(({ row, typeId, typeLabel }, i) => (
-                                                    <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
-                                                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{typeLabel}</td>
-                                                        <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-slate-700 dark:text-slate-200">{row.time || '—'}</td>
-                                                        <td className="px-4 py-2.5">
-                                                            {typeId === 'stock_in'
-                                                                ? tankLabel(row.tank)
-                                                                : typeId === 'machine_fill'
-                                                                    ? 'ถังหลัก → ถังสำรอง'
-                                                                    : row.vehicleId || '—'}
-                                                        </td>
-                                                        <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${typeId === 'stock_in' ? 'text-emerald-700 dark:text-emerald-400' : ''}`}>
-                                                            {typeId === 'stock_in' ? '+' : ''}{formatDisplayNumber(row.liters)}
-                                                        </td>
-                                                        <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">{row.description || '—'}</td>
-                                                    </tr>
+                                                {day.sections.map((section) => (
+                                                    <Fragment key={`${day.date}-${section.tank}`}>
+                                                        <tr className="bg-slate-50 dark:bg-white/[0.03]">
+                                                            <td colSpan={5} className="px-6 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                                                {tankLabel(section.tank)}
+                                                            </td>
+                                                        </tr>
+                                                        {section.rows.map(({ row, typeId, typeLabel }, i) => (
+                                                            <tr key={row.id} className={i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/70 dark:bg-white/[0.02]'}>
+                                                                <td className="px-4 py-2.5 whitespace-nowrap text-slate-800 dark:text-slate-100">{typeLabel}</td>
+                                                                <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-slate-700 dark:text-slate-200">
+                                                                    <FuelTimeCell
+                                                                        row={row}
+                                                                        transactions={transactions}
+                                                                        canEdit={canEditReportValues}
+                                                                        onSaveTransaction={onSaveTransaction}
+                                                                        onAuditLog={onAuditLog}
+                                                                    />
+                                                                </td>
+                                                                <td className="px-4 py-2.5">
+                                                                    {typeId === 'stock_in'
+                                                                        ? tankLabel(row.tank)
+                                                                        : typeId === 'machine_fill'
+                                                                            ? 'ถังหลัก → ถังสำรอง'
+                                                                            : row.vehicleId || '—'}
+                                                                </td>
+                                                                <td className={`px-4 py-2.5 text-right tabular-nums font-medium ${typeId === 'stock_in' ? 'text-emerald-700 dark:text-emerald-400' : ''}`}>
+                                                                    <FuelLiterCell
+                                                                        row={row}
+                                                                        typeId={typeId}
+                                                                        transactions={transactions}
+                                                                        canEdit={canEditReportValues}
+                                                                        onSaveTransaction={onSaveTransaction}
+                                                                        onAuditLog={onAuditLog}
+                                                                    />
+                                                                </td>
+                                                                <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">{row.description || '—'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </Fragment>
                                                 ))}
                                             </Fragment>
                                         ))}

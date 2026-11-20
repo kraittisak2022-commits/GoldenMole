@@ -163,8 +163,9 @@ describe('ReportsModule', () => {
         expect(within(detail).getByText('08:15')).toBeInTheDocument();
         expect(within(detail).getByText('รับน้ำมันเข้า')).toBeInTheDocument();
         expect(within(detail).getByText('เพิ่มน้ำมันเข้าถัง: 12000 ลิตร (ดีเซล)')).toBeInTheDocument();
-        expect(within(detail).getByText('ถังหลัก')).toBeInTheDocument();
+        expect(within(detail).getAllByText('ถังหลัก').length).toBeGreaterThan(0);
         expect(within(detail).getByText('เติมน้ำมันอื่นๆ')).toBeInTheDocument();
+        expect(within(detail).queryByRole('button', { name: /แก้ไข/ })).not.toBeInTheDocument();
         expect(within(detail).queryByText('รายงานรับน้ำมันเข้า')).not.toBeInTheDocument();
     });
 
@@ -334,5 +335,85 @@ describe('ReportsModule', () => {
         expect(screen.queryByRole('columnheader', { name: 'สรุป' })).not.toBeInTheDocument();
         expect(screen.queryByRole('columnheader', { name: 'เที่ยว' })).not.toBeInTheDocument();
         expect(screen.queryByRole('columnheader', { name: 'คิว' })).not.toBeInTheDocument();
+    });
+
+    it('lets a SuperAdmin edit a fuel liter amount and records the change', async () => {
+        const user = userEvent.setup();
+        const onSaveTransaction = vi.fn().mockResolvedValue('synced');
+        const onAuditLog = vi.fn();
+        render(
+            <ReportsModule
+                settings={settings}
+                canEditReportValues
+                onSaveTransaction={onSaveTransaction}
+                onAuditLog={onAuditLog}
+                transactions={[
+                    fuelTx({
+                        id: 'v1',
+                        date: '2026-08-10',
+                        fuelMovement: 'stock_out',
+                        vehicleId: 'รถแม็คโคร SK200',
+                        fuelType: 'Diesel',
+                        quantity: 202,
+                        unit: 'L',
+                        description: 'ใช้น้ำมันรถ รถแม็คโคร SK200: 202 ลิตร',
+                        workDetails: '17:20',
+                    }),
+                ]}
+            />
+        );
+
+        await user.click(screen.getByRole('button', { name: 'แก้ไข 202 ลิตร' }));
+        const input = screen.getByRole('textbox', { name: 'ลิตร' });
+        await user.clear(input);
+        await user.type(input, '201.54');
+        await user.keyboard('{Enter}');
+
+        expect(onSaveTransaction).toHaveBeenCalledWith(expect.objectContaining({
+            id: 'v1',
+            quantity: 201.54,
+            description: 'ใช้น้ำมันรถ รถแม็คโคร SK200: 201.54 ลิตร',
+        }));
+        expect(onAuditLog).toHaveBeenCalledWith('edit_fuel_report', expect.stringContaining('202 → 201.54 ลิตร'));
+    });
+
+    it('lets a SuperAdmin edit a fuel time and records the change', async () => {
+        const user = userEvent.setup();
+        const onSaveTransaction = vi.fn().mockResolvedValue('synced');
+        const onAuditLog = vi.fn();
+        render(
+            <ReportsModule
+                settings={settings}
+                canEditReportValues
+                onSaveTransaction={onSaveTransaction}
+                onAuditLog={onAuditLog}
+                transactions={[
+                    fuelTx({
+                        id: 'v1',
+                        date: '2026-08-10',
+                        fuelMovement: 'stock_out',
+                        vehicleId: 'รถแม็คโคร SK200',
+                        fuelType: 'Diesel',
+                        quantity: 202,
+                        unit: 'L',
+                        description: 'ใช้น้ำมันรถ รถแม็คโคร SK200: 202 ลิตร',
+                        workDetails: '17:20 (ผู้กรอก: สมชาย)',
+                    }),
+                ]}
+            />
+        );
+
+        await user.click(screen.getByRole('button', { name: 'แก้ไขเวลา 17:20' }));
+        const input = screen.getByRole('textbox', { name: 'เวลา' });
+        await user.clear(input);
+        await user.type(input, '10:30');
+        await user.keyboard('{Enter}');
+
+        expect(onSaveTransaction).toHaveBeenCalledWith(expect.objectContaining({
+            id: 'v1',
+            workDetails: '10:30 (ผู้กรอก: สมชาย)',
+            quantity: 202,
+        }));
+        expect(onAuditLog).toHaveBeenCalledWith('edit_fuel_report', expect.stringContaining('17:20 → 10:30'));
     });
 });

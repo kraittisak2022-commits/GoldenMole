@@ -53,6 +53,7 @@ import 'photo_albums_screen.dart';
 import 'projects_screen.dart';
 import 'quick_input_screen.dart';
 import 'transactions_screen.dart';
+import 'drum_trip_screen.dart';
 
 class _DailyModuleDef {
   const _DailyModuleDef({
@@ -820,25 +821,36 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   void _openQuickInput(_DailyModuleDef m) {
     AppHaptics.confirm();
-    _openWithAnimation(
-      QuickInputScreen(
-        service: _txService,
-        employeeService: EmployeeService(Supabase.instance.client),
-        currentAdmin: widget.currentAdmin,
-        initialCategory: m.category,
-        appBarTitle: m.quickInputTitle,
-        selectedDateForModule: DateTime(
-          _selectedDay.year,
-          _selectedDay.month,
-          _selectedDay.day,
-        ),
-        serverOnlineHint: _serverOnline,
-      ),
-    ).then((_) => unawaited(_refreshHomeSilently(tryNetwork: _serverOnline)));
+    final selectedDate = DateTime(
+      _selectedDay.year,
+      _selectedDay.month,
+      _selectedDay.day,
+    );
+    final Widget page = m.category == 'จำนวนเที่ยวรถ'
+        ? DrumTripScreen(
+            service: _txService,
+            employeeService: EmployeeService(Supabase.instance.client),
+            currentAdmin: widget.currentAdmin,
+            appBarTitle: m.quickInputTitle,
+            selectedDateForModule: selectedDate,
+            serverOnlineHint: _serverOnline,
+          )
+        : QuickInputScreen(
+            service: _txService,
+            employeeService: EmployeeService(Supabase.instance.client),
+            currentAdmin: widget.currentAdmin,
+            initialCategory: m.category,
+            appBarTitle: m.quickInputTitle,
+            selectedDateForModule: selectedDate,
+            serverOnlineHint: _serverOnline,
+          );
+    _openWithAnimation(page).then(
+      (_) => unawaited(_refreshHomeSilently(tryNetwork: _serverOnline)),
+    );
   }
 
   Future<T?> _openWithAnimation<T>(Widget page) {
-    final style = page is QuickInputScreen
+    final style = page is QuickInputScreen || page is DrumTripScreen
         ? AppTransitionStyle.modalUp
         : AppTransitionStyle.drillDown;
     return Navigator.of(context).push<T>(

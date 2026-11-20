@@ -4,7 +4,7 @@ import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
-import { getToday, formatDateBE, normalizeDate, computeFuelStockBalances, inferFuelMovement, fuelTxToLiters } from '../utils';
+import { getToday, formatDateBE, formatDisplayNumber, normalizeDate, computeFuelStockBalances, inferFuelMovement, fuelTxToLiters } from '../utils';
 import { estimateSieveUsageByDay } from '../utils/fuelSieveEstimate';
 import { Transaction, AppSettings } from '../types';
 
@@ -16,6 +16,10 @@ interface GeneralEntryProps {
     onSave: (t: Transaction) => void;
     onDelete?: (id: string) => void;
     transactions: Transaction[];
+}
+
+function roundTo2(value: number): number {
+    return Math.round((Number(value) || 0) * 100) / 100;
 }
 
 const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transactions }: GeneralEntryProps) => {
@@ -142,10 +146,10 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
         setSettings(prev => ({
             ...prev,
             fuelOpeningStockLiters: {
-                Diesel: Number(openingDraft.d.replace(/,/g, '')) || 0,
-                Benzine: Number(openingDraft.b.replace(/,/g, '')) || 0,
-                DieselReserve: Number(openingDraft.dr.replace(/,/g, '')) || 0,
-                BenzineReserve: Number(openingDraft.br.replace(/,/g, '')) || 0,
+                Diesel: roundTo2(Number(openingDraft.d.replace(/,/g, ''))),
+                Benzine: roundTo2(Number(openingDraft.b.replace(/,/g, ''))),
+                DieselReserve: roundTo2(Number(openingDraft.dr.replace(/,/g, ''))),
+                BenzineReserve: roundTo2(Number(openingDraft.br.replace(/,/g, ''))),
             },
         }));
     };
@@ -209,7 +213,9 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
             return;
         }
         const subCat = form.desc === 'Other' ? form.customType : form.desc;
-        const qtyNum = Number(form.quantity) || 0;
+        const qtyNum = type === 'Fuel'
+            ? roundTo2(Number(form.quantity))
+            : (Number(form.quantity) || 0);
         const fuelTypeFixed = type === 'Fuel' ? 'Diesel' as const : form.fuelType;
         const ftTh = 'ดีเซล';
         const unitLabel = form.unit === 'แกลลอน' ? 'แกลลอน' : form.unit === 'ถัง' ? 'ถัง' : 'ลิตร';
@@ -350,18 +356,18 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                         <div className="grid grid-cols-2 gap-3">
                             <div className={`rounded-xl p-4 border ${fuelStock.Diesel < 0 ? 'border-red-300 bg-red-50/80 dark:bg-red-950/30' : 'border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5'}`}>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">ถังหลัก · ดีเซล</p>
-                                <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{Math.round(fuelStock.Diesel * 10) / 10}</p>
+                                <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{formatDisplayNumber(fuelStock.Diesel)}</p>
                                 <p className="text-[11px] text-slate-400 mt-1">ไม่จำกัดความจุ</p>
                                 {fuelStock.Diesel < 0 && <p className="text-[11px] text-red-600 mt-1">ติดลบ — ตรวจสอบยอดยกมาหรือรายการรับเข้า</p>}
                             </div>
                             <div className={`rounded-xl p-4 border ${(fuelStock.DieselReserve ?? 0) < 0 ? 'border-red-300 bg-red-50/80 dark:bg-red-950/30' : 'border-slate-200 dark:border-white/10 bg-white/80 dark:bg-white/5'}`}>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">ถังสำรอง · ดีเซล</p>
-                                <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{Math.round((fuelStock.DieselReserve ?? 0) * 10) / 10}</p>
+                                <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{formatDisplayNumber(fuelStock.DieselReserve ?? 0)}</p>
                                 <p className="text-[11px] text-slate-400 mt-1">ความจุ 1,000 ลิตร</p>
                                 {(fuelStock.DieselReserve ?? 0) < 0 && (
                                     <p className="text-[11px] text-red-600 mt-1">
                                         ติดลบ — ขาดบันทึกโอนเข้าถังสำรองประมาณ{' '}
-                                        {Math.round((fuelStock.reserveShortfallLiters || Math.abs(fuelStock.DieselReserve ?? 0)) * 10) / 10} ลิตร
+                                        {formatDisplayNumber(fuelStock.reserveShortfallLiters || Math.abs(fuelStock.DieselReserve ?? 0))} ลิตร
                                     </p>
                                 )}
                             </div>
@@ -380,12 +386,16 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                                 <Input
                                     label="ดีเซล · ถังหลัก"
                                     type="number"
+                                    inputMode="decimal"
+                                    step="0.01"
                                     value={openingDraft.d}
                                     onChange={(e: any) => setOpeningDraft(o => ({ ...o, d: e.target.value }))}
                                 />
                                 <Input
                                     label="ดีเซล · ถังสำรอง"
                                     type="number"
+                                    inputMode="decimal"
+                                    step="0.01"
                                     value={openingDraft.dr}
                                     onChange={(e: any) => setOpeningDraft(o => ({ ...o, dr: e.target.value }))}
                                 />
@@ -410,7 +420,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                                         <div className="min-w-0">
                                             <div className="font-medium text-slate-800 dark:text-slate-100 truncate">{t.vehicleId || '—'}</div>
                                             <div className="text-xs text-slate-500 mt-0.5">
-                                                {formatDateBE(t.date)} · {t.fuelType === 'Benzine' ? 'เบนซิน' : 'ดีเซล'} · {Math.round(fuelTxToLiters(t) * 10) / 10} ลิตร
+                                                {formatDateBE(t.date)} · {t.fuelType === 'Benzine' ? 'เบนซิน' : 'ดีเซล'} · {formatDisplayNumber(fuelTxToLiters(t))} ลิตร
                                             </div>
                                         </div>
                                         <span className="font-semibold text-slate-700 dark:text-slate-200 shrink-0">฿{(t.amount || 0).toLocaleString()}</span>
@@ -433,7 +443,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                                         <div className="min-w-0">
                                             <div className="font-medium text-slate-800 dark:text-slate-100 truncate">{row.vehicleId}</div>
                                             <div className="text-xs text-slate-500 mt-0.5">
-                                                {Math.round(row.liters * 10) / 10} ลิตร · {row.count} รายการ
+                                                {formatDisplayNumber(row.liters)} ลิตร · {row.count} รายการ
                                             </div>
                                         </div>
                                         <span className="font-semibold text-slate-700 dark:text-slate-200 shrink-0">
@@ -561,7 +571,7 @@ const GeneralEntry = ({ type, settings, setSettings, onSave, onDelete, transacti
                                 </Select>
                             )}
                             <div className="grid grid-cols-2 gap-4">
-                                <Input label="จำนวน" type="number" value={form.quantity} onChange={(e: any) => setForm({ ...form, quantity: e.target.value })} />
+                                <Input label="จำนวน" type="number" inputMode="decimal" step="0.01" value={form.quantity} onChange={(e: any) => setForm({ ...form, quantity: e.target.value })} />
                                 <Select label="หน่วย" value={form.unit} onChange={(e: any) => setForm({ ...form, unit: e.target.value })}>
                                     <option value="ลิตร">ลิตร</option>
                                     <option value="แกลลอน">แกลลอน</option>
