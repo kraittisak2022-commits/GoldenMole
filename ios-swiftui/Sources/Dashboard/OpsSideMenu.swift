@@ -112,6 +112,7 @@ struct OpsSideMenuOverlay: View {
             }
         }
         .transition(.opacity)
+        .sensoryFeedback(.impact(flexibility: .soft), trigger: isPresented)
     }
 
     private func close() {
@@ -147,6 +148,30 @@ struct OpsSideMenuPanel: View {
     let onSelect: (OpsMenuItem) -> Void
     let onClose: () -> Void
 
+    private struct MenuSection: Identifiable {
+        let id: String
+        let title: String
+        let items: [OpsMenuItem]
+    }
+
+    private static let sections: [MenuSection] = [
+        MenuSection(
+            id: "field",
+            title: "ปฏิบัติการภาคสนาม",
+            items: [.countRecord, .attendance, .drumTrips, .macro]
+        ),
+        MenuSection(
+            id: "fuel",
+            title: "น้ำมันและรายงาน",
+            items: [.fuel, .fuelReport]
+        ),
+        MenuSection(
+            id: "people",
+            title: "บุคลากรและเหตุการณ์",
+            items: [.events, .leave, .advance]
+        )
+    ]
+
     private var countRecordStatus: String? {
         CountRecordLogic.menuStatusLabel(
             dayKey: DashboardAggregations.todayYMD(),
@@ -155,95 +180,120 @@ struct OpsSideMenuPanel: View {
         )
     }
 
+    private var todaySubtitle: String {
+        DashboardAggregations.thaiDateLong(DashboardAggregations.todayYMD())
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("เมนูงานประจำวัน")
-                        .font(.title3.weight(.bold))
+                        .font(.headline.weight(.bold))
                         .foregroundStyle(AppTheme.ink)
-                    Text("ปัดจากขอบขวาเพื่อเปิดเมนูนี้")
+                    Text(todaySubtitle)
                         .font(.caption)
                         .foregroundStyle(AppTheme.inkMuted)
                 }
                 Spacer(minLength: 8)
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(AppTheme.inkSecondary)
                         .frame(width: 32, height: 32)
                         .background(Circle().fill(AppTheme.surfaceSoft))
+                        .overlay(Circle().strokeBorder(AppTheme.hairline, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("ปิดเมนู")
             }
             .padding(.horizontal, 20)
-            .padding(.top, 28)
-            .padding(.bottom, 18)
+            .padding(.top, 26)
+            .padding(.bottom, 16)
+
+            Rectangle()
+                .fill(AppTheme.hairline)
+                .frame(height: 1)
 
             ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(Array(OpsMenuItem.allCases.enumerated()), id: \.element.id) { index, item in
-                        Button {
-                            onSelect(item)
-                        } label: {
-                            HStack(spacing: 14) {
-                                Image(systemName: item.systemImage)
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(item.accent)
-                                    .frame(width: 40, height: 40)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .fill(item.accent.opacity(0.14))
-                                    )
+                VStack(alignment: .leading, spacing: 18) {
+                    ForEach(Self.sections) { section in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(section.title)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(AppTheme.inkMuted)
+                                .padding(.horizontal, 4)
 
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.title)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(AppTheme.ink)
-                                        .multilineTextAlignment(.leading)
-                                    if item == .countRecord, let status = countRecordStatus {
-                                        Text(status)
-                                            .font(.caption2)
-                                            .foregroundStyle(AppTheme.inkMuted)
-                                            .lineLimit(2)
+                            VStack(spacing: 0) {
+                                ForEach(Array(section.items.enumerated()), id: \.element.id) { index, item in
+                                    menuRow(item)
+                                    if index < section.items.count - 1 {
+                                        Rectangle()
+                                            .fill(AppTheme.hairline)
+                                            .frame(height: 1)
+                                            .padding(.leading, 62)
                                     }
                                 }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(AppTheme.inkMuted)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 13)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-
-                        if index < OpsMenuItem.allCases.count - 1 {
-                            Rectangle()
-                                .fill(AppTheme.hairline)
-                                .frame(height: 1)
-                                .padding(.leading, 70)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(AppTheme.surfaceSoft.opacity(0.68))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(AppTheme.hairline, lineWidth: 1)
+                            )
                         }
                     }
                 }
-                .background(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(AppTheme.surfaceSoft.opacity(0.65))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .strokeBorder(AppTheme.hairline, lineWidth: 1)
-                )
                 .padding(.horizontal, 16)
+                .padding(.top, 16)
                 .padding(.bottom, 28)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
+
+    private func menuRow(_ item: OpsMenuItem) -> some View {
+        Button {
+            onSelect(item)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: item.systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(item.accent)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(item.accent.opacity(0.12))
+                    )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                        .multilineTextAlignment(.leading)
+                    if item == .countRecord, let status = countRecordStatus {
+                        Text(status)
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.inkMuted)
+                            .lineLimit(2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(AppTheme.inkMuted.opacity(0.75))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(HomeTactileButtonStyle(pressedScale: 0.98))
     }
 }
 

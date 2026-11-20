@@ -23,6 +23,8 @@ struct DashboardShell: View {
     @Environment(FeedStore.self) private var feedStore
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var homeDateNS
     @AppStorage("appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
     @State private var mainTab: AppMainTab = .realtimeTrip
     @State private var homeSegment: HomeSegment = .overview
@@ -32,11 +34,18 @@ struct DashboardShell: View {
     @State private var opsDestination: OpsMenuItem?
     @State private var showHomeCustomDatePicker = false
     @State private var homeCustomDraft = Date()
+    @State private var manualSyncHaptic = 0
+    @State private var isManualSyncing = false
     /// Shared focus day for ร่อนทราย + เที่ยวรถ tabs.
     @State private var realtimeFocusDate = Date()
     @State private var updateOffer: AppUpdateChecker.Offer?
 
-    private static let homeDatePresets: [DateRangePreset] = [.today, .yesterday, .custom]
+    private static let syncTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "th_TH")
+        f.dateFormat = "HH:mm"
+        return f
+    }()
 
     private var isRealtimeTabActive: Bool {
         mainTab == .realtimeTrip || mainTab == .realtimeSand
@@ -225,55 +234,82 @@ struct DashboardShell: View {
         VStack(spacing: 0) {
             homeControlRow()
 
-            loadingOr {
-                switch homeSegment {
-                case .overview:
-                    OverviewHubView(
-                        transactions: appState.filteredTransactions,
-                        allTransactions: appState.transactions,
-                        fuelTransactions: appState.fuelBalanceTransactions,
-                        employees: appState.employees,
-                        settings: appState.settings,
-                        dateFilter: appState.dateFilter,
-                        greetingName: auth.currentAdmin?.displayName,
-                        transactionsRevision: appState.transactionsRevision
-                    )
-                    .refreshable { await appState.refresh(forceFull: true) }
-                case .worklog:
-                    ScrollView {
-                        WorkLogView(
-                            transactions: appState.transactions,
+            loadingOr(useHomeSkeleton: homeSegment == .overview) {
+                Group {
+                    switch homeSegment {
+                    case .overview:
+                        OverviewHubView(
+                            transactions: appState.filteredTransactions,
+                            allTransactions: appState.transactions,
+                            fuelTransactions: appState.fuelBalanceTransactions,
                             employees: appState.employees,
-                            settings: appState.settings
+                            settings: appState.settings,
+                            dateFilter: appState.dateFilter,
+                            greetingName: auth.currentAdmin?.displayName,
+                            transactionsRevision: appState.transactionsRevision
                         )
-                        .padding(AppTheme.spaceLG)
-                    }
-                    .refreshable { await appState.refresh(forceFull: true) }
-                    .scrollContentBackground(.hidden)
-                case .reports:
-                    reportsHub
                         .refreshable { await appState.refresh(forceFull: true) }
-                case .calendar:
-                    ScrollView {
-                        CalendarV3View(
-                            transactions: appState.transactions,
-                            employees: appState.employees,
-                            onDaySelected: applyHomeCalendarDay
-                        )
-                        .padding(AppTheme.spaceLG)
+                        .transition(.opacity)
+                    case .worklog:
+                        ScrollView {
+                            WorkLogView(
+                                transactions: appState.transactions,
+                                employees: appState.employees,
+                                settings: appState.settings
+                            )
+                            .padding(AppTheme.spaceLG)
+                        }
+                        .refreshable { await appState.refresh(forceFull: true) }
+                        .scrollContentBackground(.hidden)
+                        .transition(.opacity)
+                    case .reports:
+                        reportsHub
+                            .refreshable { await appState.refresh(forceFull: true) }
+                            .transition(.opacity)
+                    case .calendar:
+                        ScrollView {
+                            CalendarV3View(
+                                transactions: appState.transactions,
+                                employees: appState.employees,
+                                onDaySelected: applyHomeCalendarDay
+                            )
+                            .padding(AppTheme.spaceLG)
+                        }
+                        .refreshable { await appState.refresh(forceFull: true) }
+                        .scrollContentBackground(.hidden)
+                        .transition(.opacity)
                     }
-                    .refreshable { await appState.refresh(forceFull: true) }
-                    .scrollContentBackground(.hidden)
                 }
+                .animation(reduceMotion ? .none : .smooth(duration: 0.22), value: homeSegment)
             }
         }
         .background(DashboardBackground())
         .navigationTitle(appState.settings.appName)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { headerToolbar }
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                opsMenuButton
+            }
+            headerToolbar
+        }
         .sheet(isPresented: $showHomeCustomDatePicker) {
             homeCustomDatePickerSheet
         }
+    }
+
+    private var opsMenuButton: some View {
+        Button {
+            openOpsMenu()
+        } label: {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(AppTheme.ink)
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(.ultraThinMaterial))
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.08)))
+        }
+        .buttonStyle(HomeTactileButtonStyle(pressedScale: 0.9))
+        .accessibilityLabel("เปิดเมนูงานประจำวัน")
     }
 
     /// Sync Home date filter to the day tapped on the embedded calendar.
@@ -290,17 +326,62 @@ struct DashboardShell: View {
         appState.customEnd = day
     }
 
-    private var homeDateChipLabel: String {
+    private var homeActiveDay: Date {
+        let cal = DashboardAggregations.gregorian
+        let today = cal.startOfDay(for: Date())
         switch appState.datePreset {
         case .today:
-            return DateRangePreset.today.label
+            return today
         case .yesterday:
-            return DateRangePreset.yesterday.label
+            return cal.date(byAdding: .day, value: -1, to: today) ?? today
         case .custom:
-            return ReportDateScope.shortThaiDate(appState.customEnd)
+            return cal.startOfDay(for: appState.customEnd)
         default:
-            return appState.datePreset.label
+            return today
         }
+    }
+
+    private var canStepHomeForward: Bool {
+        let cal = DashboardAggregations.gregorian
+        let today = cal.startOfDay(for: Date())
+        return homeActiveDay < today
+    }
+
+    private var canStepHomeBackward: Bool {
+        let cal = DashboardAggregations.gregorian
+        let earliest = cal.date(byAdding: .day, value: -90, to: cal.startOfDay(for: Date())) ?? Date()
+        return homeActiveDay > earliest
+    }
+
+    private func stepHomeDay(by delta: Int) {
+        let cal = DashboardAggregations.gregorian
+        let today = cal.startOfDay(for: Date())
+        let yesterday = cal.date(byAdding: .day, value: -1, to: today) ?? today
+        let earliest = cal.date(byAdding: .day, value: -90, to: today) ?? today
+        guard let candidate = cal.date(byAdding: .day, value: delta, to: homeActiveDay) else { return }
+        let clamped = min(max(candidate, earliest), today)
+        withAnimation(reduceMotion ? .none : .snappy(duration: 0.24)) {
+            if cal.isDate(clamped, inSameDayAs: today) {
+                appState.datePreset = .today
+            } else if cal.isDate(clamped, inSameDayAs: yesterday) {
+                appState.datePreset = .yesterday
+            } else {
+                appState.datePreset = .custom
+                appState.customStart = clamped
+                appState.customEnd = clamped
+            }
+        }
+    }
+
+    private var homeCustomDateLabel: String {
+        if appState.datePreset == .custom {
+            return ReportDateScope.shortThaiDate(appState.customEnd)
+        }
+        return "เลือกวัน"
+    }
+
+    private var homeDateFeedbackKey: String {
+        "\(appState.datePreset.rawValue)-\(appState.dateFilter.start)-\(appState.dateFilter.end)"
     }
 
     private var homeCustomDatePickerSheet: some View {
@@ -317,7 +398,7 @@ struct DashboardShell: View {
                 .padding(.horizontal, 8)
                 Spacer(minLength: 0)
             }
-            .navigationTitle("กำหนดเอง")
+            .navigationTitle("เลือกวันที่")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -337,58 +418,165 @@ struct DashboardShell: View {
         .presentationDetents([.medium, .large])
     }
 
-    /// Compact pill segment + date-range chip for the Home tab.
+    /// Full-width Pro segment bar + contextual 1-tap date stepper bar for the Overview segment.
     private func homeControlRow() -> some View {
-        HStack(spacing: 10) {
+        VStack(spacing: 10) {
             HomeSegmentPill(selection: $homeSegment)
-            Spacer(minLength: 0)
-            Menu {
-                ForEach(Self.homeDatePresets) { preset in
-                    Button {
-                        if preset == .custom {
-                            homeCustomDraft = appState.datePreset == .custom
-                                ? appState.customEnd
-                                : Date()
-                            showHomeCustomDatePicker = true
-                        } else {
-                            appState.datePreset = preset
-                        }
-                    } label: {
-                        if homeDateMenuSelected(preset) {
-                            Label(preset.label, systemImage: "checkmark")
-                        } else {
-                            Text(preset.label)
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "calendar")
-                        .font(.caption.weight(.semibold))
-                    Text(homeDateChipLabel)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .bold))
-                }
-                .foregroundStyle(AppTheme.ink)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    Capsule()
-                        .fill(AppTheme.surfaceSoft)
-                )
-                .overlay(Capsule().strokeBorder(AppTheme.hairline, lineWidth: 1))
+
+            if homeSegment == .overview {
+                homeDateBar
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            .accessibilityLabel("เลือกวันที่ \(homeDateChipLabel)")
         }
         .padding(.horizontal, AppTheme.spaceLG)
-        .padding(.vertical, 10)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.hairline)
+                .frame(height: 1)
+        }
+        .animation(reduceMotion ? .none : .snappy(duration: 0.24), value: homeSegment)
     }
 
-    private func homeDateMenuSelected(_ preset: DateRangePreset) -> Bool {
-        if preset == .custom { return appState.datePreset == .custom }
-        return appState.datePreset == preset
+    private var homeDateBar: some View {
+        HStack(spacing: 5) {
+            dayStepButton(systemImage: "chevron.left", enabled: canStepHomeBackward, label: "วันก่อนหน้า") {
+                stepHomeDay(by: -1)
+            }
+
+            homeQuickDateChip(
+                title: "วันนี้",
+                isSelected: appState.datePreset == .today
+            ) {
+                withAnimation(reduceMotion ? .none : .snappy(duration: 0.24)) {
+                    appState.datePreset = .today
+                }
+            }
+
+            homeQuickDateChip(
+                title: "เมื่อวาน",
+                isSelected: appState.datePreset == .yesterday
+            ) {
+                withAnimation(reduceMotion ? .none : .snappy(duration: 0.24)) {
+                    appState.datePreset = .yesterday
+                }
+            }
+
+            homeQuickDateChip(
+                title: homeCustomDateLabel,
+                systemImage: "calendar",
+                isSelected: appState.datePreset == .custom
+            ) {
+                homeCustomDraft = homeActiveDay
+                showHomeCustomDatePicker = true
+            }
+
+            dayStepButton(systemImage: "chevron.right", enabled: canStepHomeForward, label: "วันถัดไป") {
+                stepHomeDay(by: 1)
+            }
+
+            Spacer(minLength: 2)
+
+            homeSyncStatusPill
+        }
+        .sensoryFeedback(.selection, trigger: homeDateFeedbackKey)
+        .sensoryFeedback(.impact(flexibility: .soft), trigger: manualSyncHaptic)
+    }
+
+    private func dayStepButton(
+        systemImage: String,
+        enabled: Bool,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(enabled ? AppTheme.inkSecondary : AppTheme.inkMuted.opacity(0.35))
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(AppTheme.surface.opacity(enabled ? 0.85 : 0.45)))
+                .overlay(Circle().strokeBorder(AppTheme.hairline, lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(HomeTactileButtonStyle(pressedScale: 0.88))
+        .disabled(!enabled)
+        .accessibilityLabel(label)
+    }
+
+    private func homeQuickDateChip(
+        title: String,
+        systemImage: String? = nil,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                Text(title)
+                    .font(.caption.weight(isSelected ? .bold : .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+            .foregroundStyle(isSelected ? AppTheme.brand : AppTheme.inkSecondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background {
+                if isSelected {
+                    Capsule()
+                        .fill(AppTheme.brand.opacity(0.13))
+                        .overlay(Capsule().strokeBorder(AppTheme.brand.opacity(0.34), lineWidth: 1))
+                        .matchedGeometryEffect(id: "homeDateActivePill", in: homeDateNS)
+                } else {
+                    Capsule()
+                        .fill(AppTheme.surface.opacity(0.82))
+                        .overlay(Capsule().strokeBorder(AppTheme.hairline, lineWidth: 1))
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(HomeTactileButtonStyle(pressedScale: 0.94))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private var homeSyncStatusPill: some View {
+        if appState.isLoading || isManualSyncing {
+            HStack(spacing: 4) {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(AppTheme.brand)
+                Text("ซิงค์")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(AppTheme.inkMuted)
+            }
+            .padding(.horizontal, 6)
+        } else if let fetchedAt = appState.lastFetchedAt {
+            Button {
+                manualSyncHaptic += 1
+                Task {
+                    isManualSyncing = true
+                    await appState.refresh(forceFull: true)
+                    isManualSyncing = false
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    HomeLivePulseDot(color: AppTheme.income, size: 5.5)
+                    Text(Self.syncTimeFormatter.string(from: fetchedAt))
+                        .font(.caption2.weight(.medium).monospacedDigit())
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(AppTheme.surface.opacity(0.7)))
+                .overlay(Capsule().strokeBorder(AppTheme.hairline, lineWidth: 0.75))
+            }
+            .buttonStyle(HomeTactileButtonStyle(pressedScale: 0.92))
+            .accessibilityLabel("อัปเดตล่าสุด \(Self.syncTimeFormatter.string(from: fetchedAt)) แตะเพื่อซิงค์ข้อมูลใหม่")
+        }
     }
 
     // MARK: - Realtime
@@ -436,18 +624,17 @@ struct DashboardShell: View {
 
     private var reportsHub: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.spaceXL) {
+            VStack(alignment: .leading, spacing: 18) {
                 MobileDailyAuditCard(
                     transactions: appState.transactions,
                     employees: appState.employees
                 )
 
-                reportsHero
+                reportsSummaryStrip
 
                 reportsSection(
-                    eyebrow: "INSIGHTS",
-                    title: "วิเคราะห์และรายการ",
-                    subtitle: "มุมมองรวมและรายการธุรกรรม"
+                    title: "รายการบันทึกทั้งหมด",
+                    subtitle: "ค้นหาและตรวจสอบธุรกรรมย้อนหลัง"
                 ) {
                     reportLink(
                         title: "รายการบันทึก",
@@ -462,9 +649,8 @@ struct DashboardShell: View {
                 }
 
                 reportsSection(
-                    eyebrow: "CATEGORIES",
                     title: "รายงานตามหมวด",
-                    subtitle: "สรุปวันนี้ · แตะการ์ดเพื่อดูรายละเอียด"
+                    subtitle: "สรุปวันนี้ · แตะเพื่อดูรายละเอียด"
                 ) {
                     categorySummaryGrid
                 }
@@ -493,22 +679,22 @@ struct DashboardShell: View {
                 } label: {
                     categorySummaryCard(type: type, summary: summary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HomeTactileButtonStyle(pressedScale: 0.96))
             }
         }
         .padding(12)
     }
 
     private func categorySummaryCard(type: CategoryReportType, summary: CategoryHubSummary) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top) {
                 Image(systemName: type.systemImage)
-                    .font(.body.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(type.accent)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 32, height: 32)
                     .background(
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(type.accent.opacity(0.14))
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(type.accent.opacity(0.12))
                     )
                 Spacer(minLength: 4)
                 Image(systemName: "chevron.right")
@@ -522,10 +708,10 @@ struct DashboardShell: View {
                 .foregroundStyle(AppTheme.inkSecondary)
 
             Text(summary.primary)
-                .font(.title3.weight(.bold))
+                .font(.title3.weight(.bold).monospacedDigit())
                 .foregroundStyle(summary.hasData ? AppTheme.ink : AppTheme.inkMuted)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.72)
                 .contentTransition(.numericText())
 
             Text(summary.secondary)
@@ -534,75 +720,56 @@ struct DashboardShell: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
+        .padding(13)
+        .frame(maxWidth: .infinity, minHeight: 122, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.surfaceSoft.opacity(0.9))
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AppTheme.surfaceSoft.opacity(0.85))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(
-                    summary.hasData ? type.accent.opacity(0.28) : AppTheme.hairline,
-                    lineWidth: 1
-                )
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(AppTheme.hairline, lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(type.title) \(summary.primary) \(summary.secondary)")
     }
 
-    private var reportsHero: some View {
-        ZStack(alignment: .topLeading) {
-            LinearGradient(
-                colors: [AppTheme.brandDark, AppTheme.brand, AppTheme.cyan.opacity(0.85)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Circle()
-                .fill(Color.white.opacity(0.14))
-                .frame(width: 150, height: 150)
-                .blur(radius: 26)
-                .offset(x: 210, y: -48)
+    private var reportsSummaryStrip: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppTheme.brand)
+                .frame(width: 36, height: 36)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AppTheme.brand.opacity(0.12))
+                )
 
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("REPORTS")
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(1.6)
-                            .foregroundStyle(.white.opacity(0.75))
-                        Text("ศูนย์รายงาน")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.white)
-                        Text("เลือกดูสรุปตามมุมมองหรือหมวดหมู่")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.72))
-                    }
-                    Spacer(minLength: 8)
-                    Image(systemName: "doc.text.magnifyingglass")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(Circle().fill(Color.white.opacity(0.16)))
-                        .accessibilityHidden(true)
-                }
-
-                HStack(spacing: 10) {
-                    reportsHeroChip(title: "มุมมอง", value: "1", tint: Color(hex: "#A7F3D0"))
-                    reportsHeroChip(title: "หมวด", value: "\(CategoryReportType.allCases.count)", tint: Color(hex: "#CFFAFE"))
-                    reportsHeroChip(
-                        title: "วันนี้",
-                        value: categoryHubExpenseTodayLabel,
-                        tint: Color(hex: "#FDE68A")
-                    )
-                }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("ศูนย์รายงาน")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Text("\(CategoryReportType.allCases.count) หมวดสรุปวันนี้")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.inkMuted)
             }
-            .padding(20)
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("ค่าใช้จ่ายวันนี้")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.inkMuted)
+                Text(categoryHubExpenseTodayLabel)
+                    .font(.subheadline.weight(.bold).monospacedDigit())
+                    .foregroundStyle(AppTheme.ink)
+                    .contentTransition(.numericText())
+            }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: AppTheme.brand.opacity(0.35), radius: 18, y: 8)
+        .padding(14)
+        .homeCardSurface(cornerRadius: 16)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("ศูนย์รายงาน เลือกดูสรุปตามมุมมองหรือหมวดหมู่")
+        .accessibilityLabel("ศูนย์รายงาน \(CategoryReportType.allCases.count) หมวด ค่าใช้จ่ายวันนี้ \(categoryHubExpenseTodayLabel)")
     }
 
     private var categoryHubExpenseTodayLabel: String {
@@ -635,57 +802,19 @@ struct DashboardShell: View {
         return DashboardAggregations.formatCurrency(total)
     }
 
-    private func reportsHeroChip(title: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.7))
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(tint)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.12))
-        )
-    }
-
     private func reportsSection<Content: View>(
-        eyebrow: String,
         title: String,
         subtitle: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.spaceMD) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(eyebrow)
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1.4)
-                    .foregroundStyle(AppTheme.brand)
-                Text(title)
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.inkMuted)
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            HomeSectionHeader(title: title, trailing: subtitle)
 
             VStack(spacing: 0) {
                 content()
             }
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                    .fill(AppTheme.surface)
-                    .shadow(color: AppTheme.cardShadow, radius: 16, y: 6)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                    .strokeBorder(AppTheme.hairline, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous))
+            .homeCardSurface()
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
 
@@ -798,6 +927,7 @@ struct DashboardShell: View {
                 .overlay(Circle().strokeBorder(Color.primary.opacity(0.08)))
         }
         .buttonStyle(.plain)
+        .sensoryFeedback(.impact(flexibility: .soft), trigger: appearanceMode)
         .accessibilityLabel("สลับโหมดสว่าง/มืด")
     }
 
@@ -864,18 +994,25 @@ struct DashboardShell: View {
     }
 
     @ViewBuilder
-    private func loadingOr<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    private func loadingOr<Content: View>(
+        useHomeSkeleton: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         if appState.isLoading && appState.transactions.isEmpty {
-            VStack(spacing: 12) {
-                Spacer()
-                ProgressView("กำลังโหลดข้อมูล…")
-                    .tint(AppTheme.brand)
-                Text("เชื่อมต่อ \(appState.supabaseHost)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
+            if useHomeSkeleton {
+                HomeOverviewSkeletonView()
+            } else {
+                VStack(spacing: 12) {
+                    Spacer()
+                    ProgressView("กำลังโหลดข้อมูล…")
+                        .tint(AppTheme.brand)
+                    Text("เชื่อมต่อ \(appState.supabaseHost)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
         } else if let error = appState.errorMessage, appState.transactions.isEmpty {
             VStack(spacing: 12) {
                 Spacer()
@@ -921,33 +1058,42 @@ private struct HomeSegmentPill: View {
     @Binding var selection: HomeSegment
     @Namespace private var pillNS
 
+    private static let trackFill = Color(light: Color(hex: "#E8EEF6"), dark: Color(hex: "#0E1627"))
+    private static let thumbFill = Color(light: Color.white, dark: Color(hex: "#1E293B"))
+    private static let thumbStroke = Color(light: Color.black.opacity(0.05), dark: Color.white.opacity(0.10))
+
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 2) {
             ForEach(HomeSegment.allCases) { seg in
+                let isSelected = selection == seg
                 Button {
-                    withAnimation(.snappy(duration: 0.28)) { selection = seg }
+                    withAnimation(.snappy(duration: 0.26)) { selection = seg }
                 } label: {
                     Text(seg.rawValue)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(selection == seg ? .white : AppTheme.inkMuted)
+                        .font(.footnote.weight(isSelected ? .bold : .medium))
+                        .foregroundStyle(isSelected ? AppTheme.ink : AppTheme.inkMuted)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
-                        .padding(.horizontal, 8)
+                        .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background {
-                            if selection == seg {
+                            if isSelected {
                                 Capsule()
-                                    .fill(AppTheme.brand)
+                                    .fill(Self.thumbFill)
+                                    .overlay(Capsule().strokeBorder(Self.thumbStroke, lineWidth: 1))
+                                    .shadow(color: Color.black.opacity(0.07), radius: 5, y: 2)
                                     .matchedGeometryEffect(id: "homeSegThumb", in: pillNS)
-                                    .shadow(color: AppTheme.brand.opacity(0.35), radius: 6, y: 2)
                             }
                         }
+                        .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
         .padding(3)
-        .background(Capsule().fill(AppTheme.surfaceSoft))
+        .background(Capsule().fill(Self.trackFill))
         .overlay(Capsule().strokeBorder(AppTheme.hairline, lineWidth: 1))
+        .sensoryFeedback(.selection, trigger: selection)
     }
 }
