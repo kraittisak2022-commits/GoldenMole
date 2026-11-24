@@ -163,6 +163,56 @@ enum FuelWriter {
         )
     }
 
+    /// ปรับค่าใหม่ / น้ำมันหาย — หักถังหลักให้ตรงของจริง (Flutter `fuel_adjust` parity)
+    static func adjustPayload(
+        id: String,
+        dateYmd: String,
+        liters: Double,
+        time: String,
+        omitCreatedAt: Bool
+    ) -> TransactionWritePayload {
+        let trimmedTime = time.trimmingCharacters(in: .whitespacesAndNewlines)
+        return TransactionWritePayload(
+            id: id,
+            date: dateYmd,
+            type: TransactionType.expense.rawValue,
+            category: "Fuel",
+            subCategory: FuelLogic.adjustSubCategory,
+            description: "ปรับค่าใหม่: \(FuelLogic.formatLiters(liters)) ลิตร (ดีเซล · ถังหลัก)",
+            amount: 0,
+            note: nil,
+            vehicleId: nil,
+            driverId: nil,
+            workDetails: trimmedTime.isEmpty ? nil : trimmedTime,
+            tripBillingMode: nil,
+            tripCount: nil,
+            perCarTrips: nil,
+            cubicPerTrip: nil,
+            perCarCubic: nil,
+            totalCubic: nil,
+            drumsObtained: nil,
+            workAssignments: nil,
+            createdAt: omitCreatedAt ? nil : ISO8601DateFormatter().string(from: Date()),
+            eventType: nil,
+            eventPriority: nil,
+            eventTime: nil,
+            employeeIds: nil,
+            laborStatus: nil,
+            workType: nil,
+            workTypeByEmployee: nil,
+            leaveReason: nil,
+            leaveDays: nil,
+            tripMorning: nil,
+            tripAfternoon: nil,
+            quantity: liters,
+            unit: "L",
+            unitPrice: nil,
+            fuelType: "Diesel",
+            fuelMovement: "stock_out",
+            fuelTank: FuelLogic.tankMain
+        )
+    }
+
     static func vehicleUsagePayload(
         id: String,
         dateYmd: String,

@@ -52,6 +52,14 @@ struct FuelCarFillDraft: Equatable, Sendable {
     var otherText: String = ""
 }
 
+struct FuelLossDraft: Equatable, Sendable {
+    var txId: String?
+    var liters: Double = 0
+    var time: String = FuelLogic.nowTimeHHmm()
+
+    var isPersisted: Bool { !(txId ?? "").isEmpty }
+}
+
 enum FuelSaveError: LocalizedError {
     case liters
     case time
@@ -59,6 +67,7 @@ enum FuelSaveError: LocalizedError {
     case pickVehicle
     case vehicleName
     case mainTankShort
+    case mainTankLossExceeds(Double)
     case reserveTankShort
     case noCars
     case emptyUsage
@@ -73,6 +82,8 @@ enum FuelSaveError: LocalizedError {
         case .pickVehicle: return "กรุณาเลือกรถยนต์"
         case .vehicleName: return "กรุณาระบุชื่อรถ"
         case .mainTankShort: return "ถังหลักมีน้ำมันไม่พอ"
+        case .mainTankLossExceeds(let available):
+            return "จำนวนที่หายเกินคงเหลือถังหลัก (\(FuelLogic.formatLiters(available)) ลิตร)"
         case .reserveTankShort: return "ถังสำรองมีน้ำมันไม่พอ"
         case .noCars: return "ยังไม่พบรถแม็คโครในตั้งค่าแอพ"
         case .emptyUsage: return "กรุณาระบุปริมาณน้ำมันอย่างน้อย 1 คัน"
@@ -89,11 +100,13 @@ final class FuelSession {
     var stockIn = FuelStockInDraft()
     var withdraw = FuelWithdrawDraft()
     var carFill = FuelCarFillDraft()
+    var loss = FuelLossDraft()
     var vehicleDrafts: [FuelVehicleDraft] = []
     var dieselBalance: Double = 0
     var reserveDieselBalance: Double = 0
     var dayStockInRows: [Transaction] = []
     var dayWithdrawRows: [Transaction] = []
+    var dayAdjustRows: [Transaction] = []
     var statusMessage: String?
     var isErrorStatus = false
     var isSaving = false
@@ -160,6 +173,9 @@ final class FuelSession {
         }.sorted {
             ($0.createdAt ?? "") > ($1.createdAt ?? "")
         }
+        dayAdjustRows = dayRows.filter(FuelLogic.isAdjust).sorted {
+            ($0.createdAt ?? "") > ($1.createdAt ?? "")
+        }
 
         syncVehicleDrafts(appState: appState, dayRows: dayRows, force: force)
     }
@@ -180,6 +196,21 @@ final class FuelSession {
         stockIn.amount = t.amount
         stockIn.time = FuelLogic.stripRecorder(t.workDetails ?? "")
         if stockIn.time.isEmpty { stockIn.time = FuelLogic.nowTimeHHmm() }
+    }
+
+    /// โหลดรายการปรับยอดล่าสุดของวันเข้าฟอร์มเมื่อยังไม่ได้แก้/กรอกใหม่ (Flutter `latestFuelAdjustForDay` parity)
+    func autoHydrateLossIfNeeded() {
+        guard loss.txId == nil else { return }
+        if loss.liters > 0 { return }
+        guard let latest = dayAdjustRows.first else { return }
+        applyLossFields(from: latest)
+    }
+
+    private func applyLossFields(from t: Transaction) {
+        loss.txId = t.id
+        loss.liters = FuelLogic.liters(of: t)
+        loss.time = FuelLogic.stripRecorder(t.workDetails ?? "")
+        if loss.time.isEmpty { loss.time = FuelLogic.nowTimeHHmm() }
     }
 
     private func syncVehicleDrafts(appState: AppState, dayRows: [Transaction], force: Bool) {
@@ -281,6 +312,17 @@ final class FuelSession {
 
     func clearCarFillForm() {
         carFill = FuelCarFillDraft()
+    }
+
+    func loadLoss(_ t: Transaction) {
+        applyLossFields(from: t)
+        subMode = .loss
+        statusMessage = "โหลดรายการปรับยอดน้ำมันมาแก้ไข"
+        isErrorStatus = false
+    }
+
+    func clearLossForm() {
+        loss = FuelLossDraft()
     }
 
     func saveStockIn(appState: AppState) async {
@@ -407,6 +449,44 @@ final class FuelSession {
         }
     }
 
+    func saveLoss(appState: AppState) async {
+        guard !isSaving else { return }
+        do {
+            let liters = (loss.liters * 100).rounded() / 100
+            if liters <= 0 { throw FuelSaveError.liters }
+            let existing = (loss.txId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let priorLiters: Double = {
+                guard !existing.isEmpty,
+                      let prev = appState.transactions.first(where: { $0.id == existing })
+                        ?? appState.fuelBalanceTransactions.first(where: { $0.id == existing })
+                else { return 0 }
+                return FuelLogic.liters(of: prev)
+            }()
+            let available = max(0, dieselBalance + priorLiters)
+            if liters > available + 0.001 {
+                throw FuelSaveError.mainTankLossExceeds(available)
+            }
+            isSaving = true
+            defer { isSaving = false }
+            let id = existing.isEmpty ? FuelWriter.newId(suffix: "fuel_adjust") : existing
+            let payload = FuelWriter.adjustPayload(
+                id: id,
+                dateYmd: dayKey,
+                liters: liters,
+                time: loss.time.trimmingCharacters(in: .whitespacesAndNewlines),
+                omitCreatedAt: !existing.isEmpty
+            )
+            skipExternalReload += 1
+            _ = await FuelWriter.persist(payload: payload, wasPersisted: !existing.isEmpty)
+            loss.txId = id
+            loss.liters = liters
+            setOk(existing.isEmpty ? "บันทึกปรับยอดน้ำมันสำเร็จ" : "อัปเดตปรับยอดน้ำมันสำเร็จ")
+            reload(appState: appState, force: true)
+        } catch {
+            setError(error.localizedDescription)
+        }
+    }
+
     func saveVehicleUsage(appState: AppState) async {
         guard !isSaving else { return }
         do {
@@ -487,6 +567,7 @@ final class FuelSession {
         }
         if stockIn.txId == id { clearStockInForm() }
         if withdraw.txId == id { clearWithdrawForm() }
+        if loss.txId == id { clearLossForm() }
         if let i = vehicleDrafts.firstIndex(where: { $0.txId == id }) {
             vehicleDrafts[i].txId = nil
             vehicleDrafts[i].liters = 0

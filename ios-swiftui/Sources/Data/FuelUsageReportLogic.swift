@@ -8,6 +8,7 @@ enum FuelUsageReportLogic {
         case withdraw
         case sandSieve
         case otherOut
+        case adjust
     }
 
     enum FuelTypeFilter: String, Sendable {
@@ -54,6 +55,7 @@ enum FuelUsageReportLogic {
         var withdrawLiters: Double = 0
         var sandSieveLiters: Double = 0
         var otherOutLiters: Double = 0
+        var adjustLiters: Double = 0
         var usageLiters: Double = 0
         var usageAmount: Double = 0
         var count: Int = 0
@@ -111,6 +113,7 @@ enum FuelUsageReportLogic {
         case .vehicle: return "ใช้แล้ว (รถ/แม็คโคร)"
         case .withdraw: return "เบิกไปถังสำรอง"
         case .sandSieve: return "ใช้แล้ว (ร่อนทราย)"
+        case .adjust: return "ปรับค่าใหม่"
         case .otherOut: return "ใช้แล้ว (อื่น ๆ)"
         }
     }
@@ -127,6 +130,7 @@ enum FuelUsageReportLogic {
         guard t.category == "Fuel" else { return "stock_out" }
         let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if sub == FuelLogic.stockInSubCategory { return "stock_in" }
+        if sub == FuelLogic.adjustSubCategory { return "stock_out" }
         let mov = (t.fuelMovement ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if mov == "stock_in" || mov == "stock_out" {
             return mov
@@ -245,6 +249,11 @@ enum FuelUsageReportLogic {
         // ใช้แล้วจากถังสำรอง (ร่อนทราย)
         if subEquals(t, FuelLogic.sandSieveSubCategory) {
             return .sandSieve
+        }
+
+        // ปรับค่าใหม่ (น้ำมันหาย) — หักถังหลัก ไม่นับเป็นใช้แล้ว
+        if subEquals(t, FuelLogic.adjustSubCategory) {
+            return .adjust
         }
 
         // เมนูเบิกน้ำมันที่ตัดออกจากถังหลักแล้ว = ใช้แล้ว (รถ / ปั่นไฟ / อื่น)
@@ -446,6 +455,8 @@ enum FuelUsageReportLogic {
                 totals.withdrawLiters += row.liters
             case .sandSieve:
                 totals.sandSieveLiters += row.liters
+            case .adjust:
+                totals.adjustLiters += row.liters
             case .otherOut:
                 totals.otherOutLiters += row.liters
             }

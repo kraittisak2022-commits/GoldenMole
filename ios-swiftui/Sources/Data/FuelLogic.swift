@@ -13,6 +13,7 @@ enum FuelLogic {
     static let sandSieveSubCategory = "SandSieve"
     static let sandSieveVehicleId = "เครื่องจักรร่อนทราย เครื่องปั่นไฟ"
     static let vehicleUsageSubCategory = "VehicleUsage"
+    static let adjustSubCategory = "Adjust"
     static let sandSieveLitersPerHour: Double = 18
 
     enum SubMode: String, CaseIterable, Identifiable, Sendable {
@@ -20,6 +21,7 @@ enum FuelLogic {
         case withdraw
         case carFill
         case macroUsage
+        case loss
 
         var id: String { rawValue }
 
@@ -29,6 +31,7 @@ enum FuelLogic {
             case .withdraw: return "เบิกน้ำมัน"
             case .carFill: return "เติมน้ำมันรถยนต์"
             case .macroUsage: return "การใช้น้ำมันรถแม็คโคร"
+            case .loss: return "น้ำมันหาย"
             }
         }
 
@@ -38,6 +41,7 @@ enum FuelLogic {
             case .withdraw: return "เครื่องจักร: หลัก→สำรอง · ปั่นไฟ/อื่นๆ: หักถังหลัก"
             case .carFill: return "หักจากถังหลัก"
             case .macroUsage: return "หักจากถังหลังหรือถังสำรองตามที่เลือก"
+            case .loss: return "ปรับค่าใหม่ — หักยอดถังหลักให้ตรงของจริง"
             }
         }
 
@@ -47,6 +51,7 @@ enum FuelLogic {
             case .withdraw: return "arrow.up.right.circle.fill"
             case .carFill: return "car.fill"
             case .macroUsage: return "fuelpump.fill"
+            case .loss: return "drop.triangle.fill"
             }
         }
     }
@@ -173,10 +178,18 @@ enum FuelLogic {
         let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         // แถว StockIn = รับเข้าเสมอ (กัน fuelMovement ผิด/หายแล้วถังหลักติดลบ)
         if sub == stockInSubCategory { return true }
+        // แถว Adjust (น้ำมันหาย) = หักออกเสมอ — ไม่มีรถ; ห้ามตีความเป็นรับเข้า
+        if sub == adjustSubCategory { return false }
         let mov = (t.fuelMovement ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if mov == "stock_in" { return true }
         if mov == "stock_out" { return false }
         return (t.vehicleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// แถวปรับยอดถังหลัก (เมนู «น้ำมันหาย» / description «ปรับค่าใหม่»)
+    static func isAdjust(_ t: Transaction) -> Bool {
+        guard isFuelExpense(t) else { return false }
+        return (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == adjustSubCategory
     }
 
     static func isWithdraw(_ t: Transaction) -> Bool {
@@ -259,8 +272,8 @@ enum FuelLogic {
         isMacroVehicleUsageRow(t)
     }
 
-    /// วันตัดยอด — ก่อนวันนี้ถือว่าน้ำมันเหลือ 0; ตั้งแต่วันนี้หักถังปกติ (พ.ศ. 1 ส.ค. 2569)
-    static let stockCutoverYmd = "2026-08-01"
+    /// วันตัดยอด — ข้อมูลถึง 2026-08-04 ย้ายไปตาราง archive แล้ว; ตั้งแต่วันนี้หักถังปกติ (พ.ศ. 5 ส.ค. 2569)
+    static let stockCutoverYmd = "2026-08-05"
 
     /// วันตรวจนับถังสำรองจริง — รีเซ็ตเป็น [reserveAnchorLiters] แล้วจึงนับเฉพาะรายการตั้งแต่วันนี้
     static let reserveAnchorYmd = "2026-08-31"
@@ -331,6 +344,11 @@ enum FuelLogic {
             let tank = fuelUsageTankOf(t)
             let bucketKey = key(day: day, tank: tank, benzine: isBenzine)
 
+            // Adjust ก่อน stock_in — กันแถวน้ำมันหายที่ fuelMovement หายถูกนับรับเข้า
+            if isAdjust(t) {
+                buckets[bucketKey, default: Bucket()].withdraw += lit
+                continue
+            }
             if isStockIn(t) {
                 buckets[bucketKey, default: Bucket()].stockIn += lit
                 continue
@@ -402,11 +420,16 @@ enum FuelLogic {
             reserveDiesel = byDay.keys.sorted().reduce(openingReserve) { $0 + (byDay[$1] ?? 0) }
         }
 
+        func clean2(_ v: Double) -> Double {
+            let rounded = (v * 100).rounded() / 100
+            return abs(rounded) < 1e-6 ? 0 : rounded
+        }
+
         return Balance(
-            mainDiesel: mainDiesel,
-            reserveDiesel: reserveDiesel,
-            mainBenzine: mainBenzine,
-            reserveBenzine: reserveBenzine
+            mainDiesel: clean2(mainDiesel),
+            reserveDiesel: clean2(reserveDiesel),
+            mainBenzine: clean2(mainBenzine),
+            reserveBenzine: clean2(reserveBenzine)
         )
     }
 

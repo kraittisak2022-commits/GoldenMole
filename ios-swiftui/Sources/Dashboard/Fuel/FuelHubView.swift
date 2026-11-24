@@ -30,6 +30,7 @@ struct FuelHubView: View {
                     case .withdraw: withdrawForm(session)
                     case .carFill: carFillForm(session)
                     case .macroUsage: macroUsageForm(session)
+                    case .loss: lossForm(session)
                     }
                 } else {
                     picker(session)
@@ -89,6 +90,11 @@ struct FuelHubView: View {
                 session.configureOffline(service: service, appState: appState)
             }
             session.reload(appState: appState, force: true)
+            if session.subMode == .stockIn {
+                session.autoHydrateStockInIfNeeded()
+            } else if session.subMode == .loss {
+                session.autoHydrateLossIfNeeded()
+            }
         }
         .onChange(of: appState.transactionsRevision) { _, _ in
             session.reload(appState: appState)
@@ -110,6 +116,7 @@ struct FuelHubView: View {
                     .foregroundStyle(AppTheme.ink)
 
                 ForEach(FuelLogic.SubMode.allCases) { mode in
+                    let tileAccent = mode == .loss ? AppTheme.expense : accent
                     Button {
                         session.subMode = mode
                         if mode == .stockIn {
@@ -124,15 +131,21 @@ struct FuelHubView: View {
                         if mode == .carFill, session.carFill.time.isEmpty {
                             session.carFill.time = FuelLogic.nowTimeHHmm()
                         }
+                        if mode == .loss {
+                            session.autoHydrateLossIfNeeded()
+                            if session.loss.time.isEmpty {
+                                session.loss.time = FuelLogic.nowTimeHHmm()
+                            }
+                        }
                     } label: {
                         HStack(spacing: 14) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(accent.opacity(0.14))
+                                    .fill(tileAccent.opacity(0.14))
                                     .frame(width: 52, height: 52)
                                 Image(systemName: mode.systemImage)
                                     .font(.system(size: 22, weight: .semibold))
-                                    .foregroundStyle(accent)
+                                    .foregroundStyle(tileAccent)
                             }
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(mode.title)
@@ -154,7 +167,7 @@ struct FuelHubView: View {
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .strokeBorder(accent.opacity(0.3), lineWidth: 1.5)
+                                .strokeBorder(tileAccent.opacity(0.3), lineWidth: 1.5)
                         )
                     }
                     .buttonStyle(.plain)
@@ -391,6 +404,110 @@ struct FuelHubView: View {
                 Button("ล้างฟอร์ม") { session.clearCarFillForm() }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(AppTheme.inkMuted)
+            }
+            .padding(AppTheme.spaceLG)
+        }
+    }
+
+    // MARK: - Loss / Adjust
+
+    private func lossForm(_ session: FuelSession) -> some View {
+        @Bindable var session = session
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                formCard {
+                    Text("น้ำมันหาย (ปรับค่าใหม่)")
+                        .font(.headline)
+                    Text("หักยอดออกจากถังหลักให้ตรงของจริง — ไม่นับรวมในยอดใช้น้ำมัน")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.inkMuted)
+                    HStack {
+                        Text("ถังหลักคงเหลือ \(FuelLogic.formatLiters(session.dieselBalance)) ลิตร")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.fuel)
+                        Spacer()
+                        if session.dieselBalance > 0, !session.loss.isPersisted {
+                            Button("หักคงเหลือทั้งหมด") {
+                                session.loss.liters = session.dieselBalance
+                            }
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.expense)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("ลิตรที่หาย / ปรับออก")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.inkMuted)
+                        HStack(spacing: 10) {
+                            Button {
+                                session.loss.liters = max(0, ((session.loss.liters - 1) * 100).rounded() / 100)
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .font(.title2)
+                                    .foregroundStyle(AppTheme.expense)
+                            }
+                            .buttonStyle(.plain)
+                            TextField(
+                                "0",
+                                value: $session.loss.liters,
+                                format: .number.precision(.fractionLength(0...2))
+                            )
+                            .keyboardType(.decimalPad)
+                            .font(.title3.weight(.bold).monospacedDigit())
+                            .multilineTextAlignment(.center)
+                            .frame(minWidth: 80)
+                            Button {
+                                session.loss.liters = min(50_000, ((session.loss.liters + 1) * 100).rounded() / 100)
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title2)
+                                    .foregroundStyle(AppTheme.expense)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(AppTheme.surfaceSoft)
+                        )
+                    }
+
+                    timeField(title: "เวลา", text: $session.loss.time)
+                }
+
+                Button {
+                    Task { await session.saveLoss(appState: appState) }
+                } label: {
+                    HStack {
+                        if session.isSaving { ProgressView().tint(.white) }
+                        Text(session.isSaving
+                             ? "กำลังบันทึก..."
+                             : (session.loss.isPersisted ? "อัปเดตปรับยอดนี้" : "บันทึกปรับยอดน้ำมัน"))
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .foregroundStyle(.white)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AppTheme.expense)
+                    )
+                }
+                .disabled(session.isSaving)
+
+                if session.loss.isPersisted {
+                    Button("ล้างฟอร์ม (รายการใหม่)") { session.clearLossForm() }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.inkMuted)
+                }
+
+                historySection(
+                    title: "ปรับยอดวันนี้",
+                    rows: session.dayAdjustRows,
+                    onEdit: { session.loadLoss($0) },
+                    onDelete: { session.confirmDeleteId = $0.id }
+                )
             }
             .padding(AppTheme.spaceLG)
         }

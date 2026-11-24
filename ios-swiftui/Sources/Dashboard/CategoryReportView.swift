@@ -495,6 +495,7 @@ struct CategoryReportView: View {
             ("เบิกไปถังสำรอง", totals.withdrawLiters, "#ea580c"),
             ("ใช้รถ/แม็คโคร", totals.vehicleLiters, "#0F766E"),
             ("ร่อนทราย", totals.sandSieveLiters, "#DB2777"),
+            ("ปรับค่าใหม่", totals.adjustLiters, "#dc2626"),
             ("อื่น ๆ", totals.otherOutLiters, "#64748b"),
         ]
 

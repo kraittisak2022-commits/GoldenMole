@@ -248,6 +248,7 @@ extension DashboardAggregations {
         guard t.category == "Fuel" else { return "stock_out" }
         let sub = (t.subCategory ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if sub == FuelLogic.stockInSubCategory { return "stock_in" }
+        if sub == FuelLogic.adjustSubCategory { return "stock_out" }
         if t.fuelMovement == "stock_in" || t.fuelMovement == "stock_out" {
             return t.fuelMovement ?? "stock_out"
         }
